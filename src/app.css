@@ -1,0 +1,56 @@
+@import 'tailwindcss';
+@plugin 'daisyui' {
+	themes: all;
+}
+
+/* Custom global styles */
+html {
+	scroll-behavior: smooth;
+}
+
+body {
+	font-family: 'Inter', system-ui, -apple-system, sans-serif;
+	min-height: 100vh;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+
+::-webkit-scrollbar-track {
+	background: oklch(var(--b2));
+}
+
+::-webkit-scrollbar-thumb {
+	background: oklch(var(--bc) / 0.2);
+	border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: oklch(var(--bc) / 0.4);
+}
+
+/* Setup wizard transitions */
+.step-enter {
+	animation: stepIn 0.3s ease-out;
+}
+
+@keyframes stepIn {
+	from {
+		opacity: 0;
+		transform: translateX(20px);
+	}
+	to {
+		opacity: 1;
+		transform: translateX(0);
+	}
+}
+
+/* Console log styling */
+.sync-console {
+	font-family: 'JetBrains Mono', 'Fira Code', monospace;
+	font-size: 0.8rem;
+	line-height: 1.4;
+}
