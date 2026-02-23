@@ -4,6 +4,7 @@ import db from '$lib/server/db.js';
 export function load({ locals }) {
     const settings = db.prepare('SELECT * FROM app_settings WHERE id = 1').get();
     const syncState = db.prepare('SELECT * FROM sync_state WHERE id = 1').get();
+    const libraries = db.prepare('SELECT jellyfin_id, name, media_type FROM libraries WHERE is_tracked = 1').all();
 
     return {
         theme: locals.theme || 'dark',
@@ -20,6 +21,7 @@ export function load({ locals }) {
             status: syncState?.status || 'idle',
             progressPercent: syncState?.progress_percent || 0,
             lastSync: syncState?.last_sync_timestamp
-        }
+        },
+        libraries
     };
 }

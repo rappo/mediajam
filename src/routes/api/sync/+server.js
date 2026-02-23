@@ -3,7 +3,7 @@ import { startSync, pauseSync, resumeSync, stopSync, resetSync, addListener, isR
 
 /** @type {import('./$types').RequestHandler} */
 export async function POST({ request }) {
-    const { action } = await request.json();
+    const { action, libraryId } = await request.json();
 
     switch (action) {
         case 'start':
@@ -12,8 +12,8 @@ export async function POST({ request }) {
                 resetSync();
             }
             // Start sync in background (don't await)
-            startSync();
-            return json({ success: true, message: 'Sync started.' });
+            startSync(libraryId || null);
+            return json({ success: true, message: libraryId ? 'Library sync started.' : 'Sync started.' });
 
         case 'pause':
             pauseSync();

@@ -39,6 +39,12 @@
         "sunset",
     ];
 
+    // Track initial values for dirty detection
+    const initialValues = {
+        jellyfinUrl: data.settings.jellyfinUrl || "",
+        includeSpecials: data.settings.includeSpecials || false,
+    };
+
     let jellyfinUrl = $state(data.settings.jellyfinUrl || "");
     let tvdbApiKey = $state("");
     let tmdbApiKey = $state("");
@@ -56,6 +62,42 @@
     let syncItemsSynced = $state(0);
     let syncErrors = $state(0);
     let syncLogs = $state([]);
+
+    // Check if settings have been modified
+    function isDirty() {
+        return (
+            jellyfinUrl !== initialValues.jellyfinUrl ||
+            includeSpecials !== initialValues.includeSpecials ||
+            tvdbApiKey !== "" ||
+            tmdbApiKey !== "" ||
+            musicbrainzApiKey !== ""
+        );
+    }
+
+    function handleClose() {
+        if (isDirty()) {
+            const save = confirm(
+                "You have unsaved changes. Click OK to leave without saving, or Cancel to go back.",
+            );
+            if (!save) return;
+        }
+        history.back();
+    }
+
+    function handleKeydown(e) {
+        if (e.key === "Escape") {
+            handleClose();
+        }
+    }
+
+    function copySyncLog() {
+        const text = syncLogs.map((l) => `[${l.time}] ${l.message}`).join("\n");
+        navigator.clipboard.writeText(text);
+        copyFeedback = true;
+        setTimeout(() => (copyFeedback = false), 2000);
+    }
+
+    let copyFeedback = $state(false);
     let syncEventSource = $state(null);
 
     async function setTheme(theme) {
@@ -115,20 +157,23 @@
         ];
     }
 
-    async function triggerSync() {
+    async function triggerSync(libraryId = null, libraryName = null) {
         syncStatus = "syncing";
         syncProgress = 0;
         syncItemsSynced = 0;
         syncErrors = 0;
         syncLogs = [];
 
-        addSyncLog("Starting re-sync...", "info");
+        const label = libraryName
+            ? `Syncing ${libraryName}...`
+            : "Starting re-sync...";
+        addSyncLog(label, "info");
 
         try {
             const res = await fetch("/api/sync", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ action: "start" }),
+                body: JSON.stringify({ action: "start", libraryId }),
             });
             const result = await res.json();
 
@@ -216,8 +261,29 @@
     <title>Settings — Mediajam</title>
 </svelte:head>
 
+<svelte:window onkeydown={handleKeydown} />
+
 <div class="max-w-3xl mx-auto p-6 py-10">
-    <h1 class="text-3xl font-bold mb-8">Settings</h1>
+    <div class="flex items-center justify-between mb-8">
+        <h1 class="text-3xl font-bold">Settings</h1>
+        <button class="btn btn-ghost btn-sm gap-1" onclick={handleClose}>
+            <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-5 w-5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                ><line x1="18" y1="6" x2="6" y2="18" /><line
+                    x1="6"
+                    y1="6"
+                    x2="18"
+                    y2="18"
+                /></svg
+            >
+            Close
+        </button>
+    </div>
 
     <div class="space-y-8">
         <!-- Jellyfin Connection -->
@@ -442,10 +508,24 @@
                     </p>
                     <button
                         class="btn btn-info btn-sm w-fit mt-2"
-                        onclick={triggerSync}
+                        onclick={() => triggerSync()}
                     >
-                        Re-sync Library Data
+                        Re-sync All Libraries
                     </button>
+                    {#if data.libraries && data.libraries.length > 1}
+                        <div class="flex flex-wrap gap-2 mt-2">
+                            {#each data.libraries as lib}
+                                <button
+                                    class="btn btn-outline btn-xs"
+                                    onclick={() =>
+                                        triggerSync(lib.jellyfin_id, lib.name)}
+                                >
+                                    {#if lib.media_type === "tvshows"}📺{:else if lib.media_type === "movies"}🎬{:else if lib.media_type === "music"}🎵{:else}📁{/if}
+                                    Sync {lib.name}
+                                </button>
+                            {/each}
+                        </div>
+                    {/if}
                 {:else}
                     <!-- Progress -->
                     <div class="space-y-3 mt-2">
@@ -467,13 +547,52 @@
                             </span>
                         </div>
 
-                        <progress
-                            class="progress progress-info w-full"
-                            value={syncProgress}
-                            max="100"
-                        ></progress>
+                        {#if syncProgress > 0}
+                            <progress
+                                class="progress progress-info w-full"
+                                value={syncProgress}
+                                max="100"
+                            ></progress>
+                        {:else}
+                            <progress class="progress progress-info w-full"
+                            ></progress>
+                        {/if}
 
-                        <!-- Console -->
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs text-base-content/40"
+                                >Sync Log</span
+                            >
+                            {#if syncLogs.length > 0}
+                                <button
+                                    class="btn btn-xs btn-ghost gap-1"
+                                    onclick={copySyncLog}
+                                >
+                                    {#if copyFeedback}
+                                        ✓ Copied
+                                    {:else}
+                                        <svg
+                                            xmlns="http://www.w3.org/2000/svg"
+                                            class="h-3 w-3"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2"
+                                            ><rect
+                                                x="9"
+                                                y="9"
+                                                width="13"
+                                                height="13"
+                                                rx="2"
+                                                ry="2"
+                                            /><path
+                                                d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"
+                                            /></svg
+                                        >
+                                        Copy
+                                    {/if}
+                                </button>
+                            {/if}
+                        </div>
                         <div
                             bind:this={consoleEl}
                             class="bg-neutral text-neutral-content rounded-lg p-3 h-36 overflow-y-auto text-xs font-mono"
@@ -516,7 +635,7 @@
                                 </button>
                                 <button
                                     class="btn btn-sm btn-ghost"
-                                    onclick={triggerSync}
+                                    onclick={() => triggerSync()}
                                 >
                                     Sync Again
                                 </button>

@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import db from '$lib/server/db.js';
+import { createJellyfinApi, getLibraryApi } from '$lib/server/jellyfin.js';
 
 /** @type {import('./$types').RequestHandler} */
 export async function GET({ url }) {
@@ -11,21 +12,9 @@ export async function GET({ url }) {
     }
 
     try {
-        // Try authenticated request first
-        const headers = { 'Accept': 'application/json' };
-        if (accessToken) {
-            headers['X-Emby-Token'] = accessToken;
-        }
-
-        const res = await fetch(`${jellyfinUrl}/Library/VirtualFolders`, {
-            headers
-        });
-
-        if (!res.ok) {
-            return json({ error: `Jellyfin returned status ${res.status}` }, { status: 502 });
-        }
-
-        const folders = await res.json();
+        const api = createJellyfinApi(jellyfinUrl, accessToken || undefined);
+        const res = await getLibraryApi(api).getMediaFolders();
+        const folders = res.data.Items || [];
 
         const libraries = folders.map(folder => {
             let type = 'mixed';
@@ -38,7 +27,7 @@ export async function GET({ url }) {
             else if (collType === 'homevideos') type = 'homevideos';
 
             return {
-                id: folder.ItemId,
+                id: folder.Id,
                 name: folder.Name,
                 type,
                 locations: folder.Locations || []

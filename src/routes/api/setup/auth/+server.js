@@ -1,87 +1,33 @@
 import { json } from '@sveltejs/kit';
 import db from '$lib/server/db.js';
 import bcrypt from 'bcryptjs';
-
-const AUTH_HEADER = 'MediaBrowser Client="Mediajam", Device="Mediajam Web", DeviceId="mediajam-web-001", Version="1.0.0"';
+import { createJellyfinApi, getUserApi } from '$lib/server/jellyfin.js';
 
 async function authenticateWithJellyfin(jellyfinUrl, username, password) {
-    // Try both header styles (X-Emby-Authorization for older, Authorization for newer)
-    const headerVariants = [
-        { 'Authorization': AUTH_HEADER },
-        { 'X-Emby-Authorization': AUTH_HEADER }
-    ];
-
-    for (const authHeaders of headerVariants) {
-        try {
-            const res = await fetch(`${jellyfinUrl}/Users/AuthenticateByName`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...authHeaders
-                },
-                body: JSON.stringify({
-                    Username: username,
-                    Pw: password
-                })
-            });
-
-            if (res.ok) {
-                return { success: true, data: await res.json() };
-            }
-
-            // If we got a 401, credentials are wrong — don't try other header
-            if (res.status === 401) {
-                return { success: false, status: 401, error: 'Invalid username or password.' };
-            }
-
-            // For 500 errors (known Jellyfin 10.11.x bug), try a different approach
-            if (res.status === 500) {
-                console.error(`Jellyfin returned 500 with header variant. Trying next...`);
-                continue;
-            }
-
-            return { success: false, status: res.status, error: `Jellyfin returned HTTP ${res.status}` };
-        } catch (e) {
-            console.error(`Auth attempt failed:`, e.message);
-        }
-    }
-
-    return { success: false, status: 500, error: 'Jellyfin server error' };
-}
-
-async function tryApiKeyAuth(jellyfinUrl, username, password) {
-    // Fallback: try to get users list and find a matching user
-    // This is a workaround for the Jellyfin 10.11.x AuthenticateByName 500 bug
-    // First authenticate again with a slight delay (concurrency issue workaround)
-    await new Promise(r => setTimeout(r, 1000));
+    const api = createJellyfinApi(jellyfinUrl);
 
     try {
-        const res = await fetch(`${jellyfinUrl}/Users/AuthenticateByName`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': AUTH_HEADER
-            },
-            body: JSON.stringify({
+        const result = await getUserApi(api).authenticateUserByName({
+            authenticateUserByName: {
                 Username: username,
                 Pw: password
-            })
+            }
         });
 
-        if (res.ok) {
-            return { success: true, data: await res.json() };
-        }
-
-        const errBody = await res.text().catch(() => '');
-        return {
-            success: false,
-            status: res.status,
-            error: res.status === 401
-                ? 'Invalid username or password.'
-                : `Jellyfin returned HTTP ${res.status}. This may be a known Jellyfin 10.11.x issue (DbUpdateConcurrencyException). Please check your Jellyfin server logs and ensure it has adequate disk space. You can try again or use a local Mediajam account instead.`
-        };
+        return { success: true, data: result.data };
     } catch (e) {
-        return { success: false, status: 0, error: `Connection failed: ${e.message}` };
+        if (e.response) {
+            const status = e.response.status;
+            if (status === 401) {
+                return { success: false, status: 401, error: 'Invalid username or password.' };
+            }
+            if (status === 500) {
+                return { success: false, status: 500, error: `Jellyfin returned HTTP 500. This may be a known Jellyfin 10.11.x issue. Please check your Jellyfin server logs.` };
+            }
+            return { success: false, status, error: `Jellyfin returned HTTP ${status}` };
+        }
+        const msg = e instanceof Error ? e.message : String(e);
+        return { success: false, status: 0, error: `Connection failed: ${msg}` };
     }
 }
 
@@ -91,13 +37,13 @@ export async function POST({ request }) {
 
     try {
         if (authType === 'jellyfin') {
-            // Try authenticating with Jellyfin
             let result = await authenticateWithJellyfin(jellyfinUrl, username, password);
 
             // If 500, retry once with delay (known concurrency bug workaround)
             if (!result.success && result.status === 500) {
                 console.log('Retrying Jellyfin auth after delay (concurrency workaround)...');
-                result = await tryApiKeyAuth(jellyfinUrl, username, password);
+                await new Promise(r => setTimeout(r, 1000));
+                result = await authenticateWithJellyfin(jellyfinUrl, username, password);
             }
 
             if (!result.success) {

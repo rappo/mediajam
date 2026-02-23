@@ -1,4 +1,5 @@
 import db from '$lib/server/db.js';
+import { getJellyfinApis, getItemsApi, getSystemApi, getTvShowsApi } from '$lib/server/jellyfin.js';
 
 /** @type {Set<(data: any) => void>} */
 const listeners = new Set();
@@ -41,72 +42,99 @@ async function waitWhilePaused() {
     }
 }
 
-async function fetchJellyfinItems(jellyfinUrl, accessToken, libraryId, mediaType) {
-    const headers = { 'Accept': 'application/json', 'X-Emby-Token': accessToken };
-
+/**
+ * Fetch items from a Jellyfin library using the SDK (Axios), paginated in batches.
+ */
+async function fetchJellyfinItems(api, libraryId, mediaType) {
     let itemType = '';
     if (mediaType === 'tvshows') itemType = 'Series';
     else if (mediaType === 'movies') itemType = 'Movie';
     else if (mediaType === 'music') itemType = 'MusicArtist';
 
-    const params = new URLSearchParams({
-        ParentId: libraryId,
-        IncludeItemTypes: itemType,
-        Recursive: 'true',
-        Fields: 'ProviderIds,Overview,ProductionYear,UserData,RecursiveItemCount,ChildCount',
-        StartIndex: '0',
-        Limit: '10000'
-    });
+    const BATCH_SIZE = 100;
+    let startIndex = 0;
+    let totalCount = null;
+    const allItems = [];
 
-    const url = `${jellyfinUrl}/Items?${params}`;
-    console.log(`[sync] Fetching ${itemType} from ${jellyfinUrl} (library ${libraryId})...`);
+    const itemsApi = getItemsApi(api);
 
+    // Quick connectivity check
+    broadcast({ type: 'progress', log: `  🔗 Connecting to Jellyfin...`, logType: 'info' });
     try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 30000);
-
-        const res = await fetch(url, {
-            headers,
-            signal: controller.signal
-        });
-
-        clearTimeout(timeout);
-
-        if (!res.ok) {
-            console.error(`[sync] HTTP ${res.status} from ${url}`);
-            broadcast({ type: 'error', log: `HTTP ${res.status} fetching ${itemType}`, logType: 'error' });
-            return [];
-        }
-        const data = await res.json();
-        console.log(`[sync] Got ${data.Items?.length || 0} ${itemType} items (total: ${data.TotalRecordCount})`);
-        return data.Items || [];
+        const pingStart = Date.now();
+        const sysInfo = await getSystemApi(api).getPublicSystemInfo();
+        const pingTime = Date.now() - pingStart;
+        broadcast({ type: 'progress', log: `  ✅ Server reachable (${pingTime}ms) — ${sysInfo.data.ServerName} v${sysInfo.data.Version}`, logType: 'info' });
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        console.error(`[sync] Failed to fetch ${itemType} from library ${libraryId}:`, msg);
-        broadcast({ type: 'error', log: `Failed to fetch ${itemType}: ${msg}`, logType: 'error' });
+        broadcast({ type: 'error', log: `  ❌ Cannot reach Jellyfin: ${msg}`, logType: 'error' });
         return [];
     }
+
+    while (true) {
+        if (!engineState.running) return allItems;
+
+        const fetchStart = Date.now();
+        broadcast({ type: 'progress', log: `  ⏳ Fetching ${itemType} ${startIndex}-${startIndex + BATCH_SIZE}...`, logType: 'info' });
+
+        try {
+            const res = await itemsApi.getItems({
+                parentId: libraryId,
+                includeItemTypes: [itemType],
+                recursive: true,
+                fields: ['ProviderIds', 'Overview', 'ProductionYear', 'RecursiveItemCount', 'ChildCount'],
+                enableUserData: true,
+                startIndex,
+                limit: BATCH_SIZE
+            });
+
+            const fetchTime = Date.now() - fetchStart;
+            const data = res.data;
+            const items = data.Items || [];
+            totalCount = data.TotalRecordCount;
+
+            allItems.push(...items);
+
+            if (items.length > 0) {
+                broadcast({
+                    type: 'progress',
+                    log: `  📦 Fetched ${allItems.length}/${totalCount} ${itemType} (${fetchTime}ms)`,
+                    logType: 'info'
+                });
+            }
+
+            if (items.length < BATCH_SIZE) break;
+            startIndex += BATCH_SIZE;
+
+            await sleep(100);
+        } catch (e) {
+            const fetchTime = Date.now() - fetchStart;
+            const msg = e instanceof Error ? e.message : String(e);
+            console.error(`[sync] Failed to fetch ${itemType} batch at ${startIndex} after ${fetchTime}ms:`, msg);
+            broadcast({ type: 'error', log: `Failed to fetch ${itemType} (batch at ${startIndex}, ${fetchTime}ms): ${msg}`, logType: 'error' });
+            break;
+        }
+    }
+
+    console.log(`[sync] Got ${allItems.length} ${itemType} items (total: ${totalCount})`);
+    return allItems;
 }
 
-async function fetchJellyfinEpisodes(jellyfinUrl, accessToken, seriesId) {
-    const headers = { 'Accept': 'application/json', 'X-Emby-Token': accessToken };
-
-    const params = new URLSearchParams({
-        Fields: 'ProviderIds,UserData,Overview',
-        Recursive: 'true',
-        IncludeItemTypes: 'Episode',
-        StartIndex: '0',
-        Limit: '10000'
-    });
-
+/**
+ * Fetch ALL episodes for a TV series using the Shows API (includes virtual/missing episodes).
+ * The /Items endpoint does NOT return virtual episodes; only /Shows/{id}/Episodes does.
+ */
+async function fetchJellyfinEpisodes(api, seriesId, userId) {
     try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 30000);
-        const res = await fetch(`${jellyfinUrl}/Shows/${seriesId}/Episodes?${params}`, { headers, signal: controller.signal });
-        clearTimeout(timeout);
-        if (!res.ok) return [];
-        const data = await res.json();
-        return data.Items || [];
+        const res = await getTvShowsApi(api).getEpisodes({
+            seriesId,
+            userId,
+            fields: ['ProviderIds', 'Overview', 'Path'],
+            enableUserData: true,
+            startIndex: 0,
+            limit: 10000
+        });
+        return res.data.Items || [];
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         console.error(`[sync] Failed to fetch episodes for ${seriesId}:`, msg);
@@ -114,26 +142,21 @@ async function fetchJellyfinEpisodes(jellyfinUrl, accessToken, seriesId) {
     }
 }
 
-async function fetchJellyfinAlbums(jellyfinUrl, accessToken, artistId) {
-    const headers = { 'Accept': 'application/json', 'X-Emby-Token': accessToken };
-
-    const params = new URLSearchParams({
-        ArtistIds: artistId,
-        IncludeItemTypes: 'MusicAlbum',
-        Recursive: 'true',
-        Fields: 'ProviderIds,UserData,ProductionYear',
-        StartIndex: '0',
-        Limit: '10000'
-    });
-
+/**
+ * Fetch albums for a music artist using the SDK.
+ */
+async function fetchJellyfinAlbums(api, artistId) {
     try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 30000);
-        const res = await fetch(`${jellyfinUrl}/Items?${params}`, { headers, signal: controller.signal });
-        clearTimeout(timeout);
-        if (!res.ok) return [];
-        const data = await res.json();
-        return data.Items || [];
+        const res = await getItemsApi(api).getItems({
+            artistIds: [artistId],
+            includeItemTypes: ['MusicAlbum'],
+            recursive: true,
+            fields: ['ProviderIds', 'ProductionYear'],
+            enableUserData: true,
+            startIndex: 0,
+            limit: 10000
+        });
+        return res.data.Items || [];
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         console.error(`[sync] Failed to fetch albums for ${artistId}:`, msg);
@@ -141,26 +164,21 @@ async function fetchJellyfinAlbums(jellyfinUrl, accessToken, artistId) {
     }
 }
 
-async function fetchJellyfinTracks(jellyfinUrl, accessToken, albumId) {
-    const headers = { 'Accept': 'application/json', 'X-Emby-Token': accessToken };
-
-    const params = new URLSearchParams({
-        ParentId: albumId,
-        IncludeItemTypes: 'Audio',
-        Recursive: 'true',
-        Fields: 'ProviderIds,UserData',
-        StartIndex: '0',
-        Limit: '10000'
-    });
-
+/**
+ * Fetch tracks for an album using the SDK.
+ */
+async function fetchJellyfinTracks(api, albumId) {
     try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 30000);
-        const res = await fetch(`${jellyfinUrl}/Items?${params}`, { headers, signal: controller.signal });
-        clearTimeout(timeout);
-        if (!res.ok) return [];
-        const data = await res.json();
-        return data.Items || [];
+        const res = await getItemsApi(api).getItems({
+            parentId: albumId,
+            includeItemTypes: ['Audio'],
+            recursive: true,
+            fields: ['ProviderIds'],
+            enableUserData: true,
+            startIndex: 0,
+            limit: 10000
+        });
+        return res.data.Items || [];
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         console.error(`[sync] Failed to fetch tracks for ${albumId}:`, msg);
@@ -175,7 +193,7 @@ function getWatchStatus(userData) {
     return 'unwatched';
 }
 
-export async function startSync() {
+export async function startSync(libraryId = null) {
     if (engineState.running) return;
 
     engineState.running = true;
@@ -184,7 +202,13 @@ export async function startSync() {
 
     const settings = db.prepare('SELECT * FROM app_settings WHERE id = 1').get();
     const user = db.prepare('SELECT * FROM users LIMIT 1').get();
-    const libraries = db.prepare('SELECT * FROM libraries WHERE is_tracked = 1').all();
+
+    let libraries;
+    if (libraryId) {
+        libraries = db.prepare('SELECT * FROM libraries WHERE is_tracked = 1 AND jellyfin_id = ?').all(libraryId);
+    } else {
+        libraries = db.prepare('SELECT * FROM libraries WHERE is_tracked = 1').all();
+    }
 
     if (!settings?.jellyfin_url || !user) {
         broadcast({ type: 'error', message: 'Missing Jellyfin configuration or user.' });
@@ -194,6 +218,10 @@ export async function startSync() {
 
     const jellyfinUrl = settings.jellyfin_url;
     const accessToken = user.jellyfin_access_token || '';
+    const userId = user.jellyfin_user_id || '';
+
+    // Create the SDK API instance (uses Axios, no fetch/DNS issues)
+    const { api } = getJellyfinApis(jellyfinUrl, accessToken);
 
     let totalSynced = 0;
     let totalErrors = 0;
@@ -218,14 +246,26 @@ export async function startSync() {
 			play_count = @playCount, runtime_ticks = @runtimeTicks
 	`);
 
+    const upsertMissingChild = db.prepare(`
+		INSERT INTO media_children (parent_id, jellyfin_id, title, season_number, item_number, is_special, is_collected, watch_status, play_count, runtime_ticks)
+		VALUES (@parentId, @jellyfinId, @title, @seasonNumber, @itemNumber, @isSpecial, 0, 'unwatched', 0, 0)
+		ON CONFLICT(jellyfin_id) DO UPDATE SET
+			title = @title, season_number = @seasonNumber, item_number = @itemNumber,
+			is_special = @isSpecial, is_collected = 0
+	`);
+
     const getParentId = db.prepare('SELECT id FROM media_parents WHERE jellyfin_id = ?');
 
     const updateParentCounts = db.prepare(`
 		UPDATE media_parents SET
-			collected_children = (SELECT COUNT(*) FROM media_children WHERE parent_id = media_parents.id AND is_collected = 1),
-			watched_children = (SELECT COUNT(*) FROM media_children WHERE parent_id = media_parents.id AND watch_status = 'watched')
+			collected_children = (SELECT COUNT(*) FROM media_children WHERE parent_id = media_parents.id AND is_collected = 1 AND is_special = 0),
+			watched_children = (SELECT COUNT(*) FROM media_children WHERE parent_id = media_parents.id AND watch_status = 'watched' AND is_special = 0)
 		WHERE id = ?
 	`);
+
+    const updateTotalReleased = db.prepare(
+        'UPDATE media_parents SET total_released_children = ? WHERE id = ?'
+    );
 
     try {
         // Sync each library separately with per-library progress
@@ -245,20 +285,35 @@ export async function startSync() {
                 logType: 'info'
             });
 
-            // Fetch parent items for this library
-            const items = await fetchJellyfinItems(jellyfinUrl, accessToken, lib.jellyfin_id, lib.media_type);
+            // Fetch parent items for this library (SDK/Axios)
+            const items = await fetchJellyfinItems(api, lib.jellyfin_id, lib.media_type);
             const parentCount = items.length;
             let libSynced = 0;
             let libErrors = 0;
 
-            broadcast({
-                type: 'library_count',
-                libraryIndex: libIdx,
-                libraryName: lib.name,
-                parentCount,
-                log: `Found ${parentCount} ${lib.media_type === 'tvshows' ? 'shows' : lib.media_type === 'movies' ? 'movies' : 'artists'} in ${lib.name}`,
-                logType: 'info'
-            });
+            const itemLabel = lib.media_type === 'tvshows' ? 'shows' : lib.media_type === 'movies' ? 'movies' : 'artists';
+
+            if (parentCount === 0) {
+                libErrors++;
+                totalErrors++;
+                broadcast({
+                    type: 'library_count',
+                    libraryIndex: libIdx,
+                    libraryName: lib.name,
+                    parentCount: 0,
+                    log: `⚠️ Found 0 ${itemLabel} in ${lib.name} — fetch may have failed (check Jellyfin connectivity)`,
+                    logType: 'warning'
+                });
+            } else {
+                broadcast({
+                    type: 'library_count',
+                    libraryIndex: libIdx,
+                    libraryName: lib.name,
+                    parentCount,
+                    log: `Found ${parentCount} ${itemLabel} in ${lib.name}`,
+                    logType: 'info'
+                });
+            }
 
             for (let i = 0; i < items.length; i++) {
                 const item = items[i];
@@ -306,21 +361,34 @@ export async function startSync() {
                             logType: 'info'
                         });
 
-                        const episodes = await fetchJellyfinEpisodes(jellyfinUrl, accessToken, item.Id);
+                        const episodes = await fetchJellyfinEpisodes(api, item.Id, userId);
 
                         for (const ep of episodes) {
+                            // Determine if episode is on disk by checking LocationType
+                            const isOnDisk = ep.LocationType !== 'Virtual';
                             try {
-                                upsertChild.run({
-                                    parentId,
-                                    jellyfinId: ep.Id,
-                                    title: ep.Name || `Episode ${ep.IndexNumber || '?'}`,
-                                    seasonNumber: ep.ParentIndexNumber || 0,
-                                    itemNumber: ep.IndexNumber || 0,
-                                    isSpecial: (ep.ParentIndexNumber === 0) ? 1 : 0,
-                                    watchStatus: getWatchStatus(ep.UserData),
-                                    playCount: ep.UserData?.PlayCount || 0,
-                                    runtimeTicks: ep.RunTimeTicks || 0
-                                });
+                                if (isOnDisk) {
+                                    upsertChild.run({
+                                        parentId,
+                                        jellyfinId: ep.Id,
+                                        title: ep.Name || `Episode ${ep.IndexNumber || '?'}`,
+                                        seasonNumber: ep.ParentIndexNumber || 0,
+                                        itemNumber: ep.IndexNumber || 0,
+                                        isSpecial: (ep.ParentIndexNumber === 0) ? 1 : 0,
+                                        watchStatus: getWatchStatus(ep.UserData),
+                                        playCount: ep.UserData?.PlayCount || 0,
+                                        runtimeTicks: ep.RunTimeTicks || 0
+                                    });
+                                } else {
+                                    upsertMissingChild.run({
+                                        parentId,
+                                        jellyfinId: ep.Id,
+                                        title: ep.Name || `Episode ${ep.IndexNumber || '?'}`,
+                                        seasonNumber: ep.ParentIndexNumber || 0,
+                                        itemNumber: ep.IndexNumber || 0,
+                                        isSpecial: (ep.ParentIndexNumber === 0) ? 1 : 0
+                                    });
+                                }
                                 childCount++;
                                 totalSynced++;
                             } catch (e) {
@@ -329,6 +397,9 @@ export async function startSync() {
                             }
                         }
 
+                        const collectedNonSpecial = episodes.filter(ep => ep.LocationType !== 'Virtual' && (ep.ParentIndexNumber || 0) !== 0).length;
+                        const missingNonSpecial = episodes.filter(ep => ep.LocationType === 'Virtual' && (ep.ParentIndexNumber || 0) !== 0).length;
+                        updateTotalReleased.run(collectedNonSpecial + missingNonSpecial, parentId);
                         updateParentCounts.run(parentId);
                     } else if (lib.media_type === 'movies' && parentId) {
                         upsertChild.run({
@@ -360,7 +431,7 @@ export async function startSync() {
                             logType: 'info'
                         });
 
-                        const albums = await fetchJellyfinAlbums(jellyfinUrl, accessToken, item.Id);
+                        const albums = await fetchJellyfinAlbums(api, item.Id);
 
                         for (const album of albums) {
                             try {
@@ -386,7 +457,7 @@ export async function startSync() {
                         updateParentCounts.run(parentId);
                     }
 
-                    // Per-item success broadcast — progress is parent index / parent count (reliable %)
+                    // Per-item success broadcast
                     const libProgress = Math.round(((i + 1) / parentCount) * 100);
 
                     broadcast({
@@ -408,6 +479,7 @@ export async function startSync() {
                 } catch (e) {
                     totalErrors++;
                     libErrors++;
+                    const errMsg = e instanceof Error ? e.message : String(e);
                     broadcast({
                         type: 'progress',
                         libraryIndex: libIdx,
@@ -417,7 +489,7 @@ export async function startSync() {
                         currentItem: item.Name,
                         errors: totalErrors,
                         totalSynced,
-                        log: `  ✗ Error: ${item.Name}: ${e.message}`,
+                        log: `  ✗ Error: ${item.Name}: ${errMsg}`,
                         logType: 'error'
                     });
                 }
@@ -427,6 +499,7 @@ export async function startSync() {
             }
 
             // Library complete
+            const libFailed = parentCount === 0 && libSynced === 0;
             broadcast({
                 type: 'library_complete',
                 libraryIndex: libIdx,
@@ -435,8 +508,12 @@ export async function startSync() {
                 libErrors,
                 totalSynced,
                 totalErrors,
-                log: `✅ ${lib.name} complete — ${libSynced} items synced`,
-                logType: 'success'
+                log: libFailed
+                    ? `❌ ${lib.name} failed — could not fetch items from Jellyfin`
+                    : libErrors > 0
+                        ? `⚠️ ${lib.name} completed with errors — ${libSynced} items synced, ${libErrors} errors`
+                        : `✅ ${lib.name} complete — ${libSynced} items synced`,
+                logType: libFailed ? 'error' : libErrors > 0 ? 'warning' : 'success'
             });
         }
 
@@ -450,18 +527,25 @@ export async function startSync() {
             last_sync_timestamp: new Date().toISOString()
         });
 
+        const allFailed = totalSynced === 0 && totalErrors > 0;
+        const hasErrors = totalErrors > 0;
         broadcast({
             type: 'complete',
             totalSynced,
             totalErrors,
-            log: `🎉 Sync complete! ${totalSynced} items synced with ${totalErrors} errors.`,
-            logType: 'success'
+            log: allFailed
+                ? `❌ Sync failed — could not fetch any items (${totalErrors} errors)`
+                : hasErrors
+                    ? `⚠️ Sync completed with errors — ${totalSynced} items synced, ${totalErrors} errors`
+                    : `🎉 Sync complete! ${totalSynced} items synced.`,
+            logType: allFailed ? 'error' : hasErrors ? 'warning' : 'success'
         });
 
     } catch (e) {
         console.error('Sync engine error:', e);
-        updateSyncState({ status: 'error', current_task: e.message });
-        broadcast({ type: 'error', message: e.message });
+        const errMsg = e instanceof Error ? e.message : String(e);
+        updateSyncState({ status: 'error', current_task: errMsg });
+        broadcast({ type: 'error', message: errMsg });
     } finally {
         engineState.running = false;
     }

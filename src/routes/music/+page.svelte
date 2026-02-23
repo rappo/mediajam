@@ -82,7 +82,13 @@
     };
 
     const columns = [
-        { key: "title", label: "Artist", class: "font-medium" },
+        {
+            key: "title",
+            label: "Artist",
+            class: "font-medium",
+            render: (row) =>
+                `<a href="/music/${row.id}" class="link link-hover link-primary">${row.title}</a>`,
+        },
         { key: "album_count", label: "Albums", class: "text-center w-24" },
         {
             key: "collection_pct",
@@ -92,8 +98,10 @@
                 const pct = row.collection_pct || 0;
                 const color =
                     pct >= 100 ? "#22d3ee" : pct > 50 ? "#fb923c" : "#ef4444";
+                const bgColor =
+                    pct >= 100 ? "rgba(0,0,0,0.15)" : "rgba(239, 68, 68, 0.2)";
                 return `<div class="flex items-center gap-2">
-                    <div class="w-full bg-base-300 rounded-full h-2">
+                    <div class="w-full rounded-full h-2" style="background: ${bgColor}">
                         <div class="h-2 rounded-full" style="width: ${Math.min(100, pct)}%; background: ${color}"></div>
                     </div>
                     <span class="text-xs w-12 text-right">${pct}%</span>
