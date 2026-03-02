@@ -93,15 +93,93 @@ CREATE TABLE IF NOT EXISTS media_children (
     FOREIGN KEY(parent_id) REFERENCES media_parents(id) ON DELETE CASCADE
 );
 
+-- 7. Playback History (Timeline Events)
+CREATE TABLE IF NOT EXISTS playback_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    media_id INTEGER NOT NULL,
+    source TEXT NOT NULL,
+    timestamp DATETIME NOT NULL,
+    duration_consumed_seconds INTEGER,
+    completion_pct REAL,
+    external_event_id TEXT UNIQUE,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY(user_id) REFERENCES users(id),
+    FOREIGN KEY(media_id) REFERENCES media_children(id)
+);
+
+-- 8. User Identities (Multi-Provider Linking)
+CREATE TABLE IF NOT EXISTS user_identities (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    provider TEXT NOT NULL,
+    provider_uid TEXT NOT NULL,
+    access_token TEXT,
+    refresh_token TEXT,
+    token_expires_at TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, provider)
+);
+
+-- 9. Active Sessions (Now Playing State)
+CREATE TABLE IF NOT EXISTS active_sessions (
+    id TEXT PRIMARY KEY,
+    user_id INTEGER,
+    media_id INTEGER,
+    jellyfin_item_id TEXT,
+    title TEXT,
+    media_type TEXT,
+    progress_ticks INTEGER DEFAULT 0,
+    runtime_ticks INTEGER DEFAULT 0,
+    started_at TEXT DEFAULT (datetime('now')),
+    last_update TEXT DEFAULT (datetime('now')),
+    is_paused INTEGER DEFAULT 0,
+    FOREIGN KEY(user_id) REFERENCES users(id)
+);
+
 -- Indexes for Dashboard Performance
 CREATE INDEX IF NOT EXISTS idx_media_parents_type ON media_parents(media_type);
 CREATE INDEX IF NOT EXISTS idx_media_parents_library ON media_parents(library_id);
 CREATE INDEX IF NOT EXISTS idx_media_children_parent ON media_children(parent_id);
 CREATE INDEX IF NOT EXISTS idx_media_children_status ON media_children(watch_status, is_collected);
 
+-- Indexes for Timeline Performance
+CREATE INDEX IF NOT EXISTS idx_history_user_time ON playback_history(user_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_history_media ON playback_history(media_id);
+
 -- Initialize singleton rows if not present
 INSERT OR IGNORE INTO app_settings (id) VALUES (1);
 INSERT OR IGNORE INTO sync_state (id) VALUES (1);
 `);
+
+// -- App Settings schema migrations (add columns if missing) --
+const appSettingsInfo = db.prepare("PRAGMA table_info(app_settings)").all();
+const existingCols = new Set(appSettingsInfo.map((/** @type {any} */ c) => c.name));
+const newAppCols = [
+    ['trakt_client_id', 'TEXT'],
+    ['trakt_client_secret', 'TEXT'],
+    ['lastfm_api_key', 'TEXT'],
+    ['lastfm_shared_secret', 'TEXT'],
+    ['jellyfin_pr_db_path', 'TEXT']
+];
+for (const [col, type] of newAppCols) {
+    if (!existingCols.has(col)) {
+        db.exec(`ALTER TABLE app_settings ADD COLUMN ${col} ${type}`);
+    }
+}
+
+// -- Migrate existing Jellyfin user IDs into user_identities --
+/** @type {Array<{id: number, jellyfin_user_id: string, jellyfin_access_token: string}>} */
+const usersWithJellyfin = /** @type {any} */ (db.prepare(
+    'SELECT id, jellyfin_user_id, jellyfin_access_token FROM users WHERE jellyfin_user_id IS NOT NULL'
+).all());
+const upsertIdentity = db.prepare(`
+    INSERT OR IGNORE INTO user_identities (user_id, provider, provider_uid, access_token)
+    VALUES (?, 'jellyfin', ?, ?)
+`);
+for (const user of usersWithJellyfin) {
+    upsertIdentity.run(user.id, user.jellyfin_user_id, user.jellyfin_access_token);
+}
 
 export default db;

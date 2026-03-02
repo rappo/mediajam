@@ -46,7 +46,13 @@
 
 			<!-- Tab Navigation -->
 			<div class="flex-none">
-				<div role="tablist" class="tabs tabs-boxed bg-base-300/50 mr-4">
+			<div role="tablist" class="tabs tabs-boxed bg-base-300/50 mr-4">
+					<a href="/history" role="tab" class="tab tab-sm font-medium">
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+						</svg>
+						History
+					</a>
 					<a href="/tv" role="tab" class="tab tab-sm font-medium">
 						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 							<rect x="2" y="7" width="20" height="15" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/>

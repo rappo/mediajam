@@ -32,7 +32,8 @@ export function load() {
             mp.total_released_children,
             mc.watch_status,
             mc.play_count,
-            ROUND(mc.runtime_ticks / 10000000.0 / 60, 0) as runtime_minutes
+            ROUND(mc.runtime_ticks / 10000000.0 / 60, 0) as runtime_minutes,
+            COALESCE((SELECT COUNT(*) FROM playback_history ph WHERE ph.media_id = mc.id), 0) as watch_count
         FROM media_parents mp
         LEFT JOIN media_children mc ON mc.parent_id = mp.id
         WHERE mp.media_type = 'movie'

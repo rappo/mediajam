@@ -1,8 +1,12 @@
 import db from '$lib/server/db.js';
+import { redirect } from '@sveltejs/kit';
 
 /** @type {import('./$types').PageServerLoad} */
 export function load({ locals }) {
     if (!locals.isSetupComplete) return {};
+
+    // Redirect to the new default dashboard
+    throw redirect(302, '/history');
 
     const showCount = db.prepare('SELECT COUNT(*) as c FROM media_parents WHERE media_type = ?').get('show').c;
     const movieCount = db.prepare('SELECT COUNT(*) as c FROM media_parents WHERE media_type = ?').get('movie').c;

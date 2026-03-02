@@ -1,0 +1,23 @@
+# Mediajam Docker Compose
+# Includes optional read-only mount for Jellyfin Playback Reporting DB
+services:
+  mediajam:
+    build: .
+    container_name: mediajam
+    ports:
+      - "3000:3000"
+    volumes:
+      # Persistent storage for Mediajam's SQLite database
+      - mediajam_data:/app/data
+      # Optional: Mount Jellyfin's Playback Reporting DB (read-only)
+      # Update the path below to match your Jellyfin installation
+      # - /path/to/jellyfin/data/playback_reporting.db:/app/jellyfin/playback_reporting.db:ro
+    environment:
+      - PORT=3000
+      - HOST=0.0.0.0
+      - ORIGIN=http://localhost:3000
+      # - DATABASE_PATH=/app/data/mediajam.sqlite
+    restart: unless-stopped
+
+volumes:
+  mediajam_data:

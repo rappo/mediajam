@@ -25,7 +25,8 @@ export function load() {
             COALESCE((SELECT SUM(mc.play_count) FROM media_children mc WHERE mc.parent_id = mp.id), 0) as total_plays,
             CASE WHEN mp.total_released_children > 0
                 THEN ROUND(CAST(mp.collected_children AS REAL) / mp.total_released_children * 100, 1)
-                ELSE NULL END as collection_pct
+                ELSE NULL END as collection_pct,
+            COALESCE((SELECT COUNT(*) FROM playback_history ph JOIN media_children mc2 ON ph.media_id = mc2.id WHERE mc2.parent_id = mp.id), 0) as watch_count
         FROM media_parents mp
         WHERE mp.media_type = 'artist'
         ORDER BY mp.collected_children DESC
