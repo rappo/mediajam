@@ -8,10 +8,28 @@ const listeners = new Set();
 let engineState = {
     running: false,
     paused: false,
-    abortController: null
+    abortController: null,
+    libraryName: '',
+    progress: 0,
+    itemsSynced: 0,
+    errors: 0
 };
 
+/** @type {Array<{time: string, message: string, type: string}>} */
+let recentLogs = [];
+
 function broadcast(data) {
+    // Capture logs and state updates
+    if (data.log) {
+        recentLogs.push({ time: new Date().toLocaleTimeString(), message: data.log, type: data.logType || 'info' });
+        if (recentLogs.length > 150) recentLogs = recentLogs.slice(-150);
+    }
+    if (data.libraryName) engineState.libraryName = data.libraryName;
+    if (data.libProgress !== undefined) engineState.progress = data.libProgress;
+    if (data.totalSynced !== undefined) engineState.itemsSynced = data.totalSynced;
+    if (data.errors !== undefined) engineState.errors = data.errors;
+    if (data.totalErrors !== undefined) engineState.errors = data.totalErrors;
+
     for (const listener of listeners) {
         try {
             listener(data);
@@ -75,7 +93,8 @@ async function fetchJellyfinItems(api, libraryId, mediaType) {
         if (!engineState.running) return allItems;
 
         const fetchStart = Date.now();
-        broadcast({ type: 'progress', log: `  ⏳ Fetching ${itemType} ${startIndex}-${startIndex + BATCH_SIZE}...`, logType: 'info' });
+        const endIndex = totalCount != null ? Math.min(startIndex + BATCH_SIZE, totalCount) : startIndex + BATCH_SIZE;
+        broadcast({ type: 'progress', log: `  ⏳ Fetching ${itemType} ${startIndex}-${endIndex}...`, logType: 'info' });
 
         try {
             const res = await itemsApi.getItems({
@@ -193,12 +212,17 @@ function getWatchStatus(userData) {
     return 'unwatched';
 }
 
-export async function startSync(libraryId = null) {
+export async function startSync(libraryId = null, force = false) {
     if (engineState.running) return;
 
     engineState.running = true;
     engineState.paused = false;
     engineState.abortController = new AbortController();
+    engineState.libraryName = '';
+    engineState.progress = 0;
+    engineState.itemsSynced = 0;
+    engineState.errors = 0;
+    recentLogs = [];
 
     const settings = db.prepare('SELECT * FROM app_settings WHERE id = 1').get();
     const user = db.prepare('SELECT * FROM users LIMIT 1').get();
@@ -256,6 +280,7 @@ export async function startSync(libraryId = null) {
 
     const getParentId = db.prepare('SELECT id FROM media_parents WHERE jellyfin_id = ?');
     const getChildId = db.prepare('SELECT id FROM media_children WHERE jellyfin_id = ?');
+    const countChildren = db.prepare('SELECT COUNT(*) as c FROM media_children WHERE parent_id = ? AND is_special = 0');
 
     const upsertTrack = db.prepare(`
         INSERT INTO tracks (album_id, jellyfin_id, title, track_number, disc_number, runtime_ticks, musicbrainz_id)
@@ -354,8 +379,30 @@ export async function startSync(libraryId = null) {
                     const parentId = parentRow?.id;
                     let childCount = 0;
 
-                    // Sync children
+                    // Sync children (skip if already have children and not force)
                     if (lib.media_type === 'tvshows' && parentId) {
+                        const existingChildren = /** @type {any} */ (countChildren.get(parentId))?.c || 0;
+                        const expectedChildren = item.RecursiveItemCount || item.ChildCount || 0;
+                        if (!force && existingChildren > 0 && existingChildren >= expectedChildren) {
+                            // Fully synced — skip expensive episode fetch
+                            updateParentCounts.run(parentId);
+                            broadcast({
+                                type: 'progress',
+                                libraryIndex: libIdx,
+                                libraryName: lib.name,
+                                parentIndex: i + 1,
+                                parentCount,
+                                currentItem: item.Name,
+                                childCount: existingChildren,
+                                itemsSynced: libSynced,
+                                totalSynced,
+                                errors: totalErrors,
+                                log: `  ⏭ ${item.Name} (${existingChildren} episodes already synced)`,
+                                logType: 'info'
+                            });
+                            continue;
+                        }
+
                         broadcast({
                             type: 'progress',
                             libraryIndex: libIdx,
@@ -426,6 +473,28 @@ export async function startSync(libraryId = null) {
                         totalSynced++;
                         updateParentCounts.run(parentId);
                     } else if (lib.media_type === 'music' && parentId) {
+                        const existingChildren = /** @type {any} */ (countChildren.get(parentId))?.c || 0;
+                        const expectedChildren = item.ChildCount || 0;
+                        if (!force && existingChildren > 0 && existingChildren >= expectedChildren) {
+                            // Fully synced — skip expensive album/track fetch
+                            updateParentCounts.run(parentId);
+                            broadcast({
+                                type: 'progress',
+                                libraryIndex: libIdx,
+                                libraryName: lib.name,
+                                parentIndex: i + 1,
+                                parentCount,
+                                currentItem: item.Name,
+                                childCount: existingChildren,
+                                itemsSynced: libSynced,
+                                totalSynced,
+                                errors: totalErrors,
+                                log: `  ⏭ ${item.Name} (${existingChildren} albums already synced)`,
+                                logType: 'info'
+                            });
+                            continue;
+                        }
+
                         broadcast({
                             type: 'progress',
                             libraryIndex: libIdx,
@@ -611,4 +680,16 @@ export function resetSync() {
     engineState.paused = false;
     engineState.abortController = null;
     updateSyncState({ status: 'idle', progress_percent: 0 });
+}
+
+export function getStatus() {
+    return {
+        running: engineState.running,
+        paused: engineState.paused,
+        libraryName: engineState.libraryName,
+        progress: engineState.progress,
+        itemsSynced: engineState.itemsSynced,
+        errors: engineState.errors,
+        logs: recentLogs
+    };
 }

@@ -76,8 +76,11 @@
 			</div>
 
 			<!-- Tab Navigation -->
-			<div class="flex-none">
-				<div role="tablist" class="tabs tabs-boxed bg-base-300/50 mr-4">
+			<div class="flex-1 flex justify-center">
+				<div
+					role="tablist"
+					class="tabs tabs-boxed bg-base-300/50 flex-nowrap"
+				>
 					<a
 						href="/history"
 						role="tab"
@@ -173,7 +176,7 @@
 			</div>
 
 			<!-- Search & Profile -->
-			<div class="flex-none flex items-center gap-2">
+			<div class="flex-1 flex items-center justify-end gap-2">
 				<SearchBar />
 				<div class="dropdown dropdown-end">
 					<div

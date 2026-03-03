@@ -1,4 +1,6 @@
 <script>
+    import ServiceIcon from "$lib/components/ServiceIcon.svelte";
+
     /** @type {{ data: import('./$types').PageData }} */
     let { data } = $props();
 
@@ -142,6 +144,21 @@
             eventSource: null,
         };
     }
+    let followLogs = $state(true);
+    let showOnlyErrors = $state(false);
+    let logEl = $state(null);
+
+    const filteredLogs = $derived(
+        showOnlyErrors
+            ? importState.logs.filter((l) => l.type === "error")
+            : importState.logs,
+    );
+
+    $effect(() => {
+        if (followLogs && filteredLogs.length && logEl) {
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+    });
 </script>
 
 <div class="space-y-6">
@@ -235,9 +252,11 @@
                         <div
                             class="w-10 h-10 rounded-lg bg-[#ED1C24]/10 flex items-center justify-center"
                         >
-                            <span class="text-[#ED1C24] font-bold text-sm"
-                                >T</span
-                            >
+                            <ServiceIcon
+                                service="trakt"
+                                size="w-5 h-5"
+                                class="text-[#ED1C24]"
+                            />
                         </div>
                         <div>
                             <p class="font-medium">Trakt</p>
@@ -283,9 +302,11 @@
                         <div
                             class="w-10 h-10 rounded-lg bg-[#D51007]/10 flex items-center justify-center"
                         >
-                            <span class="text-[#D51007] font-bold text-sm"
-                                >L</span
-                            >
+                            <ServiceIcon
+                                service="lastfm"
+                                size="w-5 h-5"
+                                class="text-[#D51007]"
+                            />
                         </div>
                         <div>
                             <p class="font-medium">Last.fm</p>
@@ -331,9 +352,11 @@
                         <div
                             class="w-10 h-10 rounded-lg bg-[#00A4DC]/10 flex items-center justify-center"
                         >
-                            <span class="text-[#00A4DC] font-bold text-sm"
-                                >J</span
-                            >
+                            <ServiceIcon
+                                service="jellyfin"
+                                size="w-5 h-5"
+                                class="text-[#00A4DC]"
+                            />
                         </div>
                         <div>
                             <p class="font-medium">Jellyfin</p>
@@ -370,21 +393,49 @@
     {#if importState.active}
         <div class="card bg-base-200/50 border border-base-300">
             <div class="card-body">
-                <h2 class="card-title text-lg">
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="h-5 w-5 text-info"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                    >
-                        <polyline points="23 4 23 10 17 10" /><polyline
-                            points="1 20 1 14 7 14"
-                        />
-                    </svg>
-                    {importState.tier === "trakt" ? "Trakt" : "Last.fm"} Import
-                </h2>
+                <div class="flex items-center justify-between">
+                    <h2 class="card-title text-lg">
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="h-5 w-5 text-info"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                        >
+                            <polyline points="23 4 23 10 17 10" /><polyline
+                                points="1 20 1 14 7 14"
+                            />
+                        </svg>
+                        {importState.tier === "trakt" ? "Trakt" : "Last.fm"} Import
+                    </h2>
+                    {#if importState.status === "running"}
+                        <button
+                            class="btn btn-sm btn-error btn-outline gap-1"
+                            onclick={stopImport}
+                        >
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                class="h-3.5 w-3.5"
+                                viewBox="0 0 24 24"
+                                fill="currentColor"
+                                ><rect
+                                    x="6"
+                                    y="6"
+                                    width="12"
+                                    height="12"
+                                    rx="1"
+                                /></svg
+                            >
+                            Stop
+                        </button>
+                    {:else}
+                        <button
+                            class="btn btn-sm btn-primary"
+                            onclick={dismissImport}>Done</button
+                        >
+                    {/if}
+                </div>
 
                 <!-- Stats Row -->
                 <div class="flex flex-wrap gap-4 text-sm mt-1">
@@ -462,11 +513,36 @@
                     </div>
                 </div>
 
+                <!-- Log Controls -->
+                <div class="flex items-center gap-4 mt-2">
+                    <label class="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            class="toggle toggle-xs"
+                            bind:checked={showOnlyErrors}
+                        />
+                        <span class="text-xs text-base-content/50"
+                            >Show only errors</span
+                        >
+                    </label>
+                    <label class="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            class="toggle toggle-xs toggle-info"
+                            bind:checked={followLogs}
+                        />
+                        <span class="text-xs text-base-content/50"
+                            >Follow logs</span
+                        >
+                    </label>
+                </div>
+
                 <!-- Log Console -->
                 <div
-                    class="bg-neutral text-neutral-content rounded-lg p-3 h-40 overflow-y-auto text-xs font-mono mt-2"
+                    bind:this={logEl}
+                    class="bg-neutral text-neutral-content rounded-lg p-3 h-40 overflow-y-auto text-xs font-mono mt-1"
                 >
-                    {#each importState.logs as log}
+                    {#each filteredLogs as log}
                         <div class={getLogClass(log.type)}>
                             <span class="opacity-50">[{log.time}]</span>
                             {log.message}
@@ -477,21 +553,6 @@
                             <span class="loading loading-dots loading-xs"
                             ></span>
                         </div>
-                    {/if}
-                </div>
-
-                <!-- Actions -->
-                <div class="flex gap-2 mt-2">
-                    {#if importState.status === "running"}
-                        <button
-                            class="btn btn-sm btn-error btn-outline"
-                            onclick={stopImport}>Stop</button
-                        >
-                    {:else}
-                        <button
-                            class="btn btn-sm btn-primary"
-                            onclick={dismissImport}>Done</button
-                        >
                     {/if}
                 </div>
             </div>

@@ -1,4 +1,6 @@
 <script>
+    import ServiceIcon from "$lib/components/ServiceIcon.svelte";
+
     /** @type {{ entry: any, jellyfinUrl?: string }} */
     let { entry, jellyfinUrl = "" } = $props();
 
@@ -24,17 +26,17 @@
     }
 
     /** @param {string} source */
-    function getSourceBadge(source) {
-        /** @type {Record<string, {label: string, cls: string}>} */
-        const badges = {
-            webhook: { label: "Live", cls: "badge-success" },
-            trakt: { label: "Trakt", cls: "badge-info" },
-            lastfm: { label: "Last.fm", cls: "badge-secondary" },
-            jellyfin_pr: { label: "Jellyfin", cls: "badge-primary" },
-            legacy: { label: "Legacy", cls: "badge-ghost" },
-            seed: { label: "Seed", cls: "badge-ghost" },
+    function getSourceStyle(source) {
+        /** @type {Record<string, {bg: string, service: string|null}>} */
+        const styles = {
+            webhook: { bg: "#22c55e", service: null },
+            trakt: { bg: "#ED1C24", service: "trakt" },
+            lastfm: { bg: "#D51007", service: "lastfm" },
+            jellyfin_pr: { bg: "#00A4DC", service: "jellyfin" },
+            legacy: { bg: "#6b7280", service: null },
+            seed: { bg: "#6b7280", service: null },
         };
-        return badges[source] || { label: source, cls: "badge-ghost" };
+        return styles[source] || { bg: "#6b7280", service: null };
     }
 
     function getTitle() {
@@ -78,7 +80,7 @@
             ? `${jellyfinUrl}/Items/${entry.parent_jellyfin_id}/Images/Primary?maxHeight=60`
             : null);
 
-    const sourceBadge = getSourceBadge(entry.source);
+    const sourceStyle = getSourceStyle(entry.source);
     const link = getLink();
     const title = getTitle();
     const isExternal = entry.collection_status === "external";
@@ -115,10 +117,101 @@
 
     <!-- Badges + timestamp — right side -->
     <div class="flex-shrink-0 flex items-center gap-2">
-        <span class="badge {sourceBadge.cls} badge-xs">{sourceBadge.label}</span
+        <span
+            class="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full"
+            style="background: {sourceStyle.bg}"
+            title={entry.source}
         >
+            {#if sourceStyle.service}
+                <ServiceIcon
+                    service={sourceStyle.service}
+                    size="w-2.5 h-2.5"
+                    class="text-white"
+                />
+            {:else if entry.source === "webhook"}
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="w-2.5 h-2.5 text-white"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="3"><circle cx="12" cy="12" r="4" /></svg
+                >
+            {:else}
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="w-2.5 h-2.5 text-white"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"><circle cx="12" cy="12" r="10" /></svg
+                >
+            {/if}
+        </span>
         {#if isExternal}
-            <span class="badge badge-warning badge-xs">📡</span>
+            <span
+                class="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full bg-warning/80"
+                title="Not in library"
+            >
+                {#if entry.media_type === "artist"}
+                    <!-- music-off -->
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="w-2.5 h-2.5 text-warning-content"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.5"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        ><line x1="2" y1="2" x2="22" y2="22" /><path
+                            d="M9 18V5l12-2v13"
+                        /><circle cx="6" cy="18" r="3" /><circle
+                            cx="18"
+                            cy="16"
+                            r="3"
+                        /></svg
+                    >
+                {:else if entry.media_type === "movie"}
+                    <!-- movie-off -->
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="w-2.5 h-2.5 text-warning-content"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.5"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        ><line x1="2" y1="2" x2="22" y2="22" /><rect
+                            x="2"
+                            y="4"
+                            width="20"
+                            height="16"
+                            rx="2"
+                        /><path d="M7 4v4l-3-2v8l3-2v4" /></svg
+                    >
+                {:else}
+                    <!-- television-classic-off for TV -->
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="w-2.5 h-2.5 text-warning-content"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.5"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        ><line x1="2" y1="2" x2="22" y2="22" /><rect
+                            x="2"
+                            y="6"
+                            width="20"
+                            height="14"
+                            rx="2"
+                        /><path d="M7 2l5 5 5-5" /></svg
+                    >
+                {/if}
+            </span>
         {/if}
         <span class="text-xs text-base-content/40 w-16 text-right"
             >{timeAgo(entry.timestamp)}</span

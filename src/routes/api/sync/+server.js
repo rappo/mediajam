@@ -1,9 +1,9 @@
 import { json } from '@sveltejs/kit';
-import { startSync, pauseSync, resumeSync, stopSync, resetSync, addListener, isRunning } from '$lib/server/sync-engine.js';
+import { startSync, pauseSync, resumeSync, stopSync, resetSync, addListener, isRunning, getStatus } from '$lib/server/sync-engine.js';
 
 /** @type {import('./$types').RequestHandler} */
 export async function POST({ request }) {
-    const { action, libraryId } = await request.json();
+    const { action, libraryId, force } = await request.json();
 
     switch (action) {
         case 'start':
@@ -12,7 +12,7 @@ export async function POST({ request }) {
                 resetSync();
             }
             // Start sync in background (don't await)
-            startSync(libraryId || null);
+            startSync(libraryId || null, !!force);
             return json({ success: true, message: libraryId ? 'Library sync started.' : 'Sync started.' });
 
         case 'pause':
@@ -48,6 +48,21 @@ export async function GET() {
 
             // Send initial state
             send({ type: 'connected' });
+
+            // Send current snapshot if sync is running
+            const status = getStatus();
+            if (status.running) {
+                send({
+                    type: 'snapshot',
+                    running: status.running,
+                    paused: status.paused,
+                    libraryName: status.libraryName,
+                    progress: status.progress,
+                    itemsSynced: status.itemsSynced,
+                    errors: status.errors,
+                    logs: status.logs
+                });
+            }
 
             // Subscribe to sync engine events
             const removeListener = addListener(send);

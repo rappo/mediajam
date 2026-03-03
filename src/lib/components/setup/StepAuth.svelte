@@ -67,9 +67,10 @@
 </script>
 
 <div>
-    <h2 class="text-2xl font-bold mb-2">Create Your Account</h2>
+    <h2 class="text-2xl font-bold mb-2">Create Admin Account</h2>
     <p class="text-base-content/60 text-sm mb-6">
-        Set up a local account or sign in with your Jellyfin credentials.
+        Sign up for your first Mediajam account. You can use your Jellyfin
+        credentials or create a standalone local account.
     </p>
 
     <!-- Auth Type Toggle -->
@@ -104,7 +105,7 @@
                     y2="18"
                 />
             </svg>
-            Login via Jellyfin
+            Sign Up with Jellyfin
         </button>
         <button
             class="tab flex-1 transition-all"
@@ -203,8 +204,8 @@
                         ry="2"
                     /><path d="M7 11V7a5 5 0 0110 0v4" />
                 </svg>
-                Credentials are sent directly to your Jellyfin server. We only store
-                the access token.
+                Your credentials are verified against your Jellyfin server to create
+                your Mediajam admin account. Only the access token is stored.
             </div>
         {/if}
 
@@ -224,7 +225,7 @@
                 {#if loading}
                     <span class="loading loading-spinner loading-sm"></span>
                 {/if}
-                {authType === "jellyfin" ? "Sign In" : "Create Account"}
+                Create Account
             </button>
         </div>
     </div>

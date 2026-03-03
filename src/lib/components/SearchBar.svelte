@@ -303,7 +303,7 @@
         align-items: flex-start;
         justify-content: center;
         padding-top: 15vh;
-        background: rgba(0, 0, 0, 0.75);
+        background: rgba(0, 0, 0, 0.92);
         backdrop-filter: blur(8px);
     }
     .search-dialog {

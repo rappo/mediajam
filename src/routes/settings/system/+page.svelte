@@ -1,4 +1,7 @@
 <script>
+    import ServiceIcon from "$lib/components/ServiceIcon.svelte";
+    import { page } from "$app/stores";
+
     /** @type {{ data: import('./$types').PageData }} */
     let { data } = $props();
 
@@ -218,8 +221,10 @@
     let syncItemsSynced = $state(0);
     let syncErrors = $state(0);
     let syncLogs = $state([]);
+    /** @type {EventSource | null} */
     let syncEventSource = $state(null);
     let copyFeedback = $state(false);
+    /** @type {HTMLDivElement | null} */
     let consoleEl = $state(null);
 
     $effect(() => {
@@ -235,7 +240,95 @@
         ];
     }
 
-    async function triggerSync(libraryId = null, libraryName = null) {
+    /** Shared handler for all SSE messages */
+    function handleSSEMessage(d) {
+        if (d.type === "snapshot") {
+            syncStatus = d.paused ? "paused" : "syncing";
+            syncLibrary = d.libraryName || "";
+            syncProgress = d.progress || 0;
+            syncItemsSynced = d.itemsSynced || 0;
+            syncErrors = d.errors || 0;
+            if (d.logs?.length) syncLogs = d.logs;
+        } else if (d.type === "library_start") {
+            syncLibrary = d.libraryName;
+        } else if (d.type === "progress") {
+            if (d.libProgress !== undefined) syncProgress = d.libProgress;
+            if (d.totalSynced !== undefined) syncItemsSynced = d.totalSynced;
+            if (d.errors !== undefined) syncErrors = d.errors;
+            if (d.libraryName) syncLibrary = d.libraryName;
+        } else if (d.type === "library_complete") {
+            if (d.totalSynced !== undefined) syncItemsSynced = d.totalSynced;
+            if (d.totalErrors !== undefined) syncErrors = d.totalErrors;
+        } else if (d.type === "complete") {
+            syncStatus = "complete";
+            syncProgress = 100;
+            if (d.totalSynced !== undefined) syncItemsSynced = d.totalSynced;
+            syncEventSource?.close();
+        } else if (d.type === "error") {
+            syncErrors++;
+        }
+        if (d.log) addSyncLog(d.log, d.logType || "info");
+    }
+
+    /** Connect to SSE and wire up shared handler */
+    function connectSSE() {
+        if (syncEventSource) syncEventSource.close();
+        syncEventSource = new EventSource("/api/sync");
+        syncEventSource.onmessage = (event) => {
+            try {
+                handleSSEMessage(JSON.parse(event.data));
+            } catch {
+                /* ignore */
+            }
+        };
+        syncEventSource.onerror = () => {
+            if (syncStatus === "syncing")
+                addSyncLog("Connection lost.", "warning");
+        };
+    }
+
+    // Auto-reconnect on mount if sync is running
+    $effect(() => {
+        const es = new EventSource("/api/sync");
+        let adopted = false;
+        es.onmessage = (event) => {
+            try {
+                const d = JSON.parse(event.data);
+                if (d.type === "snapshot" && d.running) {
+                    adopted = true;
+                    syncEventSource = es;
+                    handleSSEMessage(d);
+                    es.onmessage = (ev) => {
+                        try {
+                            handleSSEMessage(JSON.parse(ev.data));
+                        } catch {
+                            /* ignore */
+                        }
+                    };
+                    es.onerror = () => {
+                        if (syncStatus === "syncing")
+                            addSyncLog("Connection lost.", "warning");
+                    };
+                } else if (!adopted) {
+                    es.close();
+                }
+            } catch {
+                es.close();
+            }
+        };
+        es.onerror = () => {
+            if (!adopted) es.close();
+        };
+        return () => {
+            if (!adopted) es.close();
+        };
+    });
+
+    async function triggerSync(
+        libraryId = null,
+        libraryName = null,
+        force = false,
+    ) {
         syncStatus = "syncing";
         syncProgress = 0;
         syncItemsSynced = 0;
@@ -243,15 +336,17 @@
         syncLogs = [];
 
         const label = libraryName
-            ? `Syncing ${libraryName}...`
-            : "Starting re-sync...";
+            ? `Syncing ${libraryName}${force ? " (full)" : ""}...`
+            : force
+              ? "Starting full re-sync..."
+              : "Starting sync...";
         addSyncLog(label, "info");
 
         try {
             const res = await fetch("/api/sync", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ action: "start", libraryId }),
+                body: JSON.stringify({ action: "start", libraryId, force }),
             });
             const result = await res.json();
 
@@ -261,44 +356,7 @@
                 return;
             }
 
-            syncEventSource = new EventSource("/api/sync");
-            syncEventSource.onmessage = (event) => {
-                try {
-                    const d = JSON.parse(event.data);
-                    if (d.type === "library_start") {
-                        syncLibrary = d.libraryName;
-                    } else if (d.type === "progress") {
-                        if (d.libProgress !== undefined)
-                            syncProgress = d.libProgress;
-                        if (d.totalSynced !== undefined)
-                            syncItemsSynced = d.totalSynced;
-                        if (d.errors !== undefined) syncErrors = d.errors;
-                        if (d.libraryName) syncLibrary = d.libraryName;
-                    } else if (d.type === "library_complete") {
-                        if (d.totalSynced !== undefined)
-                            syncItemsSynced = d.totalSynced;
-                        if (d.totalErrors !== undefined)
-                            syncErrors = d.totalErrors;
-                    } else if (d.type === "complete") {
-                        syncStatus = "complete";
-                        syncProgress = 100;
-                        if (d.totalSynced !== undefined)
-                            syncItemsSynced = d.totalSynced;
-                        syncEventSource?.close();
-                    } else if (d.type === "error") {
-                        syncErrors++;
-                    }
-                    if (d.log) addSyncLog(d.log, d.logType || "info");
-                } catch {
-                    /* ignore */
-                }
-            };
-
-            syncEventSource.onerror = () => {
-                if (syncStatus === "syncing") {
-                    addSyncLog("Connection lost.", "warning");
-                }
-            };
+            connectSSE();
         } catch {
             addSyncLog("Failed to start sync.", "error");
             syncStatus = "error";
@@ -331,62 +389,108 @@
     }
 </script>
 
-<!-- Unsaved Changes Banner -->
-{#if isDirty}
-    <div class="sticky top-16 z-40 -mx-4 mb-4">
-        <div class="alert alert-warning shadow-lg rounded-xl py-2 px-4">
-            <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-5 w-5 shrink-0"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-            >
-                <circle cx="12" cy="12" r="10" /><line
-                    x1="12"
-                    y1="8"
-                    x2="12"
-                    y2="12"
-                /><line x1="12" y1="16" x2="12.01" y2="16" />
-            </svg>
-            <span class="text-sm font-medium">You have unsaved changes</span>
-            <button
-                class="btn btn-sm btn-primary gap-1"
-                onclick={saveSettings}
-                disabled={saving}
-            >
-                {#if saving}
-                    <span class="loading loading-spinner loading-xs"></span>
-                {/if}
-                Save Now
-            </button>
-        </div>
+<!-- Unsaved Changes Banner (animated) -->
+<div
+    class="sticky top-16 z-40 -mx-4 mb-4 overflow-hidden transition-all duration-1000 ease-in-out"
+    style="max-height: {isDirty ? '80px' : '0px'}; opacity: {isDirty ? 1 : 0};"
+>
+    <div class="alert alert-warning shadow-lg rounded-xl py-2 px-4">
+        <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-5 w-5 shrink-0"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+        >
+            <circle cx="12" cy="12" r="10" /><line
+                x1="12"
+                y1="8"
+                x2="12"
+                y2="12"
+            /><line x1="12" y1="16" x2="12.01" y2="16" />
+        </svg>
+        <span class="text-sm font-medium">You have unsaved changes</span>
+        <button
+            class="btn btn-sm btn-primary gap-1"
+            onclick={saveSettings}
+            disabled={saving}
+        >
+            {#if saving}
+                <span class="loading loading-spinner loading-xs"></span>
+            {/if}
+            Save Now
+        </button>
     </div>
-{/if}
+</div>
 
 <div class="space-y-6">
+    <!-- Admin-Only Warning -->
+    {#if !$page.data.user?.isAdmin}
+        <div class="card bg-error/10 border border-error/30">
+            <div class="card-body py-4">
+                <div class="flex items-center gap-3">
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="h-5 w-5 text-error shrink-0"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                    >
+                        <rect
+                            x="3"
+                            y="11"
+                            width="18"
+                            height="11"
+                            rx="2"
+                            ry="2"
+                        /><path d="M7 11V7a5 5 0 0110 0v4" />
+                    </svg>
+                    <div>
+                        <p class="font-semibold text-sm">
+                            Admin access required
+                        </p>
+                        <p class="text-xs text-base-content/60">
+                            These settings can only be modified by an
+                            administrator.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {:else}
+        <div class="card bg-warning/5 border border-warning/20">
+            <div class="card-body py-4">
+                <div class="flex items-center gap-3">
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="h-5 w-5 text-warning shrink-0"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                    >
+                        <path
+                            d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"
+                        />
+                    </svg>
+                    <div>
+                        <p class="font-semibold text-sm">System Settings</p>
+                        <p class="text-xs text-base-content/60">
+                            Changes here affect all users on this Mediajam
+                            instance.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {/if}
     <!-- Jellyfin Connection -->
     <div class="card bg-base-200/50 border border-base-300">
         <div class="card-body">
             <h2 class="card-title text-lg">
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5 text-primary"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                >
-                    <rect
-                        x="2"
-                        y="2"
-                        width="20"
-                        height="8"
-                        rx="2"
-                        ry="2"
-                    /><rect x="2" y="14" width="20" height="8" rx="2" ry="2" />
-                </svg>
+                <ServiceIcon service="jellyfin" class="text-[#00A4DC]" />
                 Jellyfin Server
             </h2>
             <div class="form-control">
@@ -451,7 +555,13 @@
             <!-- TVDB -->
             <div class="form-control">
                 <label class="label" for="settings-tvdb"
-                    ><span class="label-text">TheTVDB API Key</span></label
+                    ><span class="label-text flex items-center gap-1.5"
+                        ><ServiceIcon
+                            service="tvdb"
+                            size="w-4 h-4"
+                            class="text-[#6CD491]"
+                        />TheTVDB API Key</span
+                    ></label
                 >
                 <div class="flex gap-2 items-start">
                     <div class="flex-1">
@@ -534,7 +644,13 @@
             <!-- TMDB -->
             <div class="form-control">
                 <label class="label" for="settings-tmdb"
-                    ><span class="label-text">TMDB API Key</span></label
+                    ><span class="label-text flex items-center gap-1.5"
+                        ><ServiceIcon
+                            service="tmdb"
+                            size="w-4 h-4"
+                            class="text-[#01B4E4]"
+                        />TMDB API Key</span
+                    ></label
                 >
                 <div class="flex gap-2 items-start">
                     <div class="flex-1">
@@ -617,7 +733,13 @@
             <!-- MusicBrainz -->
             <div class="form-control">
                 <label class="label" for="settings-mb"
-                    ><span class="label-text">MusicBrainz</span></label
+                    ><span class="label-text flex items-center gap-1.5"
+                        ><ServiceIcon
+                            service="musicbrainz"
+                            size="w-4 h-4"
+                            class="text-[#BA478F]"
+                        />MusicBrainz</span
+                    ></label
                 >
                 <input
                     id="settings-mb"
@@ -669,8 +791,14 @@
                 <!-- Trakt -->
                 <div class="space-y-2">
                     <div class="flex items-center justify-between">
-                        <h3 class="text-sm font-semibold text-base-content/80">
-                            Trakt
+                        <h3
+                            class="text-sm font-semibold text-base-content/80 flex items-center gap-1.5"
+                        >
+                            <ServiceIcon
+                                service="trakt"
+                                size="w-4 h-4"
+                                class="text-[#ED1C24]"
+                            />Trakt
                         </h3>
                         {#if validation.trakt.status !== "idle"}
                             {#if validation.trakt.status === "checking"}
@@ -784,8 +912,14 @@
                 <!-- Last.fm -->
                 <div class="space-y-2">
                     <div class="flex items-center justify-between">
-                        <h3 class="text-sm font-semibold text-base-content/80">
-                            Last.fm
+                        <h3
+                            class="text-sm font-semibold text-base-content/80 flex items-center gap-1.5"
+                        >
+                            <ServiceIcon
+                                service="lastfm"
+                                size="w-4 h-4"
+                                class="text-[#D51007]"
+                            />Last.fm
                         </h3>
                         {#if validation.lastfm.status !== "idle"}
                             {#if validation.lastfm.status === "checking"}
@@ -891,23 +1025,7 @@
     <div class="card bg-base-200/50 border border-base-300">
         <div class="card-body">
             <h2 class="card-title text-lg">
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5 text-info"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                >
-                    <path
-                        d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"
-                    /><polyline points="14 2 14 8 20 8" /><line
-                        x1="16"
-                        y1="13"
-                        x2="8"
-                        y2="13"
-                    /><line x1="16" y1="17" x2="8" y2="17" />
-                </svg>
+                <ServiceIcon service="jellyfin" class="text-[#00A4DC]" />
                 Jellyfin Playback Reporting
             </h2>
             <p class="text-sm text-base-content/60">
@@ -955,7 +1073,14 @@
                     class="btn btn-info btn-sm w-fit mt-2"
                     onclick={() => triggerSync()}
                 >
-                    Re-sync All Libraries
+                    Sync All Libraries
+                </button>
+                <button
+                    class="btn btn-ghost btn-sm w-fit mt-2"
+                    onclick={() => triggerSync(null, null, true)}
+                    title="Ignores cached data and re-fetches everything from Jellyfin"
+                >
+                    Full Re-sync
                 </button>
                 {#if data.libraries && data.libraries.length > 1}
                     <div class="flex flex-wrap gap-2 mt-2">
@@ -1074,6 +1199,11 @@
                             <button
                                 class="btn btn-sm btn-ghost"
                                 onclick={() => triggerSync()}>Sync Again</button
+                            >
+                            <button
+                                class="btn btn-sm btn-ghost"
+                                onclick={() => triggerSync(null, null, true)}
+                                >Full Re-sync</button
                             >
                         {/if}
                     </div>
