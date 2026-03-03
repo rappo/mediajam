@@ -1,0 +1,500 @@
+<script>
+    /** @type {{ data: import('./$types').PageData }} */
+    let { data } = $props();
+
+    // ─── Import State ────────────────────────────────────────────────────────────
+    let importState = $state({
+        active: false,
+        tier: "",
+        totalItems: 0,
+        totalPages: 0,
+        currentPage: 0,
+        progressPercent: 0,
+        totalImported: 0,
+        totalSkipped: 0,
+        logs: [],
+        status: "idle", // 'idle' | 'running' | 'complete' | 'error'
+        eventSource: null,
+    });
+
+    function addLog(message, type = "info") {
+        importState.logs = [
+            ...importState.logs.slice(-100),
+            { time: new Date().toLocaleTimeString(), message, type },
+        ];
+    }
+
+    function getLogClass(type) {
+        if (type === "success") return "text-success";
+        if (type === "error") return "text-error";
+        if (type === "warning") return "text-warning";
+        return "text-base-content/70";
+    }
+
+    async function startImport(tier) {
+        importState = {
+            active: true,
+            tier,
+            status: "running",
+            totalItems: 0,
+            totalPages: 0,
+            currentPage: 0,
+            progressPercent: 0,
+            totalImported: 0,
+            totalSkipped: 0,
+            logs: [],
+            eventSource: null,
+        };
+
+        addLog(`Starting ${tier} import...`, "info");
+
+        try {
+            // Start the backfill
+            const res = await fetch("/api/backfill/history", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ tier }),
+            });
+            const result = await res.json();
+
+            if (!result.success) {
+                addLog(result.error || "Failed to start import.", "error");
+                importState.status = "error";
+                return;
+            }
+
+            // Open SSE stream for progress
+            const es = new EventSource("/api/backfill/history");
+            importState.eventSource = es;
+
+            es.onmessage = (event) => {
+                try {
+                    const d = JSON.parse(event.data);
+
+                    if (d.type === "backfill_totals") {
+                        importState.totalItems = d.totalItems || 0;
+                        importState.totalPages = d.totalPages || 0;
+                    } else if (d.type === "backfill_progress") {
+                        if (d.currentPage !== undefined)
+                            importState.currentPage = d.currentPage;
+                        if (d.totalPages !== undefined)
+                            importState.totalPages = d.totalPages;
+                        if (d.progressPercent !== undefined)
+                            importState.progressPercent = d.progressPercent;
+                        if (d.totalImported !== undefined)
+                            importState.totalImported = d.totalImported;
+                        if (d.totalSkipped !== undefined)
+                            importState.totalSkipped = d.totalSkipped;
+                    } else if (d.type === "backfill_complete") {
+                        importState.status = "complete";
+                        importState.progressPercent = 100;
+                        if (d.totalImported !== undefined)
+                            importState.totalImported = d.totalImported;
+                        if (d.totalSkipped !== undefined)
+                            importState.totalSkipped = d.totalSkipped;
+                        es.close();
+                    } else if (d.type === "backfill_error") {
+                        importState.status = "error";
+                        es.close();
+                    }
+
+                    if (d.log) addLog(d.log, d.logType || "info");
+                } catch {
+                    /* ignore parse errors */
+                }
+            };
+
+            es.onerror = () => {
+                if (importState.status === "running") {
+                    addLog("Connection lost.", "warning");
+                }
+            };
+        } catch {
+            addLog("Failed to start import.", "error");
+            importState.status = "error";
+        }
+    }
+
+    function stopImport() {
+        fetch("/api/backfill/history", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tier: "stop" }),
+        });
+        importState.eventSource?.close();
+        importState.status = "complete";
+        addLog("Import stopped by user.", "warning");
+    }
+
+    function dismissImport() {
+        importState.eventSource?.close();
+        importState = {
+            active: false,
+            tier: "",
+            status: "idle",
+            totalItems: 0,
+            totalPages: 0,
+            currentPage: 0,
+            progressPercent: 0,
+            totalImported: 0,
+            totalSkipped: 0,
+            logs: [],
+            eventSource: null,
+        };
+    }
+</script>
+
+<div class="space-y-6">
+    <!-- Profile -->
+    <div class="card bg-base-200/50 border border-base-300">
+        <div class="card-body">
+            <h2 class="card-title text-lg">
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="h-5 w-5 text-primary"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                >
+                    <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle
+                        cx="12"
+                        cy="7"
+                        r="4"
+                    />
+                </svg>
+                Profile
+            </h2>
+
+            {#if data.user}
+                <div class="flex items-center gap-4 mt-2">
+                    <div class="avatar placeholder">
+                        <div
+                            class="bg-primary text-primary-content w-16 rounded-full"
+                        >
+                            <span class="text-2xl font-bold"
+                                >{data.user.username
+                                    .charAt(0)
+                                    .toUpperCase()}</span
+                            >
+                        </div>
+                    </div>
+                    <div>
+                        <p class="text-lg font-semibold">
+                            {data.user.username}
+                        </p>
+                        <p class="text-sm text-base-content/50">
+                            {data.user.isAdmin ? "Administrator" : "User"}
+                            · Joined {data.user.createdAt
+                                ? new Date(
+                                      data.user.createdAt,
+                                  ).toLocaleDateString()
+                                : "Unknown"}
+                        </p>
+                    </div>
+                </div>
+            {:else}
+                <p class="text-sm text-base-content/60">
+                    No user account found.
+                </p>
+            {/if}
+        </div>
+    </div>
+
+    <!-- Connected Services -->
+    <div class="card bg-base-200/50 border border-base-300">
+        <div class="card-body">
+            <h2 class="card-title text-lg">
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="h-5 w-5 text-secondary"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                >
+                    <path
+                        d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"
+                    /><path
+                        d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"
+                    />
+                </svg>
+                Connected Services
+            </h2>
+            <p class="text-sm text-base-content/60">
+                Link external accounts to import your watch and listening
+                history.
+            </p>
+
+            <div class="space-y-4 mt-3">
+                <!-- Trakt -->
+                <div
+                    class="flex items-center justify-between p-4 bg-base-300/30 rounded-xl"
+                >
+                    <div class="flex items-center gap-3">
+                        <div
+                            class="w-10 h-10 rounded-lg bg-[#ED1C24]/10 flex items-center justify-center"
+                        >
+                            <span class="text-[#ED1C24] font-bold text-sm"
+                                >T</span
+                            >
+                        </div>
+                        <div>
+                            <p class="font-medium">Trakt</p>
+                            {#if data.connectedServices.trakt}
+                                <p class="text-xs text-success">
+                                    Connected · {data.connectedServices.trakt
+                                        .provider_uid}
+                                </p>
+                            {:else}
+                                <p class="text-xs text-base-content/50">
+                                    Track movies & TV shows
+                                </p>
+                            {/if}
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        {#if data.connectedServices.trakt}
+                            <button
+                                class="btn btn-sm btn-outline"
+                                disabled={importState.active}
+                                onclick={() => startImport("trakt")}
+                            >
+                                Import History
+                            </button>
+                        {:else if data.appCredentials.hasTraktCreds}
+                            <a
+                                href="/api/spokes/trakt"
+                                class="btn btn-sm btn-primary">Connect</a
+                            >
+                        {:else}
+                            <span class="badge badge-ghost badge-sm"
+                                >Configure in System Settings</span
+                            >
+                        {/if}
+                    </div>
+                </div>
+
+                <!-- Last.fm -->
+                <div
+                    class="flex items-center justify-between p-4 bg-base-300/30 rounded-xl"
+                >
+                    <div class="flex items-center gap-3">
+                        <div
+                            class="w-10 h-10 rounded-lg bg-[#D51007]/10 flex items-center justify-center"
+                        >
+                            <span class="text-[#D51007] font-bold text-sm"
+                                >L</span
+                            >
+                        </div>
+                        <div>
+                            <p class="font-medium">Last.fm</p>
+                            {#if data.connectedServices.lastfm}
+                                <p class="text-xs text-success">
+                                    Connected · {data.connectedServices.lastfm
+                                        .provider_uid}
+                                </p>
+                            {:else}
+                                <p class="text-xs text-base-content/50">
+                                    Track music listening
+                                </p>
+                            {/if}
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        {#if data.connectedServices.lastfm}
+                            <button
+                                class="btn btn-sm btn-outline"
+                                disabled={importState.active}
+                                onclick={() => startImport("lastfm")}
+                            >
+                                Import History
+                            </button>
+                        {:else if data.appCredentials.hasLastfmCreds}
+                            <a
+                                href="/api/spokes/lastfm"
+                                class="btn btn-sm btn-primary">Connect</a
+                            >
+                        {:else}
+                            <span class="badge badge-ghost badge-sm"
+                                >Configure in System Settings</span
+                            >
+                        {/if}
+                    </div>
+                </div>
+
+                <!-- Jellyfin (always connected) -->
+                <div
+                    class="flex items-center justify-between p-4 bg-base-300/30 rounded-xl"
+                >
+                    <div class="flex items-center gap-3">
+                        <div
+                            class="w-10 h-10 rounded-lg bg-[#00A4DC]/10 flex items-center justify-center"
+                        >
+                            <span class="text-[#00A4DC] font-bold text-sm"
+                                >J</span
+                            >
+                        </div>
+                        <div>
+                            <p class="font-medium">Jellyfin</p>
+                            {#if data.connectedServices.jellyfin}
+                                <p class="text-xs text-success">
+                                    Connected · {data.connectedServices.jellyfin
+                                        .provider_uid}
+                                </p>
+                            {:else}
+                                <p class="text-xs text-success">
+                                    Connected via setup
+                                </p>
+                            {/if}
+                        </div>
+                    </div>
+                    <span class="badge badge-success badge-sm gap-1">
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="h-3 w-3"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            ><polyline points="20 6 9 17 4 12" /></svg
+                        >
+                        Active
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import Progress Panel -->
+    {#if importState.active}
+        <div class="card bg-base-200/50 border border-base-300">
+            <div class="card-body">
+                <h2 class="card-title text-lg">
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="h-5 w-5 text-info"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                    >
+                        <polyline points="23 4 23 10 17 10" /><polyline
+                            points="1 20 1 14 7 14"
+                        />
+                    </svg>
+                    {importState.tier === "trakt" ? "Trakt" : "Last.fm"} Import
+                </h2>
+
+                <!-- Stats Row -->
+                <div class="flex flex-wrap gap-4 text-sm mt-1">
+                    {#if importState.totalItems > 0}
+                        <div class="flex items-center gap-1.5">
+                            <span class="text-base-content/50">Total:</span>
+                            <span class="font-medium"
+                                >{importState.totalItems.toLocaleString()} items</span
+                            >
+                        </div>
+                    {/if}
+                    {#if importState.totalPages > 0}
+                        <div class="flex items-center gap-1.5">
+                            <span class="text-base-content/50">Page:</span>
+                            <span class="font-medium"
+                                >{importState.currentPage}/{importState.totalPages}</span
+                            >
+                        </div>
+                    {/if}
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-base-content/50">Imported:</span>
+                        <span class="font-medium text-success"
+                            >{importState.totalImported.toLocaleString()}</span
+                        >
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-base-content/50">Skipped:</span>
+                        <span class="font-medium text-base-content/60"
+                            >{importState.totalSkipped.toLocaleString()}</span
+                        >
+                    </div>
+                </div>
+
+                <!-- Progress Bar -->
+                <div class="mt-2">
+                    {#if importState.status === "complete"}
+                        <progress
+                            class="progress progress-success w-full"
+                            value="100"
+                            max="100"
+                        ></progress>
+                    {:else if importState.progressPercent > 0}
+                        <progress
+                            class="progress progress-info w-full"
+                            value={importState.progressPercent}
+                            max="100"
+                        ></progress>
+                    {:else}
+                        <progress class="progress progress-info w-full"
+                        ></progress>
+                    {/if}
+                    <div
+                        class="flex justify-between text-xs text-base-content/40 mt-1"
+                    >
+                        <span>
+                            {#if importState.status === "complete"}
+                                ✅ Complete
+                            {:else if importState.status === "error"}
+                                ❌ Error
+                            {:else}
+                                {importState.progressPercent}%
+                            {/if}
+                        </span>
+                        {#if importState.tier === "trakt"}
+                            <span
+                                >~{importState.totalPages > 0
+                                    ? Math.round(
+                                          (importState.totalPages -
+                                              importState.currentPage) *
+                                              1.1,
+                                      )
+                                    : "?"}s remaining</span
+                            >
+                        {/if}
+                    </div>
+                </div>
+
+                <!-- Log Console -->
+                <div
+                    class="bg-neutral text-neutral-content rounded-lg p-3 h-40 overflow-y-auto text-xs font-mono mt-2"
+                >
+                    {#each importState.logs as log}
+                        <div class={getLogClass(log.type)}>
+                            <span class="opacity-50">[{log.time}]</span>
+                            {log.message}
+                        </div>
+                    {/each}
+                    {#if importState.status === "running"}
+                        <div class="opacity-50 mt-1">
+                            <span class="loading loading-dots loading-xs"
+                            ></span>
+                        </div>
+                    {/if}
+                </div>
+
+                <!-- Actions -->
+                <div class="flex gap-2 mt-2">
+                    {#if importState.status === "running"}
+                        <button
+                            class="btn btn-sm btn-error btn-outline"
+                            onclick={stopImport}>Stop</button
+                        >
+                    {:else}
+                        <button
+                            class="btn btn-sm btn-primary"
+                            onclick={dismissImport}>Done</button
+                        >
+                    {/if}
+                </div>
+            </div>
+        </div>
+    {/if}
+</div>

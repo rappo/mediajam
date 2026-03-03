@@ -1,7 +1,7 @@
 import db from '$lib/server/db.js';
 
 /** @type {import('./$types').PageServerLoad} */
-export function load() {
+export function load({ locals }) {
     const totalShows = db.prepare('SELECT COUNT(*) as c FROM media_parents WHERE media_type = ?').get('show').c;
 
     const episodeStats = db.prepare(`
@@ -39,11 +39,12 @@ export function load() {
             CASE WHEN mp.total_released_children > 0
                 THEN ROUND(CAST(mp.collected_children AS REAL) / mp.total_released_children * 100, 1)
                 ELSE NULL END as collection_pct,
-            COALESCE((SELECT COUNT(*) FROM playback_history ph JOIN media_children mc2 ON ph.media_id = mc2.id WHERE mc2.parent_id = mp.id), 0) as watch_count
+            COALESCE((SELECT COUNT(*) FROM playback_history ph JOIN media_children mc2 ON ph.media_id = mc2.id WHERE mc2.parent_id = mp.id AND ph.user_id = ?), 0) as watch_count,
+            (SELECT MAX(ph.timestamp) FROM playback_history ph JOIN media_children mc2 ON ph.media_id = mc2.id WHERE mc2.parent_id = mp.id AND ph.user_id = ?) as last_watched
         FROM media_parents mp
         WHERE mp.media_type = 'show'
         ORDER BY mp.collected_children DESC
-    `).all();
+    `).all(locals.user?.id || 0, locals.user?.id || 0);
 
     // Top 15 shows by episode count for bar chart
     const topShowsByEpisodes = shows.slice(0, 15).map(s => ({

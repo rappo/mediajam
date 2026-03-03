@@ -3,11 +3,15 @@
 declare global {
 	namespace App {
 		// interface Error {}
-		// interface Locals {}
+		interface Locals {
+			user?: { id: number; username: string; isAdmin: boolean } | null;
+			theme?: string;
+			isSetupComplete?: boolean;
+		}
 		// interface PageData {}
 		// interface PageState {}
 		// interface Platform {}
 	}
 }
 
-export {};
+export { };

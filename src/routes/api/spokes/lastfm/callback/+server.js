@@ -8,7 +8,7 @@ import { createHash } from 'crypto';
  * Exchanges token for session key using auth.getSession.
  * @type {import('./$types').RequestHandler}
  */
-export async function GET({ url }) {
+export async function GET({ url, locals }) {
     const token = url.searchParams.get('token');
     if (!token) {
         return json({ error: 'Missing token from Last.fm.' }, { status: 400 });
@@ -45,9 +45,9 @@ export async function GET({ url }) {
         }
 
         // Store in user_identities
-        const user = /** @type {any} */ (db.prepare('SELECT id FROM users LIMIT 1').get());
+        const user = locals.user;
         if (!user) {
-            return json({ error: 'No Mediajam user found.' }, { status: 400 });
+            return json({ error: 'Not authenticated.' }, { status: 401 });
         }
 
         db.prepare(`

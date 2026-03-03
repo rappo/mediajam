@@ -6,17 +6,20 @@ import db from '$lib/server/db.js';
  * Query params: page (default 1), limit (default 50), type (optional: show|movie|artist)
  * @type {import('./$types').RequestHandler}
  */
-export async function GET({ url }) {
+export async function GET({ url, locals }) {
+    const userId = locals.user?.id;
+    if (!userId) return json({ entries: [], page: 1, limit: 50, total: 0, totalPages: 0 });
+
     const page = parseInt(url.searchParams.get('page') || '1');
     const limit = Math.min(parseInt(url.searchParams.get('limit') || '50'), 200);
     const mediaType = url.searchParams.get('type'); // 'show', 'movie', 'artist'
     const offset = (page - 1) * limit;
 
-    let whereClause = '';
-    const params = [];
+    let whereClause = 'WHERE ph.user_id = ?';
+    const params = [userId];
 
     if (mediaType) {
-        whereClause = 'AND mp.media_type = ?';
+        whereClause += ' AND mp.media_type = ?';
         params.push(mediaType);
     }
 

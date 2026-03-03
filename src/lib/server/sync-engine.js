@@ -255,6 +255,15 @@ export async function startSync(libraryId = null) {
 	`);
 
     const getParentId = db.prepare('SELECT id FROM media_parents WHERE jellyfin_id = ?');
+    const getChildId = db.prepare('SELECT id FROM media_children WHERE jellyfin_id = ?');
+
+    const upsertTrack = db.prepare(`
+        INSERT INTO tracks (album_id, jellyfin_id, title, track_number, disc_number, runtime_ticks, musicbrainz_id)
+        VALUES (@albumId, @jellyfinId, @title, @trackNumber, @discNumber, @runtimeTicks, @musicbrainzId)
+        ON CONFLICT(jellyfin_id) DO UPDATE SET
+            title = @title, track_number = @trackNumber, disc_number = @discNumber,
+            runtime_ticks = @runtimeTicks, musicbrainz_id = @musicbrainzId
+    `);
 
     const updateParentCounts = db.prepare(`
 		UPDATE media_parents SET
@@ -448,6 +457,25 @@ export async function startSync(libraryId = null) {
                                 });
                                 childCount++;
                                 totalSynced++;
+
+                                // Sync tracks for this album
+                                const albumRow = /** @type {any} */ (getChildId.get(album.Id));
+                                if (albumRow) {
+                                    const tracks = await fetchJellyfinTracks(api, album.Id);
+                                    for (const track of tracks) {
+                                        try {
+                                            upsertTrack.run({
+                                                albumId: albumRow.id,
+                                                jellyfinId: track.Id,
+                                                title: track.Name || 'Unknown Track',
+                                                trackNumber: track.IndexNumber || 0,
+                                                discNumber: track.ParentIndexNumber || 1,
+                                                runtimeTicks: track.RunTimeTicks || 0,
+                                                musicbrainzId: track.ProviderIds?.MusicBrainzTrack || null
+                                            });
+                                        } catch { /* skip bad track */ }
+                                    }
+                                }
                             } catch (e) {
                                 totalErrors++;
                                 libErrors++;
@@ -455,6 +483,8 @@ export async function startSync(libraryId = null) {
                         }
 
                         updateParentCounts.run(parentId);
+                        // For music: total_released = actual album count from Jellyfin
+                        updateTotalReleased.run(albums.length, parentId);
                     }
 
                     // Per-item success broadcast

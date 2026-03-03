@@ -5,19 +5,22 @@
 
     let { data } = $props();
 
-    const albumBarOptions = {
-        title: { text: "Top 15 Artists by Album Count" },
-        axisX: { labelAngle: -45, labelFontSize: 11 },
-        axisY: { title: "Albums", titleFontColor: "#a6adba" },
-        data: [
-            {
-                type: "column",
-                color: "#22d3ee",
-                cornerRadius: 4,
-                dataPoints: data.topArtistsByAlbums,
-            },
-        ],
-    };
+    const albumBarOptions =
+        data.topArtistsByAlbums.length > 0
+            ? {
+                  title: { text: "Top 15 Artists by Album Count" },
+                  axisX: { labelAngle: -45, labelFontSize: 11 },
+                  axisY: { title: "Albums", titleFontColor: "#a6adba" },
+                  data: [
+                      {
+                          type: "column",
+                          color: "#22d3ee",
+                          cornerRadius: 4,
+                          dataPoints: data.topArtistsByAlbums,
+                      },
+                  ],
+              }
+            : null;
 
     const collectionPieOptions = {
         title: { text: "Collection Status" },
@@ -67,26 +70,32 @@
               }
             : null;
 
-    const distOptions = {
-        title: { text: "Artists by Album Count" },
-        data: [
-            {
-                type: "column",
-                color: "#f472b6",
-                cornerRadius: 4,
-                dataPoints: data.albumDistData,
-            },
-        ],
-        axisX: { labelFontSize: 11 },
-        axisY: { title: "Number of Artists", titleFontColor: "#a6adba" },
-    };
+    const distOptions =
+        data.albumDistData.length > 0
+            ? {
+                  title: { text: "Artists by Album Count" },
+                  data: [
+                      {
+                          type: "column",
+                          color: "#f472b6",
+                          cornerRadius: 4,
+                          dataPoints: data.albumDistData,
+                      },
+                  ],
+                  axisX: { labelFontSize: 11 },
+                  axisY: {
+                      title: "Number of Artists",
+                      titleFontColor: "#a6adba",
+                  },
+              }
+            : null;
 
     const columns = [
         {
             key: "title",
             label: "Artist",
             class: "font-medium",
-            render: (row) =>
+            render: (/** @type {any} */ row) =>
                 `<a href="/music/${row.id}" class="link link-hover link-primary">${row.title}</a>`,
         },
         { key: "album_count", label: "Albums", class: "text-center w-24" },
@@ -94,7 +103,7 @@
             key: "collection_pct",
             label: "Collected",
             class: "w-36",
-            render: (row) => {
+            render: (/** @type {any} */ row) => {
                 const pct = row.collection_pct || 0;
                 const color =
                     pct >= 100 ? "#22d3ee" : pct > 50 ? "#fb923c" : "#ef4444";
@@ -114,12 +123,14 @@
             label: "MusicBrainz",
             class: "w-24",
             sortable: false,
-            render: (row) =>
+            render: (/** @type {any} */ row) =>
                 row.musicbrainz_id
                     ? `<a href="https://musicbrainz.org/artist/${row.musicbrainz_id}" target="_blank" class="link link-primary text-xs">View →</a>`
                     : '<span class="text-base-content/30 text-xs">—</span>',
         },
     ];
+
+    const p = data.pagination;
 </script>
 
 <svelte:head>
@@ -167,36 +178,106 @@
         />
     </div>
 
-    <!-- Charts -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Chart options={albumBarOptions} height={350} />
-        <Chart options={collectionPieOptions} height={350} />
-    </div>
+    <!-- Charts (only page 1, no search) -->
+    {#if albumBarOptions || distOptions}
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {#if albumBarOptions}
+                <Chart options={albumBarOptions} height={350} />
+            {/if}
+            <Chart options={collectionPieOptions} height={350} />
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {#if distOptions}
+                <Chart options={distOptions} height={350} />
+            {/if}
+            {#if playsBarOptions}
+                <Chart options={playsBarOptions} height={350} />
+            {:else}
+                <div
+                    class="rounded-2xl bg-base-300/20 border border-base-content/5 p-4 flex items-center justify-center h-[350px]"
+                >
+                    <p class="text-base-content/40 text-sm">
+                        No play data available yet
+                    </p>
+                </div>
+            {/if}
+        </div>
+    {/if}
 
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Chart options={distOptions} height={350} />
-        {#if playsBarOptions}
-            <Chart options={playsBarOptions} height={350} />
-        {:else}
-            <div
-                class="rounded-2xl bg-base-300/20 border border-base-content/5 p-4 flex items-center justify-center h-[350px]"
-            >
-                <p class="text-base-content/40 text-sm">
-                    No play data available yet
-                </p>
-            </div>
-        {/if}
-    </div>
+    <!-- Artists Table with Server Pagination -->
+    <div class="space-y-3">
+        <div class="flex items-center justify-between">
+            <h2 class="text-xl font-bold">All Artists</h2>
+            <!-- Search -->
+            <form method="get" class="flex items-center gap-2">
+                <input
+                    type="text"
+                    name="q"
+                    value={data.search}
+                    placeholder="Search artists…"
+                    class="input input-bordered input-sm w-48"
+                />
+                <select
+                    name="sort"
+                    class="select select-bordered select-sm"
+                    onchange={(e) =>
+                        /** @type {any} */ (e.target).form.submit()}
+                >
+                    <option value="plays" selected={data.sort === "plays"}
+                        >Most Plays</option
+                    >
+                    <option value="albums" selected={data.sort === "albums"}
+                        >Most Albums</option
+                    >
+                    <option value="name" selected={data.sort === "name"}
+                        >Name A-Z</option
+                    >
+                </select>
+                <button type="submit" class="btn btn-sm btn-primary"
+                    >Search</button
+                >
+                {#if data.search}
+                    <a href="/music" class="btn btn-sm btn-ghost">Clear</a>
+                {/if}
+            </form>
+        </div>
 
-    <!-- Artists Table -->
-    <div class="space-y-2">
-        <h2 class="text-xl font-bold">All Artists</h2>
         <DataTable
             {columns}
             data={data.artists}
-            searchKey="title"
-            pageSize={25}
+            pageSize={50}
             hideCollectedKey="collection_pct"
         />
+
+        <!-- Server Pagination -->
+        {#if p.totalPages > 1}
+            <div class="flex items-center justify-center gap-2 pt-2">
+                {#if p.page > 1}
+                    <a
+                        href="/music?page={p.page - 1}{data.search
+                            ? '&q=' + data.search
+                            : ''}{data.sort !== 'albums'
+                            ? '&sort=' + data.sort
+                            : ''}"
+                        class="btn btn-sm btn-ghost">← Prev</a
+                    >
+                {/if}
+                <span class="text-sm text-base-content/50">
+                    Page {p.page} of {p.totalPages}
+                    <span class="text-base-content/30">({p.total} artists)</span
+                    >
+                </span>
+                {#if p.page < p.totalPages}
+                    <a
+                        href="/music?page={p.page + 1}{data.search
+                            ? '&q=' + data.search
+                            : ''}{data.sort !== 'albums'
+                            ? '&sort=' + data.sort
+                            : ''}"
+                        class="btn btn-sm btn-ghost">Next →</a
+                    >
+                {/if}
+            </div>
+        {/if}
     </div>
 </div>

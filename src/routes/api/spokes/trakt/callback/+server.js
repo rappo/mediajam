@@ -7,7 +7,7 @@ import db from '$lib/server/db.js';
  * Exchanges authorization code for access + refresh tokens, stores in user_identities.
  * @type {import('./$types').RequestHandler}
  */
-export async function GET({ url }) {
+export async function GET({ url, locals }) {
     const code = url.searchParams.get('code');
     if (!code) {
         return json({ error: 'Missing authorization code.' }, { status: 400 });
@@ -65,9 +65,9 @@ export async function GET({ url }) {
         }
 
         // Store in user_identities
-        const user = /** @type {any} */ (db.prepare('SELECT id FROM users LIMIT 1').get());
+        const user = locals.user;
         if (!user) {
-            return json({ error: 'No Mediajam user found.' }, { status: 400 });
+            return json({ error: 'Not authenticated.' }, { status: 401 });
         }
 
         const expiresAt = expiresIn
@@ -85,7 +85,7 @@ export async function GET({ url }) {
         `).run(user.id, traktUsername, accessToken, refreshToken, expiresAt);
 
         // Redirect back to settings with success
-        throw redirect(302, '/settings?trakt=linked');
+        throw redirect(302, '/settings/account?trakt=linked');
     } catch (e) {
         if (e instanceof Response || (e && typeof e === 'object' && 'status' in e)) throw e; // Re-throw redirects
         console.error('[trakt] OAuth error:', e);

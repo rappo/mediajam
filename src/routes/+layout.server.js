@@ -6,9 +6,13 @@ export function load({ locals }) {
     const syncState = db.prepare('SELECT * FROM sync_state WHERE id = 1').get();
     const libraries = db.prepare('SELECT jellyfin_id, name, media_type FROM libraries WHERE is_tracked = 1').all();
 
+    // Use authenticated user from session (set by hooks.server.js)
+    const user = locals.user || null;
+
     return {
         theme: locals.theme || 'dark',
         isSetupComplete: locals.isSetupComplete || false,
+        user: user ? { id: user.id, username: user.username, isAdmin: user.isAdmin } : null,
         settings: {
             jellyfinUrl: settings?.jellyfin_url || '',
             theme: settings?.theme || 'dark',

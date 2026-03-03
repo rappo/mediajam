@@ -1,7 +1,7 @@
 import db from '$lib/server/db.js';
 
 /** @type {import('./$types').PageServerLoad} */
-export function load() {
+export function load({ locals }) {
     const totalMovies = db.prepare('SELECT COUNT(*) as c FROM media_parents WHERE media_type = ?').get('movie').c;
 
     const movieStats = db.prepare(`
@@ -33,12 +33,13 @@ export function load() {
             mc.watch_status,
             mc.play_count,
             ROUND(mc.runtime_ticks / 10000000.0 / 60, 0) as runtime_minutes,
-            COALESCE((SELECT COUNT(*) FROM playback_history ph WHERE ph.media_id = mc.id), 0) as watch_count
+            COALESCE((SELECT COUNT(*) FROM playback_history ph WHERE ph.media_id = mc.id AND ph.user_id = ?), 0) as watch_count,
+            (SELECT MAX(ph.timestamp) FROM playback_history ph WHERE ph.media_id = mc.id AND ph.user_id = ?) as last_watched
         FROM media_parents mp
         LEFT JOIN media_children mc ON mc.parent_id = mp.id
         WHERE mp.media_type = 'movie'
         ORDER BY mp.title
-    `).all();
+    `).all(locals.user?.id || 0, locals.user?.id || 0);
 
     // Movies by decade
     const moviesByDecade = db.prepare(`

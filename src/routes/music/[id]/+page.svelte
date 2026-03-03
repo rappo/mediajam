@@ -105,15 +105,9 @@
             <div class="space-y-3">
                 {#each data.albums as album}
                     <!-- Album Card -->
-                    <button
-                        class="w-full text-left"
-                        onclick={() => toggleAlbum(album)}
-                    >
+                    <a href="/music/{data.artist.id}/{album.id}" class="block">
                         <div
-                            class="flex items-center gap-4 p-3 rounded-xl border border-base-content/5 bg-base-200/30 hover:bg-base-200/60 transition-all cursor-pointer {expandedAlbum ===
-                            album.id
-                                ? 'ring-1 ring-primary/30'
-                                : ''}"
+                            class="flex items-center gap-4 p-3 rounded-xl border border-base-content/5 bg-base-200/30 hover:bg-base-200/60 transition-all"
                         >
                             {#if album.artUrl}
                                 <img
@@ -145,19 +139,16 @@
                                 {/if}
                                 <svg
                                     xmlns="http://www.w3.org/2000/svg"
-                                    class="h-4 w-4 text-base-content/30 transition-transform {expandedAlbum ===
-                                    album.id
-                                        ? 'rotate-180'
-                                        : ''}"
+                                    class="h-4 w-4 text-base-content/30"
                                     viewBox="0 0 24 24"
                                     fill="none"
                                     stroke="currentColor"
                                     stroke-width="2"
-                                    ><polyline points="6 9 12 15 18 9" /></svg
+                                    ><polyline points="9 18 15 12 9 6" /></svg
                                 >
                             </div>
                         </div>
-                    </button>
+                    </a>
 
                     <!-- Expanded Track List -->
                     {#if expandedAlbum === album.id}

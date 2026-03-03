@@ -3,9 +3,9 @@ import db from '$lib/server/db.js';
 import { getJellyfinApis } from '$lib/server/jellyfin.js';
 
 /** Backfills total_released_children from Jellyfin's RecursiveItemCount */
-export async function POST() {
+export async function POST({ locals }) {
     const settings = db.prepare('SELECT jellyfin_url FROM app_settings WHERE id = 1').get();
-    const user = db.prepare('SELECT jellyfin_access_token FROM users LIMIT 1').get();
+    const user = locals.user ? db.prepare('SELECT jellyfin_access_token FROM users WHERE id = ?').get(locals.user.id) : null;
 
     if (!settings?.jellyfin_url || !user?.jellyfin_access_token) {
         return json({ success: false, error: 'Not configured' }, { status: 400 });

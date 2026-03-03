@@ -206,6 +206,22 @@
             render: (row) =>
                 `${row.watched_children || 0}/${row.collected_children || 0}`,
         },
+        {
+            key: "last_watched",
+            label: "Last Watched",
+            class: "text-center w-32",
+            render: (row) => {
+                if (!row.last_watched) return "—";
+                const d = new Date(row.last_watched);
+                const now = new Date();
+                const diff = Math.floor((now - d) / 86400000);
+                if (diff === 0) return "Today";
+                if (diff === 1) return "Yesterday";
+                if (diff < 30) return `${diff}d ago`;
+                if (diff < 365) return `${Math.floor(diff / 30)}mo ago`;
+                return `${Math.floor(diff / 365)}y ago`;
+            },
+        },
     ];
 </script>
 

@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import {
     backfillTrakt, backfillLastfm, backfillJellyfinPR, backfillLegacy,
+    reprocessLastfm,
     addBackfillListener, isBackfillRunning, stopBackfill
 } from '$lib/server/backfill-engine.js';
 import db from '$lib/server/db.js';
@@ -10,17 +11,17 @@ import db from '$lib/server/db.js';
  * Body: { tier: 'trakt' | 'lastfm' | 'jellyfin' | 'legacy', config?: { dbPath?: string } }
  * @type {import('./$types').RequestHandler}
  */
-export async function POST({ request }) {
+export async function POST({ request, locals }) {
     const { tier, config } = await request.json();
 
     if (isBackfillRunning()) {
         return json({ success: false, error: 'A backfill is already running.' }, { status: 409 });
     }
 
-    // Get the first user (single-user app for now)
-    const user = /** @type {any} */ (db.prepare('SELECT id FROM users LIMIT 1').get());
+    // Use authenticated user from session
+    const user = locals.user;
     if (!user) {
-        return json({ success: false, error: 'No user found.' }, { status: 400 });
+        return json({ success: false, error: 'Not authenticated.' }, { status: 401 });
     }
 
     const userId = user.id;
@@ -33,6 +34,9 @@ export async function POST({ request }) {
         case 'lastfm':
             backfillLastfm(userId);
             return json({ success: true, message: 'Last.fm backfill started.' });
+        case 'reprocess-lastfm':
+            reprocessLastfm(userId);
+            return json({ success: true, message: 'Last.fm re-processing started (no API calls).' });
         case 'jellyfin': {
             const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_pr_db_path FROM app_settings WHERE id = 1').get());
             const dbPath = config?.dbPath || settings?.jellyfin_pr_db_path;

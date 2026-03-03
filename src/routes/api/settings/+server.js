@@ -30,7 +30,13 @@ export async function PUT({ request }) {
             tmdb_api_key: 'tmdb_api_key',
             musicbrainz_api_key: 'musicbrainz_api_key',
             include_specials: 'include_specials',
-            setup_complete: 'setup_complete'
+            setup_complete: 'setup_complete',
+            trakt_client_id: 'trakt_client_id',
+            trakt_client_secret: 'trakt_client_secret',
+            lastfm_api_key: 'lastfm_api_key',
+            lastfm_shared_secret: 'lastfm_shared_secret',
+            jellyfin_pr_db_path: 'jellyfin_pr_db_path',
+            jellyfin_sync_check: 'jellyfin_sync_check'
         };
 
         for (const [key, column] of Object.entries(allowedFields)) {
