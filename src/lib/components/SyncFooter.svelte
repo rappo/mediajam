@@ -1,18 +1,28 @@
 <script>
     import { page } from "$app/stores";
 
+    /*
+     * CONVENTION (10+ SECOND RULE):
+     *   Any sync or action expected to take 10+ seconds MUST use the
+     *   background-browsable pattern: dedicated engine state, SSE streaming,
+     *   pause/resume, and SyncFooter visibility. This ensures users can
+     *   safely browse away and monitor progress from anywhere in the app.
+     */
+
     // State
     let visible = $state(false);
     let label = $state("");
     let lastLog = $state("");
     let progress = $state(0);
-    let syncType = $state(""); // 'jellyfin' | 'trakt' | 'lastfm' | etc
+    let syncType = $state(""); // 'jellyfin' | 'trakt' | 'lastfm' | 'people' | etc
     let expanded = $state(false);
 
     /** @type {EventSource | null} */
     let syncES = null;
     /** @type {EventSource | null} */
     let backfillES = null;
+    /** @type {EventSource | null} */
+    let peopleSyncES = null;
 
     function isOnSyncPage() {
         const path =
@@ -149,12 +159,68 @@
         };
     }
 
-    // Poll both endpoints on mount and on navigation
+    function handlePeopleSyncMessage(d) {
+        if (d.type === "snapshot" && d.running) {
+            syncType = "People Sync";
+            progress = d.progress || 0;
+            if (d.logs && d.logs.length > 0) {
+                lastLog = d.logs[d.logs.length - 1].message;
+            }
+            visible = !isOnSyncPage();
+        } else if (d.type === "progress") {
+            syncType = "People Sync";
+            if (d.progress !== undefined) progress = d.progress;
+            if (d.log) lastLog = d.log;
+            visible = !isOnSyncPage();
+        } else if (d.type === "complete" || d.type === "error") {
+            if (d.log) lastLog = d.log;
+            visible = !isOnSyncPage();
+            setTimeout(() => {
+                visible = false;
+                peopleSyncES?.close();
+                peopleSyncES = null;
+            }, 5000);
+        }
+    }
+
+    function connectPeopleSync() {
+        if (peopleSyncES) return;
+        peopleSyncES = new EventSource("/api/people/sync");
+        let gotConnected = false;
+        peopleSyncES.onmessage = (event) => {
+            try {
+                const d = JSON.parse(event.data);
+                if (d.type === "connected") {
+                    gotConnected = true;
+                    return;
+                }
+                if (d.type === "snapshot") {
+                    if (d.running) {
+                        handlePeopleSyncMessage(d);
+                    } else if (gotConnected) {
+                        peopleSyncES?.close();
+                        peopleSyncES = null;
+                    }
+                } else {
+                    handlePeopleSyncMessage(d);
+                }
+            } catch {
+                /* ignore */
+            }
+        };
+        peopleSyncES.onerror = () => {
+            peopleSyncES?.close();
+            peopleSyncES = null;
+        };
+    }
+
+    // Poll all endpoints on mount and on navigation
     $effect(() => {
         // Re-run on navigation
         const _ = $page.url.pathname;
         connectSync();
         connectBackfill();
+        connectPeopleSync();
 
         // Also update visibility based on current page
         if (isOnSyncPage()) {
@@ -166,6 +232,8 @@
             syncES = null;
             backfillES?.close();
             backfillES = null;
+            peopleSyncES?.close();
+            peopleSyncES = null;
         };
     });
 </script>
@@ -216,7 +284,9 @@
                 href={syncType.toLowerCase().includes("jellyfin") &&
                 !syncType.toLowerCase().includes("import")
                     ? "/settings/system"
-                    : "/settings/account"}
+                    : syncType.toLowerCase().includes("people")
+                      ? "/settings/system"
+                      : "/settings/account"}
                 class="btn btn-xs btn-ghost text-primary shrink-0"
             >
                 View

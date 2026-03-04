@@ -284,51 +284,137 @@
     let consoleEl = $state(null);
 
     // ─── People Sync ─────────────────────────────────────────────────────────────
-    let syncingPeople = $state(false);
     let reconciling = $state(false);
     let reconcileResult = $state(null);
+    let peopleSyncStatus = $state("idle"); // idle | syncing | paused | complete | error
+    let peopleSyncProgress = $state(0);
+    let peopleSyncSynced = $state(0);
+    let peopleSyncErrors = $state(0);
+    let peopleSyncLogs = $state([]);
     let peopleSyncResult = $state(null);
+    /** @type {EventSource | null} */
+    let peopleSyncEventSource = $state(null);
+    /** @type {HTMLDivElement | null} */
+    let peopleSyncConsoleEl = $state(null);
+    let peopleSyncCopyFeedback = $state(false);
 
-    // Detect if people sync is already running on mount
+    function addPeopleSyncLog(message, type = "info") {
+        peopleSyncLogs = [
+            ...peopleSyncLogs.slice(-100),
+            { time: new Date().toLocaleTimeString(), message, type },
+        ];
+    }
+
+    function handlePeopleSyncSSE(d) {
+        if (d.type === "snapshot") {
+            if (d.running) {
+                peopleSyncStatus = d.paused ? "paused" : "syncing";
+                peopleSyncProgress = d.progress || 0;
+                peopleSyncSynced = d.itemsSynced || 0;
+                peopleSyncErrors = d.errors || 0;
+                if (d.logs?.length) peopleSyncLogs = d.logs;
+            }
+        } else if (d.type === "progress") {
+            if (d.progress !== undefined) peopleSyncProgress = d.progress;
+            if (d.itemsSynced !== undefined) peopleSyncSynced = d.itemsSynced;
+            if (d.errors !== undefined) peopleSyncErrors = d.errors;
+        } else if (d.type === "complete") {
+            peopleSyncStatus = "complete";
+            peopleSyncProgress = 100;
+            if (d.itemsSynced !== undefined) peopleSyncSynced = d.itemsSynced;
+            peopleSyncResult = {
+                totalPersons: d.totalPersons,
+                totalCredits: d.totalCredits,
+            };
+            peopleSyncEventSource?.close();
+        } else if (d.type === "error") {
+            peopleSyncStatus = "error";
+            peopleSyncEventSource?.close();
+        } else if (d.type === "paused") {
+            peopleSyncStatus = "paused";
+        } else if (d.type === "resumed") {
+            peopleSyncStatus = "syncing";
+        } else if (d.type === "stopped") {
+            peopleSyncStatus = "idle";
+            peopleSyncEventSource?.close();
+        }
+        if (d.log) addPeopleSyncLog(d.log, d.logType || "info");
+    }
+
+    function connectPeopleSyncSSE() {
+        if (peopleSyncEventSource) peopleSyncEventSource.close();
+        peopleSyncEventSource = new EventSource("/api/people/sync");
+        peopleSyncEventSource.onmessage = (event) => {
+            try {
+                handlePeopleSyncSSE(JSON.parse(event.data));
+            } catch {
+                /* ignore */
+            }
+        };
+        peopleSyncEventSource.onerror = () => {
+            if (peopleSyncStatus === "syncing")
+                addPeopleSyncLog("Connection lost.", "warning");
+        };
+    }
+
+    // Auto-reconnect to people sync on mount if running
     $effect(() => {
-        fetch("/api/people/sync")
-            .then((r) => r.json())
-            .then((status) => {
-                if (status.running) {
-                    syncingPeople = true;
-                    addSyncLog(
-                        "People sync is running (reconnected)...",
-                        "info",
-                    );
-                    connectSSE();
-                    const pollInterval = setInterval(async () => {
-                        try {
-                            const res = await fetch("/api/people/sync");
-                            const s = await res.json();
-                            if (!s.running) {
-                                clearInterval(pollInterval);
-                                peopleSyncResult = s;
-                                syncingPeople = false;
-                                addSyncLog(
-                                    `People sync complete: ${s.totalPersons} people, ${s.totalCredits} credits`,
-                                    "info",
-                                );
-                            }
-                        } catch {
-                            clearInterval(pollInterval);
-                            syncingPeople = false;
-                        }
-                    }, 2000);
+        const es = new EventSource("/api/people/sync");
+        let adopted = false;
+        let gotConnected = false;
+        es.onmessage = (event) => {
+            try {
+                const d = JSON.parse(event.data);
+                if (d.type === "connected") {
+                    gotConnected = true;
+                    return;
                 }
-            })
-            .catch(() => {});
-        // Run only once on mount
-        return undefined;
+                if (d.type === "snapshot" && d.running) {
+                    adopted = true;
+                    peopleSyncEventSource = es;
+                    handlePeopleSyncSSE(d);
+                    es.onmessage = (ev) => {
+                        try {
+                            handlePeopleSyncSSE(JSON.parse(ev.data));
+                        } catch {
+                            /* ignore */
+                        }
+                    };
+                    es.onerror = () => {
+                        if (peopleSyncStatus === "syncing")
+                            addPeopleSyncLog("Connection lost.", "warning");
+                    };
+                } else if (gotConnected && !adopted) {
+                    // No running sync — grab stats from snapshot
+                    if (d.totalPersons !== undefined) {
+                        peopleSyncResult = {
+                            totalPersons: d.totalPersons,
+                            totalCredits: d.totalCredits,
+                        };
+                    }
+                    es.close();
+                }
+            } catch {
+                es.close();
+            }
+        };
+        es.onerror = () => {
+            if (!adopted) es.close();
+        };
+        return () => {
+            if (!adopted) es.close();
+        };
     });
 
     $effect(() => {
         if (syncLogs.length && consoleEl) {
             consoleEl.scrollTop = consoleEl.scrollHeight;
+        }
+    });
+
+    $effect(() => {
+        if (peopleSyncLogs.length && peopleSyncConsoleEl) {
+            peopleSyncConsoleEl.scrollTop = peopleSyncConsoleEl.scrollHeight;
         }
     });
 
@@ -480,6 +566,18 @@
         addSyncLog(action === "pause" ? "Paused." : "Resumed.", "info");
     }
 
+    async function stopJellyfinSync() {
+        await fetch("/api/sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "stop" }),
+        });
+        addSyncLog("Sync stopped.", "warning");
+        syncStatus = "idle";
+        syncEventSource?.close();
+        syncEventSource = null;
+    }
+
     function getLogClass(type) {
         if (type === "success") return "text-success";
         if (type === "error") return "text-error";
@@ -487,55 +585,70 @@
         return "text-base-content/70";
     }
 
-    async function syncPeople() {
-        syncingPeople = true;
+    async function triggerPeopleSync() {
+        peopleSyncStatus = "syncing";
+        peopleSyncProgress = 0;
+        peopleSyncSynced = 0;
+        peopleSyncErrors = 0;
+        peopleSyncLogs = [];
         peopleSyncResult = null;
-        addSyncLog("Starting people sync...", "info");
+
+        addPeopleSyncLog("Starting people sync...", "info");
+
         try {
-            const res = await fetch("/api/people/sync", { method: "POST" });
+            const res = await fetch("/api/people/sync", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "start" }),
+            });
             const result = await res.json();
+
             if (!result.success) {
-                addSyncLog(
-                    result.error || "Failed to start people sync",
+                addPeopleSyncLog(
+                    result.error || "Failed to start people sync.",
                     "error",
                 );
-                syncingPeople = false;
+                peopleSyncStatus = "error";
                 return;
             }
-            addSyncLog(
-                "People sync started (server-side). Progress will appear below.",
-                "info",
-            );
-            // Connect SSE to pick up broadcast messages
-            connectSSE();
-            // Poll for completion
-            const pollInterval = setInterval(async () => {
-                try {
-                    const statusRes = await fetch("/api/people/sync");
-                    const status = await statusRes.json();
-                    if (!status.running) {
-                        clearInterval(pollInterval);
-                        peopleSyncResult = status;
-                        syncingPeople = false;
-                        addSyncLog(
-                            `People sync complete: ${status.totalPersons} people, ${status.totalCredits} credits`,
-                            "info",
-                        );
-                    }
-                } catch {
-                    clearInterval(pollInterval);
-                    syncingPeople = false;
-                }
-            }, 2000);
+
+            connectPeopleSyncSSE();
         } catch {
-            peopleSyncResult = {
-                totalPersons: 0,
-                totalCredits: 0,
-                error: true,
-            };
-            addSyncLog("Failed to start people sync", "error");
-            syncingPeople = false;
+            addPeopleSyncLog("Failed to start people sync.", "error");
+            peopleSyncStatus = "error";
         }
+    }
+
+    async function togglePeopleSyncPause() {
+        const action = peopleSyncStatus === "paused" ? "resume" : "pause";
+        await fetch("/api/people/sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action }),
+        });
+        peopleSyncStatus = action === "pause" ? "paused" : "syncing";
+        addPeopleSyncLog(action === "pause" ? "Paused." : "Resumed.", "info");
+    }
+
+    async function stopPeopleSyncAction() {
+        await fetch("/api/people/sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "stop" }),
+        });
+        addPeopleSyncLog("People sync stopped.", "warning");
+        peopleSyncStatus = "idle";
+        peopleSyncEventSource?.close();
+        peopleSyncEventSource = null;
+    }
+
+    function copyPeopleSyncLog() {
+        const text = peopleSyncLogs
+            .map((l) => `[${l.time}] ${l.message}`)
+            .join("\n");
+        navigator.clipboard.writeText(text);
+        peopleSyncCopyFeedback = true;
+        setTimeout(() => (peopleSyncCopyFeedback = false), 2000);
     }
 
     async function runReconcile() {
@@ -1269,10 +1382,12 @@
                         {/each}
                         <button
                             class="btn btn-outline btn-xs"
-                            disabled={syncingPeople}
-                            onclick={syncPeople}
+                            disabled={peopleSyncStatus !== "idle" &&
+                                peopleSyncStatus !== "complete" &&
+                                peopleSyncStatus !== "error"}
+                            onclick={triggerPeopleSync}
                         >
-                            {#if syncingPeople}
+                            {#if peopleSyncStatus === "syncing" || peopleSyncStatus === "paused"}
                                 <span class="loading loading-spinner loading-xs"
                                 ></span>
                             {:else}
@@ -1295,7 +1410,7 @@
                             Reconcile
                         </button>
                     </div>
-                    {#if peopleSyncResult}
+                    {#if peopleSyncResult && peopleSyncStatus === "idle"}
                         <p class="text-xs text-base-content/50 mt-1">
                             People sync: {peopleSyncResult.totalPersons} people,
                             {peopleSyncResult.totalCredits} credits
@@ -1311,6 +1426,138 @@
                             {/if}
                         </p>
                     {/if}
+                {/if}
+
+                <!-- People Sync Panel -->
+                {#if peopleSyncStatus !== "idle"}
+                    <div class="divider my-2"></div>
+                    <p class="text-xs text-base-content/50 italic">
+                        You can safely browse around — people sync continues in
+                        the background.
+                    </p>
+                    <div class="space-y-3 mt-2">
+                        <div class="flex justify-between items-center text-sm">
+                            <span class="font-medium">
+                                {#if peopleSyncStatus === "complete"}
+                                    ✅ People sync complete!
+                                {:else if peopleSyncStatus === "error"}
+                                    ❌ People sync error
+                                {:else if peopleSyncStatus === "paused"}
+                                    ⏸️ People sync paused
+                                {:else}
+                                    👥 People Sync
+                                {/if}
+                            </span>
+                            <span class="text-xs text-base-content/50">
+                                {peopleSyncSynced.toLocaleString()} synced · {peopleSyncErrors}
+                                errors
+                            </span>
+                        </div>
+
+                        {#if peopleSyncProgress > 0}
+                            <progress
+                                class="progress progress-info w-full"
+                                value={peopleSyncProgress}
+                                max="100"
+                            ></progress>
+                        {:else}
+                            <progress class="progress progress-info w-full"
+                            ></progress>
+                        {/if}
+
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs text-base-content/40"
+                                >People Sync Log</span
+                            >
+                            {#if peopleSyncLogs.length > 0}
+                                <button
+                                    class="btn btn-xs btn-ghost gap-1"
+                                    onclick={copyPeopleSyncLog}
+                                >
+                                    {#if peopleSyncCopyFeedback}
+                                        ✓ Copied
+                                    {:else}
+                                        <svg
+                                            xmlns="http://www.w3.org/2000/svg"
+                                            class="h-3 w-3"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            stroke-width="2"
+                                            ><rect
+                                                x="9"
+                                                y="9"
+                                                width="13"
+                                                height="13"
+                                                rx="2"
+                                                ry="2"
+                                            /><path
+                                                d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"
+                                            /></svg
+                                        >
+                                        Copy
+                                    {/if}
+                                </button>
+                            {/if}
+                        </div>
+                        <div
+                            bind:this={peopleSyncConsoleEl}
+                            class="bg-neutral text-neutral-content rounded-lg p-3 h-36 overflow-y-auto text-xs font-mono"
+                        >
+                            {#each peopleSyncLogs as log}
+                                <div class={getLogClass(log.type)}>
+                                    <span class="opacity-50">[{log.time}]</span>
+                                    {log.message}
+                                </div>
+                            {/each}
+                            {#if peopleSyncStatus === "syncing"}
+                                <div class="opacity-50 mt-1">
+                                    <span
+                                        class="loading loading-dots loading-xs"
+                                    ></span>
+                                </div>
+                            {/if}
+                        </div>
+
+                        <div class="flex gap-2">
+                            {#if peopleSyncStatus === "syncing" || peopleSyncStatus === "paused"}
+                                <button
+                                    class="btn btn-sm btn-outline"
+                                    onclick={togglePeopleSyncPause}
+                                >
+                                    {peopleSyncStatus === "paused"
+                                        ? "Resume"
+                                        : "Pause"}
+                                </button>
+                                <button
+                                    class="btn btn-sm btn-outline btn-error"
+                                    onclick={stopPeopleSyncAction}
+                                >
+                                    Stop
+                                </button>
+                            {/if}
+                            {#if peopleSyncStatus === "complete" || peopleSyncStatus === "error"}
+                                <button
+                                    class="btn btn-sm btn-info"
+                                    onclick={() => {
+                                        peopleSyncStatus = "idle";
+                                    }}>Done</button
+                                >
+                                <button
+                                    class="btn btn-sm btn-ghost"
+                                    onclick={triggerPeopleSync}
+                                    >Sync Again</button
+                                >
+                            {/if}
+                        </div>
+
+                        {#if peopleSyncStatus === "complete" && peopleSyncResult}
+                            <p class="text-xs text-base-content/50">
+                                Result: {peopleSyncResult.totalPersons} people,
+                                {peopleSyncResult.totalCredits} credits
+                            </p>
+                        {/if}
+                    </div>
                 {/if}
             {:else}
                 <p class="text-xs text-base-content/50 italic mt-1">
@@ -1407,6 +1654,12 @@
                                 onclick={toggleSyncPause}
                             >
                                 {syncStatus === "paused" ? "Resume" : "Pause"}
+                            </button>
+                            <button
+                                class="btn btn-sm btn-outline btn-error"
+                                onclick={stopJellyfinSync}
+                            >
+                                Stop
                             </button>
                         {/if}
                         {#if syncStatus === "complete" || syncStatus === "error"}

@@ -605,7 +605,8 @@ export async function startSync(libraryId = null, force = false) {
                             isSpecial: 0,
                             watchStatus: getWatchStatus(item.UserData),
                             playCount: item.UserData?.PlayCount || 0,
-                            runtimeTicks: item.RunTimeTicks || 0
+                            runtimeTicks: item.RunTimeTicks || 0,
+                            premiereDate: item.PremiereDate || null
                         });
 
                         // Upgrade watch status from playback history (Trakt/Last.fm may know about watches Jellyfin doesn't)
