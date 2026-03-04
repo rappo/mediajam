@@ -1508,9 +1508,9 @@
 
                 {#if importResult}
                     <div
-                        class="alert {importResult.success
-                            ? 'alert-success'
-                            : 'alert-error'} alert-sm"
+                        class="rounded-xl p-4 border {importResult.success
+                            ? 'bg-success/5 border-success/20 text-base-content'
+                            : 'bg-error/5 border-error/20 text-base-content'}"
                     >
                         <div class="w-full">
                             {#if importResult.success}
