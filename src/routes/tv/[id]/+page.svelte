@@ -1,6 +1,7 @@
 <script>
     let { data } = $props();
     import { invalidateAll } from "$app/navigation";
+    import ExternalLinks from "$lib/components/ExternalLinks.svelte";
     function statusColor(status) {
         if (status === "watched") return "var(--color-success, #22c55e)";
         if (status === "in_progress") return "var(--color-warning, #f59e0b)";
@@ -123,22 +124,14 @@
                 <h1 class="text-3xl font-bold">{data.show.title}</h1>
                 <p class="text-base-content/50 text-sm mt-1">
                     {data.show.release_year || ""}
-                    {#if data.show.tvdb_id}
-                        · <a
-                            href="https://thetvdb.com/?id={data.show
-                                .tvdb_id}&tab=series"
-                            target="_blank"
-                            class="link link-primary">TVDB</a
-                        >
-                    {/if}
-                    {#if data.show.imdb_id}
-                        · <a
-                            href="https://imdb.com/title/{data.show.imdb_id}"
-                            target="_blank"
-                            class="link link-primary">IMDB</a
-                        >
-                    {/if}
                 </p>
+                <ExternalLinks
+                    tmdb_id={data.show.tmdb_id}
+                    imdb_id={data.show.imdb_id}
+                    tvdb_id={data.show.tvdb_id}
+                    mediaType="show"
+                    class="mt-1"
+                />
             </div>
             {#if data.show.overview}
                 <p class="text-sm text-base-content/70 line-clamp-3">

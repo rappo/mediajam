@@ -1,5 +1,6 @@
 <script>
     import ServiceIcon from "$lib/components/ServiceIcon.svelte";
+    import ExternalLinks from "$lib/components/ExternalLinks.svelte";
     import { invalidateAll } from "$app/navigation";
     let { data } = $props();
 
@@ -177,6 +178,12 @@
                             >
                         {/if}
                     </div>
+                    <ExternalLinks
+                        tmdb_id={data.movie.tmdb_id}
+                        imdb_id={data.movie.imdb_id}
+                        tvdb_id={data.movie.tvdb_id}
+                        mediaType="movie"
+                    />
                 </div>
             </div>
         </div>

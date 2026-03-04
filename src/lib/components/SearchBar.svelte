@@ -58,13 +58,21 @@
     function navigateToResult(item) {
         close();
         if (item.type === "show") goto(`/tv/${item.id}`);
-        else if (item.type === "movie") goto(`/movies`);
+        else if (item.type === "movie") goto(`/movies/${item.id}`);
         else if (item.type === "artist") goto(`/music/${item.id}`);
         else if (item.type === "child") {
             if (item.media_type === "artist") goto(`/music/${item.parent_id}`);
             else if (item.media_type === "show") goto(`/tv/${item.parent_id}`);
-            else goto(`/movies`);
-        } else if (item.type === "history") goto(`/history`);
+            else goto(`/movies/${item.parent_id}`);
+        } else if (item.type === "history") {
+            if (item.media_type === "show")
+                goto(`/tv/${item.parent_id || item.id}`);
+            else if (item.media_type === "movie")
+                goto(`/movies/${item.parent_id || item.id}`);
+            else if (item.media_type === "artist")
+                goto(`/music/${item.parent_id || item.id}`);
+            else goto(`/history`);
+        }
     }
 
     /** @param {any} r */
@@ -87,13 +95,23 @@
         if (e.key === "ArrowDown") {
             e.preventDefault();
             selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+            scrollSelectedIntoView();
         } else if (e.key === "ArrowUp") {
             e.preventDefault();
             selectedIndex = Math.max(selectedIndex - 1, -1);
+            scrollSelectedIntoView();
         } else if (e.key === "Enter" && selectedIndex >= 0) {
             e.preventDefault();
             navigateToResult(items[selectedIndex]);
         }
+    }
+
+    function scrollSelectedIntoView() {
+        // Wait a tick for the DOM to update with the new selected class
+        setTimeout(() => {
+            const el = document.querySelector(".search-result-item.selected");
+            el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        }, 0);
     }
 
     /** @type {Record<string, string>} */
@@ -254,6 +272,7 @@
                     bind:this={inputEl}
                     bind:value={query}
                     oninput={handleInput}
+                    onkeydown={handleKeydown}
                     type="text"
                     placeholder="Search shows, movies, music, history..."
                     class="search-input"

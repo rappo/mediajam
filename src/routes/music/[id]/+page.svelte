@@ -1,9 +1,12 @@
 <script>
     import { invalidateAll } from "$app/navigation";
+    import ExternalLinks from "$lib/components/ExternalLinks.svelte";
     let { data } = $props();
     let expandedAlbum = $state(null);
     let albumTracks = $state({});
     let loadingTracks = $state(null);
+    /** @type {'list' | 'grid'} */
+    let viewMode = $state("list");
 
     async function toggleAlbum(album) {
         if (expandedAlbum === album.id) {
@@ -124,16 +127,11 @@
         <div class="space-y-3 min-w-0">
             <div>
                 <h1 class="text-3xl font-bold">{data.artist.title}</h1>
-                <p class="text-base-content/50 text-sm mt-1">
-                    {#if data.artist.musicbrainz_id}
-                        <a
-                            href="https://musicbrainz.org/artist/{data.artist
-                                .musicbrainz_id}"
-                            target="_blank"
-                            class="link link-primary">MusicBrainz ↗</a
-                        >
-                    {/if}
-                </p>
+                <ExternalLinks
+                    musicbrainz_id={data.artist.musicbrainz_id}
+                    mediaType="artist"
+                    class="mt-1"
+                />
             </div>
             <div class="flex flex-wrap gap-3">
                 <div class="badge badge-lg badge-info gap-1">
@@ -156,12 +154,107 @@
 
     <!-- Albums -->
     <div class="space-y-3">
-        <h2 class="text-xl font-bold">Discography</h2>
+        <div class="flex items-center justify-between">
+            <h2 class="text-xl font-bold">Discography</h2>
+            <div class="join">
+                <button
+                    class="join-item btn btn-xs"
+                    class:btn-active={viewMode === "list"}
+                    onclick={() => (viewMode = "list")}
+                    title="List view"
+                >
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="h-3.5 w-3.5"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        ><line x1="8" y1="6" x2="21" y2="6" /><line
+                            x1="8"
+                            y1="12"
+                            x2="21"
+                            y2="12"
+                        /><line x1="8" y1="18" x2="21" y2="18" /><line
+                            x1="3"
+                            y1="6"
+                            x2="3.01"
+                            y2="6"
+                        /><line x1="3" y1="12" x2="3.01" y2="12" /><line
+                            x1="3"
+                            y1="18"
+                            x2="3.01"
+                            y2="18"
+                        /></svg
+                    >
+                </button>
+                <button
+                    class="join-item btn btn-xs"
+                    class:btn-active={viewMode === "grid"}
+                    onclick={() => (viewMode = "grid")}
+                    title="Grid view"
+                >
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="h-3.5 w-3.5"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        ><rect x="3" y="3" width="7" height="7" /><rect
+                            x="14"
+                            y="3"
+                            width="7"
+                            height="7"
+                        /><rect x="3" y="14" width="7" height="7" /><rect
+                            x="14"
+                            y="14"
+                            width="7"
+                            height="7"
+                        /></svg
+                    >
+                </button>
+            </div>
+        </div>
 
         {#if data.albums.length === 0}
             <p class="text-base-content/40 text-sm py-8 text-center">
                 No albums found for this artist.
             </p>
+        {:else if viewMode === "grid"}
+            <div class="album-grid">
+                {#each data.albums as album}
+                    <a
+                        href="/music/{data.artist.id}/{album.id}"
+                        class="album-tile group"
+                    >
+                        {#if album.artUrl}
+                            <img
+                                src={album.artUrl}
+                                alt={album.title}
+                                class="album-tile-img"
+                            />
+                        {:else}
+                            <div class="album-tile-placeholder">
+                                <span class="text-4xl opacity-20">💿</span>
+                            </div>
+                        {/if}
+                        <div class="album-tile-overlay">
+                            <p
+                                class="font-semibold text-sm leading-tight line-clamp-2"
+                            >
+                                {album.title}
+                            </p>
+                            <p class="text-xs opacity-70 mt-0.5">
+                                {album.release_year || ""}
+                                {#if album.play_count > 0}
+                                    · {album.play_count} plays
+                                {/if}
+                            </p>
+                        </div>
+                    </a>
+                {/each}
+            </div>
         {:else}
             <div class="space-y-3">
                 {#each data.albums as album}
@@ -300,5 +393,51 @@
             opacity: 1;
             transform: translateY(0);
         }
+    }
+    .album-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 1rem;
+    }
+    .album-tile {
+        position: relative;
+        border-radius: 0.75rem;
+        overflow: hidden;
+        aspect-ratio: 1;
+        display: block;
+        transition:
+            transform 0.15s,
+            box-shadow 0.15s;
+    }
+    .album-tile:hover {
+        transform: scale(1.03);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    }
+    .album-tile-img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .album-tile-placeholder {
+        width: 100%;
+        height: 100%;
+        background: oklch(var(--b3));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .album-tile-overlay {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        padding: 0.5rem 0.6rem;
+        background: linear-gradient(
+            to top,
+            rgba(0, 0, 0, 0.85) 0%,
+            rgba(0, 0, 0, 0.4) 70%,
+            transparent 100%
+        );
+        color: white;
     }
 </style>

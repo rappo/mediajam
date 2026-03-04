@@ -1,4 +1,5 @@
 <script>
+    import ExternalLinks from "$lib/components/ExternalLinks.svelte";
     let { data } = $props();
 
     function roleBadge(roleType) {
@@ -79,50 +80,23 @@
             {/if}
 
             <!-- External links -->
-            <div class="flex flex-wrap gap-2">
-                {#if data.person.tmdb_person_id}
-                    <a
-                        href="https://www.themoviedb.org/person/{data.person
-                            .tmdb_person_id}"
-                        target="_blank"
-                        rel="noopener"
-                        class="btn btn-xs btn-outline gap-1"
-                    >
-                        <span class="text-[#01b4e4] font-bold">TMDB</span>
-                    </a>
-                {/if}
-                {#if data.person.imdb_person_id}
-                    <a
-                        href="https://www.imdb.com/name/{data.person
-                            .imdb_person_id}"
-                        target="_blank"
-                        rel="noopener"
-                        class="btn btn-xs btn-outline gap-1"
-                    >
-                        <span class="text-[#F5C518] font-bold">IMDb</span>
-                    </a>
-                {/if}
-                {#if data.person.musicbrainz_artist_id}
-                    <a
-                        href="https://musicbrainz.org/artist/{data.person
-                            .musicbrainz_artist_id}"
-                        target="_blank"
-                        rel="noopener"
-                        class="btn btn-xs btn-outline gap-1"
-                    >
-                        <span class="text-[#BA478F] font-bold">MusicBrainz</span
-                        >
-                    </a>
-                {/if}
+            <div class="flex flex-wrap items-center gap-2">
+                <ExternalLinks
+                    tmdb_person_id={data.person.tmdb_person_id}
+                    imdb_person_id={data.person.imdb_person_id}
+                    musicbrainz_artist_id={data.person.musicbrainz_artist_id}
+                    mediaType="person"
+                />
                 {#if data.person.jellyfin_id && data.jellyfinUrl}
                     <a
                         href="{data.jellyfinUrl}/web/index.html#!/item?id={data
                             .person.jellyfin_id}"
                         target="_blank"
                         rel="noopener"
-                        class="btn btn-xs btn-outline gap-1"
+                        class="badge badge-sm badge-outline gap-1 hover:badge-primary transition-colors"
                     >
-                        <span class="text-[#00A4DC] font-bold">Jellyfin</span>
+                        <span class="text-xs">🟦</span>
+                        Jellyfin ↗
                     </a>
                 {/if}
             </div>

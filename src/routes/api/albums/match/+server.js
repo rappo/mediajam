@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { generateMatches, mergeAlbum, autoMergeExact } from '$lib/server/album-matcher.js';
+import { generateMatches, mergeAlbum, autoMergeExact, autoMergeMediumPlus } from '$lib/server/album-matcher.js';
 
 /** @type {import('./$types').RequestHandler} */
 export async function GET({ url }) {
@@ -25,6 +25,9 @@ export async function POST({ request }) {
                 console.log(`[album-match] Merging ${unmatchedId} → ${matchedId}`);
                 const result = mergeAlbum(unmatchedId, matchedId);
                 console.log(`[album-match] Result:`, result);
+                if (!result.success) {
+                    return json({ success: false, error: 'Merge failed — artist mismatch or missing album' }, { status: 400 });
+                }
                 return json(result);
             }
 
@@ -33,6 +36,14 @@ export async function POST({ request }) {
                 console.log(`[album-match] Auto-merging exact matches${artistId ? ` for artist ${artistId}` : ''}`);
                 const result = autoMergeExact({ artistId });
                 console.log(`[album-match] Auto-merge done:`, result);
+                return json({ success: true, ...result });
+            }
+
+            case 'auto-merge-medium-plus': {
+                const artistId2 = body.artistId || undefined;
+                console.log(`[album-match] Auto-merging medium+ matches${artistId2 ? ` for artist ${artistId2}` : ''}`);
+                const result = autoMergeMediumPlus({ artistId: artistId2 });
+                console.log(`[album-match] Auto-merge medium+ done:`, result);
                 return json({ success: true, ...result });
             }
 

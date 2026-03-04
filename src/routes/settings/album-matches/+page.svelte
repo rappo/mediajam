@@ -8,6 +8,8 @@
     let merging = $state(new Set());
     let autoMerging = $state(false);
     let autoMergeResult = $state(null);
+    let autoMergingMedium = $state(false);
+    let autoMergeMediumResult = $state(null);
     let toastMessage = $state("");
 
     // Manual override: unmatchedKey -> { id, title } of the chosen album
@@ -146,6 +148,45 @@
             autoMerging = false;
         }
     }
+
+    async function autoMergeAllMediumPlus() {
+        autoMergingMedium = true;
+        autoMergeMediumResult = null;
+
+        try {
+            const res = await fetch("/api/albums/match", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "auto-merge-medium-plus" }),
+            });
+            if (!res.ok) {
+                const text = await res.text();
+                console.error("Auto-merge medium+ failed:", res.status, text);
+                showToast(`Auto-merge failed: ${res.status}`);
+                return;
+            }
+            const result = await res.json();
+            autoMergeMediumResult = result;
+
+            // Refresh data
+            const refreshRes = await fetch(
+                `/api/albums/match?limit=50&offset=0`,
+            );
+            const refreshData = await refreshRes.json();
+            suggestions = refreshData.suggestions;
+            stats = refreshData.stats;
+            totalSuggestions = refreshData.totalSuggestions;
+
+            showToast(
+                `Auto-merged ${result.merged} albums (medium+), migrated ${result.totalPlays} plays`,
+            );
+        } catch (err) {
+            console.error("Auto-merge medium+ error:", err);
+            showToast(`Auto-merge failed: ${err.message}`);
+        } finally {
+            autoMergingMedium = false;
+        }
+    }
 </script>
 
 <svelte:head>
@@ -262,11 +303,64 @@
         </div>
     {/if}
 
+    <!-- Auto-merge medium+ button -->
+    {#if totalSuggestions > 0}
+        <div class="alert alert-warning shadow-sm">
+            <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="w-5 h-5 shrink-0"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                ><path
+                    d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
+                /><line x1="12" y1="9" x2="12" y2="13" /><line
+                    x1="12"
+                    y1="17"
+                    x2="12.01"
+                    y2="17"
+                /></svg
+            >
+            <div class="flex-1">
+                <p class="font-semibold">
+                    {totalSuggestions} suggestions with medium+ confidence
+                </p>
+                <p class="text-sm opacity-80">
+                    Merges all exact, high, and medium confidence matches. Fuzzy
+                    matches may occasionally be wrong — review first if unsure.
+                </p>
+            </div>
+            <button
+                class="btn btn-sm btn-warning"
+                disabled={autoMergingMedium}
+                onclick={autoMergeAllMediumPlus}
+            >
+                {#if autoMergingMedium}
+                    <span class="loading loading-spinner loading-xs"></span>
+                    Merging...
+                {:else}
+                    Auto-merge All Medium+
+                {/if}
+            </button>
+        </div>
+    {/if}
+
     {#if autoMergeResult}
         <div class="alert alert-info shadow-sm">
             <span
                 >✅ Auto-merged <strong>{autoMergeResult.merged}</strong>
                 albums, migrated <strong>{autoMergeResult.totalPlays}</strong> plays.</span
+            >
+        </div>
+    {/if}
+
+    {#if autoMergeMediumResult}
+        <div class="alert alert-info shadow-sm">
+            <span
+                >✅ Auto-merged <strong>{autoMergeMediumResult.merged}</strong>
+                albums (medium+), migrated
+                <strong>{autoMergeMediumResult.totalPlays}</strong> plays.</span
             >
         </div>
     {/if}
@@ -389,6 +483,19 @@
                                         ? "manual"
                                         : suggestion.confidence}
                                 </span>
+                                {#if !overrides[key] && suggestion.matchType}
+                                    <div
+                                        class="text-[10px] text-base-content/40 mt-0.5"
+                                    >
+                                        {suggestion.matchType === "track"
+                                            ? "🎵"
+                                            : "📀"}
+                                        {suggestion.matchType}
+                                        {#if suggestion.trackOverlap}
+                                            ({suggestion.trackOverlap})
+                                        {/if}
+                                    </div>
+                                {/if}
                             </td>
                             <td class="text-right">
                                 <button

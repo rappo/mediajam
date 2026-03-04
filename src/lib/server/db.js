@@ -318,6 +318,41 @@ if (nullTrackCount > 0) {
     console.log(`[db] Backfilled track_name for ${rows.length} Last.fm history entries`);
 }
 
+// -- Add track_id FK to playback_history --
+if (!historyCols.has('track_id')) {
+    db.exec("ALTER TABLE playback_history ADD COLUMN track_id INTEGER REFERENCES tracks(id)");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_history_track ON playback_history(track_id)");
+    console.log('[db] Added track_id column to playback_history');
+}
+
+// Backfill track_id for history entries that have track_name but no track_id
+{
+    const nullTrackIdCount = /** @type {any} */ (db.prepare(
+        `SELECT COUNT(*) as c FROM playback_history ph
+         WHERE ph.track_id IS NULL AND ph.track_name IS NOT NULL
+         AND EXISTS (SELECT 1 FROM tracks t WHERE t.album_id = ph.media_id)`
+    ).get())?.c || 0;
+
+    if (nullTrackIdCount > 0) {
+        // Match track_name to tracks.title using normalized comparison
+        db.exec(`
+            UPDATE playback_history SET track_id = (
+                SELECT t.id FROM tracks t
+                WHERE t.album_id = playback_history.media_id
+                AND LOWER(TRIM(t.title)) = LOWER(TRIM(playback_history.track_name))
+                LIMIT 1
+            )
+            WHERE track_id IS NULL
+            AND track_name IS NOT NULL
+            AND EXISTS (SELECT 1 FROM tracks t WHERE t.album_id = playback_history.media_id)
+        `);
+        const matched = /** @type {any} */ (db.prepare(
+            "SELECT COUNT(*) as c FROM playback_history WHERE track_id IS NOT NULL"
+        ).get())?.c || 0;
+        console.log(`[db] Backfilled track_id: ${matched} history entries linked to tracks`);
+    }
+}
+
 // -- Migrate existing Jellyfin user IDs into user_identities --
 /** @type {Array<{id: number, jellyfin_user_id: string, jellyfin_access_token: string}>} */
 const usersWithJellyfin = /** @type {any} */ (db.prepare(

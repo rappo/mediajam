@@ -60,7 +60,7 @@ export async function GET({ url, locals }) {
     const history = userId ? /** @type {any[]} */ (db.prepare(`
         SELECT ph.id, ph.timestamp, ph.completion_pct,
                mc.title as item_title, mc.season_number, mc.item_number,
-               mp.title as parent_title, mp.media_type, mp.poster_url,
+               mp.title as parent_title, mp.media_type, mp.poster_url, mp.id as parent_id,
                'history' as type
         FROM playback_history ph
         JOIN media_children mc ON ph.media_id = mc.id
