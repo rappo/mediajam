@@ -57,13 +57,13 @@
     /** @param {any} item */
     function navigateToResult(item) {
         close();
-        if (item.type === "show") goto(`/tv`);
+        if (item.type === "show") goto(`/tv/${item.id}`);
         else if (item.type === "movie") goto(`/movies`);
-        else if (item.type === "artist") goto(`/music`);
+        else if (item.type === "artist") goto(`/music/${item.id}`);
         else if (item.type === "child") {
-            if (item.media_type === "artist") goto(`/music`);
-            else if (item.media_type === "movie") goto(`/movies`);
-            else goto(`/tv`);
+            if (item.media_type === "artist") goto(`/music/${item.parent_id}`);
+            else if (item.media_type === "show") goto(`/tv/${item.parent_id}`);
+            else goto(`/movies`);
         } else if (item.type === "history") goto(`/history`);
     }
 
@@ -142,6 +142,54 @@
                 : "";
         return "";
     }
+    /** @param {HTMLElement} node */
+    function portal(node) {
+        const theme = document.documentElement.getAttribute("data-theme");
+        if (theme) node.setAttribute("data-theme", theme);
+        document.body.appendChild(node);
+
+        // Read actual computed colors from a real themed element (the navbar)
+        const themedEl =
+            document.querySelector(".navbar") ||
+            document.querySelector("[data-theme]") ||
+            document.documentElement;
+        const cs = getComputedStyle(themedEl);
+        const bgColor = cs.backgroundColor; // resolved RGB
+
+        // Get primary color from a themed element
+        const tempEl = document.createElement("div");
+        tempEl.className = "text-primary";
+        tempEl.style.display = "none";
+        document.body.appendChild(tempEl);
+        const primaryColor = getComputedStyle(tempEl).color;
+        tempEl.remove();
+
+        const dialog = /** @type {HTMLElement|null} */ (
+            node.querySelector(".search-dialog")
+        );
+        if (dialog) {
+            dialog.style.backgroundColor = bgColor;
+            dialog.style.borderColor = primaryColor
+                .replace(")", " / 0.3)")
+                .replace("rgb(", "rgba(");
+            dialog.style.boxShadow = `0 0 30px 4px ${primaryColor.replace(")", " / 0.15)").replace("rgb(", "rgba(")}, 0 25px 50px -12px rgba(0,0,0,0.5)`;
+        }
+
+        const inputRow = /** @type {HTMLElement|null} */ (
+            node.querySelector(".search-input-row")
+        );
+        if (inputRow) {
+            inputRow.style.borderBottomColor = bgColor
+                .replace(")", " / 0.5)")
+                .replace("rgb(", "rgba(");
+        }
+
+        return {
+            destroy() {
+                node.remove();
+            },
+        };
+    }
 </script>
 
 <svelte:window onkeydown={handleGlobalKeydown} />
@@ -173,11 +221,12 @@
     <kbd class="kbd kbd-xs hidden lg:inline-flex">Ctrl+K</kbd>
 </button>
 
-<!-- Modal overlay - uses portal-style fixed positioning -->
+<!-- Modal overlay - portaled to body to escape navbar stacking context -->
 {#if open}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
         class="search-overlay"
+        use:portal
         onkeydown={handleKeydown}
         onclick={(e) => {
             if (e.target === e.currentTarget) close();
@@ -303,16 +352,14 @@
         align-items: flex-start;
         justify-content: center;
         padding-top: 15vh;
-        background: rgba(0, 0, 0, 0.92);
+        background: rgba(0, 0, 0, 0.4);
         backdrop-filter: blur(8px);
     }
     .search-dialog {
         width: 100%;
         max-width: 32rem;
-        background: oklch(var(--b2));
         border-radius: 1rem;
-        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-        border: 1px solid oklch(var(--b3));
+        border: 1px solid transparent;
         overflow: hidden;
         animation: search-in 0.15s ease-out;
     }
@@ -321,7 +368,7 @@
         align-items: center;
         gap: 0.75rem;
         padding: 0.75rem 1rem;
-        border-bottom: 1px solid oklch(var(--b3));
+        border-bottom: 1px solid transparent;
     }
     .search-icon {
         width: 1.25rem;

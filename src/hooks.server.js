@@ -1,6 +1,7 @@
 import { redirect } from '@sveltejs/kit';
 import db from '$lib/server/db.js';
 import { verifySession, SESSION_COOKIE } from '$lib/server/session.js';
+import { startAutoSyncScheduler } from '$lib/server/auto-sync.js';
 
 /** @type {import('@sveltejs/kit').Handle} */
 export async function handle({ event, resolve }) {
@@ -8,6 +9,11 @@ export async function handle({ event, resolve }) {
     const settings = db.prepare('SELECT setup_complete, theme FROM app_settings WHERE id = 1').get();
     const isSetupComplete = settings?.setup_complete === 1;
     const theme = settings?.theme || 'dark';
+
+    // Start auto-sync scheduler once setup is complete
+    if (isSetupComplete) {
+        startAutoSyncScheduler();
+    }
 
     event.locals.isSetupComplete = isSetupComplete;
     event.locals.theme = theme;
@@ -29,13 +35,14 @@ export async function handle({ event, resolve }) {
 
         if (userId) {
             const user = /** @type {any} */ (db.prepare(
-                'SELECT id, username, is_admin FROM users WHERE id = ?'
+                'SELECT id, username, is_admin, avatar_url FROM users WHERE id = ?'
             ).get(userId));
             if (user) {
                 event.locals.user = {
                     id: user.id,
                     username: user.username,
-                    isAdmin: user.is_admin === 1
+                    isAdmin: user.is_admin === 1,
+                    avatarUrl: user.avatar_url || null
                 };
             }
         }

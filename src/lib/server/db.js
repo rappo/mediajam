@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS users (
     jellyfin_user_id TEXT,
     jellyfin_access_token TEXT,
     is_admin INTEGER DEFAULT 1,
+    avatar_url TEXT DEFAULT NULL,
     created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -182,6 +183,26 @@ CREATE TABLE IF NOT EXISTS lastfm_scrobbles (
 CREATE INDEX IF NOT EXISTS idx_lastfm_scrobbles_user ON lastfm_scrobbles(user_id, timestamp_uts DESC);
 CREATE INDEX IF NOT EXISTS idx_lastfm_scrobbles_artist ON lastfm_scrobbles(artist_name);
 
+-- 11. Trakt Raw History (1:1 mirror of external data)
+CREATE TABLE IF NOT EXISTS trakt_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    trakt_id INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    watched_at TEXT NOT NULL,
+    title TEXT NOT NULL,
+    show_title TEXT,
+    season_number INTEGER,
+    episode_number INTEGER,
+    year INTEGER,
+    tmdb_id TEXT,
+    imdb_id TEXT,
+    trakt_slug TEXT,
+    FOREIGN KEY(user_id) REFERENCES users(id),
+    UNIQUE(user_id, trakt_id)
+);
+CREATE INDEX IF NOT EXISTS idx_trakt_history_user ON trakt_history(user_id, watched_at DESC);
+
 -- Initialize singleton rows if not present
 INSERT OR IGNORE INTO app_settings (id) VALUES (1);
 INSERT OR IGNORE INTO sync_state (id) VALUES (1);
@@ -210,6 +231,12 @@ const mediaParentsCols = new Set(
 );
 if (!mediaParentsCols.has('collection_status')) {
     db.exec("ALTER TABLE media_parents ADD COLUMN collection_status TEXT DEFAULT 'collected'");
+}
+if (!mediaParentsCols.has('date_last_modified')) {
+    db.exec("ALTER TABLE media_parents ADD COLUMN date_last_modified TEXT");
+}
+if (!mediaParentsCols.has('jellyfin_child_count')) {
+    db.exec("ALTER TABLE media_parents ADD COLUMN jellyfin_child_count INTEGER DEFAULT 0");
 }
 
 // -- playback_history schema migrations --
@@ -258,6 +285,25 @@ const upsertIdentity = db.prepare(`
 `);
 for (const user of usersWithJellyfin) {
     upsertIdentity.run(user.id, user.jellyfin_user_id, user.jellyfin_access_token);
+}
+
+// -- Add avatar_url column if not present --
+try {
+    db.prepare('SELECT avatar_url FROM users LIMIT 0').get();
+} catch {
+    db.exec('ALTER TABLE users ADD COLUMN avatar_url TEXT DEFAULT NULL');
+    console.log('[db] Added avatar_url column to users table');
+}
+
+// -- user_identities auto-sync migrations --
+const identityCols = new Set(
+    db.prepare("PRAGMA table_info(user_identities)").all().map((/** @type {any} */ c) => c.name)
+);
+if (!identityCols.has('auto_sync')) {
+    db.exec("ALTER TABLE user_identities ADD COLUMN auto_sync INTEGER DEFAULT 0");
+}
+if (!identityCols.has('last_auto_sync_at')) {
+    db.exec("ALTER TABLE user_identities ADD COLUMN last_auto_sync_at TEXT");
 }
 
 export default db;

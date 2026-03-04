@@ -53,6 +53,62 @@
     let undoSnapshot = $state(null);
     let undoTimer = $state(null);
 
+    // ─── Data Management ───────────────────────────────────────────────────────────────
+    let exporting = $state(false);
+    let exportSensitive = $state(false);
+    let exportPasswords = $state(false);
+    let exportTokens = $state(false);
+    let exportApiKeys = $state(false);
+
+    let importFile = $state(null);
+    let importMode = $state("merge");
+    let importPrefer = $state("new");
+    let importing = $state(false);
+    let importResult = $state(null);
+
+    async function exportData() {
+        exporting = true;
+        try {
+            const params = new URLSearchParams();
+            if (exportPasswords) params.set("includePasswords", "1");
+            if (exportTokens) params.set("includeTokens", "1");
+            if (exportApiKeys) params.set("includeApiKeys", "1");
+            const url = `/api/backup${params.toString() ? "?" + params.toString() : ""}`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error("Export failed");
+            const blob = await res.blob();
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = `mediajam-backup-${new Date().toISOString().split("T")[0]}.zip`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+        } catch (e) {
+            error = e instanceof Error ? e.message : "Export failed";
+        }
+        exporting = false;
+    }
+
+    async function importData() {
+        if (!importFile) return;
+        importing = true;
+        importResult = null;
+        try {
+            const params = new URLSearchParams({ mode: importMode });
+            if (importMode === "merge") params.set("prefer", importPrefer);
+            const res = await fetch(`/api/backup/import?${params.toString()}`, {
+                method: "POST",
+                body: importFile,
+            });
+            importResult = await res.json();
+        } catch (e) {
+            importResult = {
+                success: false,
+                error: e instanceof Error ? e.message : "Import failed",
+            };
+        }
+        importing = false;
+    }
+
     function snapshotCurrentValues() {
         return {
             jellyfinUrl,
@@ -291,9 +347,15 @@
     $effect(() => {
         const es = new EventSource("/api/sync");
         let adopted = false;
+        let gotConnected = false;
         es.onmessage = (event) => {
             try {
                 const d = JSON.parse(event.data);
+                if (d.type === "connected") {
+                    // Wait for snapshot to follow
+                    gotConnected = true;
+                    return;
+                }
                 if (d.type === "snapshot" && d.running) {
                     adopted = true;
                     syncEventSource = es;
@@ -309,7 +371,8 @@
                         if (syncStatus === "syncing")
                             addSyncLog("Connection lost.", "warning");
                     };
-                } else if (!adopted) {
+                } else if (gotConnected && !adopted) {
+                    // Got connected but no running snapshot — no sync in progress
                     es.close();
                 }
             } catch {
@@ -470,13 +533,17 @@
                         fill="none"
                         stroke="currentColor"
                         stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
                     >
                         <path
-                            d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"
+                            d="M12 2l2.4 3.6L18 6l-1 4 2.5 3H15l-3 5-3-5H4.5L7 10l-1-4 3.6-.4z"
                         />
                     </svg>
                     <div>
-                        <p class="font-semibold text-sm">System Settings</p>
+                        <p class="font-semibold text-sm">
+                            This is an admin-only section
+                        </p>
                         <p class="text-xs text-base-content/60">
                             Changes here affect all users on this Mediajam
                             instance.
@@ -1097,6 +1164,10 @@
                     </div>
                 {/if}
             {:else}
+                <p class="text-xs text-base-content/50 italic mt-1">
+                    You can safely browse around — sync continues in the
+                    background.
+                </p>
                 <div class="space-y-3 mt-2">
                     <div class="flex justify-between items-center text-sm">
                         <span class="font-medium">
@@ -1212,6 +1283,267 @@
         </div>
     </div>
 
+    <!-- Data Management -->
+    <div class="card bg-base-200/50 border border-base-300">
+        <div class="card-body">
+            <h2 class="card-title text-lg">
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="h-5 w-5 text-info"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                >
+                    <path
+                        d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"
+                    /><polyline points="7 10 12 15 17 10" /><line
+                        x1="12"
+                        y1="15"
+                        x2="12"
+                        y2="3"
+                    />
+                </svg>
+                Data Management
+            </h2>
+
+            <!-- Export Section -->
+            <div class="space-y-3 mt-2">
+                <h3 class="text-sm font-medium">Export Data</h3>
+                <p class="text-xs text-base-content/50">
+                    Download a complete backup of all data including history,
+                    metadata, settings, and uploads.
+                </p>
+
+                <!-- Sensitive data opt-in -->
+                <div class="bg-base-300/30 rounded-lg p-3 space-y-2">
+                    <label class="flex items-start gap-2 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            class="checkbox checkbox-sm checkbox-warning mt-0.5"
+                            bind:checked={exportSensitive}
+                        />
+                        <span class="text-xs text-base-content/70">
+                            <span class="font-semibold text-warning"
+                                >Include encrypted data.</span
+                            > I understand including passwords/keys is risky. Include:
+                        </span>
+                    </label>
+
+                    {#if exportSensitive}
+                        <div class="ml-7 space-y-1.5">
+                            <label
+                                class="flex items-center gap-2 cursor-pointer"
+                            >
+                                <input
+                                    type="checkbox"
+                                    class="checkbox checkbox-xs"
+                                    bind:checked={exportPasswords}
+                                />
+                                <span class="text-xs"
+                                    >Password hashes <span
+                                        class="text-base-content/40"
+                                        >(all accounts)</span
+                                    ></span
+                                >
+                            </label>
+                            <label
+                                class="flex items-center gap-2 cursor-pointer"
+                            >
+                                <input
+                                    type="checkbox"
+                                    class="checkbox checkbox-xs"
+                                    bind:checked={exportTokens}
+                                />
+                                <span class="text-xs"
+                                    >Access tokens <span
+                                        class="text-base-content/40"
+                                        >(Trakt, Last.fm, Jellyfin)</span
+                                    ></span
+                                >
+                            </label>
+                            <label
+                                class="flex items-center gap-2 cursor-pointer"
+                            >
+                                <input
+                                    type="checkbox"
+                                    class="checkbox checkbox-xs"
+                                    bind:checked={exportApiKeys}
+                                />
+                                <span class="text-xs"
+                                    >API keys <span class="text-base-content/40"
+                                        >(TheTVDB, TMDB, MusicBrainz, Trakt,
+                                        Last.fm)</span
+                                    ></span
+                                >
+                            </label>
+                        </div>
+                    {/if}
+                </div>
+
+                <button
+                    class="btn btn-sm btn-info gap-2"
+                    onclick={exportData}
+                    disabled={exporting}
+                >
+                    {#if exporting}
+                        <span class="loading loading-spinner loading-xs"></span>
+                    {:else}
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="w-4 h-4"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            ><path
+                                d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"
+                            /><polyline points="7 10 12 15 17 10" /><line
+                                x1="12"
+                                y1="15"
+                                x2="12"
+                                y2="3"
+                            /></svg
+                        >
+                    {/if}
+                    Download Backup
+                </button>
+            </div>
+
+            <div class="divider my-2"></div>
+
+            <!-- Import Section -->
+            <div class="space-y-3">
+                <h3 class="text-sm font-medium">Import Data</h3>
+                <p class="text-xs text-base-content/50">
+                    Restore data from a Mediajam backup ZIP file.
+                </p>
+
+                <input
+                    type="file"
+                    accept=".zip"
+                    class="file-input file-input-sm file-input-bordered w-full max-w-xs"
+                    onchange={(e) => {
+                        importFile = e.target?.files?.[0] || null;
+                        importResult = null;
+                    }}
+                />
+
+                {#if importFile}
+                    <div class="flex flex-wrap gap-3 items-center">
+                        <div class="form-control">
+                            <label class="label py-0">
+                                <span class="label-text text-xs">Mode</span>
+                            </label>
+                            <select
+                                class="select select-sm select-bordered"
+                                bind:value={importMode}
+                            >
+                                <option value="overwrite">Overwrite all</option>
+                                <option value="merge">Merge data</option>
+                            </select>
+                        </div>
+
+                        {#if importMode === "merge"}
+                            <div class="form-control">
+                                <label class="label py-0">
+                                    <span class="label-text text-xs"
+                                        >Prefer</span
+                                    >
+                                </label>
+                                <select
+                                    class="select select-sm select-bordered"
+                                    bind:value={importPrefer}
+                                >
+                                    <option value="new">New data wins</option>
+                                    <option value="old"
+                                        >Existing data wins</option
+                                    >
+                                </select>
+                            </div>
+                        {/if}
+
+                        <button
+                            class="btn btn-sm btn-warning gap-2 self-end"
+                            onclick={importData}
+                            disabled={importing}
+                        >
+                            {#if importing}
+                                <span class="loading loading-spinner loading-xs"
+                                ></span>
+                            {/if}
+                            Import
+                        </button>
+                    </div>
+
+                    {#if importMode === "overwrite"}
+                        <div class="alert alert-warning alert-sm">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                class="h-4 w-4 shrink-0"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                ><path
+                                    d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
+                                /><line x1="12" y1="9" x2="12" y2="13" /><line
+                                    x1="12"
+                                    y1="17"
+                                    x2="12.01"
+                                    y2="17"
+                                /></svg
+                            >
+                            <span class="text-xs"
+                                >This will delete all existing data and replace
+                                it with the backup.</span
+                            >
+                        </div>
+                    {/if}
+                {/if}
+
+                {#if importResult}
+                    <div
+                        class="alert {importResult.success
+                            ? 'alert-success'
+                            : 'alert-error'} alert-sm"
+                    >
+                        <div class="w-full">
+                            {#if importResult.success}
+                                <p class="text-sm font-medium">
+                                    Import complete ({importResult.mode})
+                                </p>
+                                <div
+                                    class="text-xs mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5"
+                                >
+                                    {#each Object.entries(importResult.results?.imported || {}) as [table, count]}
+                                        <span class="text-base-content/60"
+                                            >{table}:</span
+                                        >
+                                        <span>{count}</span>
+                                    {/each}
+                                </div>
+                                {#if importResult.results?.errors?.length > 0}
+                                    <p class="text-xs text-error mt-1">
+                                        {importResult.results.errors.join(", ")}
+                                    </p>
+                                {/if}
+                            {:else}
+                                <p class="text-sm">
+                                    {importResult.error || "Import failed"}
+                                </p>
+                            {/if}
+                        </div>
+                    </div>
+                {/if}
+            </div>
+        </div>
+    </div>
+
     <!-- Save Button (always visible) -->
     <div class="flex items-center gap-3">
         <button
@@ -1219,7 +1551,7 @@
                 ? 'btn-primary btn-lg animate-pulse'
                 : 'btn-primary'}"
             onclick={saveSettings}
-            disabled={saving}
+            disabled={saving || !isDirty}
         >
             {#if saving}
                 <span class="loading loading-spinner loading-sm"></span>

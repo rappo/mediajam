@@ -2,7 +2,8 @@ import { json } from '@sveltejs/kit';
 import {
     backfillTrakt, backfillLastfm, backfillJellyfinPR, backfillLegacy,
     reprocessLastfm,
-    addBackfillListener, isBackfillRunning, stopBackfill
+    addBackfillListener, isBackfillRunning, stopBackfill,
+    getBackfillStatus
 } from '$lib/server/backfill-engine.js';
 import db from '$lib/server/db.js';
 
@@ -75,6 +76,18 @@ export async function GET() {
             };
 
             send({ type: 'connected', isRunning: isBackfillRunning() });
+
+            // Send snapshot if backfill is active
+            const status = getBackfillStatus();
+            if (status.running) {
+                send({
+                    type: 'snapshot',
+                    running: true,
+                    tier: status.currentTier,
+                    logs: status.logs,
+                    lastProgress: status.lastProgress
+                });
+            }
 
             const removeListener = addBackfillListener(send);
 

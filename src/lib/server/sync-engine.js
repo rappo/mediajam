@@ -50,6 +50,18 @@ function updateSyncState(updates) {
     db.prepare(`UPDATE sync_state SET ${fields.join(', ')} WHERE id = ?`).run(...values);
 }
 
+function formatDuration(ms) {
+    if (ms < 1000) return `${ms}ms`;
+    const totalSec = ms / 1000;
+    if (totalSec < 60) return `${totalSec.toFixed(1)}s`;
+    const min = Math.floor(totalSec / 60);
+    const sec = Math.round(totalSec % 60);
+    if (min < 60) return sec > 0 ? `${min}m ${sec}s` : `${min}m`;
+    const hr = Math.floor(min / 60);
+    const remMin = min % 60;
+    return remMin > 0 ? `${hr}h ${remMin}m` : `${hr}h`;
+}
+
 async function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -82,7 +94,7 @@ async function fetchJellyfinItems(api, libraryId, mediaType) {
         const pingStart = Date.now();
         const sysInfo = await getSystemApi(api).getPublicSystemInfo();
         const pingTime = Date.now() - pingStart;
-        broadcast({ type: 'progress', log: `  ✅ Server reachable (${pingTime}ms) — ${sysInfo.data.ServerName} v${sysInfo.data.Version}`, logType: 'info' });
+        broadcast({ type: 'progress', log: `  ✅ Server reachable (${formatDuration(pingTime)}) — ${sysInfo.data.ServerName} v${sysInfo.data.Version}`, logType: 'info' });
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         broadcast({ type: 'error', log: `  ❌ Cannot reach Jellyfin: ${msg}`, logType: 'error' });
@@ -101,7 +113,7 @@ async function fetchJellyfinItems(api, libraryId, mediaType) {
                 parentId: libraryId,
                 includeItemTypes: [itemType],
                 recursive: true,
-                fields: ['ProviderIds', 'Overview', 'ProductionYear', 'RecursiveItemCount', 'ChildCount'],
+                fields: ['ProviderIds', 'Overview', 'ProductionYear', 'DateLastMediaAdded'],
                 enableUserData: true,
                 startIndex,
                 limit: BATCH_SIZE
@@ -117,7 +129,8 @@ async function fetchJellyfinItems(api, libraryId, mediaType) {
             if (items.length > 0) {
                 broadcast({
                     type: 'progress',
-                    log: `  📦 Fetched ${allItems.length}/${totalCount} ${itemType} (${fetchTime}ms)`,
+                    log: `  📦 Fetched ${allItems.length}/${totalCount} ${itemType} (${formatDuration(fetchTime)})`,
+                    fetchTime,
                     logType: 'info'
                 });
             }
@@ -129,8 +142,8 @@ async function fetchJellyfinItems(api, libraryId, mediaType) {
         } catch (e) {
             const fetchTime = Date.now() - fetchStart;
             const msg = e instanceof Error ? e.message : String(e);
-            console.error(`[sync] Failed to fetch ${itemType} batch at ${startIndex} after ${fetchTime}ms:`, msg);
-            broadcast({ type: 'error', log: `Failed to fetch ${itemType} (batch at ${startIndex}, ${fetchTime}ms): ${msg}`, logType: 'error' });
+            console.error(`[sync] Failed to fetch ${itemType} batch at ${startIndex} after ${formatDuration(fetchTime)}:`, msg);
+            broadcast({ type: 'error', log: `Failed to fetch ${itemType} (batch at ${startIndex}, ${formatDuration(fetchTime)}): ${msg}`, logType: 'error' });
             break;
         }
     }
@@ -148,7 +161,7 @@ async function fetchJellyfinEpisodes(api, seriesId, userId) {
         const res = await getTvShowsApi(api).getEpisodes({
             seriesId,
             userId,
-            fields: ['ProviderIds', 'Overview', 'Path'],
+            fields: ['ProviderIds'],
             enableUserData: true,
             startIndex: 0,
             limit: 10000
@@ -253,12 +266,12 @@ export async function startSync(libraryId = null, force = false) {
     updateSyncState({ status: 'syncing', progress_percent: 0 });
 
     const upsertParent = db.prepare(`
-		INSERT INTO media_parents (jellyfin_id, library_id, title, media_type, tvdb_id, tmdb_id, imdb_id, musicbrainz_id, release_year, poster_url, overview, jellyfin_user_rating, total_released_children)
-		VALUES (@jellyfinId, @libraryId, @title, @mediaType, @tvdbId, @tmdbId, @imdbId, @musicbrainzId, @releaseYear, @posterUrl, @overview, @userRating, @totalReleased)
+		INSERT INTO media_parents (jellyfin_id, library_id, title, media_type, tvdb_id, tmdb_id, imdb_id, musicbrainz_id, release_year, poster_url, overview, jellyfin_user_rating, total_released_children, date_last_modified, jellyfin_child_count)
+		VALUES (@jellyfinId, @libraryId, @title, @mediaType, @tvdbId, @tmdbId, @imdbId, @musicbrainzId, @releaseYear, @posterUrl, @overview, @userRating, @totalReleased, @dateLastModified, @jellyfinChildCount)
 		ON CONFLICT(jellyfin_id) DO UPDATE SET
 			title = @title, tvdb_id = @tvdbId, tmdb_id = @tmdbId, imdb_id = @imdbId, musicbrainz_id = @musicbrainzId,
 			release_year = @releaseYear, poster_url = @posterUrl, overview = @overview, jellyfin_user_rating = @userRating,
-			total_released_children = @totalReleased
+			total_released_children = @totalReleased, date_last_modified = @dateLastModified, jellyfin_child_count = @jellyfinChildCount
 	`);
 
     const upsertChild = db.prepare(`
@@ -278,7 +291,7 @@ export async function startSync(libraryId = null, force = false) {
 			is_special = @isSpecial, is_collected = 0
 	`);
 
-    const getParentId = db.prepare('SELECT id FROM media_parents WHERE jellyfin_id = ?');
+    const getParentId = db.prepare('SELECT id, date_last_modified, jellyfin_child_count FROM media_parents WHERE jellyfin_id = ?');
     const getChildId = db.prepare('SELECT id FROM media_children WHERE jellyfin_id = ?');
     const countChildren = db.prepare('SELECT COUNT(*) as c FROM media_children WHERE parent_id = ? AND is_special = 0');
 
@@ -349,8 +362,13 @@ export async function startSync(libraryId = null, force = false) {
                 });
             }
 
+            const libStart = Date.now();
+            /** @type {number[]} */
+            const itemTimes = [];
+
             for (let i = 0; i < items.length; i++) {
                 const item = items[i];
+                const itemStart = Date.now();
                 if (!engineState.running) return;
                 await waitWhilePaused();
 
@@ -370,20 +388,30 @@ export async function startSync(libraryId = null, force = false) {
                         posterUrl: item.ImageTags?.Primary ? `${jellyfinUrl}/Items/${item.Id}/Images/Primary` : null,
                         overview: item.Overview || null,
                         userRating: item.UserData?.Rating || null,
-                        totalReleased: item.RecursiveItemCount || item.ChildCount || 0
+                        totalReleased: 0,
+                        dateLastModified: item.DateLastMediaAdded || item.DateModified || null,
+                        jellyfinChildCount: item.ChildCount || 0
                     });
 
                     libSynced++;
                     totalSynced++;
-                    const parentRow = getParentId.get(item.Id);
+                    const parentRow = /** @type {any} */ (getParentId.get(item.Id));
                     const parentId = parentRow?.id;
+                    const storedDateModified = parentRow?.date_last_modified;
+                    const storedChildCount = parentRow?.jellyfin_child_count || 0;
+                    const jellyfinDateModified = item.DateLastMediaAdded || item.DateModified || null;
+                    const jellyfinChildCount = item.ChildCount || 0;
                     let childCount = 0;
 
-                    // Sync children (skip if already have children and not force)
+                    // Smart skip: only re-fetch children if date or count changed
+                    const needsChildSync = force ||
+                        storedDateModified !== jellyfinDateModified ||
+                        storedChildCount !== jellyfinChildCount;
+
+                    // Sync children (skip if nothing changed)
                     if (lib.media_type === 'tvshows' && parentId) {
                         const existingChildren = /** @type {any} */ (countChildren.get(parentId))?.c || 0;
-                        const expectedChildren = item.RecursiveItemCount || item.ChildCount || 0;
-                        if (!force && existingChildren > 0 && existingChildren >= expectedChildren) {
+                        if (!needsChildSync && existingChildren > 0) {
                             // Fully synced — skip expensive episode fetch
                             updateParentCounts.run(parentId);
                             broadcast({
@@ -474,8 +502,7 @@ export async function startSync(libraryId = null, force = false) {
                         updateParentCounts.run(parentId);
                     } else if (lib.media_type === 'music' && parentId) {
                         const existingChildren = /** @type {any} */ (countChildren.get(parentId))?.c || 0;
-                        const expectedChildren = item.ChildCount || 0;
-                        if (!force && existingChildren > 0 && existingChildren >= expectedChildren) {
+                        if (!needsChildSync && existingChildren > 0) {
                             // Fully synced — skip expensive album/track fetch
                             updateParentCounts.run(parentId);
                             broadcast({
@@ -511,6 +538,8 @@ export async function startSync(libraryId = null, force = false) {
 
                         const albums = await fetchJellyfinAlbums(api, item.Id);
 
+                        // First pass: upsert all albums
+                        const albumIdMap = new Map(); // jellyfinId -> dbId
                         for (const album of albums) {
                             try {
                                 upsertChild.run({
@@ -526,15 +555,30 @@ export async function startSync(libraryId = null, force = false) {
                                 });
                                 childCount++;
                                 totalSynced++;
-
-                                // Sync tracks for this album
                                 const albumRow = /** @type {any} */ (getChildId.get(album.Id));
-                                if (albumRow) {
-                                    const tracks = await fetchJellyfinTracks(api, album.Id);
-                                    for (const track of tracks) {
+                                if (albumRow) albumIdMap.set(album.Id, albumRow.id);
+                            } catch (e) {
+                                totalErrors++;
+                                libErrors++;
+                            }
+                        }
+
+                        // Second pass: fetch ALL tracks in parallel
+                        const CONCURRENCY = 5;
+                        const albumEntries = [...albumIdMap.entries()];
+                        for (let b = 0; b < albumEntries.length; b += CONCURRENCY) {
+                            const batch = albumEntries.slice(b, b + CONCURRENCY);
+                            const trackResults = await Promise.allSettled(
+                                batch.map(([jellyfinId]) => fetchJellyfinTracks(api, jellyfinId))
+                            );
+                            for (let r = 0; r < batch.length; r++) {
+                                const [, dbAlbumId] = batch[r];
+                                const result = trackResults[r];
+                                if (result.status === 'fulfilled') {
+                                    for (const track of result.value) {
                                         try {
                                             upsertTrack.run({
-                                                albumId: albumRow.id,
+                                                albumId: dbAlbumId,
                                                 jellyfinId: track.Id,
                                                 title: track.Name || 'Unknown Track',
                                                 trackNumber: track.IndexNumber || 0,
@@ -545,9 +589,6 @@ export async function startSync(libraryId = null, force = false) {
                                         } catch { /* skip bad track */ }
                                     }
                                 }
-                            } catch (e) {
-                                totalErrors++;
-                                libErrors++;
                             }
                         }
 
@@ -557,7 +598,12 @@ export async function startSync(libraryId = null, force = false) {
                     }
 
                     // Per-item success broadcast
+                    const itemElapsed = Date.now() - itemStart;
+                    itemTimes.push(itemElapsed);
                     const libProgress = Math.round(((i + 1) / parentCount) * 100);
+                    const avgItemTime = itemTimes.reduce((a, b) => a + b, 0) / itemTimes.length;
+                    const remaining = parentCount - (i + 1);
+                    const eta = remaining > 0 ? formatDuration(Math.round(avgItemTime * remaining)) : '';
 
                     broadcast({
                         type: 'progress',
@@ -571,7 +617,7 @@ export async function startSync(libraryId = null, force = false) {
                         itemsSynced: libSynced,
                         totalSynced,
                         errors: totalErrors,
-                        log: `  ✓ ${item.Name}${childCount > 0 ? ` (${childCount} items)` : ''}`,
+                        log: `  ✓ ${item.Name}${childCount > 0 ? ` (${childCount} items)` : ''} [${formatDuration(itemElapsed)}]${eta ? ` — ETA: ${eta}` : ''}`,
                         logType: 'success'
                     });
 
@@ -598,6 +644,7 @@ export async function startSync(libraryId = null, force = false) {
             }
 
             // Library complete
+            const libElapsed = Date.now() - libStart;
             const libFailed = parentCount === 0 && libSynced === 0;
             broadcast({
                 type: 'library_complete',
@@ -610,8 +657,8 @@ export async function startSync(libraryId = null, force = false) {
                 log: libFailed
                     ? `❌ ${lib.name} failed — could not fetch items from Jellyfin`
                     : libErrors > 0
-                        ? `⚠️ ${lib.name} completed with errors — ${libSynced} items synced, ${libErrors} errors`
-                        : `✅ ${lib.name} complete — ${libSynced} items synced`,
+                        ? `⚠️ ${lib.name} completed with errors — ${libSynced} items synced, ${libErrors} errors (${formatDuration(libElapsed)})`
+                        : `✅ ${lib.name} complete — ${libSynced} items synced (${formatDuration(libElapsed)})`,
                 logType: libFailed ? 'error' : libErrors > 0 ? 'warning' : 'success'
             });
         }

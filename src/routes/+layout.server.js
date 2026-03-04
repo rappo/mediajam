@@ -12,7 +12,7 @@ export function load({ locals }) {
     return {
         theme: locals.theme || 'dark',
         isSetupComplete: locals.isSetupComplete || false,
-        user: user ? { id: user.id, username: user.username, isAdmin: user.isAdmin } : null,
+        user: user ? { id: user.id, username: user.username, isAdmin: user.isAdmin, avatarUrl: user.avatarUrl } : null,
         settings: {
             jellyfinUrl: settings?.jellyfin_url || '',
             theme: settings?.theme || 'dark',

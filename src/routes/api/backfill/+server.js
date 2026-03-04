@@ -28,13 +28,13 @@ export async function POST({ locals }) {
                 parentId: lib.jellyfin_id,
                 includeItemTypes: [itemType],
                 recursive: true,
-                fields: ['RecursiveItemCount', 'ChildCount'],
+                fields: ['ChildCount'],
                 startIndex: 0,
                 limit: 10000
             });
 
             for (const item of res.data.Items || []) {
-                const count = item.RecursiveItemCount || item.ChildCount || 0;
+                const count = item.ChildCount || 0;
                 if (count > 0) {
                     update.run(count, item.Id);
                     totalUpdated++;

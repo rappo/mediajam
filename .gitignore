@@ -26,3 +26,4 @@ vite.config.ts.timestamp-*
 mediajam.sqlite
 mediajam.sqlite-wal
 mediajam.sqlite-shm
+uploads/

@@ -117,102 +117,107 @@
 
     <!-- Badges + timestamp — right side -->
     <div class="flex-shrink-0 flex items-center gap-2">
-        <span
-            class="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full"
-            style="background: {sourceStyle.bg}"
-            title={entry.source}
-        >
-            {#if sourceStyle.service}
-                <ServiceIcon
-                    service={sourceStyle.service}
-                    size="w-2.5 h-2.5"
-                    class="text-white"
-                />
-            {:else if entry.source === "webhook"}
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="w-2.5 h-2.5 text-white"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="3"><circle cx="12" cy="12" r="4" /></svg
+        <div class="avatar-group -space-x-2">
+            <div class="avatar placeholder">
+                <span
+                    class="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full"
+                    style="background: {sourceStyle.bg}"
+                    title={entry.source}
                 >
-            {:else}
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="w-2.5 h-2.5 text-white"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"><circle cx="12" cy="12" r="10" /></svg
-                >
+                    {#if sourceStyle.service}
+                        <ServiceIcon
+                            service={sourceStyle.service}
+                            size="w-2.5 h-2.5"
+                            class="text-white"
+                        />
+                    {:else if entry.source === "webhook"}
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="w-2.5 h-2.5 text-white"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="3"
+                            ><circle cx="12" cy="12" r="4" /></svg
+                        >
+                    {:else}
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="w-2.5 h-2.5 text-white"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            ><circle cx="12" cy="12" r="10" /></svg
+                        >
+                    {/if}
+                </span>
+            </div>
+            {#if isExternal}
+                <div class="avatar placeholder">
+                    <span
+                        class="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full bg-warning/80"
+                        title="Not in library"
+                    >
+                        {#if entry.media_type === "artist"}
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                class="w-2.5 h-2.5 text-warning-content"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2.5"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                ><line x1="2" y1="2" x2="22" y2="22" /><path
+                                    d="M9 18V5l12-2v13"
+                                /><circle cx="6" cy="18" r="3" /><circle
+                                    cx="18"
+                                    cy="16"
+                                    r="3"
+                                /></svg
+                            >
+                        {:else if entry.media_type === "movie"}
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                class="w-2.5 h-2.5 text-warning-content"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2.5"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                ><line x1="2" y1="2" x2="22" y2="22" /><rect
+                                    x="2"
+                                    y="4"
+                                    width="20"
+                                    height="16"
+                                    rx="2"
+                                /><path d="M7 4v4l-3-2v8l3-2v4" /></svg
+                            >
+                        {:else}
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                class="w-2.5 h-2.5 text-warning-content"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2.5"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                ><line x1="2" y1="2" x2="22" y2="22" /><rect
+                                    x="2"
+                                    y="6"
+                                    width="20"
+                                    height="14"
+                                    rx="2"
+                                /><path d="M7 2l5 5 5-5" /></svg
+                            >
+                        {/if}
+                    </span>
+                </div>
             {/if}
-        </span>
-        {#if isExternal}
-            <span
-                class="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full bg-warning/80"
-                title="Not in library"
-            >
-                {#if entry.media_type === "artist"}
-                    <!-- music-off -->
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="w-2.5 h-2.5 text-warning-content"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2.5"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        ><line x1="2" y1="2" x2="22" y2="22" /><path
-                            d="M9 18V5l12-2v13"
-                        /><circle cx="6" cy="18" r="3" /><circle
-                            cx="18"
-                            cy="16"
-                            r="3"
-                        /></svg
-                    >
-                {:else if entry.media_type === "movie"}
-                    <!-- movie-off -->
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="w-2.5 h-2.5 text-warning-content"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2.5"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        ><line x1="2" y1="2" x2="22" y2="22" /><rect
-                            x="2"
-                            y="4"
-                            width="20"
-                            height="16"
-                            rx="2"
-                        /><path d="M7 4v4l-3-2v8l3-2v4" /></svg
-                    >
-                {:else}
-                    <!-- television-classic-off for TV -->
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="w-2.5 h-2.5 text-warning-content"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2.5"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        ><line x1="2" y1="2" x2="22" y2="22" /><rect
-                            x="2"
-                            y="6"
-                            width="20"
-                            height="14"
-                            rx="2"
-                        /><path d="M7 2l5 5 5-5" /></svg
-                    >
-                {/if}
-            </span>
-        {/if}
+        </div>
         <span class="text-xs text-base-content/40 w-16 text-right"
             >{timeAgo(entry.timestamp)}</span
         >

@@ -2,6 +2,7 @@
 	import "../app.css";
 	import ThemeSwitcher from "$lib/components/ThemeSwitcher.svelte";
 	import SearchBar from "$lib/components/SearchBar.svelte";
+	import SyncFooter from "$lib/components/SyncFooter.svelte";
 
 	/** @type {{ data: import('./$types').LayoutData, children: import('svelte').Snippet }} */
 	let { data, children } = $props();
@@ -184,15 +185,27 @@
 						role="button"
 						class="btn btn-ghost btn-sm btn-circle avatar placeholder"
 					>
-						<div
-							class="bg-primary text-primary-content w-8 rounded-full"
-						>
-							<span class="text-sm font-bold"
-								>{data.user?.username
-									?.charAt(0)
-									?.toUpperCase() || "?"}</span
+						{#if data.user?.avatarUrl?.startsWith("/api/")}
+							<img
+								src={data.user.avatarUrl}
+								alt=""
+								class="w-8 h-8 rounded-full object-cover"
+							/>
+						{:else}
+							<div
+								class="bg-primary text-primary-content w-8 h-8 rounded-full flex items-center justify-center"
 							>
-						</div>
+								{#if data.user?.avatarUrl?.startsWith("icon:")}
+									<span class="text-base"
+										>{data.user.avatarUrl.split(
+											":",
+										)[1]}</span
+									>
+								{:else}
+									<span class="text-base">🤩</span>
+								{/if}
+							</div>
+						{/if}
 					</div>
 					<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 					<ul
@@ -201,13 +214,23 @@
 					>
 						<li class="menu-title px-3 py-2">
 							<div class="flex items-center gap-2">
-								<div
-									class="bg-primary text-primary-content w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
-								>
-									{data.user?.username
-										?.charAt(0)
-										?.toUpperCase() || "?"}
-								</div>
+								{#if data.user?.avatarUrl?.startsWith("/api/")}
+									<img
+										src={data.user.avatarUrl}
+										alt=""
+										class="w-6 h-6 rounded-full object-cover"
+									/>
+								{:else}
+									<div
+										class="bg-primary text-primary-content w-6 h-6 rounded-full flex items-center justify-center text-xs"
+									>
+										{#if data.user?.avatarUrl?.startsWith("icon:")}
+											{data.user.avatarUrl.split(":")[1]}
+										{:else}
+											🤩
+										{/if}
+									</div>
+								{/if}
 								<span class="text-base-content font-medium"
 									>{data.user?.username || "User"}</span
 								>
@@ -363,6 +386,8 @@
 		<main class="flex-1">
 			{@render children()}
 		</main>
+
+		<SyncFooter />
 	</div>
 {:else}
 	{@render children()}

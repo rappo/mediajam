@@ -8,7 +8,17 @@ const listeners = new Set();
 /** @type {{ running: boolean, currentTier: string | null }} */
 let backfillState = { running: false, currentTier: null };
 
+/** @type {Array<{time: string, message: string, type: string}>} */
+let recentLogs = [];
+let lastProgress = /** @type {any} */ (null);
+
 function broadcast(data) {
+    // Capture logs for snapshot
+    if (data.log) {
+        recentLogs.push({ time: new Date().toLocaleTimeString(), message: data.log, type: data.logType || 'info' });
+        if (recentLogs.length > 150) recentLogs = recentLogs.slice(-150);
+    }
+    if (data.type === 'backfill_progress') lastProgress = data;
     for (const listener of listeners) {
         try {
             listener(data);
@@ -25,6 +35,15 @@ export function addBackfillListener(callback) {
 
 export function isBackfillRunning() {
     return backfillState.running;
+}
+
+export function getBackfillStatus() {
+    return {
+        running: backfillState.running,
+        currentTier: backfillState.currentTier,
+        logs: recentLogs.slice(),
+        lastProgress
+    };
 }
 
 // ─── Prepared Statements ─────────────────────────────────────────────────────
@@ -89,8 +108,15 @@ function findOrCreateExternalMedia(info) {
 }
 
 // ─── Tier 1: Trakt Import ────────────────────────────────────────────────────
+
+const upsertTraktHistory = db.prepare(`
+    INSERT OR IGNORE INTO trakt_history (user_id, trakt_id, type, watched_at, title, show_title, season_number, episode_number, year, tmdb_id, imdb_id, trakt_slug)
+    VALUES (@userId, @traktId, @type, @watchedAt, @title, @showTitle, @seasonNumber, @episodeNumber, @year, @tmdbId, @imdbId, @traktSlug)
+`);
+
 /**
- * Import playback history from Trakt.
+ * Phase 1: Fetch raw history from Trakt API and store in trakt_history table.
+ * Incremental: only fetches history newer than the latest stored record.
  * @param {number} userId - Mediajam user ID
  */
 export async function backfillTrakt(userId) {
@@ -114,9 +140,14 @@ export async function backfillTrakt(userId) {
         return { success: false, error: 'Trakt Client ID not configured' };
     }
 
-    let totalImported = 0;
+    // Incremental: only fetch history newer than what we already have
+    const latestRow = /** @type {any} */ (db.prepare(
+        'SELECT MAX(watched_at) as latest FROM trakt_history WHERE user_id = ?'
+    ).get(userId));
+    const startAt = latestRow?.latest || null;
+
+    let totalStored = 0;
     let totalSkipped = 0;
-    let totalExternal = 0;
     let page = 1;
     const limit = 100;
     let totalItems = 0;
@@ -127,7 +158,12 @@ export async function backfillTrakt(userId) {
             const pageLabel = totalPages ? `page ${page}/${totalPages}` : `page ${page}`;
             broadcast({ type: 'backfill_progress', tier: 'trakt', log: `  ⏳ Fetching Trakt history ${pageLabel}...`, logType: 'info' });
 
-            const res = await fetch(`https://api.trakt.tv/users/me/history?page=${page}&limit=${limit}`, {
+            let apiUrl = `https://api.trakt.tv/users/me/history?page=${page}&limit=${limit}`;
+            if (startAt) {
+                apiUrl += `&start_at=${encodeURIComponent(startAt)}`;
+            }
+
+            const res = await fetch(apiUrl, {
                 headers: {
                     'Content-Type': 'application/json',
                     'trakt-api-version': '2',
@@ -142,7 +178,7 @@ export async function backfillTrakt(userId) {
                 break;
             }
 
-            // Read pagination from Trakt response headers (available on every page)
+            // Read pagination from Trakt response headers
             if (page === 1) {
                 totalItems = parseInt(res.headers.get('X-Pagination-Item-Count') || '0');
                 totalPages = parseInt(res.headers.get('X-Pagination-Page-Count') || '0');
@@ -159,88 +195,45 @@ export async function backfillTrakt(userId) {
             const items = await res.json();
             if (!items || items.length === 0) break;
 
+            // Store raw data in trakt_history
             for (const item of items) {
-                const traktId = item.id;
-                const watchedAt = item.watched_at;
-                const tmdbId = item.movie?.ids?.tmdb || item.episode?.ids?.tmdb || item.show?.ids?.tmdb;
-                const imdbId = item.movie?.ids?.imdb || item.show?.ids?.imdb;
+                try {
+                    const isMovie = item.type === 'movie';
+                    const isEpisode = item.type === 'episode';
 
-                // Try to map to local media via TMDB ID
-                let mediaId = null;
-                if (tmdbId) {
-                    const match = /** @type {any} */ (db.prepare(
-                        'SELECT mc.id FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.tmdb_id = ? LIMIT 1'
-                    ).get(String(tmdbId)));
-                    if (match) mediaId = match.id;
+                    upsertTraktHistory.run({
+                        userId,
+                        traktId: item.id,
+                        type: item.type,
+                        watchedAt: item.watched_at,
+                        title: isMovie ? (item.movie?.title || 'Unknown') : (item.episode?.title || 'Unknown'),
+                        showTitle: isEpisode ? (item.show?.title || null) : null,
+                        seasonNumber: isEpisode ? (item.episode?.season || null) : null,
+                        episodeNumber: isEpisode ? (item.episode?.number || null) : null,
+                        year: isMovie ? (item.movie?.year || null) : (item.show?.year || null),
+                        tmdbId: String(item.movie?.ids?.tmdb || item.show?.ids?.tmdb || item.episode?.ids?.tmdb || ''),
+                        imdbId: item.movie?.ids?.imdb || item.show?.ids?.imdb || '',
+                        traktSlug: item.movie?.ids?.slug || item.show?.ids?.slug || ''
+                    });
+                    totalStored++;
+                } catch {
+                    totalSkipped++; // duplicate or bad data
                 }
-
-                // If no local match, create external entry
-                if (!mediaId) {
-                    try {
-                        if (item.type === 'movie' && item.movie) {
-                            mediaId = findOrCreateExternalMedia({
-                                mediaType: 'movie',
-                                parentTitle: item.movie.title || 'Unknown Movie',
-                                releaseYear: item.movie.year,
-                                tmdbId: tmdbId ? String(tmdbId) : undefined,
-                                imdbId: imdbId || undefined
-                            });
-                            totalExternal++;
-                        } else if (item.type === 'episode' && item.show && item.episode) {
-                            mediaId = findOrCreateExternalMedia({
-                                mediaType: 'show',
-                                parentTitle: item.show.title || 'Unknown Show',
-                                childTitle: item.episode.title || `Episode ${item.episode.number}`,
-                                releaseYear: item.show.year,
-                                tmdbId: item.show.ids?.tmdb ? String(item.show.ids.tmdb) : undefined,
-                                imdbId: item.show.ids?.imdb || undefined,
-                                seasonNumber: item.episode.season,
-                                itemNumber: item.episode.number
-                            });
-                            totalExternal++;
-                        }
-                    } catch (extErr) {
-                        // If external creation fails, skip silently
-                    }
-                }
-
-                if (!mediaId) {
-                    totalSkipped++;
-                    continue;
-                }
-
-                const trackTitle = item.type === 'episode'
-                    ? (item.episode?.title || null)
-                    : (item.movie?.title || null);
-
-                const result = insertHistory.run({
-                    userId,
-                    mediaId,
-                    source: 'trakt',
-                    timestamp: watchedAt,
-                    durationSeconds: null,
-                    completionPct: 100,
-                    externalEventId: `trakt:${traktId}`,
-                    trackName: trackTitle
-                });
-
-                if (result.changes > 0) totalImported++;
-                else totalSkipped++;
             }
 
             const progressPercent = totalPages > 0 ? Math.round((page / totalPages) * 100) : 0;
             broadcast({
                 type: 'backfill_progress', tier: 'trakt',
                 currentPage: page, totalPages, totalItems,
-                progressPercent, totalImported, totalSkipped,
-                log: `  📦 Page ${page}${totalPages ? '/' + totalPages : ''}: ${totalImported} imported, ${totalSkipped} skipped`,
+                progressPercent, totalImported: totalStored, totalSkipped,
+                log: `  📦 Page ${page}${totalPages ? '/' + totalPages : ''}: ${totalStored} stored, ${totalSkipped} skipped`,
                 logType: 'info'
             });
 
             if (items.length < limit) break;
             page++;
 
-            // Respect Trakt rate limits: check X-Ratelimit header, default 1.1s
+            // Respect Trakt rate limits
             const rateLimitRemaining = parseInt(res.headers.get('X-Ratelimit-Remaining') || '1');
             const delay = rateLimitRemaining <= 1 ? 2000 : 1100;
             await new Promise(r => setTimeout(r, delay));
@@ -250,12 +243,134 @@ export async function backfillTrakt(userId) {
     }
 
     broadcast({
+        type: 'backfill_progress', tier: 'trakt',
+        log: `  📥 Phase 1 complete: ${totalStored} raw records stored. Processing into playback history...`,
+        logType: 'info'
+    });
+
+    // Phase 2: Process raw trakt_history into playback_history
+    const processed = processTraktHistory(userId);
+
+    broadcast({
         type: 'backfill_complete', tier: 'trakt',
-        log: `✅ Trakt import complete: ${totalImported} imported, ${totalExternal} external, ${totalSkipped} skipped`,
-        logType: 'success', totalImported, totalSkipped, totalExternal
+        log: `✅ Trakt import complete: ${totalStored} fetched, ${processed.imported} imported, ${processed.external} external, ${processed.skipped} skipped`,
+        logType: 'success', totalImported: processed.imported, totalSkipped: processed.skipped, totalExternal: processed.external
     });
     backfillState = { running: false, currentTier: null };
-    return { success: true, imported: totalImported, skipped: totalSkipped };
+    return { success: true, stored: totalStored, ...processed };
+}
+
+/**
+ * Phase 2: Map raw trakt_history records into playback_history.
+ * Only processes records that don't already have a corresponding playback_history entry.
+ * @param {number} userId - Mediajam user ID
+ * @returns {{ imported: number, external: number, skipped: number }}
+ */
+export function processTraktHistory(userId) {
+    // Find trakt_history records not yet in playback_history
+    const unprocessed = /** @type {any[]} */ (db.prepare(`
+        SELECT th.* FROM trakt_history th
+        WHERE th.user_id = ?
+        AND NOT EXISTS (
+            SELECT 1 FROM playback_history ph
+            WHERE ph.user_id = th.user_id AND ph.external_event_id = 'trakt:' || th.trakt_id
+        )
+        ORDER BY th.watched_at ASC
+    `).all(userId));
+
+    let imported = 0;
+    let external = 0;
+    let skipped = 0;
+
+    for (const row of unprocessed) {
+        let mediaId = null;
+
+        // Try to map to local media via TMDB ID
+        if (row.tmdb_id) {
+            const match = /** @type {any} */ (db.prepare(
+                'SELECT mc.id FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.tmdb_id = ? LIMIT 1'
+            ).get(String(row.tmdb_id)));
+            if (match) mediaId = match.id;
+        }
+
+        // If no local match, create external entry
+        if (!mediaId) {
+            try {
+                if (row.type === 'movie') {
+                    mediaId = findOrCreateExternalMedia({
+                        mediaType: 'movie',
+                        parentTitle: row.title || 'Unknown Movie',
+                        releaseYear: row.year,
+                        tmdbId: row.tmdb_id || undefined,
+                        imdbId: row.imdb_id || undefined
+                    });
+                    external++;
+                } else if (row.type === 'episode' && row.show_title) {
+                    mediaId = findOrCreateExternalMedia({
+                        mediaType: 'show',
+                        parentTitle: row.show_title || 'Unknown Show',
+                        childTitle: row.title || `Episode ${row.episode_number}`,
+                        releaseYear: row.year,
+                        tmdbId: row.tmdb_id || undefined,
+                        imdbId: row.imdb_id || undefined,
+                        seasonNumber: row.season_number,
+                        itemNumber: row.episode_number
+                    });
+                    external++;
+                }
+            } catch {
+                // If external creation fails, skip
+            }
+        }
+
+        if (!mediaId) {
+            skipped++;
+            continue;
+        }
+
+        const trackTitle = row.type === 'episode' ? row.title : row.title;
+
+        const result = insertHistory.run({
+            userId,
+            mediaId,
+            source: 'trakt',
+            timestamp: row.watched_at,
+            durationSeconds: null,
+            completionPct: 100,
+            externalEventId: `trakt:${row.trakt_id}`,
+            trackName: trackTitle
+        });
+
+        if (result.changes > 0) imported++;
+        else skipped++;
+    }
+
+    return { imported, external, skipped };
+}
+
+/**
+ * Re-process all Trakt history: delete existing trakt playback_history entries
+ * and re-map from raw trakt_history data. No API calls needed.
+ * @param {number} userId - Mediajam user ID
+ */
+export function reprocessTrakt(userId) {
+    backfillState = { running: true, currentTier: 'trakt' };
+    broadcast({ type: 'backfill_start', tier: 'trakt', log: '🔄 Re-processing Trakt history from local cache...', logType: 'info' });
+
+    // Delete existing Trakt playback history
+    const deleted = db.prepare("DELETE FROM playback_history WHERE user_id = ? AND source = 'trakt'").run(userId);
+    broadcast({ type: 'backfill_progress', tier: 'trakt', log: `  🗑️ Cleared ${deleted.changes} existing Trakt history entries`, logType: 'info' });
+
+    // Re-process from raw data
+    const result = processTraktHistory(userId);
+
+    broadcast({
+        type: 'backfill_complete', tier: 'trakt',
+        log: `✅ Trakt reprocess complete: ${result.imported} imported, ${result.external} external, ${result.skipped} skipped`,
+        logType: 'success', totalImported: result.imported, totalSkipped: result.skipped, totalExternal: result.external
+    });
+    backfillState = { running: false, currentTier: null };
+    return { success: true, ...result };
 }
 
 // ─── Tier 1: Last.fm Import ──────────────────────────────────────────────────

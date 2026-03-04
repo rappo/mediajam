@@ -4,6 +4,89 @@
     /** @type {{ data: import('./$types').PageData }} */
     let { data } = $props();
 
+    // ─── Avatar State ─────────────────────────────────────────────────────────────
+    let showAvatarPicker = $state(false);
+    let avatarUrl = $state(data.user?.avatarUrl || null);
+    let avatarSaving = $state(false);
+
+    const iconOptions = [
+        "🤩",
+        "😎",
+        "🎮",
+        "🎬",
+        "🎵",
+        "🎧",
+        "📺",
+        "🍿",
+        "🎭",
+        "🌟",
+        "🔥",
+        "💜",
+        "🎯",
+        "🦊",
+        "🐱",
+        "🐶",
+        "🤖",
+        "👾",
+        "🎪",
+        "🌈",
+        "🚀",
+        "⚡",
+        "🎸",
+        "🎻",
+    ];
+
+    async function selectIcon(icon) {
+        avatarSaving = true;
+        try {
+            const res = await fetch("/api/avatar", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ avatarUrl: `icon:${icon}` }),
+            });
+            if (res.ok) {
+                avatarUrl = `icon:${icon}`;
+                showAvatarPicker = false;
+            }
+        } finally {
+            avatarSaving = false;
+        }
+    }
+
+    async function uploadAvatar(event) {
+        const file = event.target?.files?.[0];
+        if (!file) return;
+        avatarSaving = true;
+        try {
+            const formData = new FormData();
+            formData.append("avatar", file);
+            const res = await fetch("/api/avatar", {
+                method: "POST",
+                body: formData,
+            });
+            if (res.ok) {
+                const result = await res.json();
+                avatarUrl = result.avatarUrl;
+                showAvatarPicker = false;
+            }
+        } finally {
+            avatarSaving = false;
+        }
+    }
+
+    async function resetAvatar() {
+        avatarSaving = true;
+        try {
+            const res = await fetch("/api/avatar", { method: "DELETE" });
+            if (res.ok) {
+                avatarUrl = null;
+                showAvatarPicker = false;
+            }
+        } finally {
+            avatarSaving = false;
+        }
+    }
+
     // ─── Import State ────────────────────────────────────────────────────────────
     let importState = $state({
         active: false,
@@ -31,6 +114,29 @@
         if (type === "error") return "text-error";
         if (type === "warning") return "text-warning";
         return "text-base-content/70";
+    }
+
+    // ─── Auto-sync state ─────────────────────────────────────────────────────
+    let autoSyncTrakt = $state(data.connectedServices.trakt?.auto_sync === 1);
+    let autoSyncLastfm = $state(data.connectedServices.lastfm?.auto_sync === 1);
+    let autoSyncJellyfin = $state(
+        data.connectedServices.jellyfin?.auto_sync === 1,
+    );
+
+    async function toggleAutoSync(provider, enabled) {
+        try {
+            const res = await fetch("/api/auto-sync", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ provider, enabled }),
+            });
+            if (!res.ok) throw new Error("Failed to update");
+        } catch (e) {
+            // Revert on error
+            if (provider === "trakt") autoSyncTrakt = !enabled;
+            if (provider === "lastfm") autoSyncLastfm = !enabled;
+            if (provider === "jellyfin") autoSyncJellyfin = !enabled;
+        }
     }
 
     async function startImport(tier) {
@@ -185,16 +291,51 @@
 
             {#if data.user}
                 <div class="flex items-center gap-4 mt-2">
-                    <div class="avatar placeholder">
-                        <div
-                            class="bg-primary text-primary-content w-16 rounded-full"
-                        >
-                            <span class="text-2xl font-bold"
-                                >{data.user.username
-                                    .charAt(0)
-                                    .toUpperCase()}</span
-                            >
+                    <div class="relative group">
+                        <!-- Current Avatar -->
+                        <div class="avatar placeholder">
+                            {#if avatarUrl?.startsWith("/api/")}
+                                <img
+                                    src={avatarUrl}
+                                    alt=""
+                                    class="w-16 h-16 rounded-full object-cover"
+                                />
+                            {:else}
+                                <div
+                                    class="bg-primary text-primary-content w-16 h-16 rounded-full flex items-center justify-center"
+                                >
+                                    {#if avatarUrl?.startsWith("icon:")}
+                                        <span class="text-3xl"
+                                            >{avatarUrl.split(":")[1]}</span
+                                        >
+                                    {:else}
+                                        <span class="text-3xl">🤩</span>
+                                    {/if}
+                                </div>
+                            {/if}
                         </div>
+                        <!-- Edit overlay -->
+                        <button
+                            class="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                            onclick={() =>
+                                (showAvatarPicker = !showAvatarPicker)}
+                        >
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                class="w-5 h-5 text-white"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                ><path
+                                    d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"
+                                /><path
+                                    d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"
+                                /></svg
+                            >
+                        </button>
                     </div>
                     <div>
                         <p class="text-lg font-semibold">
@@ -210,6 +351,73 @@
                         </p>
                     </div>
                 </div>
+
+                <!-- Avatar Picker -->
+                {#if showAvatarPicker}
+                    <div
+                        class="mt-4 p-4 bg-base-300/50 rounded-xl border border-base-300 space-y-3"
+                    >
+                        <p class="text-sm font-medium text-base-content/70">
+                            Choose an icon
+                        </p>
+                        <div class="flex flex-wrap gap-2">
+                            {#each iconOptions as icon}
+                                <button
+                                    class="btn btn-sm btn-ghost text-xl w-10 h-10 p-0"
+                                    class:btn-active={avatarUrl ===
+                                        `icon:${icon}`}
+                                    onclick={() => selectIcon(icon)}
+                                    disabled={avatarSaving}
+                                >
+                                    {icon}
+                                </button>
+                            {/each}
+                        </div>
+                        <div class="divider text-xs text-base-content/40">
+                            or upload
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <label class="btn btn-sm btn-outline gap-2">
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    class="w-4 h-4"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    ><path
+                                        d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"
+                                    /><polyline points="17 8 12 3 7 8" /><line
+                                        x1="12"
+                                        y1="3"
+                                        x2="12"
+                                        y2="15"
+                                    /></svg
+                                >
+                                Upload Image
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    class="hidden"
+                                    onchange={uploadAvatar}
+                                />
+                            </label>
+                            {#if avatarUrl}
+                                <button
+                                    class="btn btn-sm btn-ghost text-error"
+                                    onclick={resetAvatar}
+                                    disabled={avatarSaving}
+                                    >Reset to default</button
+                                >
+                            {/if}
+                        </div>
+                        <p class="text-xs text-base-content/40">
+                            Max 2MB · JPEG, PNG, GIF, or WebP
+                        </p>
+                    </div>
+                {/if}
             {:else}
                 <p class="text-sm text-base-content/60">
                     No user account found.
@@ -292,6 +500,20 @@
                             >
                         {/if}
                     </div>
+                    {#if data.connectedServices.trakt}
+                        <label class="flex items-center gap-2 ml-auto">
+                            <input
+                                type="checkbox"
+                                class="toggle toggle-xs toggle-info"
+                                bind:checked={autoSyncTrakt}
+                                onchange={() =>
+                                    toggleAutoSync("trakt", autoSyncTrakt)}
+                            />
+                            <span class="text-xs text-base-content/50"
+                                >Auto-sync</span
+                            >
+                        </label>
+                    {/if}
                 </div>
 
                 <!-- Last.fm -->
@@ -342,6 +564,20 @@
                             >
                         {/if}
                     </div>
+                    {#if data.connectedServices.lastfm}
+                        <label class="flex items-center gap-2 ml-auto">
+                            <input
+                                type="checkbox"
+                                class="toggle toggle-xs toggle-info"
+                                bind:checked={autoSyncLastfm}
+                                onchange={() =>
+                                    toggleAutoSync("lastfm", autoSyncLastfm)}
+                            />
+                            <span class="text-xs text-base-content/50"
+                                >Auto-sync</span
+                            >
+                        </label>
+                    {/if}
                 </div>
 
                 <!-- Jellyfin (always connected) -->
@@ -384,6 +620,23 @@
                         >
                         Active
                     </span>
+                    {#if data.connectedServices.jellyfin}
+                        <label class="flex items-center gap-2">
+                            <input
+                                type="checkbox"
+                                class="toggle toggle-xs toggle-info"
+                                bind:checked={autoSyncJellyfin}
+                                onchange={() =>
+                                    toggleAutoSync(
+                                        "jellyfin",
+                                        autoSyncJellyfin,
+                                    )}
+                            />
+                            <span class="text-xs text-base-content/50"
+                                >Auto-sync</span
+                            >
+                        </label>
+                    {/if}
                 </div>
             </div>
         </div>
