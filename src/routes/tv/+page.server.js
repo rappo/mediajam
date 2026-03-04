@@ -19,8 +19,16 @@ export function load({ locals }) {
 
     const runtimeHours = Math.round((episodeStats.total_runtime || 0) / 10000000 / 3600);
 
-    // Shows sorted by episode count
+    // Shows sorted by episode count — pre-aggregate playback stats
+    const userId = locals.user?.id || 0;
     const shows = db.prepare(`
+        WITH play_stats AS (
+            SELECT mc2.parent_id, COUNT(*) as watch_count, MAX(ph.timestamp) as last_watched
+            FROM playback_history ph
+            JOIN media_children mc2 ON ph.media_id = mc2.id
+            WHERE ph.user_id = ?
+            GROUP BY mc2.parent_id
+        )
         SELECT
             mp.id,
             mp.title,
@@ -39,17 +47,27 @@ export function load({ locals }) {
             CASE WHEN mp.total_released_children > 0
                 THEN ROUND(CAST(mp.collected_children AS REAL) / mp.total_released_children * 100, 1)
                 ELSE NULL END as collection_pct,
-            COALESCE((SELECT COUNT(*) FROM playback_history ph JOIN media_children mc2 ON ph.media_id = mc2.id WHERE mc2.parent_id = mp.id AND ph.user_id = ?), 0) as watch_count,
-            (SELECT MAX(ph.timestamp) FROM playback_history ph JOIN media_children mc2 ON ph.media_id = mc2.id WHERE mc2.parent_id = mp.id AND ph.user_id = ?) as last_watched
+            COALESCE(ps.watch_count, 0) as watch_count,
+            ps.last_watched
         FROM media_parents mp
+        LEFT JOIN play_stats ps ON ps.parent_id = mp.id
         WHERE mp.media_type = 'show'
         ORDER BY mp.collected_children DESC
-    `).all(locals.user?.id || 0, locals.user?.id || 0);
+    `).all(userId);
 
-    // Top 15 shows by episode count for bar chart
-    const topShowsByEpisodes = shows.slice(0, 15).map(s => ({
+    // Top 15 shows by watch count (total plays from history)
+    const topShowsByWatchCount = /** @type {any[]} */ (db.prepare(`
+        SELECT mp.title, COUNT(ph.id) as total_plays
+        FROM media_parents mp
+        JOIN media_children mc ON mc.parent_id = mp.id
+        JOIN playback_history ph ON ph.media_id = mc.id AND ph.user_id = ?
+        WHERE mp.media_type = 'show'
+        GROUP BY mp.id
+        ORDER BY total_plays DESC
+        LIMIT 15
+    `).all(userId)).map(s => ({
         label: s.title.length > 20 ? s.title.substring(0, 18) + '…' : s.title,
-        y: s.collected_children
+        y: s.total_plays
     }));
 
     // Shows by year
@@ -90,7 +108,7 @@ export function load({ locals }) {
         },
         runtimeHours,
         shows,
-        topShowsByEpisodes,
+        topShowsByWatchCount,
         showsByYear,
         completionBuckets,
         collectionBuckets,

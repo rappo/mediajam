@@ -203,6 +203,39 @@ CREATE TABLE IF NOT EXISTS trakt_history (
 );
 CREATE INDEX IF NOT EXISTS idx_trakt_history_user ON trakt_history(user_id, watched_at DESC);
 
+-- 12. Persons (cross-media: actors, directors, musicians, writers, producers)
+CREATE TABLE IF NOT EXISTS persons (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    tmdb_person_id TEXT,
+    musicbrainz_artist_id TEXT,
+    imdb_person_id TEXT,
+    jellyfin_id TEXT,
+    photo_url TEXT,
+    bio TEXT,
+    birth_date TEXT,
+    death_date TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_persons_tmdb ON persons(tmdb_person_id) WHERE tmdb_person_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_persons_name ON persons(name);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_persons_jellyfin ON persons(jellyfin_id) WHERE jellyfin_id IS NOT NULL;
+
+-- 13. Person Credits (links persons to media)
+CREATE TABLE IF NOT EXISTS person_credits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    person_id INTEGER NOT NULL,
+    media_parent_id INTEGER NOT NULL,
+    role_type TEXT NOT NULL,
+    character_name TEXT,
+    sort_order INTEGER DEFAULT 0,
+    FOREIGN KEY(person_id) REFERENCES persons(id) ON DELETE CASCADE,
+    FOREIGN KEY(media_parent_id) REFERENCES media_parents(id) ON DELETE CASCADE,
+    UNIQUE(person_id, media_parent_id, role_type, character_name)
+);
+CREATE INDEX IF NOT EXISTS idx_credits_person ON person_credits(person_id);
+CREATE INDEX IF NOT EXISTS idx_credits_media ON person_credits(media_parent_id);
+
 -- Initialize singleton rows if not present
 INSERT OR IGNORE INTO app_settings (id) VALUES (1);
 INSERT OR IGNORE INTO sync_state (id) VALUES (1);
@@ -237,6 +270,17 @@ if (!mediaParentsCols.has('date_last_modified')) {
 }
 if (!mediaParentsCols.has('jellyfin_child_count')) {
     db.exec("ALTER TABLE media_parents ADD COLUMN jellyfin_child_count INTEGER DEFAULT 0");
+}
+if (!mediaParentsCols.has('unplayed_count')) {
+    db.exec("ALTER TABLE media_parents ADD COLUMN unplayed_count INTEGER");
+}
+
+// -- media_children schema migrations --
+const mediaChildrenCols = new Set(
+    db.prepare("PRAGMA table_info(media_children)").all().map((/** @type {any} */ c) => c.name)
+);
+if (!mediaChildrenCols.has('premiere_date')) {
+    db.exec("ALTER TABLE media_children ADD COLUMN premiere_date TEXT");
 }
 
 // -- playback_history schema migrations --

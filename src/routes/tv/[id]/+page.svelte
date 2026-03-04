@@ -1,13 +1,21 @@
 <script>
     let { data } = $props();
-
+    import { invalidateAll } from "$app/navigation";
     function statusColor(status) {
         if (status === "watched") return "var(--color-success, #22c55e)";
         if (status === "in_progress") return "var(--color-warning, #f59e0b)";
         return "var(--color-base-300, #2a2e37)";
     }
 
-    function statusClass(status, isCollected) {
+    function statusClass(status, isCollected, premiereDate) {
+        // Upcoming: not collected and premiere date is in the future (or no premiere date but not aired)
+        if (
+            !isCollected &&
+            premiereDate &&
+            new Date(premiereDate) > new Date()
+        ) {
+            return "ep-upcoming";
+        }
         let cls = "";
         if (status === "watched") cls = "ep-watched";
         else if (status === "in_progress") cls = "ep-progress";
@@ -21,6 +29,45 @@
         const mins = Math.round(ticks / 600000000);
         return `${mins}m`;
     }
+
+    let syncing = $state(false);
+    let syncStatus = $state(""); // "", "success", "failed"
+    let syncError = $state("");
+
+    async function fullSync() {
+        syncing = true;
+        syncStatus = "";
+        syncError = "";
+        try {
+            const res = await fetch("/api/sync/item", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ jellyfinId: data.show.jellyfin_id }),
+            });
+            const result = await res.json();
+            if (result.success) {
+                syncStatus = "success";
+                await invalidateAll();
+            } else {
+                syncStatus = "failed";
+                syncError = result.error || `HTTP ${res.status}`;
+                console.error("[sync]", syncError);
+            }
+            setTimeout(() => {
+                syncStatus = "";
+                syncError = "";
+            }, 5000);
+        } catch (e) {
+            console.error("[sync] Error:", e);
+            syncStatus = "failed";
+            syncError = e instanceof Error ? e.message : "Network error";
+            setTimeout(() => {
+                syncStatus = "";
+                syncError = "";
+            }, 5000);
+        }
+        syncing = false;
+    }
 </script>
 
 <svelte:head>
@@ -29,17 +76,38 @@
 
 <div class="space-y-6 max-w-6xl mx-auto">
     <!-- Back link -->
-    <a href="/tv" class="btn btn-ghost btn-sm gap-1">
-        <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-4 w-4"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"><polyline points="15 18 9 12 15 6" /></svg
+    <div class="flex items-center justify-between">
+        <a href="/tv" class="btn btn-ghost btn-sm gap-1">
+            <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"><polyline points="15 18 9 12 15 6" /></svg
+            >
+            All Shows
+        </a>
+        <button
+            class="btn btn-ghost btn-xs gap-1"
+            class:btn-success={syncStatus === "success"}
+            class:btn-error={syncStatus === "failed"}
+            disabled={syncing}
+            onclick={fullSync}
+            title="Re-fetch all data from Jellyfin for this show"
         >
-        All Shows
-    </a>
+            {#if syncing}
+                <span class="loading loading-spinner loading-xs"></span>
+                Syncing…
+            {:else if syncStatus === "success"}
+                ✅ Synced
+            {:else if syncStatus === "failed"}
+                ❌ {syncError || "Failed"}
+            {:else}
+                🔄 Full Sync
+            {/if}
+        </button>
+    </div>
 
     <!-- Header -->
     <div class="flex gap-6 items-start">
@@ -94,6 +162,11 @@
                         📭 {data.totalMissing} missing
                     </div>
                 {/if}
+                {#if data.totalUpcoming > 0}
+                    <div class="badge badge-lg badge-ghost gap-1">
+                        🔮 {data.totalUpcoming} upcoming
+                    </div>
+                {/if}
                 {#if data.show.collection_pct !== null}
                     <div class="badge badge-lg badge-secondary gap-1">
                         📦 {data.show.collection_pct}% collected
@@ -123,6 +196,10 @@
                 class="inline-block w-3 h-3 rounded-sm ep-missing-legend mr-1 ml-3 align-middle"
             ></span>
             Missing
+            <span
+                class="inline-block w-3 h-3 rounded-sm ep-upcoming-legend mr-1 ml-3 align-middle"
+            ></span>
+            Upcoming
         </p>
 
         <div class="overflow-x-auto">
@@ -145,12 +222,17 @@
                                     class="ep-cell {statusClass(
                                         ep.watch_status,
                                         ep.is_collected,
+                                        ep.premiere_date,
                                     )}"
                                     title="S{season.number}E{ep.item_number}: {ep.title}{ep.is_collected
                                         ? ep.play_count > 0
                                             ? ` (${ep.play_count}x)`
                                             : ''
-                                        : ' [MISSING]'}"
+                                        : ep.premiere_date &&
+                                            new Date(ep.premiere_date) >
+                                                new Date()
+                                          ? ` [UPCOMING ${new Date(ep.premiere_date).toLocaleDateString()}]`
+                                          : ' [MISSING]'}"
                                 >
                                     <span class="ep-num">{ep.item_number}</span>
                                 </div>
@@ -199,6 +281,11 @@
                         {#if season.missing > 0}
                             <span class="text-error">-{season.missing}</span>
                         {/if}
+                        {#if season.upcoming > 0}
+                            <span class="text-base-content/40"
+                                >+{season.upcoming} upcoming</span
+                            >
+                        {/if}
                     </span>
                 </div>
             {/each}
@@ -221,6 +308,11 @@
                         {#if season.missing > 0}
                             · <span class="text-error"
                                 >{season.missing} missing</span
+                            >
+                        {/if}
+                        {#if season.upcoming > 0}
+                            · <span class="text-base-content/40"
+                                >{season.upcoming} upcoming</span
                             >
                         {/if})
                     </span>
@@ -299,6 +391,87 @@
             </details>
         {/each}
     </div>
+
+    <!-- Cast & Crew -->
+    {#if data.cast.length > 0 || data.crew.length > 0}
+        <div class="card bg-base-200/50 border border-base-300">
+            <div class="card-body">
+                <h2 class="card-title text-lg">🎭 Cast & Crew</h2>
+
+                {#if data.cast.length > 0}
+                    <div class="flex gap-4 overflow-x-auto pb-2 -mx-2 px-2">
+                        {#each data.cast as person}
+                            <a
+                                href="/people/{person.id}"
+                                class="flex flex-col items-center gap-1 shrink-0 w-20 group"
+                            >
+                                {#if person.photo_url}
+                                    <img
+                                        src={person.photo_url +
+                                            "?maxHeight=120"}
+                                        alt={person.name}
+                                        class="w-16 h-16 rounded-full object-cover border-2 border-base-300 group-hover:border-primary transition-colors"
+                                    />
+                                {:else}
+                                    <div
+                                        class="w-16 h-16 rounded-full bg-base-300 flex items-center justify-center text-xl"
+                                    >
+                                        👤
+                                    </div>
+                                {/if}
+                                <span
+                                    class="text-xs font-medium text-center leading-tight truncate w-full group-hover:text-primary transition-colors"
+                                    >{person.name}</span
+                                >
+                                {#if person.character_name}
+                                    <span
+                                        class="text-[10px] text-base-content/40 text-center leading-tight truncate w-full"
+                                        >{person.character_name}</span
+                                    >
+                                {/if}
+                            </a>
+                        {/each}
+                    </div>
+                {/if}
+
+                {#if data.crew.length > 0}
+                    <h3 class="text-sm font-semibold text-base-content/60 mt-3">
+                        Crew
+                    </h3>
+                    <div class="flex flex-wrap gap-2 mt-1">
+                        {#each data.crew as person}
+                            <a
+                                href="/people/{person.id}"
+                                class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-base-300/50 hover:bg-base-300 transition-colors text-sm group"
+                            >
+                                {#if person.photo_url}
+                                    <img
+                                        src={person.photo_url + "?maxHeight=80"}
+                                        alt={person.name}
+                                        class="w-6 h-6 rounded-full object-cover"
+                                    />
+                                {:else}
+                                    <div
+                                        class="w-6 h-6 rounded-full bg-base-300 flex items-center justify-center text-xs"
+                                    >
+                                        👤
+                                    </div>
+                                {/if}
+                                <span
+                                    class="group-hover:text-primary transition-colors"
+                                    >{person.name}</span
+                                >
+                                <span
+                                    class="badge badge-ghost badge-xs capitalize"
+                                    >{person.role_type}</span
+                                >
+                            </a>
+                        {/each}
+                    </div>
+                {/if}
+            </div>
+        </div>
+    {/if}
 </div>
 
 <style>
@@ -366,11 +539,13 @@
     }
 
     .ep-missing {
-        border: 2px dashed rgba(239, 68, 68, 0.7);
+        background: rgba(239, 68, 68, 0.15);
+        border: 2px dashed rgba(239, 68, 68, 0.8);
     }
 
     .ep-missing .ep-num {
-        opacity: 0.4;
+        opacity: 0.5;
+        color: rgba(239, 68, 68, 0.9);
     }
 
     :global(.ep-unwatched-legend) {
@@ -378,8 +553,22 @@
     }
 
     :global(.ep-missing-legend) {
+        background: rgba(239, 68, 68, 0.15);
+        border: 2px dashed rgba(239, 68, 68, 0.8);
+    }
+
+    .ep-upcoming {
         background: rgba(100, 116, 139, 0.6);
-        border: 2px dashed rgba(239, 68, 68, 0.7);
+        border: 2px dashed oklch(var(--wa, 0.8 0.15 75));
+    }
+
+    .ep-upcoming .ep-num {
+        opacity: 0.4;
+    }
+
+    :global(.ep-upcoming-legend) {
+        background: rgba(100, 116, 139, 0.6);
+        border: 2px dashed oklch(var(--wa, 0.8 0.15 75));
     }
 
     .ep-row-missing {

@@ -52,15 +52,15 @@
     };
 
     const topShowsBarOptions = {
-        title: { text: "Top 15 Shows by Episode Count" },
+        title: { text: "Top 15 Shows by Watch Count" },
         axisX: { labelAngle: -45, labelFontSize: 11 },
-        axisY: { title: "Episodes", titleFontColor: "#a6adba" },
+        axisY: { title: "Watches", titleFontColor: "#a6adba" },
         data: [
             {
                 type: "column",
                 color: "#7c3aed",
                 cornerRadius: 4,
-                dataPoints: data.topShowsByEpisodes,
+                dataPoints: data.topShowsByWatchCount,
             },
         ],
     };
@@ -134,15 +134,14 @@
             titleFontColor: "#a6adba",
             labelFontSize: 11,
             interval: 5,
+            valueFormatString: "####",
         },
         axisY: { title: "Count", titleFontColor: "#a6adba" },
         data: [
             {
-                type: "area",
+                type: "column",
                 color: "#7c3aed",
-                fillOpacity: 0.3,
-                lineThickness: 2,
-                markerSize: 4,
+                cornerRadius: 4,
                 dataPoints: data.showsByYear.map((d) => ({
                     x: d.year,
                     y: d.count,

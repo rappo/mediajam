@@ -462,6 +462,31 @@
                             : 100}%
                     </span>
                 </div>
+
+                <!-- Unmatched Album Matching -->
+                <a
+                    href="/settings/album-matches"
+                    class="flex items-center justify-between p-3 bg-base-300/30 rounded-xl hover:bg-base-300/50 transition-colors"
+                >
+                    <div class="flex items-center gap-3">
+                        <span class="text-lg">🔗</span>
+                        <div>
+                            <p class="font-medium text-sm">Unmatched Albums</p>
+                            <p class="text-xs text-base-content/50">
+                                Match Last.fm imports to Jellyfin library albums
+                            </p>
+                        </div>
+                    </div>
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="h-4 w-4 text-base-content/30"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        ><polyline points="9 18 15 12 9 6" /></svg
+                    >
+                </a>
             </div>
         </div>
     </div>

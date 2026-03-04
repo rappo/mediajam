@@ -62,22 +62,21 @@
         ],
     };
 
-    const yearAreaOptions = {
-        title: { text: "Movies by Year (2000+)" },
+    const yearBarOptions = {
+        title: { text: "Movies by Year" },
         axisX: {
             title: "Year",
             titleFontColor: "#a6adba",
             labelFontSize: 11,
             interval: 2,
+            valueFormatString: "####",
         },
         axisY: { title: "Count", titleFontColor: "#a6adba" },
         data: [
             {
-                type: "area",
+                type: "column",
                 color: "#f472b6",
-                fillOpacity: 0.3,
-                lineThickness: 2,
-                markerSize: 4,
+                cornerRadius: 4,
                 dataPoints: data.moviesByYear.map((d) => ({
                     x: d.year,
                     y: d.count,
@@ -122,7 +121,13 @@
     }
 
     const columns = [
-        { key: "title", label: "Title", class: "font-medium" },
+        {
+            key: "title",
+            label: "Title",
+            class: "font-medium",
+            render: (row) =>
+                `<a href="/movies/${row.id}" class="link link-hover link-primary">${row.title}</a>`,
+        },
         { key: "release_year", label: "Year", class: "text-center w-20" },
         {
             key: "watch_status",
@@ -213,7 +218,7 @@
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Chart options={yearAreaOptions} height={320} />
+        <Chart options={yearBarOptions} height={320} />
         {#if rewatchedBarOptions}
             <Chart options={rewatchedBarOptions} height={320} />
         {:else}

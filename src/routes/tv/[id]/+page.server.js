@@ -10,6 +10,7 @@ export function load({ params }) {
     const show = db.prepare(`
         SELECT
             mp.id,
+            mp.jellyfin_id,
             mp.title,
             mp.release_year,
             mp.poster_url,
@@ -42,7 +43,8 @@ export function load({ params }) {
             mc.is_collected,
             mc.watch_status,
             mc.play_count,
-            mc.runtime_ticks
+            mc.runtime_ticks,
+            mc.premiere_date
         FROM media_children mc
         WHERE mc.parent_id = ?
         ORDER BY mc.season_number ASC, mc.item_number ASC
@@ -55,6 +57,7 @@ export function load({ params }) {
 
     // Group episodes by season
     const seasons = {};
+    const now = new Date().toISOString();
     for (const ep of filteredEpisodes) {
         const sn = ep.season_number ?? 0;
         if (!seasons[sn]) {
@@ -64,14 +67,23 @@ export function load({ params }) {
                 watched: 0,
                 collected: 0,
                 missing: 0,
+                upcoming: 0,
                 total: 0
             };
         }
         seasons[sn].episodes.push(ep);
         seasons[sn].total++;
         if (ep.watch_status === 'watched') seasons[sn].watched++;
-        if (ep.is_collected === 1) seasons[sn].collected++;
-        else seasons[sn].missing++;
+        if (ep.is_collected === 1) {
+            seasons[sn].collected++;
+        } else {
+            // Split uncollected into missing vs upcoming
+            if (ep.premiere_date && ep.premiere_date > now) {
+                seasons[sn].upcoming++;
+            } else {
+                seasons[sn].missing++;
+            }
+        }
     }
 
     // Sort seasons and calculate stats
@@ -82,7 +94,27 @@ export function load({ params }) {
     const maxEpisodes = Math.max(...sortedSeasons.map(s => s.episodes.length), 1);
 
     const totalCollected = filteredEpisodes.filter(e => e.is_collected === 1).length;
-    const totalMissing = filteredEpisodes.filter(e => e.is_collected === 0).length;
+    const totalMissing = filteredEpisodes.filter(e => e.is_collected === 0 && (!e.premiere_date || e.premiere_date <= now)).length;
+    const totalUpcoming = filteredEpisodes.filter(e => e.is_collected === 0 && e.premiere_date && e.premiere_date > now).length;
+
+    // Cast & Crew
+    const cast = /** @type {any[]} */ (db.prepare(`
+        SELECT p.id, p.name, p.photo_url, p.tmdb_person_id,
+               pc.role_type, pc.character_name, pc.sort_order
+        FROM person_credits pc
+        JOIN persons p ON pc.person_id = p.id
+        WHERE pc.media_parent_id = ? AND pc.role_type = 'actor'
+        ORDER BY pc.sort_order ASC
+    `).all(showId));
+
+    const crew = /** @type {any[]} */ (db.prepare(`
+        SELECT p.id, p.name, p.photo_url, p.tmdb_person_id,
+               pc.role_type, pc.character_name, pc.sort_order
+        FROM person_credits pc
+        JOIN persons p ON pc.person_id = p.id
+        WHERE pc.media_parent_id = ? AND pc.role_type != 'actor'
+        ORDER BY pc.sort_order ASC
+    `).all(showId));
 
     return {
         show,
@@ -92,7 +124,10 @@ export function load({ params }) {
         jellyfinUrl,
         totalEpisodes: totalCollected,
         totalMissing,
+        totalUpcoming,
         totalWatched: filteredEpisodes.filter(e => e.watch_status === 'watched').length,
-        totalInProgress: filteredEpisodes.filter(e => e.watch_status === 'in_progress').length
+        totalInProgress: filteredEpisodes.filter(e => e.watch_status === 'in_progress').length,
+        cast,
+        crew
     };
 }

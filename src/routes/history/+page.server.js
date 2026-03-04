@@ -55,6 +55,32 @@ export function load({ locals }) {
         WHERE user_id = ?
     `).get(userId)) : {};
 
+    // Longest streak: longest run of consecutive days with at least one play
+    let longestStreak = 0;
+    if (userId) {
+        const playDates = /** @type {any[]} */ (db.prepare(`
+            SELECT DISTINCT DATE(timestamp) as play_date
+            FROM playback_history
+            WHERE user_id = ?
+            ORDER BY play_date
+        `).all(userId));
+
+        let currentStreak = 1;
+        for (let i = 1; i < playDates.length; i++) {
+            const prev = new Date(playDates[i - 1].play_date);
+            const curr = new Date(playDates[i].play_date);
+            const diffDays = (curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24);
+            if (diffDays === 1) {
+                currentStreak++;
+            } else {
+                if (currentStreak > longestStreak) longestStreak = currentStreak;
+                currentStreak = 1;
+            }
+        }
+        if (currentStreak > longestStreak) longestStreak = currentStreak;
+        if (playDates.length === 0) longestStreak = 0;
+    }
+
     // Today's scrobbles
     const todayCount = userId ? /** @type {any} */ (db.prepare(`
         SELECT COUNT(*) as count FROM playback_history
@@ -84,7 +110,8 @@ export function load({ locals }) {
             uniqueItems: stats?.unique_items || 0,
             activeDays: stats?.active_days || 0,
             totalHours: stats?.total_seconds ? Math.round(stats.total_seconds / 3600) : 0,
-            todayCount
+            todayCount,
+            longestStreak
         }
     };
 }

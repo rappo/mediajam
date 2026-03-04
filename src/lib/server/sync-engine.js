@@ -113,7 +113,7 @@ async function fetchJellyfinItems(api, libraryId, mediaType) {
                 parentId: libraryId,
                 includeItemTypes: [itemType],
                 recursive: true,
-                fields: ['ProviderIds', 'Overview', 'ProductionYear', 'DateLastMediaAdded'],
+                fields: ['ProviderIds', 'Overview', 'ProductionYear', 'DateLastMediaAdded', 'People'],
                 enableUserData: true,
                 startIndex,
                 limit: BATCH_SIZE
@@ -266,32 +266,32 @@ export async function startSync(libraryId = null, force = false) {
     updateSyncState({ status: 'syncing', progress_percent: 0 });
 
     const upsertParent = db.prepare(`
-		INSERT INTO media_parents (jellyfin_id, library_id, title, media_type, tvdb_id, tmdb_id, imdb_id, musicbrainz_id, release_year, poster_url, overview, jellyfin_user_rating, total_released_children, date_last_modified, jellyfin_child_count)
-		VALUES (@jellyfinId, @libraryId, @title, @mediaType, @tvdbId, @tmdbId, @imdbId, @musicbrainzId, @releaseYear, @posterUrl, @overview, @userRating, @totalReleased, @dateLastModified, @jellyfinChildCount)
+		INSERT INTO media_parents (jellyfin_id, library_id, title, media_type, tvdb_id, tmdb_id, imdb_id, musicbrainz_id, release_year, poster_url, overview, jellyfin_user_rating, total_released_children, date_last_modified, jellyfin_child_count, unplayed_count)
+		VALUES (@jellyfinId, @libraryId, @title, @mediaType, @tvdbId, @tmdbId, @imdbId, @musicbrainzId, @releaseYear, @posterUrl, @overview, @userRating, @totalReleased, @dateLastModified, @jellyfinChildCount, @unplayedCount)
 		ON CONFLICT(jellyfin_id) DO UPDATE SET
 			title = @title, tvdb_id = @tvdbId, tmdb_id = @tmdbId, imdb_id = @imdbId, musicbrainz_id = @musicbrainzId,
 			release_year = @releaseYear, poster_url = @posterUrl, overview = @overview, jellyfin_user_rating = @userRating,
-			total_released_children = @totalReleased, date_last_modified = @dateLastModified, jellyfin_child_count = @jellyfinChildCount
+			total_released_children = @totalReleased, date_last_modified = @dateLastModified, jellyfin_child_count = @jellyfinChildCount, unplayed_count = @unplayedCount
 	`);
 
     const upsertChild = db.prepare(`
-		INSERT INTO media_children (parent_id, jellyfin_id, title, season_number, item_number, is_special, is_collected, watch_status, play_count, runtime_ticks)
-		VALUES (@parentId, @jellyfinId, @title, @seasonNumber, @itemNumber, @isSpecial, 1, @watchStatus, @playCount, @runtimeTicks)
+		INSERT INTO media_children (parent_id, jellyfin_id, title, season_number, item_number, is_special, is_collected, watch_status, play_count, runtime_ticks, premiere_date)
+		VALUES (@parentId, @jellyfinId, @title, @seasonNumber, @itemNumber, @isSpecial, 1, @watchStatus, @playCount, @runtimeTicks, @premiereDate)
 		ON CONFLICT(jellyfin_id) DO UPDATE SET
 			title = @title, season_number = @seasonNumber, item_number = @itemNumber,
 			is_special = @isSpecial, is_collected = 1, watch_status = @watchStatus,
-			play_count = @playCount, runtime_ticks = @runtimeTicks
+			play_count = @playCount, runtime_ticks = @runtimeTicks, premiere_date = @premiereDate
 	`);
 
     const upsertMissingChild = db.prepare(`
-		INSERT INTO media_children (parent_id, jellyfin_id, title, season_number, item_number, is_special, is_collected, watch_status, play_count, runtime_ticks)
-		VALUES (@parentId, @jellyfinId, @title, @seasonNumber, @itemNumber, @isSpecial, 0, 'unwatched', 0, 0)
+		INSERT INTO media_children (parent_id, jellyfin_id, title, season_number, item_number, is_special, is_collected, watch_status, play_count, runtime_ticks, premiere_date)
+		VALUES (@parentId, @jellyfinId, @title, @seasonNumber, @itemNumber, @isSpecial, 0, 'unwatched', 0, 0, @premiereDate)
 		ON CONFLICT(jellyfin_id) DO UPDATE SET
 			title = @title, season_number = @seasonNumber, item_number = @itemNumber,
-			is_special = @isSpecial, is_collected = 0
+			is_special = @isSpecial, is_collected = 0, premiere_date = @premiereDate
 	`);
 
-    const getParentId = db.prepare('SELECT id, date_last_modified, jellyfin_child_count FROM media_parents WHERE jellyfin_id = ?');
+    const getParentId = db.prepare('SELECT id, date_last_modified, jellyfin_child_count, unplayed_count FROM media_parents WHERE jellyfin_id = ?');
     const getChildId = db.prepare('SELECT id FROM media_children WHERE jellyfin_id = ?');
     const countChildren = db.prepare('SELECT COUNT(*) as c FROM media_children WHERE parent_id = ? AND is_special = 0');
 
@@ -313,6 +313,107 @@ export async function startSync(libraryId = null, force = false) {
     const updateTotalReleased = db.prepare(
         'UPDATE media_parents SET total_released_children = ? WHERE id = ?'
     );
+
+    // Person upsert: check-then-insert/update to avoid ON CONFLICT with partial unique indexes
+    const findPersonByTmdb = db.prepare('SELECT id FROM persons WHERE tmdb_person_id = ?');
+    const findPersonByJellyfin = db.prepare('SELECT id FROM persons WHERE jellyfin_id = ?');
+    const findPersonByName = db.prepare('SELECT id FROM persons WHERE name = ? LIMIT 1');
+    const insertPerson = db.prepare(`
+        INSERT INTO persons (name, tmdb_person_id, imdb_person_id, jellyfin_id, photo_url)
+        VALUES (@name, @tmdbPersonId, @imdbPersonId, @jellyfinId, @photoUrl)
+    `);
+    const updatePersonByTmdb = db.prepare(`
+        UPDATE persons SET name = @name,
+            imdb_person_id = COALESCE(@imdbPersonId, imdb_person_id),
+            jellyfin_id = COALESCE(@jellyfinId, jellyfin_id),
+            photo_url = COALESCE(@photoUrl, photo_url)
+        WHERE tmdb_person_id = @tmdbPersonId
+    `);
+    const updatePersonByJellyfin = db.prepare(`
+        UPDATE persons SET name = @name,
+            photo_url = COALESCE(@photoUrl, photo_url)
+        WHERE jellyfin_id = @jellyfinId
+    `);
+    const upsertCredit = db.prepare(`
+        INSERT OR IGNORE INTO person_credits (person_id, media_parent_id, role_type, character_name, sort_order)
+        VALUES (@personId, @mediaParentId, @roleType, @characterName, @sortOrder)
+    `);
+
+    /**
+     * Process People array from a Jellyfin item and upsert persons + credits.
+     * @param {any[]} people - Jellyfin People array
+     * @param {number} mediaParentId - DB media_parents.id
+     */
+    function syncPeopleForItem(people, mediaParentId) {
+        if (!people || !Array.isArray(people) || people.length === 0) return;
+
+        for (let idx = 0; idx < people.length; idx++) {
+            const person = people[idx];
+            const name = person.Name;
+            if (!name) continue;
+
+            const providerIds = person.ProviderIds || {};
+            const tmdbId = providerIds.Tmdb || null;
+            const imdbId = providerIds.Imdb || null;
+            const jellyfinPersonId = person.Id || null;
+            const photoUrl = person.PrimaryImageTag && jellyfinPersonId
+                ? `${jellyfinUrl}/Items/${jellyfinPersonId}/Images/Primary`
+                : null;
+
+            // Map Jellyfin person type to our role_type
+            const typeMap = {
+                'Actor': 'actor', 'Director': 'director', 'Writer': 'writer',
+                'Producer': 'producer', 'Composer': 'composer', 'GuestStar': 'guest',
+                'Creator': 'creator', 'Conductor': 'conductor', 'Lyricist': 'lyricist'
+            };
+            const roleType = typeMap[person.Type] || person.Type?.toLowerCase() || 'other';
+            const characterName = person.Role || null;
+
+            try {
+                let personId;
+                const params = { name, tmdbPersonId: tmdbId, imdbPersonId: imdbId, jellyfinId: jellyfinPersonId, photoUrl };
+                if (tmdbId) {
+                    const existing = /** @type {any} */ (findPersonByTmdb.get(tmdbId));
+                    if (existing) {
+                        updatePersonByTmdb.run(params);
+                        personId = existing.id;
+                    } else {
+                        insertPerson.run(params);
+                        personId = /** @type {any} */ (findPersonByTmdb.get(tmdbId))?.id;
+                    }
+                } else if (jellyfinPersonId) {
+                    // No TMDB ID — try matching by Jellyfin ID
+                    const existing = /** @type {any} */ (findPersonByJellyfin.get(jellyfinPersonId));
+                    if (existing) {
+                        updatePersonByJellyfin.run({ name, jellyfinId: jellyfinPersonId, photoUrl });
+                        personId = existing.id;
+                    } else {
+                        // Check if name already exists to avoid duplicates
+                        const byName = /** @type {any} */ (findPersonByName.get(name));
+                        if (byName) {
+                            personId = byName.id;
+                        } else {
+                            insertPerson.run(params);
+                            personId = /** @type {any} */ (findPersonByJellyfin.get(jellyfinPersonId))?.id;
+                        }
+                    }
+                }
+
+                if (personId) {
+                    upsertCredit.run({
+                        personId,
+                        mediaParentId,
+                        roleType,
+                        characterName,
+                        sortOrder: idx
+                    });
+                }
+            } catch (e) {
+                // Non-fatal: log and continue
+                console.error(`[sync] Failed to upsert person ${name}:`, e instanceof Error ? e.message : String(e));
+            }
+        }
+    }
 
     try {
         // Sync each library separately with per-library progress
@@ -390,7 +491,8 @@ export async function startSync(libraryId = null, force = false) {
                         userRating: item.UserData?.Rating || null,
                         totalReleased: 0,
                         dateLastModified: item.DateLastMediaAdded || item.DateModified || null,
-                        jellyfinChildCount: item.ChildCount || 0
+                        jellyfinChildCount: item.ChildCount || 0,
+                        unplayedCount: item.UserData?.UnplayedItemCount ?? null
                     });
 
                     libSynced++;
@@ -403,10 +505,12 @@ export async function startSync(libraryId = null, force = false) {
                     const jellyfinChildCount = item.ChildCount || 0;
                     let childCount = 0;
 
-                    // Smart skip: only re-fetch children if date or count changed
+                    // Smart skip: only re-fetch children if date, count, or watch status changed
+                    const jellyfinUnplayed = item.UserData?.UnplayedItemCount ?? -1;
                     const needsChildSync = force ||
                         storedDateModified !== jellyfinDateModified ||
-                        storedChildCount !== jellyfinChildCount;
+                        storedChildCount !== jellyfinChildCount ||
+                        jellyfinUnplayed !== (parentRow?.unplayed_count ?? -1);
 
                     // Sync children (skip if nothing changed)
                     if (lib.media_type === 'tvshows' && parentId) {
@@ -461,7 +565,8 @@ export async function startSync(libraryId = null, force = false) {
                                         isSpecial: (ep.ParentIndexNumber === 0) ? 1 : 0,
                                         watchStatus: getWatchStatus(ep.UserData),
                                         playCount: ep.UserData?.PlayCount || 0,
-                                        runtimeTicks: ep.RunTimeTicks || 0
+                                        runtimeTicks: ep.RunTimeTicks || 0,
+                                        premiereDate: ep.PremiereDate || null
                                     });
                                 } else {
                                     upsertMissingChild.run({
@@ -470,7 +575,8 @@ export async function startSync(libraryId = null, force = false) {
                                         title: ep.Name || `Episode ${ep.IndexNumber || '?'}`,
                                         seasonNumber: ep.ParentIndexNumber || 0,
                                         itemNumber: ep.IndexNumber || 0,
-                                        isSpecial: (ep.ParentIndexNumber === 0) ? 1 : 0
+                                        isSpecial: (ep.ParentIndexNumber === 0) ? 1 : 0,
+                                        premiereDate: ep.PremiereDate || null
                                     });
                                 }
                                 childCount++;
@@ -485,6 +591,10 @@ export async function startSync(libraryId = null, force = false) {
                         const missingNonSpecial = episodes.filter(ep => ep.LocationType === 'Virtual' && (ep.ParentIndexNumber || 0) !== 0).length;
                         updateTotalReleased.run(collectedNonSpecial + missingNonSpecial, parentId);
                         updateParentCounts.run(parentId);
+                        // Sync cast & crew for TV shows
+                        try { syncPeopleForItem(item.People, parentId); } catch (pe) {
+                            console.error(`[sync] People sync failed for ${item.Name}:`, pe instanceof Error ? pe.message : String(pe));
+                        }
                     } else if (lib.media_type === 'movies' && parentId) {
                         upsertChild.run({
                             parentId,
@@ -497,9 +607,27 @@ export async function startSync(libraryId = null, force = false) {
                             playCount: item.UserData?.PlayCount || 0,
                             runtimeTicks: item.RunTimeTicks || 0
                         });
+
+                        // Upgrade watch status from playback history (Trakt/Last.fm may know about watches Jellyfin doesn't)
+                        const movieChildRow = /** @type {any} */ (getChildId.get(item.Id + '_child'));
+                        if (movieChildRow) {
+                            const histCount = /** @type {any} */ (db.prepare(
+                                'SELECT COUNT(*) as c FROM playback_history WHERE media_id = ?'
+                            ).get(movieChildRow.id))?.c || 0;
+                            if (histCount > 0) {
+                                db.prepare(
+                                    "UPDATE media_children SET watch_status = 'watched', play_count = MAX(play_count, ?) WHERE id = ?"
+                                ).run(histCount, movieChildRow.id);
+                            }
+                        }
+
                         childCount++;
                         totalSynced++;
                         updateParentCounts.run(parentId);
+                        // Sync cast & crew
+                        try { syncPeopleForItem(item.People, parentId); } catch (pe) {
+                            console.error(`[sync] People sync failed for ${item.Name}:`, pe instanceof Error ? pe.message : String(pe));
+                        }
                     } else if (lib.media_type === 'music' && parentId) {
                         const existingChildren = /** @type {any} */ (countChildren.get(parentId))?.c || 0;
                         if (!needsChildSync && existingChildren > 0) {
@@ -718,6 +846,8 @@ export function addListener(callback) {
     return () => listeners.delete(callback);
 }
 
+export { broadcast };
+
 export function isRunning() {
     return engineState.running;
 }
@@ -728,6 +858,9 @@ export function resetSync() {
     engineState.abortController = null;
     updateSyncState({ status: 'idle', progress_percent: 0 });
 }
+
+// Re-export from standalone module for backward compatibility
+export { reconcileExternalMedia, deduplicateParents, deduplicateChildren } from '$lib/server/reconcile.js';
 
 export function getStatus() {
     return {

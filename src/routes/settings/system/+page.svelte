@@ -283,6 +283,49 @@
     /** @type {HTMLDivElement | null} */
     let consoleEl = $state(null);
 
+    // ─── People Sync ─────────────────────────────────────────────────────────────
+    let syncingPeople = $state(false);
+    let reconciling = $state(false);
+    let reconcileResult = $state(null);
+    let peopleSyncResult = $state(null);
+
+    // Detect if people sync is already running on mount
+    $effect(() => {
+        fetch("/api/people/sync")
+            .then((r) => r.json())
+            .then((status) => {
+                if (status.running) {
+                    syncingPeople = true;
+                    addSyncLog(
+                        "People sync is running (reconnected)...",
+                        "info",
+                    );
+                    connectSSE();
+                    const pollInterval = setInterval(async () => {
+                        try {
+                            const res = await fetch("/api/people/sync");
+                            const s = await res.json();
+                            if (!s.running) {
+                                clearInterval(pollInterval);
+                                peopleSyncResult = s;
+                                syncingPeople = false;
+                                addSyncLog(
+                                    `People sync complete: ${s.totalPersons} people, ${s.totalCredits} credits`,
+                                    "info",
+                                );
+                            }
+                        } catch {
+                            clearInterval(pollInterval);
+                            syncingPeople = false;
+                        }
+                    }, 2000);
+                }
+            })
+            .catch(() => {});
+        // Run only once on mount
+        return undefined;
+    });
+
     $effect(() => {
         if (syncLogs.length && consoleEl) {
             consoleEl.scrollTop = consoleEl.scrollHeight;
@@ -442,6 +485,69 @@
         if (type === "error") return "text-error";
         if (type === "warning") return "text-warning";
         return "text-base-content/70";
+    }
+
+    async function syncPeople() {
+        syncingPeople = true;
+        peopleSyncResult = null;
+        addSyncLog("Starting people sync...", "info");
+        try {
+            const res = await fetch("/api/people/sync", { method: "POST" });
+            const result = await res.json();
+            if (!result.success) {
+                addSyncLog(
+                    result.error || "Failed to start people sync",
+                    "error",
+                );
+                syncingPeople = false;
+                return;
+            }
+            addSyncLog(
+                "People sync started (server-side). Progress will appear below.",
+                "info",
+            );
+            // Connect SSE to pick up broadcast messages
+            connectSSE();
+            // Poll for completion
+            const pollInterval = setInterval(async () => {
+                try {
+                    const statusRes = await fetch("/api/people/sync");
+                    const status = await statusRes.json();
+                    if (!status.running) {
+                        clearInterval(pollInterval);
+                        peopleSyncResult = status;
+                        syncingPeople = false;
+                        addSyncLog(
+                            `People sync complete: ${status.totalPersons} people, ${status.totalCredits} credits`,
+                            "info",
+                        );
+                    }
+                } catch {
+                    clearInterval(pollInterval);
+                    syncingPeople = false;
+                }
+            }, 2000);
+        } catch {
+            peopleSyncResult = {
+                totalPersons: 0,
+                totalCredits: 0,
+                error: true,
+            };
+            addSyncLog("Failed to start people sync", "error");
+            syncingPeople = false;
+        }
+    }
+
+    async function runReconcile() {
+        reconciling = true;
+        reconcileResult = null;
+        try {
+            const res = await fetch("/api/sync/reconcile", { method: "POST" });
+            reconcileResult = /** @type {any} */ (await res.json());
+        } catch {
+            reconcileResult = /** @type {any} */ ({ error: "Failed" });
+        }
+        reconciling = false;
     }
 
     function copySyncLog() {
@@ -1161,7 +1267,50 @@
                                 Sync {lib.name}
                             </button>
                         {/each}
+                        <button
+                            class="btn btn-outline btn-xs"
+                            disabled={syncingPeople}
+                            onclick={syncPeople}
+                        >
+                            {#if syncingPeople}
+                                <span class="loading loading-spinner loading-xs"
+                                ></span>
+                            {:else}
+                                👥
+                            {/if}
+                            Sync People
+                        </button>
+                        <button
+                            class="btn btn-outline btn-xs"
+                            disabled={reconciling}
+                            onclick={runReconcile}
+                            title="Merge orphaned Last.fm/Trakt media entries into Jellyfin-synced items"
+                        >
+                            {#if reconciling}
+                                <span class="loading loading-spinner loading-xs"
+                                ></span>
+                            {:else}
+                                🔗
+                            {/if}
+                            Reconcile
+                        </button>
                     </div>
+                    {#if peopleSyncResult}
+                        <p class="text-xs text-base-content/50 mt-1">
+                            People sync: {peopleSyncResult.totalPersons} people,
+                            {peopleSyncResult.totalCredits} credits
+                        </p>
+                    {/if}
+                    {#if reconcileResult}
+                        <p class="text-xs text-base-content/50 mt-1">
+                            {#if reconcileResult.error}
+                                ❌ {reconcileResult.error}
+                            {:else}
+                                ✅ Reconciled: {reconcileResult.merged} plays migrated,
+                                {reconcileResult.deleted} orphans removed
+                            {/if}
+                        </p>
+                    {/if}
                 {/if}
             {:else}
                 <p class="text-xs text-base-content/50 italic mt-1">

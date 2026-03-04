@@ -1,4 +1,5 @@
 <script>
+    import { invalidateAll } from "$app/navigation";
     let { data } = $props();
     let expandedAlbum = $state(null);
     let albumTracks = $state({});
@@ -31,6 +32,45 @@
         const m = mins % 60;
         return m > 0 ? `${h}h ${m}m` : `${h}h`;
     }
+
+    let syncing = $state(false);
+    let syncStatus = $state("");
+    let syncError = $state("");
+
+    async function fullSync() {
+        syncing = true;
+        syncStatus = "";
+        syncError = "";
+        try {
+            const res = await fetch("/api/sync/item", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ jellyfinId: data.artist.jellyfin_id }),
+            });
+            const result = await res.json();
+            if (result.success) {
+                syncStatus = "success";
+                await invalidateAll();
+            } else {
+                syncStatus = "failed";
+                syncError = result.error || `HTTP ${res.status}`;
+                console.error("[sync]", syncError);
+            }
+            setTimeout(() => {
+                syncStatus = "";
+                syncError = "";
+            }, 5000);
+        } catch (e) {
+            console.error("[sync] Error:", e);
+            syncStatus = "failed";
+            syncError = e instanceof Error ? e.message : "Network error";
+            setTimeout(() => {
+                syncStatus = "";
+                syncError = "";
+            }, 5000);
+        }
+        syncing = false;
+    }
 </script>
 
 <svelte:head>
@@ -39,17 +79,38 @@
 
 <div class="space-y-6 max-w-6xl mx-auto">
     <!-- Back link -->
-    <a href="/music" class="btn btn-ghost btn-sm gap-1">
-        <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-4 w-4"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"><polyline points="15 18 9 12 15 6" /></svg
+    <div class="flex items-center justify-between">
+        <a href="/music" class="btn btn-ghost btn-sm gap-1">
+            <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"><polyline points="15 18 9 12 15 6" /></svg
+            >
+            All Artists
+        </a>
+        <button
+            class="btn btn-ghost btn-xs gap-1"
+            class:btn-success={syncStatus === "success"}
+            class:btn-error={syncStatus === "failed"}
+            disabled={syncing}
+            onclick={fullSync}
+            title="Re-fetch all data from Jellyfin for this artist"
         >
-        All Artists
-    </a>
+            {#if syncing}
+                <span class="loading loading-spinner loading-xs"></span>
+                Syncing…
+            {:else if syncStatus === "success"}
+                ✅ Synced
+            {:else if syncStatus === "failed"}
+                ❌ {syncError || "Failed"}
+            {:else}
+                🔄 Full Sync
+            {/if}
+        </button>
+    </div>
 
     <!-- Header -->
     <div class="flex gap-6 items-start">

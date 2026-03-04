@@ -158,10 +158,27 @@ export async function load({ params, locals, fetch }) {
         artUrl: a.jellyfin_id ? `${jellyfinUrl}/Items/${a.jellyfin_id}/Images/Primary?maxHeight=120` : null
     }));
 
+    // Determine if this is an unmatched album (no Jellyfin ID, imported from external source)
+    const isUnmatched = !album.jellyfin_id;
+
+    // If no local tracks but we have play history, build virtual tracks from history
+    let unmatchedTracks = [];
+    if (tracks.length === 0 && trackHistory.length > 0) {
+        unmatchedTracks = trackHistory.map((th, i) => ({
+            Name: th.track_name || 'Unknown Track',
+            IndexNumber: i + 1,
+            ParentIndexNumber: 1,
+            RunTimeTicks: 0,
+            Id: null,
+            musicbrainz_id: null
+        }));
+    }
+
     return {
         artist: { ...artist, imageUrl: artistImageUrl },
         album: { ...album, artUrl: albumArtUrl },
         tracks,
+        unmatchedTracks,
         trackStatsMap,
         albumStats: {
             totalPlays: albumStats?.total_plays || 0,
@@ -170,6 +187,7 @@ export async function load({ params, locals, fetch }) {
         siblingAlbums: siblingsWithArt,
         jellyfinUrl,
         runtimeMinutes: album.runtime_ticks ? Math.round(album.runtime_ticks / 600000000) : 0,
-        syncCheckEnabled
+        syncCheckEnabled,
+        isUnmatched
     };
 }

@@ -451,191 +451,404 @@
                 history.
             </p>
 
-            <div class="space-y-4 mt-3">
+            <div class="space-y-3 mt-3">
                 <!-- Trakt -->
-                <div
-                    class="flex items-center justify-between p-4 bg-base-300/30 rounded-xl"
-                >
-                    <div class="flex items-center gap-3">
-                        <div
-                            class="w-10 h-10 rounded-lg bg-[#ED1C24]/10 flex items-center justify-center"
-                        >
-                            <ServiceIcon
-                                service="trakt"
-                                size="w-5 h-5"
-                                class="text-[#ED1C24]"
-                            />
+                <div class="p-4 bg-base-300/30 rounded-xl space-y-3">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div
+                                class="w-10 h-10 rounded-lg bg-[#ED1C24]/10 flex items-center justify-center"
+                            >
+                                <ServiceIcon
+                                    service="trakt"
+                                    size="w-5 h-5"
+                                    class="text-[#ED1C24]"
+                                />
+                            </div>
+                            <div>
+                                <p class="font-medium">Trakt</p>
+                                {#if data.connectedServices.trakt}
+                                    <p class="text-xs text-success">
+                                        Connected · {data.connectedServices
+                                            .trakt.provider_uid}
+                                    </p>
+                                {:else}
+                                    <p class="text-xs text-base-content/50">
+                                        Track movies & TV shows
+                                    </p>
+                                {/if}
+                            </div>
                         </div>
-                        <div>
-                            <p class="font-medium">Trakt</p>
-                            {#if data.connectedServices.trakt}
-                                <p class="text-xs text-success">
-                                    Connected · {data.connectedServices.trakt
-                                        .provider_uid}
-                                </p>
+                        {#if !data.connectedServices.trakt}
+                            {#if data.appCredentials.hasTraktCreds}
+                                <a
+                                    href="/api/spokes/trakt"
+                                    class="btn btn-sm btn-primary">Connect</a
+                                >
                             {:else}
-                                <p class="text-xs text-base-content/50">
-                                    Track movies & TV shows
-                                </p>
+                                <span class="badge badge-ghost badge-sm"
+                                    >Configure in System Settings</span
+                                >
                             {/if}
-                        </div>
+                        {/if}
                     </div>
-                    <div class="flex items-center gap-2">
-                        {#if data.connectedServices.trakt}
+
+                    {#if data.connectedServices.trakt}
+                        <!-- Import Stats -->
+                        {#if data.importStats?.trakt}
+                            <div
+                                class="flex flex-wrap gap-x-6 gap-y-1 text-xs text-base-content/60 pl-13"
+                            >
+                                <span
+                                    ><strong class="text-base-content/80"
+                                        >{data.importStats.trakt.playCount.toLocaleString()}</strong
+                                    > plays imported</span
+                                >
+                                <span
+                                    >Earliest: <strong
+                                        class="text-base-content/80"
+                                        >{new Date(
+                                            data.importStats.trakt.earliest,
+                                        ).toLocaleDateString()}</strong
+                                    ></span
+                                >
+                                <span
+                                    >Latest: <strong
+                                        class="text-base-content/80"
+                                        >{new Date(
+                                            data.importStats.trakt.latest,
+                                        ).toLocaleDateString()}</strong
+                                    ></span
+                                >
+                            </div>
+                        {:else}
+                            <p class="text-xs text-warning/80 pl-13">
+                                No history imported yet. Click "Import History"
+                                to backfill your Trakt watch history.
+                            </p>
+                        {/if}
+
+                        <!-- Actions Row -->
+                        <div class="flex items-center gap-3 pl-13">
                             <button
-                                class="btn btn-sm btn-outline"
+                                class="btn btn-sm btn-outline gap-1.5"
                                 disabled={importState.active}
                                 onclick={() => startImport("trakt")}
                             >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    class="w-3.5 h-3.5"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    ><path
+                                        d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"
+                                    /><polyline
+                                        points="7 10 12 15 17 10"
+                                    /><line
+                                        x1="12"
+                                        y1="15"
+                                        x2="12"
+                                        y2="3"
+                                    /></svg
+                                >
                                 Import History
                             </button>
-                        {:else if data.appCredentials.hasTraktCreds}
-                            <a
-                                href="/api/spokes/trakt"
-                                class="btn btn-sm btn-primary">Connect</a
+
+                            <div class="divider divider-horizontal mx-0"></div>
+
+                            <label
+                                class="flex items-center gap-2 cursor-pointer group"
                             >
-                        {:else}
-                            <span class="badge badge-ghost badge-sm"
-                                >Configure in System Settings</span
-                            >
-                        {/if}
-                    </div>
-                    {#if data.connectedServices.trakt}
-                        <label class="flex items-center gap-2 ml-auto">
-                            <input
-                                type="checkbox"
-                                class="toggle toggle-xs toggle-info"
-                                bind:checked={autoSyncTrakt}
-                                onchange={() =>
-                                    toggleAutoSync("trakt", autoSyncTrakt)}
-                            />
-                            <span class="text-xs text-base-content/50"
-                                >Auto-sync</span
-                            >
-                        </label>
+                                <input
+                                    type="checkbox"
+                                    class="toggle toggle-xs toggle-info"
+                                    bind:checked={autoSyncTrakt}
+                                    onchange={() =>
+                                        toggleAutoSync("trakt", autoSyncTrakt)}
+                                />
+                                <span class="text-xs text-base-content/50"
+                                    >Auto-sync</span
+                                >
+                                <div
+                                    class="tooltip tooltip-right"
+                                    data-tip="When enabled, MediaJam automatically checks Trakt for new watch history every few hours and imports any new plays."
+                                >
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        class="w-3.5 h-3.5 text-base-content/30 group-hover:text-info transition-colors"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        ><circle cx="12" cy="12" r="10" /><path
+                                            d="M12 16v-4"
+                                        /><path d="M12 8h.01" /></svg
+                                    >
+                                </div>
+                            </label>
+
+                            {#if data.connectedServices.trakt.last_auto_sync_at}
+                                <span class="text-xs text-base-content/40"
+                                    >Last auto-sync: {new Date(
+                                        data.connectedServices.trakt.last_auto_sync_at,
+                                    ).toLocaleString()}</span
+                                >
+                            {/if}
+                        </div>
                     {/if}
                 </div>
 
                 <!-- Last.fm -->
-                <div
-                    class="flex items-center justify-between p-4 bg-base-300/30 rounded-xl"
-                >
-                    <div class="flex items-center gap-3">
-                        <div
-                            class="w-10 h-10 rounded-lg bg-[#D51007]/10 flex items-center justify-center"
-                        >
-                            <ServiceIcon
-                                service="lastfm"
-                                size="w-5 h-5"
-                                class="text-[#D51007]"
-                            />
+                <div class="p-4 bg-base-300/30 rounded-xl space-y-3">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div
+                                class="w-10 h-10 rounded-lg bg-[#D51007]/10 flex items-center justify-center"
+                            >
+                                <ServiceIcon
+                                    service="lastfm"
+                                    size="w-5 h-5"
+                                    class="text-[#D51007]"
+                                />
+                            </div>
+                            <div>
+                                <p class="font-medium">Last.fm</p>
+                                {#if data.connectedServices.lastfm}
+                                    <p class="text-xs text-success">
+                                        Connected · {data.connectedServices
+                                            .lastfm.provider_uid}
+                                    </p>
+                                {:else}
+                                    <p class="text-xs text-base-content/50">
+                                        Track music listening
+                                    </p>
+                                {/if}
+                            </div>
                         </div>
-                        <div>
-                            <p class="font-medium">Last.fm</p>
-                            {#if data.connectedServices.lastfm}
-                                <p class="text-xs text-success">
-                                    Connected · {data.connectedServices.lastfm
-                                        .provider_uid}
-                                </p>
+                        {#if !data.connectedServices.lastfm}
+                            {#if data.appCredentials.hasLastfmCreds}
+                                <a
+                                    href="/api/spokes/lastfm"
+                                    class="btn btn-sm btn-primary">Connect</a
+                                >
                             {:else}
-                                <p class="text-xs text-base-content/50">
-                                    Track music listening
-                                </p>
+                                <span class="badge badge-ghost badge-sm"
+                                    >Configure in System Settings</span
+                                >
                             {/if}
-                        </div>
+                        {/if}
                     </div>
-                    <div class="flex items-center gap-2">
-                        {#if data.connectedServices.lastfm}
+
+                    {#if data.connectedServices.lastfm}
+                        <!-- Import Stats -->
+                        {#if data.importStats?.lastfm}
+                            <div
+                                class="flex flex-wrap gap-x-6 gap-y-1 text-xs text-base-content/60 pl-13"
+                            >
+                                <span
+                                    ><strong class="text-base-content/80"
+                                        >{data.importStats.lastfm.playCount.toLocaleString()}</strong
+                                    > scrobbles imported</span
+                                >
+                                <span
+                                    >Earliest: <strong
+                                        class="text-base-content/80"
+                                        >{new Date(
+                                            data.importStats.lastfm.earliest,
+                                        ).toLocaleDateString()}</strong
+                                    ></span
+                                >
+                                <span
+                                    >Latest: <strong
+                                        class="text-base-content/80"
+                                        >{new Date(
+                                            data.importStats.lastfm.latest,
+                                        ).toLocaleDateString()}</strong
+                                    ></span
+                                >
+                            </div>
+                        {:else}
+                            <p class="text-xs text-warning/80 pl-13">
+                                No scrobbles imported yet. Click "Import
+                                History" to backfill your Last.fm listening
+                                history.
+                            </p>
+                        {/if}
+
+                        <!-- Actions Row -->
+                        <div class="flex items-center gap-3 pl-13">
                             <button
-                                class="btn btn-sm btn-outline"
+                                class="btn btn-sm btn-outline gap-1.5"
                                 disabled={importState.active}
                                 onclick={() => startImport("lastfm")}
                             >
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    class="w-3.5 h-3.5"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    ><path
+                                        d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"
+                                    /><polyline
+                                        points="7 10 12 15 17 10"
+                                    /><line
+                                        x1="12"
+                                        y1="15"
+                                        x2="12"
+                                        y2="3"
+                                    /></svg
+                                >
                                 Import History
                             </button>
-                        {:else if data.appCredentials.hasLastfmCreds}
-                            <a
-                                href="/api/spokes/lastfm"
-                                class="btn btn-sm btn-primary">Connect</a
+
+                            <div class="divider divider-horizontal mx-0"></div>
+
+                            <label
+                                class="flex items-center gap-2 cursor-pointer group"
                             >
-                        {:else}
-                            <span class="badge badge-ghost badge-sm"
-                                >Configure in System Settings</span
-                            >
-                        {/if}
-                    </div>
-                    {#if data.connectedServices.lastfm}
-                        <label class="flex items-center gap-2 ml-auto">
-                            <input
-                                type="checkbox"
-                                class="toggle toggle-xs toggle-info"
-                                bind:checked={autoSyncLastfm}
-                                onchange={() =>
-                                    toggleAutoSync("lastfm", autoSyncLastfm)}
-                            />
-                            <span class="text-xs text-base-content/50"
-                                >Auto-sync</span
-                            >
-                        </label>
+                                <input
+                                    type="checkbox"
+                                    class="toggle toggle-xs toggle-info"
+                                    bind:checked={autoSyncLastfm}
+                                    onchange={() =>
+                                        toggleAutoSync(
+                                            "lastfm",
+                                            autoSyncLastfm,
+                                        )}
+                                />
+                                <span class="text-xs text-base-content/50"
+                                    >Auto-sync</span
+                                >
+                                <div
+                                    class="tooltip tooltip-right"
+                                    data-tip="When enabled, MediaJam automatically checks Last.fm for new scrobbles every few hours and imports any new plays."
+                                >
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        class="w-3.5 h-3.5 text-base-content/30 group-hover:text-info transition-colors"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        ><circle cx="12" cy="12" r="10" /><path
+                                            d="M12 16v-4"
+                                        /><path d="M12 8h.01" /></svg
+                                    >
+                                </div>
+                            </label>
+
+                            {#if data.connectedServices.lastfm.last_auto_sync_at}
+                                <span class="text-xs text-base-content/40"
+                                    >Last auto-sync: {new Date(
+                                        data.connectedServices.lastfm.last_auto_sync_at,
+                                    ).toLocaleString()}</span
+                                >
+                            {/if}
+                        </div>
                     {/if}
                 </div>
 
-                <!-- Jellyfin (always connected) -->
-                <div
-                    class="flex items-center justify-between p-4 bg-base-300/30 rounded-xl"
-                >
-                    <div class="flex items-center gap-3">
-                        <div
-                            class="w-10 h-10 rounded-lg bg-[#00A4DC]/10 flex items-center justify-center"
-                        >
-                            <ServiceIcon
-                                service="jellyfin"
-                                size="w-5 h-5"
-                                class="text-[#00A4DC]"
-                            />
-                        </div>
-                        <div>
-                            <p class="font-medium">Jellyfin</p>
-                            {#if data.connectedServices.jellyfin}
-                                <p class="text-xs text-success">
-                                    Connected · {data.connectedServices.jellyfin
-                                        .provider_uid}
-                                </p>
-                            {:else}
-                                <p class="text-xs text-success">
-                                    Connected via setup
-                                </p>
-                            {/if}
-                        </div>
-                    </div>
-                    <span class="badge badge-success badge-sm gap-1">
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            class="h-3 w-3"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            ><polyline points="20 6 9 17 4 12" /></svg
-                        >
-                        Active
-                    </span>
-                    {#if data.connectedServices.jellyfin}
-                        <label class="flex items-center gap-2">
-                            <input
-                                type="checkbox"
-                                class="toggle toggle-xs toggle-info"
-                                bind:checked={autoSyncJellyfin}
-                                onchange={() =>
-                                    toggleAutoSync(
-                                        "jellyfin",
-                                        autoSyncJellyfin,
-                                    )}
-                            />
-                            <span class="text-xs text-base-content/50"
-                                >Auto-sync</span
+                <!-- Jellyfin -->
+                <div class="p-4 bg-base-300/30 rounded-xl space-y-3">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div
+                                class="w-10 h-10 rounded-lg bg-[#00A4DC]/10 flex items-center justify-center"
                             >
-                        </label>
+                                <ServiceIcon
+                                    service="jellyfin"
+                                    size="w-5 h-5"
+                                    class="text-[#00A4DC]"
+                                />
+                            </div>
+                            <div>
+                                <p class="font-medium">Jellyfin</p>
+                                {#if data.connectedServices.jellyfin}
+                                    <p class="text-xs text-success">
+                                        Connected · {data.connectedServices
+                                            .jellyfin.provider_uid}
+                                    </p>
+                                {:else}
+                                    <p class="text-xs text-success">
+                                        Connected via setup
+                                    </p>
+                                {/if}
+                            </div>
+                        </div>
+                        <span class="badge badge-success badge-sm gap-1">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                class="h-3 w-3"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                ><polyline points="20 6 9 17 4 12" /></svg
+                            >
+                            Active
+                        </span>
+                    </div>
+
+                    {#if data.connectedServices.jellyfin}
+                        <div class="flex items-center gap-3 pl-13">
+                            <p class="text-xs text-base-content/50">
+                                Jellyfin is your primary media server. Library
+                                sync is managed in <a
+                                    href="/settings/system"
+                                    class="link link-info">System Settings</a
+                                >.
+                            </p>
+
+                            <div class="divider divider-horizontal mx-0"></div>
+
+                            <label
+                                class="flex items-center gap-2 cursor-pointer group"
+                            >
+                                <input
+                                    type="checkbox"
+                                    class="toggle toggle-xs toggle-info"
+                                    bind:checked={autoSyncJellyfin}
+                                    onchange={() =>
+                                        toggleAutoSync(
+                                            "jellyfin",
+                                            autoSyncJellyfin,
+                                        )}
+                                />
+                                <span class="text-xs text-base-content/50"
+                                    >Auto-sync</span
+                                >
+                                <div
+                                    class="tooltip tooltip-right"
+                                    data-tip="When enabled, MediaJam automatically runs a Jellyfin library sync on a schedule to keep your collection and watch status up-to-date."
+                                >
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        class="w-3.5 h-3.5 text-base-content/30 group-hover:text-info transition-colors"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        ><circle cx="12" cy="12" r="10" /><path
+                                            d="M12 16v-4"
+                                        /><path d="M12 8h.01" /></svg
+                                    >
+                                </div>
+                            </label>
+                        </div>
                     {/if}
                 </div>
             </div>

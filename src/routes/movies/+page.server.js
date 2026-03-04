@@ -2,24 +2,31 @@ import db from '$lib/server/db.js';
 
 /** @type {import('./$types').PageServerLoad} */
 export function load({ locals }) {
-    const totalMovies = db.prepare('SELECT COUNT(*) as c FROM media_parents WHERE media_type = ?').get('movie').c;
+    const totalMovies = /** @type {any} */ (db.prepare('SELECT COUNT(*) as c FROM media_parents WHERE media_type = ?').get('movie')).c;
 
-    const movieStats = db.prepare(`
+    const movieStats = /** @type {any} */ (db.prepare(`
         SELECT
-            SUM(CASE WHEN mc.watch_status = 'watched' THEN 1 ELSE 0 END) as watched,
-            SUM(CASE WHEN mc.watch_status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
-            SUM(CASE WHEN mc.watch_status = 'unwatched' THEN 1 ELSE 0 END) as unwatched,
-            SUM(mc.play_count) as total_plays,
+            COUNT(CASE WHEN mc.watch_status = 'watched' OR ph_count.c > 0 THEN 1 END) as watched,
+            COUNT(CASE WHEN mc.watch_status = 'in_progress' AND COALESCE(ph_count.c, 0) = 0 THEN 1 END) as in_progress,
+            COUNT(CASE WHEN mc.watch_status = 'unwatched' AND COALESCE(ph_count.c, 0) = 0 THEN 1 END) as unwatched,
+            COALESCE(SUM(ph_count.c), 0) as total_plays,
             SUM(mc.runtime_ticks) as total_runtime
         FROM media_children mc
         JOIN media_parents mp ON mc.parent_id = mp.id
+        LEFT JOIN (SELECT media_id, COUNT(*) as c FROM playback_history GROUP BY media_id) ph_count ON ph_count.media_id = mc.id
         WHERE mp.media_type = 'movie'
-    `).get();
+    `).get());
 
     const runtimeHours = Math.round((movieStats.total_runtime || 0) / 10000000 / 3600);
 
-    // Movies with watch status
+    // Movies with watch status — pre-aggregate playback_history to avoid correlated subqueries
+    const userId = locals.user?.id || 0;
     const movies = db.prepare(`
+        WITH play_stats AS (
+            SELECT media_id, COUNT(*) as watch_count, MAX(timestamp) as last_watched
+            FROM playback_history WHERE user_id = ?
+            GROUP BY media_id
+        )
         SELECT
             mp.id,
             mp.title,
@@ -30,16 +37,17 @@ export function load({ locals }) {
             mp.imdb_id,
             mp.collected_children,
             mp.total_released_children,
-            mc.watch_status,
-            mc.play_count,
+            CASE WHEN COALESCE(ps.watch_count, 0) > 0 THEN 'watched' ELSE mc.watch_status END as watch_status,
+            COALESCE(ps.watch_count, 0) as play_count,
             ROUND(mc.runtime_ticks / 10000000.0 / 60, 0) as runtime_minutes,
-            COALESCE((SELECT COUNT(*) FROM playback_history ph WHERE ph.media_id = mc.id AND ph.user_id = ?), 0) as watch_count,
-            (SELECT MAX(ph.timestamp) FROM playback_history ph WHERE ph.media_id = mc.id AND ph.user_id = ?) as last_watched
+            COALESCE(ps.watch_count, 0) as watch_count,
+            ps.last_watched
         FROM media_parents mp
         LEFT JOIN media_children mc ON mc.parent_id = mp.id
+        LEFT JOIN play_stats ps ON ps.media_id = mc.id
         WHERE mp.media_type = 'movie'
         ORDER BY mp.title
-    `).all(locals.user?.id || 0, locals.user?.id || 0);
+    `).all(userId);
 
     // Movies by decade
     const moviesByDecade = db.prepare(`
@@ -56,18 +64,21 @@ export function load({ locals }) {
     const moviesByYear = db.prepare(`
         SELECT release_year as year, COUNT(*) as count
         FROM media_parents
-        WHERE media_type = 'movie' AND release_year IS NOT NULL AND release_year >= 2000
+        WHERE media_type = 'movie' AND release_year IS NOT NULL
         GROUP BY release_year
         ORDER BY release_year
     `).all();
 
     // Most re-watched
     const mostRewatched = db.prepare(`
-        SELECT mp.title, mc.play_count
+        SELECT mp.title, COUNT(ph.id) as play_count
         FROM media_parents mp
         JOIN media_children mc ON mc.parent_id = mp.id
-        WHERE mp.media_type = 'movie' AND mc.play_count > 1
-        ORDER BY mc.play_count DESC
+        JOIN playback_history ph ON ph.media_id = mc.id
+        WHERE mp.media_type = 'movie'
+        GROUP BY mp.id
+        HAVING COUNT(ph.id) > 1
+        ORDER BY play_count DESC
         LIMIT 10
     `).all();
 
