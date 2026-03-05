@@ -1,7 +1,10 @@
 <script>
     let { data } = $props();
     import { invalidateAll } from "$app/navigation";
+    import DataTable from "$lib/components/DataTable.svelte";
     import ExternalLinks from "$lib/components/ExternalLinks.svelte";
+    import HeartBorder from "$lib/components/HeartBorder.svelte";
+    import FavoriteButton from "$lib/components/FavoriteButton.svelte";
     function statusColor(status) {
         if (status === "watched") return "var(--color-success, #22c55e)";
         if (status === "in_progress") return "var(--color-warning, #f59e0b)";
@@ -113,15 +116,28 @@
     <!-- Header -->
     <div class="flex gap-6 items-start">
         {#if data.show.poster_url}
-            <img
-                src={data.show.poster_url}
-                alt={data.show.title}
-                class="w-36 rounded-xl shadow-lg shrink-0"
-            />
+            <HeartBorder
+                show={!!data.show.is_favorite &&
+                    data.settings?.heartBorderShows}
+                class="rounded-xl"
+            >
+                <img
+                    src={data.show.poster_url}
+                    alt={data.show.title}
+                    class="w-36 rounded-xl shadow-lg shrink-0"
+                />
+            </HeartBorder>
         {/if}
         <div class="space-y-3 min-w-0">
             <div>
-                <h1 class="text-3xl font-bold">{data.show.title}</h1>
+                <h1 class="text-3xl font-bold flex items-center gap-2">
+                    {data.show.title}
+                    <FavoriteButton
+                        type="media"
+                        id={data.show.id}
+                        isFavorite={!!data.show.is_favorite}
+                    />
+                </h1>
                 <p class="text-base-content/50 text-sm mt-1">
                     {data.show.release_year || ""}
                 </p>

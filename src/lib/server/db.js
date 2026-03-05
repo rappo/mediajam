@@ -48,6 +48,17 @@ CREATE TABLE IF NOT EXISTS sync_state (
     log TEXT DEFAULT '[]'
 );
 
+-- 3b. Sync History (per-type timestamps and status)
+CREATE TABLE IF NOT EXISTS sync_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sync_type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'running',
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    summary TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_sync_history_type ON sync_history(sync_type, id DESC);
+
 -- 4. Tracked Libraries
 CREATE TABLE IF NOT EXISTS libraries (
     jellyfin_id TEXT PRIMARY KEY,
@@ -236,6 +247,17 @@ CREATE TABLE IF NOT EXISTS person_credits (
 CREATE INDEX IF NOT EXISTS idx_credits_person ON person_credits(person_id);
 CREATE INDEX IF NOT EXISTS idx_credits_media ON person_credits(media_parent_id);
 
+-- 14. External IDs (generic link table for MusicBrainz-sourced external references per person)
+CREATE TABLE IF NOT EXISTS external_ids (
+    person_id INTEGER NOT NULL,
+    source TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    PRIMARY KEY (person_id, source),
+    FOREIGN KEY(person_id) REFERENCES persons(id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_persons_musicbrainz ON persons(musicbrainz_artist_id) WHERE musicbrainz_artist_id IS NOT NULL;
+
 -- Initialize singleton rows if not present
 INSERT OR IGNORE INTO app_settings (id) VALUES (1);
 INSERT OR IGNORE INTO sync_state (id) VALUES (1);
@@ -384,5 +406,56 @@ if (!identityCols.has('auto_sync')) {
 if (!identityCols.has('last_auto_sync_at')) {
     db.exec("ALTER TABLE user_identities ADD COLUMN last_auto_sync_at TEXT");
 }
+
+// -- Add preferences JSON column to users --
+try {
+    db.prepare('SELECT preferences FROM users LIMIT 0').get();
+} catch {
+    db.exec("ALTER TABLE users ADD COLUMN preferences TEXT DEFAULT '{}'");
+    console.log('[db] Added preferences column to users table');
+}
+
+// -- Add is_favorite column to media_parents and persons --
+try {
+    db.prepare('SELECT is_favorite FROM media_parents LIMIT 0').get();
+} catch {
+    db.exec('ALTER TABLE media_parents ADD COLUMN is_favorite INTEGER DEFAULT 0');
+    console.log('[db] Added is_favorite column to media_parents');
+}
+try {
+    db.prepare('SELECT is_favorite FROM persons LIMIT 0').get();
+} catch {
+    db.exec('ALTER TABLE persons ADD COLUMN is_favorite INTEGER DEFAULT 0');
+    console.log('[db] Added is_favorite column to persons');
+}
+
+// -- Add logging_enabled column to app_settings --
+try {
+    db.prepare('SELECT logging_enabled FROM app_settings LIMIT 0').get();
+} catch {
+    db.exec('ALTER TABLE app_settings ADD COLUMN logging_enabled INTEGER DEFAULT NULL');
+    console.log('[db] Added logging_enabled column to app_settings');
+}
+
+// -- Add heart border display preference columns --
+const appCols = new Set(
+    db.prepare("PRAGMA table_info(app_settings)").all().map((/** @type {any} */ c) => c.name)
+);
+if (!appCols.has('heart_border_movies')) {
+    db.exec('ALTER TABLE app_settings ADD COLUMN heart_border_movies INTEGER DEFAULT 1');
+}
+if (!appCols.has('heart_border_shows')) {
+    db.exec('ALTER TABLE app_settings ADD COLUMN heart_border_shows INTEGER DEFAULT 1');
+}
+if (!appCols.has('heart_border_music')) {
+    db.exec('ALTER TABLE app_settings ADD COLUMN heart_border_music INTEGER DEFAULT 1');
+}
+if (!appCols.has('heart_border_people')) {
+    db.exec('ALTER TABLE app_settings ADD COLUMN heart_border_people INTEGER DEFAULT 1');
+}
+
+// Initialize logger from DB settings
+import { initLogging } from './logger.js';
+initLogging(db);
 
 export default db;

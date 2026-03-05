@@ -22,7 +22,8 @@ export async function GET({ url, locals }) {
     const includeTokens = url.searchParams.get('includeTokens') === '1';
     const includeApiKeys = url.searchParams.get('includeApiKeys') === '1';
 
-    const prefix = `mediajam-backup-${new Date().toISOString().split('T')[0]}`;
+    const now = new Date(); const ts = `${now.toISOString().split('T')[0]}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}`;
+    const prefix = `mediajam-backup-${ts}`;
 
     // Collect all table data
     const tables = {};
@@ -73,6 +74,11 @@ export async function GET({ url, locals }) {
     tables['playback_history'] = db.prepare('SELECT * FROM playback_history').all();
     tables['lastfm_scrobbles'] = db.prepare('SELECT * FROM lastfm_scrobbles').all();
     tables['sync_state'] = db.prepare('SELECT * FROM sync_state').all();
+    tables['persons'] = db.prepare('SELECT * FROM persons').all();
+    tables['person_credits'] = db.prepare('SELECT * FROM person_credits').all();
+    tables['external_ids'] = db.prepare('SELECT * FROM external_ids').all();
+    tables['trakt_history'] = db.prepare('SELECT * FROM trakt_history').all();
+    tables['sync_history'] = db.prepare('SELECT * FROM sync_history').all();
 
     // Build manifest
     const manifest = {

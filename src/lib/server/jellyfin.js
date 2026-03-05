@@ -4,6 +4,7 @@ import { getSystemApi } from '@jellyfin/sdk/lib/utils/api/system-api.js';
 import { getUserApi } from '@jellyfin/sdk/lib/utils/api/user-api.js';
 import { getLibraryApi } from '@jellyfin/sdk/lib/utils/api/library-api.js';
 import { getTvShowsApi } from '@jellyfin/sdk/lib/utils/api/tv-shows-api.js';
+import { getSessionApi } from '@jellyfin/sdk/lib/utils/api/session-api.js';
 
 const jellyfin = new Jellyfin({
     clientInfo: { name: 'Mediajam', version: '0.1.0' },
@@ -26,7 +27,7 @@ export function createJellyfinApi(serverUrl, accessToken) {
 /**
  * Get the items API for a given API instance.
  */
-export { getItemsApi, getSystemApi, getUserApi, getLibraryApi, getTvShowsApi };
+export { getItemsApi, getSystemApi, getUserApi, getLibraryApi, getTvShowsApi, getSessionApi };
 
 /**
  * Convenience: create an API and return common sub-APIs.

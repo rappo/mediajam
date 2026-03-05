@@ -41,6 +41,13 @@
     let includeSpecials = $state(data.settings.includeSpecials || false);
     let savingSpecials = $state(false);
 
+    // Heart border toggles
+    let heartBorderMovies = $state(data.settings.heartBorderMovies ?? true);
+    let heartBorderShows = $state(data.settings.heartBorderShows ?? true);
+    let heartBorderMusic = $state(data.settings.heartBorderMusic ?? true);
+    let heartBorderPeople = $state(data.settings.heartBorderPeople ?? true);
+    let savingHeartBorder = $state(false);
+
     async function setTheme(theme) {
         currentTheme = theme;
         document.documentElement.setAttribute("data-theme", theme);
@@ -59,6 +66,21 @@
             body: JSON.stringify({ include_specials: includeSpecials ? 1 : 0 }),
         });
         savingSpecials = false;
+    }
+
+    async function saveHeartBorder() {
+        savingHeartBorder = true;
+        await fetch("/api/settings", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                heart_border_movies: heartBorderMovies ? 1 : 0,
+                heart_border_shows: heartBorderShows ? 1 : 0,
+                heart_border_music: heartBorderMusic ? 1 : 0,
+                heart_border_people: heartBorderPeople ? 1 : 0,
+            }),
+        });
+        savingHeartBorder = false;
     }
 </script>
 
@@ -174,6 +196,62 @@
                             statistics and charts.
                         </p>
                     </div>
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Favorite Heart Border -->
+    <div class="card bg-base-200/50 border border-base-300">
+        <div class="card-body">
+            <h2 class="card-title text-lg">
+                <span class="text-lg">💗</span>
+                Favorite Heart Border
+            </h2>
+            <p class="text-sm text-base-content/60 mb-2">
+                Show a decorative heart border around poster images for
+                favorited items. Toggle per media type.
+            </p>
+            <div class="space-y-2">
+                <label class="label cursor-pointer justify-start gap-3">
+                    <input
+                        type="checkbox"
+                        class="toggle toggle-error toggle-sm"
+                        bind:checked={heartBorderMovies}
+                        onchange={saveHeartBorder}
+                        disabled={savingHeartBorder}
+                    />
+                    <span class="label-text">🎬 Movies</span>
+                </label>
+                <label class="label cursor-pointer justify-start gap-3">
+                    <input
+                        type="checkbox"
+                        class="toggle toggle-error toggle-sm"
+                        bind:checked={heartBorderShows}
+                        onchange={saveHeartBorder}
+                        disabled={savingHeartBorder}
+                    />
+                    <span class="label-text">📺 TV Shows</span>
+                </label>
+                <label class="label cursor-pointer justify-start gap-3">
+                    <input
+                        type="checkbox"
+                        class="toggle toggle-error toggle-sm"
+                        bind:checked={heartBorderMusic}
+                        onchange={saveHeartBorder}
+                        disabled={savingHeartBorder}
+                    />
+                    <span class="label-text">🎵 Music / Artists</span>
+                </label>
+                <label class="label cursor-pointer justify-start gap-3">
+                    <input
+                        type="checkbox"
+                        class="toggle toggle-error toggle-sm"
+                        bind:checked={heartBorderPeople}
+                        onchange={saveHeartBorder}
+                        disabled={savingHeartBorder}
+                    />
+                    <span class="label-text">👤 People</span>
                 </label>
             </div>
         </div>

@@ -1,6 +1,7 @@
 <script>
     import { invalidateAll } from "$app/navigation";
     import ExternalLinks from "$lib/components/ExternalLinks.svelte";
+    import HeartBorder from "$lib/components/HeartBorder.svelte";
     let { data } = $props();
     let expandedAlbum = $state(null);
     let albumTracks = $state({});
@@ -118,11 +119,17 @@
     <!-- Header -->
     <div class="flex gap-6 items-start">
         {#if data.artist.imageUrl}
-            <img
-                src={data.artist.imageUrl}
-                alt={data.artist.title}
-                class="w-40 h-40 rounded-xl shadow-lg shrink-0 object-cover"
-            />
+            <HeartBorder
+                show={!!data.artist.is_favorite &&
+                    data.settings?.heartBorderMusic}
+                class="rounded-xl"
+            >
+                <img
+                    src={data.artist.imageUrl}
+                    alt={data.artist.title}
+                    class="w-40 h-40 rounded-xl shadow-lg shrink-0 object-cover"
+                />
+            </HeartBorder>
         {/if}
         <div class="space-y-3 min-w-0">
             <div>

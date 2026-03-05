@@ -14,6 +14,7 @@ export async function GET({ url, locals }) {
 
     const userId = locals.user?.id;
     const like = `%${query}%`;
+    console.log(`[search] query="${query}" like="${like}" userId=${userId}`);
 
     // Search shows
     const shows = /** @type {any[]} */ (db.prepare(`
@@ -44,6 +45,17 @@ export async function GET({ url, locals }) {
         LIMIT 5
     `).all(like));
 
+    // Search people (actors, directors, etc.)
+    const people = /** @type {any[]} */ (db.prepare(`
+        SELECT p.id, p.name as title, p.photo_url as poster_url,
+               (SELECT COUNT(*) FROM person_credits pc WHERE pc.person_id = p.id) as credit_count,
+               'person' as type
+        FROM persons p
+        WHERE p.name LIKE ?
+        ORDER BY p.name
+        LIMIT 5
+    `).all(like));
+
     // Search episodes/tracks by title
     const children = /** @type {any[]} */ (db.prepare(`
         SELECT mc.id, mc.title as item_title, mc.season_number, mc.item_number,
@@ -70,15 +82,19 @@ export async function GET({ url, locals }) {
         LIMIT 5
     `).all(userId, like, like)) : [];
 
+    const totalCount = shows.length + movies.length + music.length + people.length + children.length + history.length;
+    console.log(`[search] results: shows=${shows.length} movies=${movies.length} music=${music.length} people=${people.length} children=${children.length} history=${history.length} total=${totalCount}`);
+
     return json({
         query,
         results: {
             shows,
             movies,
             music,
+            people,
             children,
             history
         },
-        totalCount: shows.length + movies.length + music.length + children.length + history.length
+        totalCount
     });
 }

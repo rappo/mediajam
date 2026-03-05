@@ -2,6 +2,7 @@
     import NowPlaying from "$lib/components/NowPlaying.svelte";
     import TimelineEntry from "$lib/components/TimelineEntry.svelte";
     import StatCard from "$lib/components/StatCard.svelte";
+    import { page } from "$app/stores";
 
     /** @type {{ data: import('./$types').PageData }} */
     let { data } = $props();
@@ -72,6 +73,7 @@
         <NowPlaying
             sessions={data.activeSessions}
             jellyfinUrl={data.jellyfinUrl}
+            remoteControlEnabled={$page.data.remoteControlEnabled}
         />
     </div>
 

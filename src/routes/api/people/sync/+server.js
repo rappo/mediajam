@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import {
     startPeopleSync,
+    startExternalIdsSync,
     pausePeopleSync,
     resumePeopleSync,
     stopPeopleSync,
@@ -23,8 +24,14 @@ export async function POST({ request, locals }) {
             if (isPeopleRunning()) {
                 return json({ error: 'People sync already running' }, { status: 409 });
             }
-            // Fire-and-forget
             startPeopleSync();
+            return json({ success: true, started: true });
+
+        case 'external-ids':
+            if (isPeopleRunning()) {
+                return json({ error: 'A sync is already running' }, { status: 409 });
+            }
+            startExternalIdsSync();
             return json({ success: true, started: true });
 
         case 'pause':
@@ -49,11 +56,13 @@ export async function POST({ request, locals }) {
  * Same pattern as /api/sync GET.
  */
 export async function GET() {
+    let cleanupFn = null;
+
     const stream = new ReadableStream({
         start(controller) {
             const encoder = new TextEncoder();
 
-            const send = (data) => {
+            const send = (/** @type {any} */ data) => {
                 try {
                     controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
                 } catch {
@@ -96,13 +105,17 @@ export async function GET() {
                     controller.enqueue(encoder.encode(`: keepalive\n\n`));
                 } catch {
                     clearInterval(keepAlive);
+                    removeListener();
                 }
             }, 15000);
 
-            // Cleanup on close is handled via the reader cancel
+            cleanupFn = () => {
+                removeListener();
+                clearInterval(keepAlive);
+            };
         },
         cancel() {
-            // Cleanup happens when stream is cancelled
+            if (cleanupFn) cleanupFn();
         }
     });
 

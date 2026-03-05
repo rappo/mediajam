@@ -15,6 +15,7 @@
  */
 
 import db from '$lib/server/db.js';
+import { logError, logInfo, logWarn } from '$lib/server/logger.js';
 import { getJellyfinApis, getItemsApi } from '$lib/server/jellyfin.js';
 
 /** @type {Set<(data: any) => void>} */
@@ -35,6 +36,9 @@ let recentLogs = [];
 
 /** @type {{ totalPersons: number, totalCredits: number } | null} */
 let lastResult = null;
+
+/** @type {number|null} */
+let syncHistoryId = null;
 
 function broadcast(data) {
     if (data.log) {
@@ -80,6 +84,12 @@ export async function startPeopleSync() {
     recentLogs = [];
     lastResult = null;
 
+    // Record sync start
+    const result = db.prepare(
+        `INSERT INTO sync_history (sync_type, status, started_at) VALUES ('people', 'running', ?)`
+    ).run(new Date().toISOString());
+    syncHistoryId = Number(result.lastInsertRowid);
+
     const settings = /** @type {any} */ (db.prepare('SELECT * FROM app_settings WHERE id = 1').get());
     const user = /** @type {any} */ (db.prepare('SELECT * FROM users LIMIT 1').get());
 
@@ -95,6 +105,10 @@ export async function startPeopleSync() {
         const msg = e instanceof Error ? e.message : String(e);
         broadcast({ type: 'error', log: `❌ People sync failed: ${msg}`, logType: 'error' });
         console.error('[people-sync] Fatal error:', msg);
+        if (syncHistoryId) {
+            db.prepare('UPDATE sync_history SET status = ?, finished_at = ?, summary = ? WHERE id = ?')
+                .run('failed', new Date().toISOString(), msg, syncHistoryId);
+        }
     } finally {
         engineState.running = false;
         engineState.paused = false;
@@ -263,19 +277,235 @@ async function runPeopleSync(jellyfinUrl, accessToken) {
         }
     }
 
+    // ─── Phase 2: Backfill external IDs for persons missing TMDB/IMDb ─────────
+    const personsNeedingIds = /** @type {any[]} */ (db.prepare(`
+        SELECT id, name, jellyfin_id FROM persons
+        WHERE jellyfin_id IS NOT NULL AND jellyfin_id != ''
+        AND (tmdb_person_id IS NULL OR tmdb_person_id = '')
+        AND (imdb_person_id IS NULL OR imdb_person_id = '')
+    `).all());
+
+    if (personsNeedingIds.length > 0) {
+        broadcast({
+            type: 'progress',
+            log: `🔗 Backfilling external IDs for ${personsNeedingIds.length} persons...`,
+            logType: 'info',
+            progress: 95,
+            itemsSynced: synced,
+            errors
+        });
+
+        const updatePersonIds = db.prepare(`
+            UPDATE persons SET
+                tmdb_person_id = COALESCE(@tmdbId, tmdb_person_id),
+                imdb_person_id = COALESCE(@imdbId, imdb_person_id)
+            WHERE id = @personId
+        `);
+
+        let idsUpdated = 0;
+        for (let i = 0; i < personsNeedingIds.length; i++) {
+            if (!engineState.running) break;
+            while (engineState.paused) {
+                await new Promise(r => setTimeout(r, 500));
+            }
+
+            const person = personsNeedingIds[i];
+            try {
+                const res = await fetch(
+                    `${jellyfinUrl}/Items/${person.jellyfin_id}`,
+                    { headers: { 'Authorization': `MediaBrowser Token="${accessToken}"` } }
+                );
+                if (res.ok) {
+                    const item = await res.json();
+                    const providerIds = item.ProviderIds || {};
+                    const tmdbId = providerIds.Tmdb || providerIds.TMDb || null;
+                    const imdbId = providerIds.Imdb || providerIds.IMDb || null;
+                    if (tmdbId || imdbId) {
+                        updatePersonIds.run({ personId: person.id, tmdbId, imdbId });
+                        idsUpdated++;
+                    }
+                }
+            } catch { /* skip */ }
+
+            // Log progress every 100 persons
+            if ((i + 1) % 100 === 0) {
+                broadcast({
+                    type: 'progress',
+                    log: `🔗 External IDs: ${i + 1}/${personsNeedingIds.length} checked, ${idsUpdated} updated`,
+                    logType: 'info',
+                    progress: 95 + Math.floor((i / personsNeedingIds.length) * 5),
+                    itemsSynced: synced,
+                    errors
+                });
+            }
+            await new Promise(r => setTimeout(r, 30));
+        }
+
+        broadcast({
+            type: 'progress',
+            log: `🔗 External IDs: ${idsUpdated} persons updated with TMDB/IMDb IDs`,
+            logType: 'success',
+            progress: 100,
+            itemsSynced: synced,
+            errors
+        });
+    }
+
     const totalPersons = /** @type {any} */ (db.prepare('SELECT COUNT(*) as c FROM persons').get())?.c || 0;
     const totalCredits = /** @type {any} */ (db.prepare('SELECT COUNT(*) as c FROM person_credits').get())?.c || 0;
     lastResult = { totalPersons, totalCredits };
 
+    const summary = `${totalPersons} people, ${totalCredits} credits`;
     broadcast({
         type: 'complete',
-        log: `✅ People sync done: ${synced} items synced, ${errors} errors, ${totalPersons} people, ${totalCredits} credits`,
+        log: `✅ People sync done: ${synced} items synced, ${errors} errors, ${summary}`,
         logType: 'success',
         progress: 100,
         itemsSynced: synced,
         errors
     });
-    console.log(`[people-sync] ✅ Done: ${synced} items, ${errors} errors, ${totalPersons} people, ${totalCredits} credits`);
+    console.log(`[people-sync] ✅ Done: ${synced} items, ${errors} errors, ${summary}`);
+    if (syncHistoryId) {
+        db.prepare('UPDATE sync_history SET status = ?, finished_at = ?, summary = ? WHERE id = ?')
+            .run('success', new Date().toISOString(), summary, syncHistoryId);
+    }
+}
+
+/**
+ * Start an external-IDs-only sync — backfills TMDB/IMDb IDs for persons
+ * that have a jellyfin_id but are missing provider IDs.
+ * Reuses the same SSE infrastructure (broadcast, pause/stop, logs).
+ */
+export async function startExternalIdsSync() {
+    if (engineState.running) return;
+
+    engineState.running = true;
+    engineState.paused = false;
+    engineState.abortController = new AbortController();
+    engineState.progress = 0;
+    engineState.itemsSynced = 0;
+    engineState.errors = 0;
+    recentLogs = [];
+    lastResult = null;
+
+    const settings = /** @type {any} */ (db.prepare('SELECT * FROM app_settings WHERE id = 1').get());
+    const user = /** @type {any} */ (db.prepare('SELECT * FROM users LIMIT 1').get());
+
+    if (!settings?.jellyfin_url || !user?.jellyfin_access_token) {
+        broadcast({ type: 'error', log: '❌ Missing Jellyfin configuration', logType: 'error' });
+        engineState.running = false;
+        return;
+    }
+
+    const jellyfinUrl = settings.jellyfin_url;
+    const accessToken = user.jellyfin_access_token;
+
+    try {
+        const personsNeedingIds = /** @type {any[]} */ (db.prepare(`
+            SELECT id, name, jellyfin_id FROM persons
+            WHERE jellyfin_id IS NOT NULL AND jellyfin_id != ''
+            AND (tmdb_person_id IS NULL OR tmdb_person_id = '')
+            AND (imdb_person_id IS NULL OR imdb_person_id = '')
+        `).all());
+
+        if (personsNeedingIds.length === 0) {
+            broadcast({ type: 'complete', log: '✅ All persons already have external IDs.', logType: 'success', progress: 100, itemsSynced: 0, errors: 0 });
+            console.log('[people-sync] External IDs: nothing to backfill');
+            engineState.running = false;
+            return;
+        }
+
+        broadcast({
+            type: 'progress',
+            log: `🔗 Backfilling external IDs for ${personsNeedingIds.length} persons...`,
+            logType: 'info',
+            progress: 0,
+            itemsSynced: 0,
+            errors: 0
+        });
+        console.log(`[people-sync] External IDs: starting for ${personsNeedingIds.length} persons`);
+
+        const updatePersonIds = db.prepare(`
+            UPDATE persons SET
+                tmdb_person_id = COALESCE(@tmdbId, tmdb_person_id),
+                imdb_person_id = COALESCE(@imdbId, imdb_person_id)
+            WHERE id = @personId
+        `);
+
+        let updated = 0;
+        let errors = 0;
+
+        for (let i = 0; i < personsNeedingIds.length; i++) {
+            if (!engineState.running) break;
+            while (engineState.paused) {
+                await new Promise(r => setTimeout(r, 500));
+            }
+
+            const person = personsNeedingIds[i];
+            try {
+                const res = await fetch(
+                    `${jellyfinUrl}/Items/${person.jellyfin_id}`,
+                    { headers: { 'Authorization': `MediaBrowser Token="${accessToken}"` } }
+                );
+                if (res.ok) {
+                    const item = await res.json();
+                    const providerIds = item.ProviderIds || {};
+                    const tmdbId = providerIds.Tmdb || providerIds.TMDb || null;
+                    const imdbId = providerIds.Imdb || providerIds.IMDb || null;
+                    if (tmdbId || imdbId) {
+                        updatePersonIds.run({ personId: person.id, tmdbId, imdbId });
+                        updated++;
+                    }
+                } else {
+                    logError('people-sync', `External ID fetch failed for person '${person.name}' (jellyfin_id: ${person.jellyfin_id})`, { status: res.status });
+                    errors++;
+                }
+            } catch (/** @type {any} */ err) {
+                logError('people-sync', `External ID error for person '${person.name}' (jellyfin_id: ${person.jellyfin_id})`, { error: err?.message || String(err) });
+                errors++;
+            }
+
+            // Broadcast progress every 50 persons
+            if ((i + 1) % 50 === 0 || i === personsNeedingIds.length - 1) {
+                const progress = Math.floor(((i + 1) / personsNeedingIds.length) * 100);
+                broadcast({
+                    type: 'progress',
+                    log: `🔗 ${i + 1}/${personsNeedingIds.length} checked, ${updated} updated, ${errors} errors`,
+                    logType: 'info',
+                    progress,
+                    itemsSynced: updated,
+                    errors
+                });
+                console.log(`[people-sync] External IDs: ${i + 1}/${personsNeedingIds.length}, ${updated} updated`);
+            }
+            await new Promise(r => setTimeout(r, 30));
+        }
+
+        const remaining = /** @type {any} */ (db.prepare(`
+            SELECT COUNT(*) as cnt FROM persons
+            WHERE jellyfin_id IS NOT NULL AND jellyfin_id != ''
+            AND (tmdb_person_id IS NULL OR tmdb_person_id = '')
+            AND (imdb_person_id IS NULL OR imdb_person_id = '')
+        `).get())?.cnt || 0;
+
+        broadcast({
+            type: 'complete',
+            log: `✅ External IDs done: ${updated} updated, ${errors} errors, ${remaining} remaining`,
+            logType: 'success',
+            progress: 100,
+            itemsSynced: updated,
+            errors
+        });
+        console.log(`[people-sync] External IDs done: ${updated} updated, ${errors} errors, ${remaining} remaining`);
+    } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        broadcast({ type: 'error', log: `❌ External IDs sync failed: ${msg}`, logType: 'error' });
+        console.error('[people-sync] External IDs error:', msg);
+    } finally {
+        engineState.running = false;
+        engineState.paused = false;
+        engineState.abortController = null;
+    }
 }
 
 export function pausePeopleSync() {
@@ -292,6 +522,10 @@ export function stopPeopleSync() {
     engineState.running = false;
     engineState.paused = false;
     broadcast({ type: 'stopped', log: '⏹️ People sync stopped.', logType: 'warning' });
+    if (syncHistoryId) {
+        db.prepare('UPDATE sync_history SET status = ?, finished_at = ? WHERE id = ?')
+            .run('interrupted', new Date().toISOString(), syncHistoryId);
+    }
 }
 
 export function addListener(callback) {

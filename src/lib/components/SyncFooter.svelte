@@ -7,22 +7,19 @@
      *   background-browsable pattern: dedicated engine state, SSE streaming,
      *   pause/resume, and SyncFooter visibility. This ensures users can
      *   safely browse away and monitor progress from anywhere in the app.
+     *
+     * NOTE: SyncFooter uses POLLING (not SSE) to avoid saturating the
+     * browser's 6-connection-per-domain HTTP/1.1 limit. SSE connections
+     * are long-lived and shared across ALL tabs, so even 2 tabs with
+     * 4 SSE each = 8 connections = blocked navigation.
      */
 
     // State
     let visible = $state(false);
-    let label = $state("");
     let lastLog = $state("");
     let progress = $state(0);
-    let syncType = $state(""); // 'jellyfin' | 'trakt' | 'lastfm' | 'people' | etc
+    let syncType = $state("");
     let expanded = $state(false);
-
-    /** @type {EventSource | null} */
-    let syncES = null;
-    /** @type {EventSource | null} */
-    let backfillES = null;
-    /** @type {EventSource | null} */
-    let peopleSyncES = null;
 
     function isOnSyncPage() {
         const path =
@@ -30,211 +27,65 @@
         return path === "/settings/system" || path === "/settings/account";
     }
 
-    function handleSyncMessage(d) {
-        if (d.type === "snapshot" && d.running) {
-            syncType = d.libraryName
-                ? `Jellyfin: ${d.libraryName}`
-                : "Jellyfin Sync";
-            progress = d.progress || 0;
-            if (d.logs && d.logs.length > 0) {
-                lastLog = d.logs[d.logs.length - 1].message;
+    async function pollSyncStatus() {
+        try {
+            const res = await fetch("/api/sync/status");
+            if (!res.ok) return;
+            const data = await res.json();
+
+            // Find the first running sync to display
+            if (data.jellyfin) {
+                syncType = data.jellyfin.libraryName || "Jellyfin Sync";
+                progress = data.jellyfin.progress || 0;
+                if (data.jellyfin.lastLog) lastLog = data.jellyfin.lastLog;
+                visible = !isOnSyncPage();
+            } else if (data.people) {
+                syncType = "People Sync";
+                progress = data.people.progress || 0;
+                if (data.people.lastLog) lastLog = data.people.lastLog;
+                visible = !isOnSyncPage();
+            } else if (data.backfill) {
+                syncType = data.backfill.tier
+                    ? `${data.backfill.tier.charAt(0).toUpperCase() + data.backfill.tier.slice(1)} Import`
+                    : "Import";
+                progress = data.backfill.progress || 0;
+                if (data.backfill.lastLog) lastLog = data.backfill.lastLog;
+                visible = !isOnSyncPage();
+            } else if (data.musicbrainz) {
+                syncType = "MusicBrainz Enrich";
+                progress = data.musicbrainz.progress || 0;
+                if (data.musicbrainz.lastLog)
+                    lastLog = data.musicbrainz.lastLog;
+                visible = !isOnSyncPage();
+            } else {
+                // Nothing running — hide if we were showing
+                if (visible) {
+                    setTimeout(() => {
+                        visible = false;
+                    }, 3000);
+                }
             }
-            visible = !isOnSyncPage();
-        } else if (d.type === "progress" || d.libraryName) {
-            syncType = d.libraryName
-                ? `Jellyfin: ${d.libraryName}`
-                : syncType || "Jellyfin Sync";
-            if (d.libProgress !== undefined) progress = d.libProgress;
-            if (d.log) lastLog = d.log;
-            visible = !isOnSyncPage();
-        } else if (d.type === "complete" || d.type === "error") {
-            if (d.log) lastLog = d.log;
-            // Show briefly then hide
-            visible = !isOnSyncPage();
-            setTimeout(() => {
-                visible = false;
-                syncES?.close();
-                syncES = null;
-            }, 5000);
+        } catch {
+            /* ignore fetch errors */
         }
     }
 
-    function handleBackfillMessage(d) {
-        if (d.type === "snapshot" && d.running) {
-            syncType = d.tier ? `${capitalize(d.tier)} Import` : "Import";
-            if (d.lastProgress?.progressPercent !== undefined)
-                progress = d.lastProgress.progressPercent;
-            if (d.logs && d.logs.length > 0) {
-                lastLog = d.logs[d.logs.length - 1].message;
-            }
-            visible = !isOnSyncPage();
-        } else if (d.type === "backfill_start") {
-            syncType = d.tier ? `${capitalize(d.tier)} Import` : "Import";
-            if (d.log) lastLog = d.log;
-            visible = !isOnSyncPage();
-        } else if (d.type === "backfill_progress") {
-            if (d.progressPercent !== undefined) progress = d.progressPercent;
-            if (d.log) lastLog = d.log;
-            visible = !isOnSyncPage();
-        } else if (
-            d.type === "backfill_complete" ||
-            d.type === "backfill_error"
-        ) {
-            if (d.log) lastLog = d.log;
-            visible = !isOnSyncPage();
-            setTimeout(() => {
-                visible = false;
-                backfillES?.close();
-                backfillES = null;
-            }, 5000);
-        }
-    }
-
-    function capitalize(s) {
-        return s ? s.charAt(0).toUpperCase() + s.slice(1) : "";
-    }
-
-    function connectSync() {
-        if (syncES) return;
-        syncES = new EventSource("/api/sync");
-        let gotConnected = false;
-        syncES.onmessage = (event) => {
-            try {
-                const d = JSON.parse(event.data);
-                if (d.type === "connected") {
-                    gotConnected = true;
-                    return;
-                }
-                if (d.type === "snapshot") {
-                    if (d.running) {
-                        handleSyncMessage(d);
-                        // Keep listening
-                    } else if (gotConnected) {
-                        syncES?.close();
-                        syncES = null;
-                    }
-                } else {
-                    handleSyncMessage(d);
-                }
-            } catch {
-                /* ignore */
-            }
-        };
-        syncES.onerror = () => {
-            syncES?.close();
-            syncES = null;
-        };
-    }
-
-    function connectBackfill() {
-        if (backfillES) return;
-        backfillES = new EventSource("/api/backfill/history");
-        backfillES.onmessage = (event) => {
-            try {
-                const d = JSON.parse(event.data);
-                if (d.type === "connected") {
-                    if (!d.isRunning) {
-                        backfillES?.close();
-                        backfillES = null;
-                    }
-                    return;
-                }
-                if (d.type === "snapshot") {
-                    if (d.running) {
-                        handleBackfillMessage(d);
-                    } else {
-                        backfillES?.close();
-                        backfillES = null;
-                    }
-                } else {
-                    handleBackfillMessage(d);
-                }
-            } catch {
-                /* ignore */
-            }
-        };
-        backfillES.onerror = () => {
-            backfillES?.close();
-            backfillES = null;
-        };
-    }
-
-    function handlePeopleSyncMessage(d) {
-        if (d.type === "snapshot" && d.running) {
-            syncType = "People Sync";
-            progress = d.progress || 0;
-            if (d.logs && d.logs.length > 0) {
-                lastLog = d.logs[d.logs.length - 1].message;
-            }
-            visible = !isOnSyncPage();
-        } else if (d.type === "progress") {
-            syncType = "People Sync";
-            if (d.progress !== undefined) progress = d.progress;
-            if (d.log) lastLog = d.log;
-            visible = !isOnSyncPage();
-        } else if (d.type === "complete" || d.type === "error") {
-            if (d.log) lastLog = d.log;
-            visible = !isOnSyncPage();
-            setTimeout(() => {
-                visible = false;
-                peopleSyncES?.close();
-                peopleSyncES = null;
-            }, 5000);
-        }
-    }
-
-    function connectPeopleSync() {
-        if (peopleSyncES) return;
-        peopleSyncES = new EventSource("/api/people/sync");
-        let gotConnected = false;
-        peopleSyncES.onmessage = (event) => {
-            try {
-                const d = JSON.parse(event.data);
-                if (d.type === "connected") {
-                    gotConnected = true;
-                    return;
-                }
-                if (d.type === "snapshot") {
-                    if (d.running) {
-                        handlePeopleSyncMessage(d);
-                    } else if (gotConnected) {
-                        peopleSyncES?.close();
-                        peopleSyncES = null;
-                    }
-                } else {
-                    handlePeopleSyncMessage(d);
-                }
-            } catch {
-                /* ignore */
-            }
-        };
-        peopleSyncES.onerror = () => {
-            peopleSyncES?.close();
-            peopleSyncES = null;
-        };
-    }
-
-    // Poll all endpoints on mount and on navigation
+    // Poll every 5s when authenticated and not on sync page
     $effect(() => {
-        // Re-run on navigation
         const _ = $page.url.pathname;
-        connectSync();
-        connectBackfill();
-        connectPeopleSync();
 
-        // Also update visibility based on current page
-        if (isOnSyncPage()) {
+        if (!$page.data.user || isOnSyncPage()) {
             visible = false;
+            return;
         }
 
-        return () => {
-            syncES?.close();
-            syncES = null;
-            backfillES?.close();
-            backfillES = null;
-            peopleSyncES?.close();
-            peopleSyncES = null;
-        };
+        // Initial poll
+        pollSyncStatus();
+
+        // Set up interval
+        const interval = setInterval(pollSyncStatus, 5000);
+
+        return () => clearInterval(interval);
     });
 </script>
 
@@ -284,7 +135,8 @@
                 href={syncType.toLowerCase().includes("jellyfin") &&
                 !syncType.toLowerCase().includes("import")
                     ? "/settings/system"
-                    : syncType.toLowerCase().includes("people")
+                    : syncType.toLowerCase().includes("people") ||
+                        syncType.toLowerCase().includes("musicbrainz")
                       ? "/settings/system"
                       : "/settings/account"}
                 class="btn btn-xs btn-ghost text-primary shrink-0"

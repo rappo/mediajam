@@ -3,6 +3,9 @@
 	import ThemeSwitcher from "$lib/components/ThemeSwitcher.svelte";
 	import SearchBar from "$lib/components/SearchBar.svelte";
 	import SyncFooter from "$lib/components/SyncFooter.svelte";
+	import NowPlayingBar from "$lib/components/NowPlayingBar.svelte";
+	import ToastContainer from "$lib/components/ToastContainer.svelte";
+	import { page } from "$app/stores";
 
 	/** @type {{ data: import('./$types').LayoutData, children: import('svelte').Snippet }} */
 	let { data, children } = $props();
@@ -388,6 +391,8 @@
 		</main>
 
 		<SyncFooter />
+		<NowPlayingBar remoteControlEnabled={$page.data.remoteControlEnabled} />
+		<ToastContainer />
 	</div>
 {:else}
 	{@render children()}

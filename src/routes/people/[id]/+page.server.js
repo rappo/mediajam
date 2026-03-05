@@ -79,11 +79,17 @@ export function load({ params, locals }) {
     const watchedMovies = movies.filter(m => m.watch_status === 'watched').length;
     const watchedShows = shows.filter(s => s.watch_status === 'watched' || s.play_count > 0).length;
 
+    // External links from external_ids table (MusicBrainz relations, scraped links, etc.)
+    const externalIds = /** @type {any[]} */ (db.prepare(`
+        SELECT source, external_id FROM external_ids WHERE person_id = ? ORDER BY source
+    `).all(personId));
+
     return {
         person: { ...person, photoUrl },
         movies,
         shows,
         artists,
+        externalIds,
         stats: {
             totalCredits,
             movieCount: movies.length,

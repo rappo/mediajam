@@ -11,7 +11,11 @@ export async function GET() {
         tvdbApiKey: settings?.tvdb_api_key ? '••••••••' : null,
         tmdbApiKey: settings?.tmdb_api_key ? '••••••••' : null,
         musicbrainzApiKey: settings?.musicbrainz_api_key ? '••••••••' : null,
-        setupComplete: settings?.setup_complete === 1
+        setupComplete: settings?.setup_complete === 1,
+        heartBorderMovies: settings?.heart_border_movies !== 0,
+        heartBorderShows: settings?.heart_border_shows !== 0,
+        heartBorderMusic: settings?.heart_border_music !== 0,
+        heartBorderPeople: settings?.heart_border_people !== 0
     });
 }
 
@@ -36,7 +40,11 @@ export async function PUT({ request }) {
             lastfm_api_key: 'lastfm_api_key',
             lastfm_shared_secret: 'lastfm_shared_secret',
             jellyfin_pr_db_path: 'jellyfin_pr_db_path',
-            jellyfin_sync_check: 'jellyfin_sync_check'
+            jellyfin_sync_check: 'jellyfin_sync_check',
+            heart_border_movies: 'heart_border_movies',
+            heart_border_shows: 'heart_border_shows',
+            heart_border_music: 'heart_border_music',
+            heart_border_people: 'heart_border_people'
         };
 
         for (const [key, column] of Object.entries(allowedFields)) {

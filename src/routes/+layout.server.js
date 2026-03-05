@@ -9,6 +9,13 @@ export function load({ locals }) {
     // Use authenticated user from session (set by hooks.server.js)
     const user = locals.user || null;
 
+    // Load user preferences
+    let userPreferences = {};
+    if (user) {
+        const userRow = /** @type {any} */ (db.prepare('SELECT preferences FROM users WHERE id = ?').get(user.id));
+        try { userPreferences = userRow?.preferences ? JSON.parse(userRow.preferences) : {}; } catch { /* empty */ }
+    }
+
     return {
         theme: locals.theme || 'dark',
         isSetupComplete: locals.isSetupComplete || false,
@@ -19,13 +26,19 @@ export function load({ locals }) {
             includeSpecials: settings?.include_specials === 1,
             hasTvdbKey: !!settings?.tvdb_api_key,
             hasTmdbKey: !!settings?.tmdb_api_key,
-            hasMusicbrainzKey: !!settings?.musicbrainz_api_key
+            hasMusicbrainzKey: !!settings?.musicbrainz_api_key,
+            heartBorderMovies: settings?.heart_border_movies !== 0,
+            heartBorderShows: settings?.heart_border_shows !== 0,
+            heartBorderMusic: settings?.heart_border_music !== 0,
+            heartBorderPeople: settings?.heart_border_people !== 0
         },
         syncState: {
             status: syncState?.status || 'idle',
             progressPercent: syncState?.progress_percent || 0,
             lastSync: syncState?.last_sync_timestamp
         },
-        libraries
+        libraries,
+        remoteControlEnabled: !!userPreferences.remoteControlEnabled,
+        userPreferences
     };
 }

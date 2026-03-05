@@ -21,6 +21,7 @@ export function load({ params }) {
             mp.tvdb_id,
             mp.tmdb_id,
             mp.imdb_id,
+            mp.is_favorite,
             CASE WHEN mp.collected_children > 0
                 THEN ROUND(CAST(mp.watched_children AS REAL) / mp.collected_children * 100, 1)
                 ELSE 0 END as completion,

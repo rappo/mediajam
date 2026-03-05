@@ -1,7 +1,12 @@
 <script>
-    import ServiceIcon from "$lib/components/ServiceIcon.svelte";
+    import FavoriteButton from "$lib/components/FavoriteButton.svelte";
     import ExternalLinks from "$lib/components/ExternalLinks.svelte";
+    import HeartBorder from "$lib/components/HeartBorder.svelte";
+    import RemotePlayButton from "$lib/components/RemotePlayButton.svelte";
+    import StatCard from "$lib/components/StatCard.svelte";
+    import ServiceIcon from "$lib/components/ServiceIcon.svelte";
     import { invalidateAll } from "$app/navigation";
+    import { page } from "$app/stores";
     let { data } = $props();
 
     function formatRuntime(minutes) {
@@ -146,15 +151,28 @@
             ></div>
             <div class="absolute bottom-0 left-0 right-0 p-6 flex gap-6">
                 {#if data.movie.posterUrl}
-                    <img
-                        src={data.movie.posterUrl}
-                        alt={data.movie.title}
-                        class="w-32 md:w-40 rounded-xl shadow-2xl shrink-0 -mt-20"
-                    />
+                    <HeartBorder
+                        show={!!data.movie.is_favorite &&
+                            data.settings?.heartBorderMovies}
+                        class="rounded-xl"
+                    >
+                        <img
+                            src={data.movie.posterUrl}
+                            alt={data.movie.title}
+                            class="w-32 md:w-40 rounded-xl shadow-2xl shrink-0 -mt-20"
+                        />
+                    </HeartBorder>
                 {/if}
                 <div class="space-y-2 min-w-0 self-end">
-                    <h1 class="text-3xl md:text-4xl font-bold leading-tight">
+                    <h1
+                        class="text-3xl md:text-4xl font-bold leading-tight flex items-center gap-2"
+                    >
                         {data.movie.title}
+                        <FavoriteButton
+                            type="media"
+                            id={data.movie.id}
+                            isFavorite={!!data.movie.is_favorite}
+                        />
                     </h1>
                     <div
                         class="flex flex-wrap items-center gap-2 text-sm text-base-content/60"
@@ -184,6 +202,16 @@
                         tvdb_id={data.movie.tvdb_id}
                         mediaType="movie"
                     />
+                    {#if data.movie.jellyfin_id}
+                        <RemotePlayButton
+                            jellyfinId={data.movie.jellyfin_id}
+                            enabled={$page.data.remoteControlEnabled}
+                            savedPlayers={$page.data.userPreferences
+                                ?.savedPlayers || []}
+                            defaultPlayerId={$page.data.userPreferences
+                                ?.defaultPlayerId || ""}
+                        />
+                    {/if}
                 </div>
             </div>
         </div>
@@ -266,40 +294,60 @@
                 </p>
             </div>
         </div>
-        <div class="card bg-base-200/50 border border-base-300">
-            <div class="card-body py-4 px-5">
-                <p
-                    class="text-xs text-base-content/50 uppercase tracking-wider"
-                >
-                    First Watched
-                </p>
-                <p class="text-lg font-bold">
-                    {formatDate(data.stats.firstWatched)}
-                </p>
-                {#if data.stats.firstWatched}
-                    <p class="text-xs text-base-content/40">
-                        {timeAgo(data.stats.firstWatched)}
+        {#if data.stats.totalPlays > 1}
+            <div class="card bg-base-200/50 border border-base-300">
+                <div class="card-body py-4 px-5">
+                    <p
+                        class="text-xs text-base-content/50 uppercase tracking-wider"
+                    >
+                        First Watched
                     </p>
-                {/if}
-            </div>
-        </div>
-        <div class="card bg-base-200/50 border border-base-300">
-            <div class="card-body py-4 px-5">
-                <p
-                    class="text-xs text-base-content/50 uppercase tracking-wider"
-                >
-                    Last Watched
-                </p>
-                <p class="text-lg font-bold">
-                    {formatDate(data.stats.lastWatched)}
-                </p>
-                {#if data.stats.lastWatched}
-                    <p class="text-xs text-base-content/40">
-                        {timeAgo(data.stats.lastWatched)}
+                    <p class="text-lg font-bold">
+                        {formatDate(data.stats.firstWatched)}
                     </p>
-                {/if}
+                    {#if data.stats.firstWatched}
+                        <p class="text-xs text-base-content/40">
+                            {timeAgo(data.stats.firstWatched)}
+                        </p>
+                    {/if}
+                </div>
             </div>
-        </div>
+            <div class="card bg-base-200/50 border border-base-300">
+                <div class="card-body py-4 px-5">
+                    <p
+                        class="text-xs text-base-content/50 uppercase tracking-wider"
+                    >
+                        Last Watched
+                    </p>
+                    <p class="text-lg font-bold">
+                        {formatDate(data.stats.lastWatched)}
+                    </p>
+                    {#if data.stats.lastWatched}
+                        <p class="text-xs text-base-content/40">
+                            {timeAgo(data.stats.lastWatched)}
+                        </p>
+                    {/if}
+                </div>
+            </div>
+        {:else}
+            <div class="card bg-base-200/50 border border-base-300">
+                <div class="card-body py-4 px-5">
+                    <p
+                        class="text-xs text-base-content/50 uppercase tracking-wider"
+                    >
+                        Watched
+                    </p>
+                    <p class="text-lg font-bold">
+                        {formatDate(data.stats.firstWatched)}
+                    </p>
+                    {#if data.stats.firstWatched}
+                        <p class="text-xs text-base-content/40">
+                            {timeAgo(data.stats.firstWatched)}
+                        </p>
+                    {/if}
+                </div>
+            </div>
+        {/if}
     </div>
 
     <!-- External Links -->

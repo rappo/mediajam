@@ -34,11 +34,14 @@ export async function POST({ request }) {
 
 /** @type {import('./$types').RequestHandler} */
 export async function GET() {
+    /** @type {(() => void) | null} */
+    let cleanupFn = null;
+
     const stream = new ReadableStream({
         start(controller) {
             const encoder = new TextEncoder();
 
-            const send = (data) => {
+            const send = (/** @type {any} */ data) => {
                 try {
                     controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
                 } catch {
@@ -73,13 +76,17 @@ export async function GET() {
                     controller.enqueue(encoder.encode(`: keepalive\n\n`));
                 } catch {
                     clearInterval(keepAlive);
+                    removeListener();
                 }
             }, 15000);
 
-            // Cleanup on close is handled via the reader cancel
+            cleanupFn = () => {
+                removeListener();
+                clearInterval(keepAlive);
+            };
         },
         cancel() {
-            // Cleanup happens when stream is cancelled
+            if (cleanupFn) cleanupFn();
         }
     });
 

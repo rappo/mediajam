@@ -1,5 +1,6 @@
 <script>
     import { goto } from "$app/navigation";
+    import { addToast } from "$lib/stores/toast.js";
 
     let open = $state(false);
     let query = $state("");
@@ -44,10 +45,25 @@
                 const res = await fetch(
                     `/api/search?q=${encodeURIComponent(query)}`,
                 );
-                const data = await res.json();
-                results = data;
+                if (!res.ok) {
+                    const errText = await res.text();
+                    addToast({
+                        type: "error",
+                        message: `Search failed (${res.status})`,
+                        detail: errText,
+                    });
+                    results = null;
+                } else {
+                    const data = await res.json();
+                    results = data;
+                }
                 selectedIndex = -1;
-            } catch {
+            } catch (/** @type {any} */ err) {
+                addToast({
+                    type: "error",
+                    message: "Search failed",
+                    detail: err?.message || String(err),
+                });
                 results = null;
             }
             loading = false;
@@ -60,6 +76,7 @@
         if (item.type === "show") goto(`/tv/${item.id}`);
         else if (item.type === "movie") goto(`/movies/${item.id}`);
         else if (item.type === "artist") goto(`/music/${item.id}`);
+        else if (item.type === "person") goto(`/people/${item.id}`);
         else if (item.type === "child") {
             if (item.media_type === "artist") goto(`/music/${item.parent_id}`);
             else if (item.media_type === "show") goto(`/tv/${item.parent_id}`);
@@ -82,6 +99,7 @@
             ...(r.results.shows || []),
             ...(r.results.movies || []),
             ...(r.results.music || []),
+            ...(r.results.people || []),
             ...(r.results.children || []),
             ...(r.results.history || []),
         ];
@@ -119,6 +137,7 @@
         show: "📺",
         movie: "🎬",
         artist: "🎵",
+        person: "👤",
         child: "📄",
         history: "⏱️",
     };
@@ -127,6 +146,7 @@
         show: "TV Show",
         movie: "Movie",
         artist: "Artist",
+        person: "Person",
         child: "Episode/Track",
         history: "History",
     };
@@ -154,6 +174,7 @@
                 : `${item.episode_count || 0} episodes`;
         if (item.type === "movie") return item.release_year || "";
         if (item.type === "artist") return `${item.album_count || 0} albums`;
+        if (item.type === "person") return `${item.credit_count || 0} credits`;
         if (item.type === "history")
             return item.timestamp
                 ? new Date(item.timestamp).toLocaleDateString()
@@ -274,7 +295,7 @@
                     oninput={handleInput}
                     onkeydown={handleKeydown}
                     type="text"
-                    placeholder="Search shows, movies, music, history..."
+                    placeholder="Search shows, movies, music, people..."
                     class="search-input"
                 />
                 {#if loading}
@@ -287,14 +308,16 @@
             <div class="search-results">
                 {#if results && results.totalCount > 0}
                     {@const flat = flatResults(results)}
-                    {#each ["shows", "movies", "music", "children", "history"] as category}
+                    {#each ["shows", "movies", "music", "people", "children", "history"] as category}
                         {#if results.results[category]?.length > 0}
                             <div class="search-category-label">
                                 {category === "children"
                                     ? "Episodes & Tracks"
                                     : category === "music"
                                       ? "Artists"
-                                      : category}
+                                      : category === "people"
+                                        ? "People"
+                                        : category}
                             </div>
                             {#each results.results[category] as item}
                                 {@const globalIdx = flat.indexOf(item)}
@@ -308,6 +331,8 @@
                                             src={item.poster_url}
                                             alt=""
                                             class="search-thumb"
+                                            class:search-thumb-round={item.type ===
+                                                "person"}
                                         />
                                     {:else}
                                         <span class="search-thumb-placeholder">
@@ -441,6 +466,9 @@
         border-radius: 0.25rem;
         object-fit: cover;
         flex-shrink: 0;
+    }
+    .search-thumb-round {
+        border-radius: 50%;
     }
     .search-thumb-placeholder {
         width: 2rem;

@@ -6,6 +6,25 @@ export function load() {
     const syncState = /** @type {any} */ (db.prepare('SELECT * FROM sync_state WHERE id = 1').get());
     const libraries = /** @type {any[]} */ (db.prepare('SELECT jellyfin_id, name, media_type FROM libraries WHERE is_tracked = 1').all());
 
+    // Get latest sync history per type
+    const syncHistory = /** @type {any[]} */ (db.prepare(`
+        SELECT sh.* FROM sync_history sh
+        INNER JOIN (SELECT sync_type, MAX(id) as max_id FROM sync_history GROUP BY sync_type) latest
+        ON sh.id = latest.max_id
+        ORDER BY sh.sync_type
+    `).all());
+
+    /** @type {Record<string, any>} */
+    const historyByType = {};
+    for (const h of syncHistory) {
+        historyByType[h.sync_type] = {
+            status: h.status,
+            startedAt: h.started_at,
+            finishedAt: h.finished_at,
+            summary: h.summary
+        };
+    }
+
     return {
         settings: {
             jellyfinUrl: settings?.jellyfin_url || '',
@@ -23,6 +42,7 @@ export function load() {
             status: syncState?.status || 'idle',
             lastSync: syncState?.last_sync_timestamp
         },
-        libraries
+        libraries,
+        syncHistory: historyByType
     };
 }

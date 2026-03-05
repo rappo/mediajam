@@ -1,5 +1,7 @@
 <script>
     import ServiceIcon from "$lib/components/ServiceIcon.svelte";
+    import { page } from "$app/stores";
+    import { invalidateAll } from "$app/navigation";
 
     /** @type {{ data: import('./$types').PageData }} */
     let { data } = $props();
@@ -264,6 +266,116 @@
         if (followLogs && filteredLogs.length && logEl) {
             logEl.scrollTop = logEl.scrollHeight;
         }
+    });
+
+    // ─── Remote Playback ─────────────────────────────────────────────────────────
+    /** @type {any[]} */
+    let remotePlayers = $state([]);
+    let remoteEnabled = $state($page.data.remoteControlEnabled || false);
+    /** @type {any[]} */
+    let savedPlayers = $state($page.data.userPreferences?.savedPlayers || []);
+    let defaultPlayerId = $state(
+        $page.data.userPreferences?.defaultPlayerId || "",
+    );
+
+    async function fetchRemotePlayers() {
+        try {
+            const res = await fetch("/api/jellyfin/sessions");
+            const d = await res.json();
+            remotePlayers = d.sessions || [];
+        } catch {
+            remotePlayers = [];
+        }
+    }
+
+    async function toggleRemoteControl(/** @type {boolean} */ enabled) {
+        remoteEnabled = enabled;
+        await fetch("/api/user/preferences", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ remoteControlEnabled: enabled }),
+        });
+        await invalidateAll();
+        if (enabled) fetchRemotePlayers();
+    }
+
+    /** @param {any} player */
+    function isPlayerSaved(player) {
+        return savedPlayers.some(
+            (/** @type {any} */ sp) => sp.deviceId === player.deviceId,
+        );
+    }
+
+    /** @param {any} player */
+    async function addPlayer(player) {
+        const entry = {
+            deviceId: player.deviceId,
+            deviceName: player.deviceName,
+            client: player.client,
+        };
+        const updated = [...savedPlayers, entry];
+        savedPlayers = updated;
+        await fetch("/api/user/preferences", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ savedPlayers: updated }),
+        });
+        await invalidateAll();
+    }
+
+    /** @param {string} deviceId */
+    async function removePlayer(deviceId) {
+        const updated = savedPlayers.filter(
+            (/** @type {any} */ p) => p.deviceId !== deviceId,
+        );
+        savedPlayers = updated;
+        // If we removed the default, clear it
+        const prefs = { savedPlayers: updated };
+        if (defaultPlayerId === deviceId) {
+            defaultPlayerId = "";
+            /** @type {any} */ (prefs).defaultPlayerId = "";
+        }
+        await fetch("/api/user/preferences", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(prefs),
+        });
+        await invalidateAll();
+    }
+
+    /** @param {string} deviceId */
+    async function setDefaultPlayer(deviceId) {
+        defaultPlayerId = deviceId;
+        await fetch("/api/user/preferences", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ defaultPlayerId: deviceId }),
+        });
+        await invalidateAll();
+    }
+
+    // Merge saved players with live status info
+    let displayPlayerList = $derived.by(() => {
+        // Enrich saved players with live status
+        const enrichedSaved = savedPlayers.map((/** @type {any} */ sp) => {
+            const live = remotePlayers.find(
+                (/** @type {any} */ rp) => rp.deviceId === sp.deviceId,
+            );
+            return {
+                ...sp,
+                online: !!live?.supportsMediaControl,
+                supportsMediaControl: !!live?.supportsMediaControl,
+                nowPlaying: live?.nowPlaying || null,
+            };
+        });
+        // Unsaved live sessions
+        const unsaved = remotePlayers.filter(
+            (/** @type {any} */ rp) =>
+                !savedPlayers.some(
+                    (/** @type {any} */ sp) => sp.deviceId === rp.deviceId,
+                ),
+        );
+        return { saved: enrichedSaved, unsaved };
     });
 </script>
 
@@ -852,6 +964,197 @@
                     {/if}
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Remote Playback -->
+    <div class="card bg-base-200/50 border border-base-300">
+        <div class="card-body">
+            <h2 class="card-title text-lg">
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="h-5 w-5 text-accent"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                >
+                    <rect
+                        x="2"
+                        y="7"
+                        width="20"
+                        height="15"
+                        rx="2"
+                        ry="2"
+                    /><polyline points="17 2 12 7 7 2" />
+                </svg>
+                Remote Playback
+            </h2>
+            <p class="text-xs text-base-content/50 -mt-1">
+                Control Jellyfin players from Mediajam. Send movies and shows to
+                your TV, desktop, or phone.
+            </p>
+            <div class="form-control">
+                <label class="label cursor-pointer justify-start gap-3">
+                    <input
+                        type="checkbox"
+                        class="toggle toggle-primary toggle-sm"
+                        checked={remoteEnabled}
+                        onchange={(e) =>
+                            toggleRemoteControl(
+                                /** @type {HTMLInputElement} */ (e.target)
+                                    .checked,
+                            )}
+                    />
+                    <div>
+                        <span class="label-text font-medium"
+                            >Enable Remote Control</span
+                        >
+                        <p class="text-xs text-base-content/40">
+                            Show play buttons on media detail pages
+                        </p>
+                    </div>
+                </label>
+            </div>
+
+            {#if remoteEnabled}
+                <div class="space-y-4 mt-2">
+                    <!-- Saved Players -->
+                    <div>
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="text-sm font-medium">My Players</span>
+                            <button
+                                class="btn btn-ghost btn-xs gap-1"
+                                onclick={fetchRemotePlayers}>🔄 Refresh</button
+                            >
+                        </div>
+                        {#if displayPlayerList.saved.length === 0}
+                            <p class="text-xs text-base-content/40">
+                                No players saved yet. Discover players below and
+                                add them.
+                            </p>
+                        {:else}
+                            <div class="space-y-1">
+                                {#each displayPlayerList.saved as player}
+                                    <div
+                                        class="flex items-center gap-2 px-3 py-2 rounded-lg bg-base-300/30 text-sm"
+                                        class:opacity-50={!player.online}
+                                    >
+                                        {#if player.client?.includes("TV")}📺
+                                        {:else if player.client?.includes("Web")}💻
+                                        {:else if player.client?.includes("Android") || player.client?.includes("iOS")}📱
+                                        {:else if player.client?.includes("Desktop")}🖥
+                                        {:else if player.client?.includes("Home Assistant")}🏠
+                                        {:else}🖥{/if}
+                                        <span class="font-medium"
+                                            >{player.deviceName}</span
+                                        >
+                                        <span
+                                            class="text-xs text-base-content/40"
+                                            >{player.client}</span
+                                        >
+                                        {#if player.nowPlaying}
+                                            <span
+                                                class="badge badge-info badge-xs gap-1"
+                                                >▶ {player.nowPlaying
+                                                    .name}</span
+                                            >
+                                        {:else if player.online}
+                                            <span
+                                                class="badge badge-success badge-xs"
+                                                >online</span
+                                            >
+                                        {:else}
+                                            <span
+                                                class="badge badge-ghost badge-xs"
+                                                >offline</span
+                                            >
+                                        {/if}
+                                        <div
+                                            class="ml-auto flex items-center gap-1"
+                                        >
+                                            {#if defaultPlayerId === player.deviceId}
+                                                <span
+                                                    class="badge badge-warning badge-xs gap-1"
+                                                    >⭐ default</span
+                                                >
+                                            {:else if displayPlayerList.saved.length > 1}
+                                                <button
+                                                    class="btn btn-ghost btn-xs text-xs"
+                                                    onclick={() =>
+                                                        setDefaultPlayer(
+                                                            player.deviceId,
+                                                        )}>Set default</button
+                                                >
+                                            {/if}
+                                            <button
+                                                class="btn btn-ghost btn-xs text-error"
+                                                onclick={() =>
+                                                    removePlayer(
+                                                        player.deviceId,
+                                                    )}
+                                                title="Remove player">✕</button
+                                            >
+                                        </div>
+                                    </div>
+                                {/each}
+                            </div>
+                        {/if}
+                    </div>
+
+                    <!-- Available (unsaved) players -->
+                    {#if displayPlayerList.unsaved.length > 0}
+                        <div>
+                            <span
+                                class="text-sm font-medium text-base-content/60"
+                                >Available Players</span
+                            >
+                            <div class="space-y-1 mt-1">
+                                {#each displayPlayerList.unsaved as player}
+                                    <div
+                                        class="flex items-center gap-2 px-3 py-2 rounded-lg bg-base-300/20 text-sm border border-dashed border-base-300"
+                                    >
+                                        {#if player.client?.includes("TV")}📺
+                                        {:else if player.client?.includes("Web")}💻
+                                        {:else if player.client?.includes("Android") || player.client?.includes("iOS")}📱
+                                        {:else if player.client?.includes("Desktop")}🖥
+                                        {:else if player.client?.includes("Home Assistant")}🏠
+                                        {:else}🖥{/if}
+                                        <span class="font-medium"
+                                            >{player.deviceName}</span
+                                        >
+                                        <span
+                                            class="text-xs text-base-content/40"
+                                            >{player.client}</span
+                                        >
+                                        {#if player.supportsMediaControl}
+                                            <span
+                                                class="badge badge-success badge-xs"
+                                                >online</span
+                                            >
+                                        {:else}
+                                            <span
+                                                class="badge badge-ghost badge-xs"
+                                                >offline</span
+                                            >
+                                        {/if}
+                                        <button
+                                            class="btn btn-ghost btn-xs btn-primary ml-auto"
+                                            onclick={() => addPlayer(player)}
+                                            >+ Add</button
+                                        >
+                                    </div>
+                                {/each}
+                            </div>
+                        </div>
+                    {:else if remotePlayers.length === 0}
+                        <p class="text-xs text-base-content/40">
+                            Click "Refresh" to discover Jellyfin players on your
+                            network.
+                        </p>
+                    {/if}
+                </div>
+            {/if}
         </div>
     </div>
 

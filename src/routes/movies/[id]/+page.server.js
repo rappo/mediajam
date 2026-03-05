@@ -23,6 +23,7 @@ export function load({ params, locals }) {
             mp.jellyfin_id,
             mp.collection_status,
             mp.jellyfin_user_rating,
+            mp.is_favorite,
             mc.id as child_id,
             mc.watch_status,
             mc.play_count,

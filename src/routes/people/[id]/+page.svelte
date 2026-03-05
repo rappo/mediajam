@@ -1,5 +1,7 @@
 <script>
     import ExternalLinks from "$lib/components/ExternalLinks.svelte";
+    import FavoriteButton from "$lib/components/FavoriteButton.svelte";
+    import HeartBorder from "$lib/components/HeartBorder.svelte";
     let { data } = $props();
 
     function roleBadge(roleType) {
@@ -21,6 +23,72 @@
         if (status === "in_progress") return "⏳";
         return "🙈";
     }
+
+    /** @type {Record<string, { label: string, icon: string, urlFn: (id: string) => string }>} */
+    const sourceConfig = {
+        discogs: {
+            label: "Discogs",
+            icon: "💿",
+            urlFn: (id) => `https://www.discogs.com/artist/${id}`,
+        },
+        wikidata: {
+            label: "Wikidata",
+            icon: "🌐",
+            urlFn: (id) => `https://www.wikidata.org/wiki/${id}`,
+        },
+        allmusic: {
+            label: "AllMusic",
+            icon: "🎶",
+            urlFn: (id) => `https://www.allmusic.com/artist/${id}`,
+        },
+        imdb: {
+            label: "IMDb",
+            icon: "⭐",
+            urlFn: (id) => `https://www.imdb.com/name/${id}`,
+        },
+        songkick: {
+            label: "Songkick",
+            icon: "🎤",
+            urlFn: (id) => `https://www.songkick.com/artists/${id}`,
+        },
+        secondhandsongs: {
+            label: "2ndHandSongs",
+            icon: "🎹",
+            urlFn: (id) => `https://secondhandsongs.com/artist/${id}`,
+        },
+        lastfm: {
+            label: "Last.fm",
+            icon: "📻",
+            urlFn: (id) =>
+                `https://www.last.fm/music/${encodeURIComponent(id)}`,
+        },
+        bbc_music: {
+            label: "BBC Music",
+            icon: "📡",
+            urlFn: (id) => `https://www.bbc.co.uk/music/artists/${id}`,
+        },
+        soundcloud: {
+            label: "SoundCloud",
+            icon: "☁️",
+            urlFn: (id) => `https://soundcloud.com/${id}`,
+        },
+        bandcamp: {
+            label: "Bandcamp",
+            icon: "🏕",
+            urlFn: (id) =>
+                id.startsWith("http") ? id : `https://${id}.bandcamp.com`,
+        },
+        setlistfm: {
+            label: "Setlist.fm",
+            icon: "📝",
+            urlFn: (id) => `https://www.setlist.fm/setlists/${id}.html`,
+        },
+        vgmdb: {
+            label: "VGMdb",
+            icon: "🎮",
+            urlFn: (id) => `https://vgmdb.net/artist/${id}`,
+        },
+    };
 </script>
 
 <svelte:head>
@@ -44,11 +112,17 @@
     <!-- Person Header -->
     <div class="flex gap-6 items-start">
         {#if data.person.photoUrl}
-            <img
-                src={data.person.photoUrl + "?maxHeight=300"}
-                alt={data.person.name}
-                class="w-32 h-32 md:w-40 md:h-40 rounded-2xl object-cover shadow-lg shrink-0"
-            />
+            <HeartBorder
+                show={!!data.person.is_favorite &&
+                    data.settings?.heartBorderPeople}
+                class="rounded-2xl"
+            >
+                <img
+                    src={data.person.photoUrl + "?maxHeight=300"}
+                    alt={data.person.name}
+                    class="w-32 h-32 md:w-40 md:h-40 rounded-2xl object-cover shadow-lg shrink-0"
+                />
+            </HeartBorder>
         {:else}
             <div
                 class="w-32 h-32 md:w-40 md:h-40 rounded-2xl bg-base-300 flex items-center justify-center text-5xl shrink-0"
@@ -58,8 +132,15 @@
         {/if}
         <div class="space-y-3 min-w-0">
             <div>
-                <h1 class="text-3xl md:text-4xl font-bold">
+                <h1
+                    class="text-3xl md:text-4xl font-bold flex items-center gap-2"
+                >
                     {data.person.name}
+                    <FavoriteButton
+                        type="person"
+                        id={data.person.id}
+                        isFavorite={!!data.person.is_favorite}
+                    />
                 </h1>
                 <div
                     class="flex flex-wrap items-center gap-2 text-sm text-base-content/60 mt-1"
@@ -80,7 +161,7 @@
             {/if}
 
             <!-- External links -->
-            <div class="flex flex-wrap items-center gap-2">
+            <div class="flex flex-wrap items-center gap-1.5">
                 <ExternalLinks
                     tmdb_person_id={data.person.tmdb_person_id}
                     imdb_person_id={data.person.imdb_person_id}
@@ -89,7 +170,7 @@
                 />
                 {#if data.person.jellyfin_id && data.jellyfinUrl}
                     <a
-                        href="{data.jellyfinUrl}/web/index.html#!/item?id={data
+                        href="{data.jellyfinUrl}/web/index.html#!/details?id={data
                             .person.jellyfin_id}"
                         target="_blank"
                         rel="noopener"
@@ -99,6 +180,20 @@
                         Jellyfin ↗
                     </a>
                 {/if}
+                {#each data.externalIds.filter((e) => !(e.source === "imdb" && data.person.imdb_person_id)) as ext}
+                    {@const cfg = sourceConfig[ext.source]}
+                    {#if cfg}
+                        <a
+                            href={cfg.urlFn(ext.external_id)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="badge badge-sm badge-outline gap-1 hover:badge-primary transition-colors"
+                        >
+                            <span class="text-xs">{cfg.icon}</span>
+                            {cfg.label} ↗
+                        </a>
+                    {/if}
+                {/each}
             </div>
         </div>
     </div>

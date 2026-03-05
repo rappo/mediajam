@@ -1,5 +1,6 @@
 import db from '$lib/server/db.js';
 import Database from 'better-sqlite3';
+import { logError, logInfo, logWarn } from '$lib/server/logger.js';
 
 // ─── SSE Listeners ───────────────────────────────────────────────────────────
 /** @type {Set<(data: any) => void>} */
@@ -253,8 +254,8 @@ export async function backfillTrakt(userId) {
 
     broadcast({
         type: 'backfill_complete', tier: 'trakt',
-        log: `✅ Trakt import complete: ${totalStored} fetched, ${processed.imported} imported, ${processed.external} external, ${processed.skipped} skipped`,
-        logType: 'success', totalImported: processed.imported, totalSkipped: processed.skipped, totalExternal: processed.external
+        log: `✅ Trakt import complete: ${totalStored} fetched, ${processed.imported} imported, ${processed.consolidated || 0} consolidated, ${processed.external} external, ${processed.skipped} skipped`,
+        logType: 'success', totalImported: processed.imported, totalSkipped: processed.skipped, totalExternal: processed.external, totalConsolidated: processed.consolidated || 0
     });
     backfillState = { running: false, currentTier: null };
     return { success: true, stored: totalStored, ...processed };
@@ -263,8 +264,15 @@ export async function backfillTrakt(userId) {
 /**
  * Phase 2: Map raw trakt_history records into playback_history.
  * Only processes records that don't already have a corresponding playback_history entry.
+ *
+ * Session consolidation: Trakt often sends multiple scrobble events for a single
+ * viewing session (e.g. 12 scrobbles across 3 hours for a 2h movie). We group
+ * scrobbles of the same media item that fall within the item's runtime window
+ * (or 4 hours as fallback) into a single session, only inserting the first
+ * scrobble of each session.
+ *
  * @param {number} userId - Mediajam user ID
- * @returns {{ imported: number, external: number, skipped: number }}
+ * @returns {{ imported: number, external: number, skipped: number, consolidated: number }}
  */
 export function processTraktHistory(userId) {
     // Find trakt_history records not yet in playback_history
@@ -281,6 +289,24 @@ export function processTraktHistory(userId) {
     let imported = 0;
     let external = 0;
     let skipped = 0;
+    let consolidated = 0;
+
+    // Prepare runtime lookup (cache to avoid repeated queries)
+    const runtimeCache = /** @type {Map<number, number>} */ (new Map());
+    const getRuntimeMs = (/** @type {number} */ mediaId) => {
+        if (runtimeCache.has(mediaId)) return /** @type {number} */ (runtimeCache.get(mediaId));
+        const row = /** @type {any} */ (db.prepare(
+            'SELECT runtime_ticks FROM media_children WHERE id = ?'
+        ).get(mediaId));
+        // Convert ticks to milliseconds, fallback to 4 hours
+        const ms = row?.runtime_ticks ? Math.round(row.runtime_ticks / 10000) : 4 * 60 * 60 * 1000;
+        runtimeCache.set(mediaId, ms);
+        return ms;
+    };
+
+    // Track last imported timestamp per media_id for session consolidation
+    /** @type {Map<number, number>} */
+    const lastSessionTime = new Map();
 
     for (const row of unprocessed) {
         let mediaId = null;
@@ -328,6 +354,20 @@ export function processTraktHistory(userId) {
             continue;
         }
 
+        // Session consolidation: check if this scrobble is within the same
+        // viewing session as the last imported scrobble for this media item
+        const watchedAt = new Date(row.watched_at).getTime();
+        const lastTime = lastSessionTime.get(mediaId);
+        if (lastTime !== undefined) {
+            const runtimeMs = getRuntimeMs(mediaId);
+            // Use 1.5x runtime as the session window to account for pauses
+            const sessionWindow = Math.max(runtimeMs * 1.5, 60 * 60 * 1000); // at least 1 hour
+            if (watchedAt - lastTime < sessionWindow) {
+                consolidated++;
+                continue; // Same session — skip this scrobble
+            }
+        }
+
         const trackTitle = row.type === 'episode' ? row.title : row.title;
 
         const result = insertHistory.run({
@@ -341,11 +381,15 @@ export function processTraktHistory(userId) {
             trackName: trackTitle
         });
 
-        if (result.changes > 0) imported++;
-        else skipped++;
+        if (result.changes > 0) {
+            imported++;
+            lastSessionTime.set(mediaId, watchedAt);
+        } else {
+            skipped++;
+        }
     }
 
-    return { imported, external, skipped };
+    return { imported, external, skipped, consolidated };
 }
 
 /**
@@ -355,19 +399,33 @@ export function processTraktHistory(userId) {
  */
 export function reprocessTrakt(userId) {
     backfillState = { running: true, currentTier: 'trakt' };
-    broadcast({ type: 'backfill_start', tier: 'trakt', log: '🔄 Re-processing Trakt history from local cache...', logType: 'info' });
+    broadcast({ type: 'backfill_start', tier: 'trakt', log: '🔄 Re-processing Trakt history with session consolidation...', logType: 'info' });
 
     // Delete existing Trakt playback history
     const deleted = db.prepare("DELETE FROM playback_history WHERE user_id = ? AND source = 'trakt'").run(userId);
     broadcast({ type: 'backfill_progress', tier: 'trakt', log: `  🗑️ Cleared ${deleted.changes} existing Trakt history entries`, logType: 'info' });
 
-    // Re-process from raw data
+    // Re-process from raw data (now with session consolidation)
     const result = processTraktHistory(userId);
+
+    // Recalculate play_count on media_children from actual playback_history rows
+    const recalculated = db.prepare(`
+        UPDATE media_children SET play_count = (
+            SELECT COUNT(*) FROM playback_history WHERE media_id = media_children.id
+        )
+        WHERE id IN (
+            SELECT DISTINCT media_id FROM playback_history WHERE user_id = ?
+            UNION
+            SELECT DISTINCT media_id FROM playback_history WHERE user_id = ? AND source = 'trakt'
+        )
+    `).run(userId, userId);
+
+    broadcast({ type: 'backfill_progress', tier: 'trakt', log: `  📊 Recalculated play counts for ${recalculated.changes} items`, logType: 'info' });
 
     broadcast({
         type: 'backfill_complete', tier: 'trakt',
-        log: `✅ Trakt reprocess complete: ${result.imported} imported, ${result.external} external, ${result.skipped} skipped`,
-        logType: 'success', totalImported: result.imported, totalSkipped: result.skipped, totalExternal: result.external
+        log: `✅ Trakt reprocess complete: ${result.imported} imported, ${result.consolidated} consolidated into sessions, ${result.external} external, ${result.skipped} skipped`,
+        logType: 'success', totalImported: result.imported, totalSkipped: result.skipped, totalExternal: result.external, totalConsolidated: result.consolidated
     });
     backfillState = { running: false, currentTier: null };
     return { success: true, ...result };

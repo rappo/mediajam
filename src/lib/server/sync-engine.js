@@ -1,5 +1,6 @@
 import db from '$lib/server/db.js';
 import { getJellyfinApis, getItemsApi, getSystemApi, getTvShowsApi } from '$lib/server/jellyfin.js';
+import { logError, logInfo, logWarn } from '$lib/server/logger.js';
 
 /** @type {Set<(data: any) => void>} */
 const listeners = new Set();
@@ -17,6 +18,9 @@ let engineState = {
 
 /** @type {Array<{time: string, message: string, type: string}>} */
 let recentLogs = [];
+
+/** @type {number|null} */
+let syncHistoryId = null;
 
 function broadcast(data) {
     // Capture logs and state updates
@@ -237,6 +241,12 @@ export async function startSync(libraryId = null, force = false) {
     engineState.errors = 0;
     recentLogs = [];
 
+    // Record sync start
+    const histResult = db.prepare(
+        `INSERT INTO sync_history (sync_type, status, started_at) VALUES ('jellyfin', 'running', ?)`
+    ).run(new Date().toISOString());
+    syncHistoryId = Number(histResult.lastInsertRowid);
+
     const settings = db.prepare('SELECT * FROM app_settings WHERE id = 1').get();
     const user = db.prepare('SELECT * FROM users LIMIT 1').get();
 
@@ -266,12 +276,12 @@ export async function startSync(libraryId = null, force = false) {
     updateSyncState({ status: 'syncing', progress_percent: 0 });
 
     const upsertParent = db.prepare(`
-		INSERT INTO media_parents (jellyfin_id, library_id, title, media_type, tvdb_id, tmdb_id, imdb_id, musicbrainz_id, release_year, poster_url, overview, jellyfin_user_rating, total_released_children, date_last_modified, jellyfin_child_count, unplayed_count)
-		VALUES (@jellyfinId, @libraryId, @title, @mediaType, @tvdbId, @tmdbId, @imdbId, @musicbrainzId, @releaseYear, @posterUrl, @overview, @userRating, @totalReleased, @dateLastModified, @jellyfinChildCount, @unplayedCount)
+		INSERT INTO media_parents (jellyfin_id, library_id, title, media_type, tvdb_id, tmdb_id, imdb_id, musicbrainz_id, release_year, poster_url, overview, jellyfin_user_rating, total_released_children, date_last_modified, jellyfin_child_count, unplayed_count, is_favorite)
+		VALUES (@jellyfinId, @libraryId, @title, @mediaType, @tvdbId, @tmdbId, @imdbId, @musicbrainzId, @releaseYear, @posterUrl, @overview, @userRating, @totalReleased, @dateLastModified, @jellyfinChildCount, @unplayedCount, @isFavorite)
 		ON CONFLICT(jellyfin_id) DO UPDATE SET
 			title = @title, tvdb_id = @tvdbId, tmdb_id = @tmdbId, imdb_id = @imdbId, musicbrainz_id = @musicbrainzId,
 			release_year = @releaseYear, poster_url = @posterUrl, overview = @overview, jellyfin_user_rating = @userRating,
-			total_released_children = @totalReleased, date_last_modified = @dateLastModified, jellyfin_child_count = @jellyfinChildCount, unplayed_count = @unplayedCount
+			total_released_children = @totalReleased, date_last_modified = @dateLastModified, jellyfin_child_count = @jellyfinChildCount, unplayed_count = @unplayedCount, is_favorite = @isFavorite
 	`);
 
     const upsertChild = db.prepare(`
@@ -492,7 +502,8 @@ export async function startSync(libraryId = null, force = false) {
                         totalReleased: 0,
                         dateLastModified: item.DateLastMediaAdded || item.DateModified || null,
                         jellyfinChildCount: item.ChildCount || 0,
-                        unplayedCount: item.UserData?.UnplayedItemCount ?? null
+                        unplayedCount: item.UserData?.UnplayedItemCount ?? null,
+                        isFavorite: item.UserData?.IsFavorite ? 1 : 0
                     });
 
                     libSynced++;
@@ -816,11 +827,23 @@ export async function startSync(libraryId = null, force = false) {
             logType: allFailed ? 'error' : hasErrors ? 'warning' : 'success'
         });
 
+        // Record sync completion
+        if (syncHistoryId) {
+            const status = allFailed ? 'failed' : 'success';
+            const summary = `${totalSynced} items synced, ${totalErrors} errors`;
+            db.prepare('UPDATE sync_history SET status = ?, finished_at = ?, summary = ? WHERE id = ?')
+                .run(status, new Date().toISOString(), summary, syncHistoryId);
+        }
+
     } catch (e) {
         console.error('Sync engine error:', e);
         const errMsg = e instanceof Error ? e.message : String(e);
         updateSyncState({ status: 'error', current_task: errMsg });
         broadcast({ type: 'error', message: errMsg });
+        if (syncHistoryId) {
+            db.prepare('UPDATE sync_history SET status = ?, finished_at = ?, summary = ? WHERE id = ?')
+                .run('failed', new Date().toISOString(), errMsg, syncHistoryId);
+        }
     } finally {
         engineState.running = false;
     }
@@ -840,6 +863,10 @@ export function stopSync() {
     engineState.running = false;
     engineState.paused = false;
     updateSyncState({ status: 'idle' });
+    if (syncHistoryId) {
+        db.prepare('UPDATE sync_history SET status = ?, finished_at = ? WHERE id = ?')
+            .run('interrupted', new Date().toISOString(), syncHistoryId);
+    }
 }
 
 export function addListener(callback) {

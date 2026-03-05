@@ -79,7 +79,9 @@
             const blob = await res.blob();
             const a = document.createElement("a");
             a.href = URL.createObjectURL(blob);
-            a.download = `mediajam-backup-${new Date().toISOString().split("T")[0]}.zip`;
+            const now = new Date();
+            const ts = `${now.toISOString().split("T")[0]}_${String(now.getHours()).padStart(2, "0")}-${String(now.getMinutes()).padStart(2, "0")}`;
+            a.download = `mediajam-backup-${ts}.zip`;
             a.click();
             URL.revokeObjectURL(a.href);
         } catch (e) {
@@ -285,7 +287,25 @@
 
     // ─── People Sync ─────────────────────────────────────────────────────────────
     let reconciling = $state(false);
+    /** @type {string|null} */
+    let expandedSync = $state(null);
     let reconcileResult = $state(null);
+
+    // Reactive local sync history — seeded from server data, updated on completion
+    /** @type {Record<string, {status: string, finishedAt: string|null, summary: string|null}>} */
+    let syncHistoryLocal = $state({
+        ...data.syncHistory,
+        // Fallback: if no jellyfin history exists but legacy lastSync does, seed it
+        ...(!data.syncHistory?.jellyfin && data.syncState.lastSync
+            ? {
+                  jellyfin: {
+                      status: "success",
+                      finishedAt: data.syncState.lastSync,
+                      summary: null,
+                  },
+              }
+            : {}),
+    });
     let peopleSyncStatus = $state("idle"); // idle | syncing | paused | complete | error
     let peopleSyncProgress = $state(0);
     let peopleSyncSynced = $state(0);
@@ -297,6 +317,7 @@
     /** @type {HTMLDivElement | null} */
     let peopleSyncConsoleEl = $state(null);
     let peopleSyncCopyFeedback = $state(false);
+    let externalIdsSyncing = $state(false);
 
     function addPeopleSyncLog(message, type = "info") {
         peopleSyncLogs = [
@@ -327,6 +348,14 @@
                 totalCredits: d.totalCredits,
             };
             peopleSyncEventSource?.close();
+            syncHistoryLocal = {
+                ...syncHistoryLocal,
+                people: {
+                    status: "success",
+                    finishedAt: new Date().toISOString(),
+                    summary: `${d.totalPersons} people, ${d.totalCredits} credits`,
+                },
+            };
         } else if (d.type === "error") {
             peopleSyncStatus = "error";
             peopleSyncEventSource?.close();
@@ -357,52 +386,52 @@
         };
     }
 
-    // Auto-reconnect to people sync on mount if running
+    // Auto-reconnect on mount — poll status endpoint instead of opening 3 SSE connections
     $effect(() => {
-        const es = new EventSource("/api/people/sync");
-        let adopted = false;
-        let gotConnected = false;
-        es.onmessage = (event) => {
-            try {
-                const d = JSON.parse(event.data);
-                if (d.type === "connected") {
-                    gotConnected = true;
-                    return;
+        let mounted = true;
+
+        fetch("/api/sync/status")
+            .then((r) => (r.ok ? r.json() : null))
+            .then((data) => {
+                if (!data || !mounted) return;
+
+                // Reconnect to people sync SSE if running
+                if (data.people?.running) {
+                    peopleSyncStatus = "syncing";
+                    peopleSyncProgress = data.people.progress || 0;
+                    peopleSyncSynced = data.people.itemsSynced || 0;
+                    peopleSyncErrors = data.people.errors || 0;
+                    if (mounted) connectPeopleSyncSSE();
                 }
-                if (d.type === "snapshot" && d.running) {
-                    adopted = true;
-                    peopleSyncEventSource = es;
-                    handlePeopleSyncSSE(d);
-                    es.onmessage = (ev) => {
-                        try {
-                            handlePeopleSyncSSE(JSON.parse(ev.data));
-                        } catch {
-                            /* ignore */
-                        }
-                    };
-                    es.onerror = () => {
-                        if (peopleSyncStatus === "syncing")
-                            addPeopleSyncLog("Connection lost.", "warning");
-                    };
-                } else if (gotConnected && !adopted) {
-                    // No running sync — grab stats from snapshot
-                    if (d.totalPersons !== undefined) {
-                        peopleSyncResult = {
-                            totalPersons: d.totalPersons,
-                            totalCredits: d.totalCredits,
-                        };
-                    }
-                    es.close();
+
+                // Reconnect to jellyfin sync SSE if running
+                if (data.jellyfin?.running) {
+                    syncStatus = "syncing";
+                    syncProgress = data.jellyfin.progress || 0;
+                    syncItemsSynced = data.jellyfin.itemsSynced || 0;
+                    syncErrors = data.jellyfin.errors || 0;
+                    syncLibrary = data.jellyfin.libraryName || "";
+                    if (mounted) connectSSE();
                 }
-            } catch {
-                es.close();
-            }
-        };
-        es.onerror = () => {
-            if (!adopted) es.close();
-        };
+
+                // Reconnect to musicbrainz SSE if running
+                if (data.musicbrainz?.running) {
+                    mbStatus = "syncing";
+                    mbProgress = data.musicbrainz.progress || 0;
+                    if (mounted) connectMBSSE();
+                }
+            })
+            .catch(() => {});
+
+        // Cleanup: close all SSE connections on unmount/re-render
         return () => {
-            if (!adopted) es.close();
+            mounted = false;
+            peopleSyncEventSource?.close();
+            peopleSyncEventSource = null;
+            syncEventSource?.close();
+            syncEventSource = null;
+            mbEventSource?.close();
+            mbEventSource = null;
         };
     });
 
@@ -449,6 +478,14 @@
             syncProgress = 100;
             if (d.totalSynced !== undefined) syncItemsSynced = d.totalSynced;
             syncEventSource?.close();
+            syncHistoryLocal = {
+                ...syncHistoryLocal,
+                jellyfin: {
+                    status: "success",
+                    finishedAt: new Date().toISOString(),
+                    summary: `${syncItemsSynced} items synced, ${syncErrors} errors`,
+                },
+            };
         } else if (d.type === "error") {
             syncErrors++;
         }
@@ -472,49 +509,7 @@
         };
     }
 
-    // Auto-reconnect on mount if sync is running
-    $effect(() => {
-        const es = new EventSource("/api/sync");
-        let adopted = false;
-        let gotConnected = false;
-        es.onmessage = (event) => {
-            try {
-                const d = JSON.parse(event.data);
-                if (d.type === "connected") {
-                    // Wait for snapshot to follow
-                    gotConnected = true;
-                    return;
-                }
-                if (d.type === "snapshot" && d.running) {
-                    adopted = true;
-                    syncEventSource = es;
-                    handleSSEMessage(d);
-                    es.onmessage = (ev) => {
-                        try {
-                            handleSSEMessage(JSON.parse(ev.data));
-                        } catch {
-                            /* ignore */
-                        }
-                    };
-                    es.onerror = () => {
-                        if (syncStatus === "syncing")
-                            addSyncLog("Connection lost.", "warning");
-                    };
-                } else if (gotConnected && !adopted) {
-                    // Got connected but no running snapshot — no sync in progress
-                    es.close();
-                }
-            } catch {
-                es.close();
-            }
-        };
-        es.onerror = () => {
-            if (!adopted) es.close();
-        };
-        return () => {
-            if (!adopted) es.close();
-        };
-    });
+    // Jellyfin sync auto-reconnect handled by the unified mount probe above
 
     async function triggerSync(
         libraryId = null,
@@ -619,6 +614,43 @@
         }
     }
 
+    async function syncExternalIdsOnly() {
+        peopleSyncStatus = "syncing";
+        peopleSyncProgress = 0;
+        peopleSyncSynced = 0;
+        peopleSyncErrors = 0;
+        peopleSyncLogs = [];
+        peopleSyncResult = null;
+        externalIdsSyncing = true;
+
+        addPeopleSyncLog("🔗 Starting external IDs sync...", "info");
+
+        try {
+            const res = await fetch("/api/people/sync", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "external-ids" }),
+            });
+            const result = await res.json();
+
+            if (!result.success) {
+                addPeopleSyncLog(
+                    result.error || "Failed to start external IDs sync.",
+                    "error",
+                );
+                peopleSyncStatus = "error";
+                externalIdsSyncing = false;
+                return;
+            }
+
+            connectPeopleSyncSSE();
+        } catch {
+            addPeopleSyncLog("❌ Failed to start external IDs sync.", "error");
+            peopleSyncStatus = "error";
+        }
+        externalIdsSyncing = false;
+    }
+
     async function togglePeopleSyncPause() {
         const action = peopleSyncStatus === "paused" ? "resume" : "pause";
         await fetch("/api/people/sync", {
@@ -651,14 +683,191 @@
         setTimeout(() => (peopleSyncCopyFeedback = false), 2000);
     }
 
+    // ─── MusicBrainz Enrichment ─────────────────────────────────────────────────
+    let mbStatus = $state("idle"); // idle | syncing | paused | complete | error
+    let mbProgress = $state(0);
+    let mbSynced = $state(0);
+    let mbErrors = $state(0);
+    let mbLogs = $state([]);
+    let mbResult = $state(null);
+    /** @type {EventSource | null} */
+    let mbEventSource = $state(null);
+    /** @type {HTMLDivElement | null} */
+    let mbConsoleEl = $state(null);
+    let mbCopyFeedback = $state(false);
+
+    function addMBLog(message, type = "info") {
+        mbLogs = [
+            ...mbLogs.slice(-100),
+            { time: new Date().toLocaleTimeString(), message, type },
+        ];
+    }
+
+    function handleMBSSE(d) {
+        // Handle snapshot (initial state dump)
+        if (d.type === "snapshot") {
+            if (d.running) {
+                mbStatus = d.paused ? "paused" : "syncing";
+                mbProgress = d.progress || 0;
+                mbSynced = d.itemsSynced || 0;
+                mbErrors = d.errors || 0;
+                if (d.logs?.length) mbLogs = d.logs;
+            } else if (d.status === "complete" && d.result) {
+                mbStatus = "complete";
+                mbResult = d.result;
+                if (d.logs?.length) mbLogs = d.logs;
+                if (d.progress !== undefined) mbProgress = d.progress;
+                if (d.itemsSynced !== undefined) mbSynced = d.itemsSynced;
+                if (d.errors !== undefined) mbErrors = d.errors;
+            }
+            return;
+        }
+        // Handle engine broadcast events (progress, completion, etc.)
+        if (d.status === "complete") {
+            mbStatus = "complete";
+            mbResult = d.result;
+            if (d.result) {
+                syncHistoryLocal = {
+                    ...syncHistoryLocal,
+                    musicbrainz: {
+                        status: "success",
+                        finishedAt: new Date().toISOString(),
+                        summary: `${d.result.totalPersons} persons, ${d.result.totalCredits} credits, ${d.result.totalExternalIds} external IDs`,
+                    },
+                };
+            }
+        } else if (d.status === "idle") {
+            mbStatus = "idle";
+        } else if (d.status === "syncing" || d.status === "paused") {
+            mbStatus = d.status;
+        }
+        if (d.progress !== undefined) mbProgress = d.progress;
+        if (d.itemsSynced !== undefined) mbSynced = d.itemsSynced;
+        if (d.errors !== undefined) mbErrors = d.errors;
+        if (d.logs?.length) mbLogs = d.logs;
+    }
+
+    function connectMBSSE() {
+        if (mbEventSource) mbEventSource.close();
+        mbEventSource = new EventSource("/api/musicbrainz/enrich");
+        mbEventSource.onmessage = (e) => {
+            try {
+                const d = JSON.parse(e.data);
+                if (d.type === "connected") return; // skip connected event
+                handleMBSSE(d);
+            } catch {
+                /* parse error */
+            }
+        };
+        mbEventSource.onerror = () => {
+            mbEventSource?.close();
+            mbEventSource = null;
+        };
+    }
+
+    async function triggerMBEnrich() {
+        mbStatus = "syncing";
+        mbProgress = 0;
+        mbSynced = 0;
+        mbErrors = 0;
+        mbLogs = [];
+        mbResult = null;
+        addMBLog("Starting MusicBrainz enrichment...", "info");
+
+        try {
+            const res = await fetch("/api/musicbrainz/enrich", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "start" }),
+            });
+            const result = await res.json();
+            if (result.error) {
+                addMBLog(`Error: ${result.error}`, "error");
+                mbStatus = "error";
+                return;
+            }
+            connectMBSSE();
+        } catch {
+            addMBLog("Failed to start enrichment.", "error");
+            mbStatus = "error";
+        }
+    }
+
+    async function toggleMBPause() {
+        const action = mbStatus === "paused" ? "resume" : "pause";
+        await fetch("/api/musicbrainz/enrich", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action }),
+        });
+        mbStatus = action === "pause" ? "paused" : "syncing";
+        addMBLog(action === "pause" ? "Paused." : "Resumed.", "info");
+    }
+
+    async function stopMBEnrich() {
+        await fetch("/api/musicbrainz/enrich", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "stop" }),
+        });
+        addMBLog("Enrichment stopped.", "warning");
+        mbStatus = "idle";
+        mbEventSource?.close();
+        mbEventSource = null;
+    }
+
+    function copyMBLog() {
+        const text = mbLogs.map((l) => `[${l.time}] ${l.message}`).join("\n");
+        navigator.clipboard.writeText(text);
+        mbCopyFeedback = true;
+        setTimeout(() => (mbCopyFeedback = false), 2000);
+    }
+
+    // Auto-scroll MB console
+    $effect(() => {
+        if (mbLogs.length && mbConsoleEl) {
+            mbConsoleEl.scrollTop = mbConsoleEl.scrollHeight;
+        }
+    });
+
+    // MusicBrainz auto-reconnect handled by the unified mount probe above
+
     async function runReconcile() {
         reconciling = true;
         reconcileResult = null;
         try {
             const res = await fetch("/api/sync/reconcile", { method: "POST" });
             reconcileResult = /** @type {any} */ (await res.json());
+            const r = /** @type {any} */ (reconcileResult);
+            if (!r.error) {
+                syncHistoryLocal = {
+                    ...syncHistoryLocal,
+                    reconcile: {
+                        status: "success",
+                        finishedAt: new Date().toISOString(),
+                        summary: `${r.merged} merged, ${r.deleted} orphans`,
+                    },
+                };
+            } else {
+                syncHistoryLocal = {
+                    ...syncHistoryLocal,
+                    reconcile: {
+                        status: "failed",
+                        finishedAt: new Date().toISOString(),
+                        summary: r.error,
+                    },
+                };
+            }
         } catch {
             reconcileResult = /** @type {any} */ ({ error: "Failed" });
+            syncHistoryLocal = {
+                ...syncHistoryLocal,
+                reconcile: {
+                    status: "failed",
+                    finishedAt: new Date().toISOString(),
+                    summary: "Failed",
+                },
+            };
         }
         reconciling = false;
     }
@@ -1349,339 +1558,729 @@
                 Data Sync
             </h2>
 
-            {#if syncStatus === "idle"}
-                <p class="text-sm text-base-content/60">
-                    Last sync: {data.syncState.lastSync
-                        ? new Date(data.syncState.lastSync).toLocaleString()
-                        : "Never"}
-                </p>
-                <button
-                    class="btn btn-info btn-sm w-fit mt-2"
-                    onclick={() => triggerSync()}
+            <div class="space-y-1 mt-2">
+                <!-- Jellyfin Sync Row -->
+                <div
+                    class="rounded-lg border border-base-content/10 overflow-hidden"
                 >
-                    Sync All Libraries
-                </button>
-                <button
-                    class="btn btn-ghost btn-sm w-fit mt-2"
-                    onclick={() => triggerSync(null, null, true)}
-                    title="Ignores cached data and re-fetches everything from Jellyfin"
-                >
-                    Full Re-sync
-                </button>
-                {#if data.libraries && data.libraries.length > 1}
-                    <div class="flex flex-wrap gap-2 mt-2">
-                        {#each data.libraries as lib}
-                            <button
-                                class="btn btn-outline btn-xs"
-                                onclick={() =>
-                                    triggerSync(lib.jellyfin_id, lib.name)}
-                            >
-                                {#if lib.media_type === "tvshows"}📺{:else if lib.media_type === "movies"}🎬{:else if lib.media_type === "music"}🎵{:else}📁{/if}
-                                Sync {lib.name}
-                            </button>
-                        {/each}
-                        <button
-                            class="btn btn-outline btn-xs"
-                            disabled={peopleSyncStatus !== "idle" &&
-                                peopleSyncStatus !== "complete" &&
-                                peopleSyncStatus !== "error"}
-                            onclick={triggerPeopleSync}
-                        >
-                            {#if peopleSyncStatus === "syncing" || peopleSyncStatus === "paused"}
-                                <span class="loading loading-spinner loading-xs"
-                                ></span>
-                            {:else}
-                                👥
-                            {/if}
-                            Sync People
-                        </button>
-                        <button
-                            class="btn btn-outline btn-xs"
-                            disabled={reconciling}
-                            onclick={runReconcile}
-                            title="Merge orphaned Last.fm/Trakt media entries into Jellyfin-synced items"
-                        >
-                            {#if reconciling}
-                                <span class="loading loading-spinner loading-xs"
-                                ></span>
-                            {:else}
-                                🔗
-                            {/if}
-                            Reconcile
-                        </button>
-                    </div>
-                    {#if peopleSyncResult && peopleSyncStatus === "idle"}
-                        <p class="text-xs text-base-content/50 mt-1">
-                            People sync: {peopleSyncResult.totalPersons} people,
-                            {peopleSyncResult.totalCredits} credits
-                        </p>
-                    {/if}
-                    {#if reconcileResult}
-                        <p class="text-xs text-base-content/50 mt-1">
-                            {#if reconcileResult.error}
-                                ❌ {reconcileResult.error}
-                            {:else}
-                                ✅ Reconciled: {reconcileResult.merged} plays migrated,
-                                {reconcileResult.deleted} orphans removed
-                            {/if}
-                        </p>
-                    {/if}
-                {/if}
-
-                <!-- People Sync Panel -->
-                {#if peopleSyncStatus !== "idle"}
-                    <div class="divider my-2"></div>
-                    <p class="text-xs text-base-content/50 italic">
-                        You can safely browse around — people sync continues in
-                        the background.
-                    </p>
-                    <div class="space-y-3 mt-2">
-                        <div class="flex justify-between items-center text-sm">
-                            <span class="font-medium">
-                                {#if peopleSyncStatus === "complete"}
-                                    ✅ People sync complete!
-                                {:else if peopleSyncStatus === "error"}
-                                    ❌ People sync error
-                                {:else if peopleSyncStatus === "paused"}
-                                    ⏸️ People sync paused
-                                {:else}
-                                    👥 People Sync
-                                {/if}
-                            </span>
-                            <span class="text-xs text-base-content/50">
-                                {peopleSyncSynced.toLocaleString()} synced · {peopleSyncErrors}
-                                errors
-                            </span>
-                        </div>
-
-                        {#if peopleSyncProgress > 0}
-                            <progress
-                                class="progress progress-info w-full"
-                                value={peopleSyncProgress}
-                                max="100"
-                            ></progress>
-                        {:else}
-                            <progress class="progress progress-info w-full"
-                            ></progress>
-                        {/if}
-
-                        <div class="flex items-center justify-between">
-                            <span class="text-xs text-base-content/40"
-                                >People Sync Log</span
-                            >
-                            {#if peopleSyncLogs.length > 0}
-                                <button
-                                    class="btn btn-xs btn-ghost gap-1"
-                                    onclick={copyPeopleSyncLog}
-                                >
-                                    {#if peopleSyncCopyFeedback}
-                                        ✓ Copied
-                                    {:else}
-                                        <svg
-                                            xmlns="http://www.w3.org/2000/svg"
-                                            class="h-3 w-3"
-                                            viewBox="0 0 24 24"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            stroke-width="2"
-                                            ><rect
-                                                x="9"
-                                                y="9"
-                                                width="13"
-                                                height="13"
-                                                rx="2"
-                                                ry="2"
-                                            /><path
-                                                d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"
-                                            /></svg
-                                        >
-                                        Copy
-                                    {/if}
-                                </button>
-                            {/if}
-                        </div>
-                        <div
-                            bind:this={peopleSyncConsoleEl}
-                            class="bg-neutral text-neutral-content rounded-lg p-3 h-36 overflow-y-auto text-xs font-mono"
-                        >
-                            {#each peopleSyncLogs as log}
-                                <div class={getLogClass(log.type)}>
-                                    <span class="opacity-50">[{log.time}]</span>
-                                    {log.message}
-                                </div>
-                            {/each}
-                            {#if peopleSyncStatus === "syncing"}
-                                <div class="opacity-50 mt-1">
-                                    <span
-                                        class="loading loading-dots loading-xs"
-                                    ></span>
-                                </div>
-                            {/if}
-                        </div>
-
-                        <div class="flex gap-2">
-                            {#if peopleSyncStatus === "syncing" || peopleSyncStatus === "paused"}
-                                <button
-                                    class="btn btn-sm btn-outline"
-                                    onclick={togglePeopleSyncPause}
-                                >
-                                    {peopleSyncStatus === "paused"
-                                        ? "Resume"
-                                        : "Pause"}
-                                </button>
-                                <button
-                                    class="btn btn-sm btn-outline btn-error"
-                                    onclick={stopPeopleSyncAction}
-                                >
-                                    Stop
-                                </button>
-                            {/if}
-                            {#if peopleSyncStatus === "complete" || peopleSyncStatus === "error"}
-                                <button
-                                    class="btn btn-sm btn-info"
-                                    onclick={() => {
-                                        peopleSyncStatus = "idle";
-                                    }}>Done</button
-                                >
-                                <button
-                                    class="btn btn-sm btn-ghost"
-                                    onclick={triggerPeopleSync}
-                                    >Sync Again</button
-                                >
-                            {/if}
-                        </div>
-
-                        {#if peopleSyncStatus === "complete" && peopleSyncResult}
-                            <p class="text-xs text-base-content/50">
-                                Result: {peopleSyncResult.totalPersons} people,
-                                {peopleSyncResult.totalCredits} credits
-                            </p>
-                        {/if}
-                    </div>
-                {/if}
-            {:else}
-                <p class="text-xs text-base-content/50 italic mt-1">
-                    You can safely browse around — sync continues in the
-                    background.
-                </p>
-                <div class="space-y-3 mt-2">
-                    <div class="flex justify-between items-center text-sm">
-                        <span class="font-medium">
-                            {#if syncStatus === "complete"}
-                                ✅ Sync complete!
-                            {:else if syncStatus === "error"}
-                                ❌ Sync error
-                            {:else if syncStatus === "paused"}
-                                ⏸️ Paused — {syncLibrary}
-                            {:else}
-                                📚 {syncLibrary || "Starting..."}
-                            {/if}
-                        </span>
-                        <span class="text-xs text-base-content/50">
-                            {syncItemsSynced.toLocaleString()} synced · {syncErrors}
-                            errors
-                        </span>
-                    </div>
-
-                    {#if syncProgress > 0}
-                        <progress
-                            class="progress progress-info w-full"
-                            value={syncProgress}
-                            max="100"
-                        ></progress>
-                    {:else}
-                        <progress class="progress progress-info w-full"
-                        ></progress>
-                    {/if}
-
-                    <div class="flex items-center justify-between">
-                        <span class="text-xs text-base-content/40"
-                            >Sync Log</span
-                        >
-                        {#if syncLogs.length > 0}
-                            <button
-                                class="btn btn-xs btn-ghost gap-1"
-                                onclick={copySyncLog}
-                            >
-                                {#if copyFeedback}
-                                    ✓ Copied
-                                {:else}
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        class="h-3 w-3"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2"
-                                        ><rect
-                                            x="9"
-                                            y="9"
-                                            width="13"
-                                            height="13"
-                                            rx="2"
-                                            ry="2"
-                                        /><path
-                                            d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"
-                                        /></svg
-                                    >
-                                    Copy
-                                {/if}
-                            </button>
-                        {/if}
-                    </div>
-                    <div
-                        bind:this={consoleEl}
-                        class="bg-neutral text-neutral-content rounded-lg p-3 h-36 overflow-y-auto text-xs font-mono"
+                    <button
+                        class="w-full flex items-center gap-3 px-4 py-3 hover:bg-base-300/50 transition-colors text-left"
+                        onclick={() =>
+                            (expandedSync =
+                                expandedSync === "jellyfin"
+                                    ? null
+                                    : "jellyfin")}
                     >
-                        {#each syncLogs as log}
-                            <div class={getLogClass(log.type)}>
-                                <span class="opacity-50">[{log.time}]</span>
-                                {log.message}
-                            </div>
-                        {/each}
-                        {#if syncStatus === "syncing"}
-                            <div class="opacity-50 mt-1">
-                                <span class="loading loading-dots loading-xs"
-                                ></span>
-                            </div>
-                        {/if}
-                    </div>
-
-                    <div class="flex gap-2">
+                        <span class="text-lg">📚</span>
+                        <span class="font-medium text-sm flex-1"
+                            >Sync Libraries</span
+                        >
                         {#if syncStatus === "syncing" || syncStatus === "paused"}
-                            <button
-                                class="btn btn-sm btn-outline"
-                                onclick={toggleSyncPause}
+                            <span
+                                class="loading loading-spinner loading-xs text-info"
+                            ></span>
+                            <span class="badge badge-info badge-sm gap-1"
+                                >syncing</span
                             >
-                                {syncStatus === "paused" ? "Resume" : "Pause"}
-                            </button>
-                            <button
-                                class="btn btn-sm btn-outline btn-error"
-                                onclick={stopJellyfinSync}
+                        {:else if syncHistoryLocal?.jellyfin}
+                            {@const h = syncHistoryLocal.jellyfin}
+                            <span
+                                class="badge badge-sm gap-1"
+                                class:badge-success={h.status === "success"}
+                                class:badge-error={h.status === "failed"}
+                                class:badge-warning={h.status === "interrupted"}
                             >
-                                Stop
-                            </button>
-                        {/if}
-                        {#if syncStatus === "complete" || syncStatus === "error"}
-                            <button
-                                class="btn btn-sm btn-info"
-                                onclick={() => {
-                                    syncStatus = "idle";
-                                }}>Done</button
+                                {h.status}
+                            </span>
+                            <span class="text-xs text-base-content/40"
+                                >{h.finishedAt
+                                    ? new Date(h.finishedAt).toLocaleString()
+                                    : ""}</span
                             >
-                            <button
-                                class="btn btn-sm btn-ghost"
-                                onclick={() => triggerSync()}>Sync Again</button
-                            >
-                            <button
-                                class="btn btn-sm btn-ghost"
-                                onclick={() => triggerSync(null, null, true)}
-                                >Full Re-sync</button
+                        {:else}
+                            <span class="text-xs text-base-content/40"
+                                >Never synced</span
                             >
                         {/if}
-                    </div>
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="h-4 w-4 text-base-content/30 transition-transform"
+                            class:rotate-180={expandedSync === "jellyfin"}
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            ><polyline points="6 9 12 15 18 9"></polyline></svg
+                        >
+                    </button>
+
+                    {#if expandedSync === "jellyfin" || syncStatus !== "idle"}
+                        <div
+                            class="px-4 pb-4 space-y-3 border-t border-base-content/5 pt-3"
+                            class:hidden={expandedSync !== "jellyfin" &&
+                                syncStatus === "idle"}
+                        >
+                            {#if syncStatus === "idle"}
+                                <div class="flex flex-wrap gap-2">
+                                    <button
+                                        class="btn btn-info btn-sm"
+                                        onclick={() => triggerSync()}
+                                        >Sync All</button
+                                    >
+                                    <button
+                                        class="btn btn-ghost btn-sm"
+                                        onclick={() =>
+                                            triggerSync(null, null, true)}
+                                        title="Ignores cached data and re-fetches everything"
+                                        >Full Re-sync</button
+                                    >
+                                    {#if data.libraries && data.libraries.length > 1}
+                                        {#each data.libraries as lib}
+                                            <button
+                                                class="btn btn-outline btn-xs"
+                                                onclick={() =>
+                                                    triggerSync(
+                                                        lib.jellyfin_id,
+                                                        lib.name,
+                                                    )}
+                                            >
+                                                {#if lib.media_type === "tvshows"}📺{:else if lib.media_type === "movies"}🎬{:else if lib.media_type === "music"}🎵{:else}📁{/if}
+                                                {lib.name}
+                                            </button>
+                                        {/each}
+                                    {/if}
+                                </div>
+                                {#if syncHistoryLocal?.jellyfin?.summary}
+                                    <p class="text-xs text-base-content/50">
+                                        Last result: {syncHistoryLocal.jellyfin
+                                            .summary}
+                                    </p>
+                                {/if}
+                            {:else}
+                                <p class="text-xs text-base-content/50 italic">
+                                    You can safely browse around — sync
+                                    continues in the background.
+                                </p>
+                                <div
+                                    class="flex justify-between items-center text-sm"
+                                >
+                                    <span class="font-medium">
+                                        {#if syncStatus === "complete"}✅ Sync
+                                            complete!{:else if syncStatus === "error"}❌
+                                            Sync error{:else if syncStatus === "paused"}⏸️
+                                            Paused — {syncLibrary}{:else}📚 {syncLibrary ||
+                                                "Starting..."}{/if}
+                                    </span>
+                                    <span class="text-xs text-base-content/50"
+                                        >{syncItemsSynced.toLocaleString()} synced
+                                        · {syncErrors} errors</span
+                                    >
+                                </div>
+                                {#if syncProgress > 0}
+                                    <progress
+                                        class="progress progress-info w-full"
+                                        value={syncProgress}
+                                        max="100"
+                                    ></progress>
+                                {:else}
+                                    <progress
+                                        class="progress progress-info w-full"
+                                    ></progress>
+                                {/if}
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs text-base-content/40"
+                                        >Sync Log</span
+                                    >
+                                    {#if syncLogs.length > 0}
+                                        <button
+                                            class="btn btn-xs btn-ghost gap-1"
+                                            onclick={copySyncLog}
+                                        >
+                                            {#if copyFeedback}✓ Copied{:else}
+                                                <svg
+                                                    xmlns="http://www.w3.org/2000/svg"
+                                                    class="h-3 w-3"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    stroke-width="2"
+                                                    ><rect
+                                                        x="9"
+                                                        y="9"
+                                                        width="13"
+                                                        height="13"
+                                                        rx="2"
+                                                        ry="2"
+                                                    /><path
+                                                        d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"
+                                                    /></svg
+                                                > Copy
+                                            {/if}
+                                        </button>
+                                    {/if}
+                                </div>
+                                <div
+                                    bind:this={consoleEl}
+                                    class="bg-neutral text-neutral-content rounded-lg p-3 h-36 overflow-y-auto text-xs font-mono"
+                                >
+                                    {#each syncLogs as log}
+                                        <div class={getLogClass(log.type)}>
+                                            <span class="opacity-50"
+                                                >[{log.time}]</span
+                                            >
+                                            {log.message}
+                                        </div>
+                                    {/each}
+                                    {#if syncStatus === "syncing"}<div
+                                            class="opacity-50 mt-1"
+                                        >
+                                            <span
+                                                class="loading loading-dots loading-xs"
+                                            ></span>
+                                        </div>{/if}
+                                </div>
+                                <div class="flex gap-2">
+                                    {#if syncStatus === "syncing" || syncStatus === "paused"}
+                                        <button
+                                            class="btn btn-sm btn-outline"
+                                            onclick={toggleSyncPause}
+                                            >{syncStatus === "paused"
+                                                ? "Resume"
+                                                : "Pause"}</button
+                                        >
+                                        <button
+                                            class="btn btn-sm btn-outline btn-error"
+                                            onclick={stopJellyfinSync}
+                                            >Stop</button
+                                        >
+                                    {/if}
+                                    {#if syncStatus === "complete" || syncStatus === "error"}
+                                        <button
+                                            class="btn btn-sm btn-info"
+                                            onclick={() => {
+                                                syncStatus = "idle";
+                                            }}>Done</button
+                                        >
+                                        <button
+                                            class="btn btn-sm btn-ghost"
+                                            onclick={() => triggerSync()}
+                                            >Sync Again</button
+                                        >
+                                        <button
+                                            class="btn btn-sm btn-ghost"
+                                            onclick={() =>
+                                                triggerSync(null, null, true)}
+                                            >Full Re-sync</button
+                                        >
+                                    {/if}
+                                </div>
+                            {/if}
+                        </div>
+                    {/if}
                 </div>
-            {/if}
+
+                <!-- People Sync Row -->
+                <div
+                    class="rounded-lg border border-base-content/10 overflow-hidden"
+                >
+                    <button
+                        class="w-full flex items-center gap-3 px-4 py-3 hover:bg-base-300/50 transition-colors text-left"
+                        onclick={() =>
+                            (expandedSync =
+                                expandedSync === "people" ? null : "people")}
+                    >
+                        <span class="text-lg">👥</span>
+                        <span class="font-medium text-sm flex-1"
+                            >Sync People</span
+                        >
+                        {#if peopleSyncStatus === "syncing" || peopleSyncStatus === "paused"}
+                            <span
+                                class="loading loading-spinner loading-xs text-info"
+                            ></span>
+                            <span class="badge badge-info badge-sm gap-1"
+                                >syncing</span
+                            >
+                        {:else if syncHistoryLocal?.people}
+                            {@const h = syncHistoryLocal.people}
+                            <span
+                                class="badge badge-sm gap-1"
+                                class:badge-success={h.status === "success"}
+                                class:badge-error={h.status === "failed"}
+                                class:badge-warning={h.status === "interrupted"}
+                            >
+                                {h.status}
+                            </span>
+                            <span class="text-xs text-base-content/40"
+                                >{h.finishedAt
+                                    ? new Date(h.finishedAt).toLocaleString()
+                                    : ""}</span
+                            >
+                        {:else}
+                            <span class="text-xs text-base-content/40"
+                                >Never synced</span
+                            >
+                        {/if}
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="h-4 w-4 text-base-content/30 transition-transform"
+                            class:rotate-180={expandedSync === "people"}
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            ><polyline points="6 9 12 15 18 9"></polyline></svg
+                        >
+                    </button>
+
+                    {#if expandedSync === "people" || (peopleSyncStatus !== "idle" && peopleSyncStatus !== "complete" && peopleSyncStatus !== "error")}
+                        <div
+                            class="px-4 pb-4 space-y-3 border-t border-base-content/5 pt-3"
+                            class:hidden={expandedSync !== "people" &&
+                                peopleSyncStatus === "idle"}
+                        >
+                            {#if peopleSyncStatus === "idle" || peopleSyncStatus === "complete" || peopleSyncStatus === "error"}
+                                <div class="flex flex-wrap gap-2">
+                                    <button
+                                        class="btn btn-info btn-sm"
+                                        onclick={triggerPeopleSync}
+                                        disabled={peopleSyncStatus ===
+                                            "syncing"}>Start Sync</button
+                                    >
+                                    <button
+                                        class="btn btn-sm btn-outline btn-info"
+                                        onclick={syncExternalIdsOnly}
+                                        disabled={externalIdsSyncing ||
+                                            peopleSyncStatus === "syncing"}
+                                    >
+                                        {#if externalIdsSyncing}
+                                            <span
+                                                class="loading loading-spinner loading-xs"
+                                            ></span>
+                                        {/if}
+                                        External IDs Only
+                                    </button>
+                                </div>
+                                {#if syncHistoryLocal?.people?.summary}
+                                    <p class="text-xs text-base-content/50">
+                                        Last result: {syncHistoryLocal.people
+                                            .summary}
+                                    </p>
+                                {/if}
+                            {/if}
+                            {#if peopleSyncStatus !== "idle"}
+                                <p class="text-xs text-base-content/50 italic">
+                                    You can safely browse around — people sync
+                                    continues in the background.
+                                </p>
+                                <div
+                                    class="flex justify-between items-center text-sm"
+                                >
+                                    <span class="font-medium">
+                                        {#if peopleSyncStatus === "complete"}✅
+                                            People sync complete!{:else if peopleSyncStatus === "error"}❌
+                                            People sync error{:else if peopleSyncStatus === "paused"}⏸️
+                                            People sync paused{:else}👥 People
+                                            Sync{/if}
+                                    </span>
+                                    <span class="text-xs text-base-content/50"
+                                        >{peopleSyncSynced.toLocaleString()} synced
+                                        · {peopleSyncErrors} errors</span
+                                    >
+                                </div>
+                                {#if peopleSyncProgress > 0}
+                                    <progress
+                                        class="progress progress-info w-full"
+                                        value={peopleSyncProgress}
+                                        max="100"
+                                    ></progress>
+                                {:else}
+                                    <progress
+                                        class="progress progress-info w-full"
+                                    ></progress>
+                                {/if}
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs text-base-content/40"
+                                        >People Sync Log</span
+                                    >
+                                    {#if peopleSyncLogs.length > 0}
+                                        <button
+                                            class="btn btn-xs btn-ghost gap-1"
+                                            onclick={copyPeopleSyncLog}
+                                        >
+                                            {#if peopleSyncCopyFeedback}✓ Copied{:else}
+                                                <svg
+                                                    xmlns="http://www.w3.org/2000/svg"
+                                                    class="h-3 w-3"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    stroke-width="2"
+                                                    ><rect
+                                                        x="9"
+                                                        y="9"
+                                                        width="13"
+                                                        height="13"
+                                                        rx="2"
+                                                        ry="2"
+                                                    /><path
+                                                        d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"
+                                                    /></svg
+                                                > Copy
+                                            {/if}
+                                        </button>
+                                    {/if}
+                                </div>
+                                <div
+                                    bind:this={peopleSyncConsoleEl}
+                                    class="bg-neutral text-neutral-content rounded-lg p-3 h-36 overflow-y-auto text-xs font-mono"
+                                >
+                                    {#each peopleSyncLogs as log}
+                                        <div class={getLogClass(log.type)}>
+                                            <span class="opacity-50"
+                                                >[{log.time}]</span
+                                            >
+                                            {log.message}
+                                        </div>
+                                    {/each}
+                                    {#if peopleSyncStatus === "syncing"}<div
+                                            class="opacity-50 mt-1"
+                                        >
+                                            <span
+                                                class="loading loading-dots loading-xs"
+                                            ></span>
+                                        </div>{/if}
+                                </div>
+                                <div class="flex gap-2">
+                                    {#if peopleSyncStatus === "syncing" || peopleSyncStatus === "paused"}
+                                        <button
+                                            class="btn btn-sm btn-outline"
+                                            onclick={togglePeopleSyncPause}
+                                            >{peopleSyncStatus === "paused"
+                                                ? "Resume"
+                                                : "Pause"}</button
+                                        >
+                                        <button
+                                            class="btn btn-sm btn-outline btn-error"
+                                            onclick={stopPeopleSyncAction}
+                                            >Stop</button
+                                        >
+                                    {/if}
+                                    {#if peopleSyncStatus === "complete" || peopleSyncStatus === "error"}
+                                        <button
+                                            class="btn btn-sm btn-info"
+                                            onclick={() => {
+                                                peopleSyncStatus = "idle";
+                                            }}>Done</button
+                                        >
+                                        <button
+                                            class="btn btn-sm btn-ghost"
+                                            onclick={triggerPeopleSync}
+                                            >Sync Again</button
+                                        >
+                                    {/if}
+                                </div>
+                                {#if peopleSyncStatus === "complete" && peopleSyncResult}
+                                    <p class="text-xs text-base-content/50">
+                                        Result: {peopleSyncResult.totalPersons} people,
+                                        {peopleSyncResult.totalCredits} credits
+                                    </p>
+                                {/if}
+                            {/if}
+                        </div>
+                    {/if}
+                </div>
+
+                <!-- MusicBrainz Enrich Row -->
+                <div
+                    class="rounded-lg border border-base-content/10 overflow-hidden"
+                >
+                    <button
+                        class="w-full flex items-center gap-3 px-4 py-3 hover:bg-base-300/50 transition-colors text-left"
+                        onclick={() =>
+                            (expandedSync =
+                                expandedSync === "musicbrainz"
+                                    ? null
+                                    : "musicbrainz")}
+                    >
+                        <span class="text-lg">🎵</span>
+                        <span class="font-medium text-sm flex-1"
+                            >Enrich Music</span
+                        >
+                        {#if mbStatus === "syncing" || mbStatus === "paused"}
+                            <span
+                                class="loading loading-spinner loading-xs text-secondary"
+                            ></span>
+                            <span class="badge badge-secondary badge-sm gap-1"
+                                >{mbStatus === "paused"
+                                    ? "paused"
+                                    : "enriching"}</span
+                            >
+                        {:else if syncHistoryLocal?.musicbrainz}
+                            {@const h = syncHistoryLocal.musicbrainz}
+                            <span
+                                class="badge badge-sm gap-1"
+                                class:badge-success={h.status === "success"}
+                                class:badge-error={h.status === "failed"}
+                                class:badge-warning={h.status === "interrupted"}
+                            >
+                                {h.status}
+                            </span>
+                            <span class="text-xs text-base-content/40"
+                                >{h.finishedAt
+                                    ? new Date(h.finishedAt).toLocaleString()
+                                    : ""}</span
+                            >
+                        {:else}
+                            <span class="text-xs text-base-content/40"
+                                >Never run</span
+                            >
+                        {/if}
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="h-4 w-4 text-base-content/30 transition-transform"
+                            class:rotate-180={expandedSync === "musicbrainz"}
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            ><polyline points="6 9 12 15 18 9"></polyline></svg
+                        >
+                    </button>
+
+                    {#if expandedSync === "musicbrainz" || (mbStatus !== "idle" && mbStatus !== "complete" && mbStatus !== "error")}
+                        <div
+                            class="px-4 pb-4 space-y-3 border-t border-base-content/5 pt-3"
+                            class:hidden={expandedSync !== "musicbrainz" &&
+                                mbStatus === "idle"}
+                        >
+                            {#if mbStatus === "idle" || mbStatus === "complete" || mbStatus === "error"}
+                                <div class="flex flex-wrap gap-2">
+                                    <button
+                                        class="btn btn-secondary btn-sm"
+                                        onclick={triggerMBEnrich}
+                                        disabled={mbStatus === "syncing"}
+                                        >Start Enrichment</button
+                                    >
+                                </div>
+                                <p class="text-xs text-base-content/50">
+                                    Extract band members, instruments, and
+                                    external links from MusicBrainz.
+                                </p>
+                                {#if syncHistoryLocal?.musicbrainz?.summary}
+                                    <p class="text-xs text-base-content/50">
+                                        Last result: {syncHistoryLocal
+                                            .musicbrainz.summary}
+                                    </p>
+                                {/if}
+                            {/if}
+                            {#if mbStatus !== "idle"}
+                                <div
+                                    class="flex justify-between items-center text-sm"
+                                >
+                                    <span class="font-medium">
+                                        {#if mbStatus === "complete"}✅
+                                            MusicBrainz enrichment complete!{:else if mbStatus === "error"}❌
+                                            Enrichment error{:else if mbStatus === "paused"}⏸️
+                                            Paused{:else}🎵 Enriching music
+                                            people...{/if}
+                                    </span>
+                                    <span class="text-xs text-base-content/50"
+                                        >{mbSynced} artists • {mbErrors} errors</span
+                                    >
+                                </div>
+                                {#if mbProgress > 0}
+                                    <progress
+                                        class="progress progress-secondary w-full"
+                                        value={mbProgress}
+                                        max="100"
+                                    ></progress>
+                                {:else}
+                                    <progress
+                                        class="progress progress-secondary w-full"
+                                    ></progress>
+                                {/if}
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs text-base-content/40"
+                                        >MusicBrainz Log</span
+                                    >
+                                    {#if mbLogs.length > 0}
+                                        <button
+                                            class="btn btn-xs btn-ghost gap-1"
+                                            onclick={copyMBLog}
+                                        >
+                                            {#if mbCopyFeedback}✓ Copied{:else}
+                                                <svg
+                                                    xmlns="http://www.w3.org/2000/svg"
+                                                    class="h-3 w-3"
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    stroke-width="2"
+                                                    ><rect
+                                                        x="9"
+                                                        y="9"
+                                                        width="13"
+                                                        height="13"
+                                                        rx="2"
+                                                        ry="2"
+                                                    /><path
+                                                        d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"
+                                                    /></svg
+                                                > Copy
+                                            {/if}
+                                        </button>
+                                    {/if}
+                                </div>
+                                <div
+                                    bind:this={mbConsoleEl}
+                                    class="bg-neutral text-neutral-content rounded-lg p-3 h-36 overflow-y-auto text-xs font-mono"
+                                >
+                                    {#each mbLogs as log}
+                                        <div class={getLogClass(log.type)}>
+                                            <span class="opacity-50"
+                                                >[{log.time}]</span
+                                            >
+                                            {log.message}
+                                        </div>
+                                    {/each}
+                                    {#if mbStatus === "syncing"}<div
+                                            class="opacity-50 mt-1"
+                                        >
+                                            <span
+                                                class="loading loading-dots loading-xs"
+                                            ></span>
+                                        </div>{/if}
+                                </div>
+                                <div class="flex gap-2">
+                                    {#if mbStatus === "syncing" || mbStatus === "paused"}
+                                        <button
+                                            class="btn btn-sm btn-outline"
+                                            onclick={toggleMBPause}
+                                            >{mbStatus === "paused"
+                                                ? "Resume"
+                                                : "Pause"}</button
+                                        >
+                                        <button
+                                            class="btn btn-sm btn-outline btn-error"
+                                            onclick={stopMBEnrich}>Stop</button
+                                        >
+                                    {/if}
+                                    {#if mbStatus === "complete" || mbStatus === "error"}
+                                        <button
+                                            class="btn btn-sm btn-info"
+                                            onclick={() => {
+                                                mbStatus = "idle";
+                                            }}>Done</button
+                                        >
+                                        <button
+                                            class="btn btn-sm btn-ghost"
+                                            onclick={triggerMBEnrich}
+                                            >Enrich Again</button
+                                        >
+                                    {/if}
+                                </div>
+                                {#if mbStatus === "complete" && mbResult}
+                                    <p class="text-xs text-base-content/50">
+                                        Result: {mbResult.totalPersons} persons,
+                                        {mbResult.totalCredits} credits, {mbResult.totalExternalIds}
+                                        external IDs, {mbResult.mergedPersons} cross-linked
+                                    </p>
+                                {/if}
+                            {/if}
+                        </div>
+                    {/if}
+                </div>
+
+                <!-- Reconcile Row -->
+                <div
+                    class="rounded-lg border border-base-content/10 overflow-hidden"
+                >
+                    <button
+                        class="w-full flex items-center gap-3 px-4 py-3 hover:bg-base-300/50 transition-colors text-left"
+                        onclick={() =>
+                            (expandedSync =
+                                expandedSync === "reconcile"
+                                    ? null
+                                    : "reconcile")}
+                    >
+                        <span class="text-lg">🔗</span>
+                        <span class="font-medium text-sm flex-1">Reconcile</span
+                        >
+                        {#if reconciling}
+                            <span
+                                class="loading loading-spinner loading-xs text-info"
+                            ></span>
+                            <span class="badge badge-info badge-sm gap-1"
+                                >running</span
+                            >
+                        {:else if syncHistoryLocal?.reconcile}
+                            {@const h = syncHistoryLocal.reconcile}
+                            <span
+                                class="badge badge-sm gap-1"
+                                class:badge-success={h.status === "success"}
+                                class:badge-error={h.status === "failed"}
+                            >
+                                {h.status}
+                            </span>
+                            <span class="text-xs text-base-content/40"
+                                >{h.finishedAt
+                                    ? new Date(h.finishedAt).toLocaleString()
+                                    : ""}</span
+                            >
+                        {:else}
+                            <span class="text-xs text-base-content/40"
+                                >Never run</span
+                            >
+                        {/if}
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="h-4 w-4 text-base-content/30 transition-transform"
+                            class:rotate-180={expandedSync === "reconcile"}
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            ><polyline points="6 9 12 15 18 9"></polyline></svg
+                        >
+                    </button>
+
+                    {#if expandedSync === "reconcile"}
+                        <div
+                            class="px-4 pb-4 space-y-3 border-t border-base-content/5 pt-3"
+                        >
+                            <p class="text-xs text-base-content/50">
+                                Merge orphaned Last.fm/Trakt media entries into
+                                Jellyfin-synced items.
+                            </p>
+                            <div class="flex flex-wrap gap-2">
+                                <button
+                                    class="btn btn-info btn-sm"
+                                    disabled={reconciling}
+                                    onclick={runReconcile}
+                                >
+                                    {#if reconciling}<span
+                                            class="loading loading-spinner loading-xs"
+                                        ></span>{/if}
+                                    Run Reconcile
+                                </button>
+                            </div>
+                            {#if reconcileResult}
+                                <p class="text-xs text-base-content/50">
+                                    {#if reconcileResult.error}❌ {reconcileResult.error}{:else}✅
+                                        {reconcileResult.merged} plays migrated,
+                                        {reconcileResult.deleted} orphans removed{/if}
+                                </p>
+                            {/if}
+                            {#if syncHistoryLocal?.reconcile?.summary}
+                                <p class="text-xs text-base-content/50">
+                                    Last result: {syncHistoryLocal.reconcile
+                                        .summary}
+                                </p>
+                            {/if}
+                        </div>
+                    {/if}
+                </div>
+            </div>
         </div>
     </div>
 
