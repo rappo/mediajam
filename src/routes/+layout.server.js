@@ -1,4 +1,4 @@
-import db from '$lib/server/db.js';
+import db, { getBootWarnings } from '$lib/server/db.js';
 
 /** @type {import('./$types').LayoutServerLoad} */
 export function load({ locals }) {
@@ -39,6 +39,7 @@ export function load({ locals }) {
         },
         libraries,
         remoteControlEnabled: !!userPreferences.remoteControlEnabled,
-        userPreferences
+        userPreferences,
+        bootWarnings: getBootWarnings()
     };
 }

@@ -9,6 +9,9 @@ const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
+/** @type {Array<{type: 'warning' | 'error', message: string, detail?: string}>} */
+const bootWarnings = [];
+
 // Load sqlite-vec extension for vector search (optional — graceful fallback)
 try {
     const sqliteVec = await import('sqlite-vec');
@@ -16,8 +19,17 @@ try {
     loader.load(db);
     console.log('[db] sqlite-vec extension loaded');
 } catch (e) {
-    console.warn('[db] sqlite-vec not available — embedding features disabled:', /** @type {Error} */(e).message);
+    const msg = /** @type {Error} */(e).message;
+    console.warn('[db] sqlite-vec not available — embedding features disabled:', msg);
+    bootWarnings.push({
+        type: 'warning',
+        message: 'sqlite-vec not loaded — vector search disabled',
+        detail: `${msg}. Run "npm install" to install native dependencies.`
+    });
 }
+
+/** Get any boot warnings/errors that occurred during startup */
+export function getBootWarnings() { return bootWarnings; }
 
 // Initialize schema
 db.exec(`
@@ -501,6 +513,21 @@ db.exec(`
 `);
 db.exec('CREATE INDEX IF NOT EXISTS idx_media_tags_parent ON media_tags(media_parent_id)');
 db.exec('CREATE INDEX IF NOT EXISTS idx_media_tags_type ON media_tags(tag_type, tag_value)');
+
+// -- Reconcile Runs table (for LLM reconciliation tracking) --
+db.exec(`
+    CREATE TABLE IF NOT EXISTS reconcile_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        status TEXT DEFAULT 'running',
+        started_at TEXT,
+        finished_at TEXT,
+        phase TEXT,
+        progress_cursor TEXT,
+        stats TEXT,
+        diff_summary TEXT
+    )
+`);
 
 // Initialize logger from DB settings
 import { initLogging } from './logger.js';

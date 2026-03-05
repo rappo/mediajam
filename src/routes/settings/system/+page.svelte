@@ -1,5 +1,6 @@
 <script>
     import ServiceIcon from "$lib/components/ServiceIcon.svelte";
+    import LogConsole from "$lib/components/LogConsole.svelte";
     import { page } from "$app/stores";
 
     /** @type {{ data: import('./$types').PageData }} */
@@ -2260,58 +2261,12 @@
                                         class="progress progress-info w-full"
                                     ></progress>
                                 {/if}
-                                <div class="flex items-center justify-between">
-                                    <span class="text-xs text-base-content/40"
-                                        >Sync Log</span
-                                    >
-                                    {#if syncLogs.length > 0}
-                                        <button
-                                            class="btn btn-xs btn-ghost gap-1"
-                                            onclick={copySyncLog}
-                                        >
-                                            {#if copyFeedback}✓ Copied{:else}
-                                                <svg
-                                                    xmlns="http://www.w3.org/2000/svg"
-                                                    class="h-3 w-3"
-                                                    viewBox="0 0 24 24"
-                                                    fill="none"
-                                                    stroke="currentColor"
-                                                    stroke-width="2"
-                                                    ><rect
-                                                        x="9"
-                                                        y="9"
-                                                        width="13"
-                                                        height="13"
-                                                        rx="2"
-                                                        ry="2"
-                                                    /><path
-                                                        d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"
-                                                    /></svg
-                                                > Copy
-                                            {/if}
-                                        </button>
-                                    {/if}
-                                </div>
-                                <div
-                                    bind:this={consoleEl}
-                                    class="bg-neutral text-neutral-content rounded-lg p-3 h-36 overflow-y-auto text-xs font-mono"
-                                >
-                                    {#each syncLogs as log}
-                                        <div class={getLogClass(log.type)}>
-                                            <span class="opacity-50"
-                                                >[{log.time}]</span
-                                            >
-                                            {log.message}
-                                        </div>
-                                    {/each}
-                                    {#if syncStatus === "syncing"}<div
-                                            class="opacity-50 mt-1"
-                                        >
-                                            <span
-                                                class="loading loading-dots loading-xs"
-                                            ></span>
-                                        </div>{/if}
-                                </div>
+                                <LogConsole
+                                    logs={syncLogs}
+                                    running={syncStatus === "syncing"}
+                                    title="Sync Log"
+                                    height="h-36"
+                                />
                                 <div class="flex gap-2">
                                     {#if syncStatus === "syncing" || syncStatus === "paused"}
                                         <button
@@ -2471,58 +2426,12 @@
                                         class="progress progress-info w-full"
                                     ></progress>
                                 {/if}
-                                <div class="flex items-center justify-between">
-                                    <span class="text-xs text-base-content/40"
-                                        >People Sync Log</span
-                                    >
-                                    {#if peopleSyncLogs.length > 0}
-                                        <button
-                                            class="btn btn-xs btn-ghost gap-1"
-                                            onclick={copyPeopleSyncLog}
-                                        >
-                                            {#if peopleSyncCopyFeedback}✓ Copied{:else}
-                                                <svg
-                                                    xmlns="http://www.w3.org/2000/svg"
-                                                    class="h-3 w-3"
-                                                    viewBox="0 0 24 24"
-                                                    fill="none"
-                                                    stroke="currentColor"
-                                                    stroke-width="2"
-                                                    ><rect
-                                                        x="9"
-                                                        y="9"
-                                                        width="13"
-                                                        height="13"
-                                                        rx="2"
-                                                        ry="2"
-                                                    /><path
-                                                        d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"
-                                                    /></svg
-                                                > Copy
-                                            {/if}
-                                        </button>
-                                    {/if}
-                                </div>
-                                <div
-                                    bind:this={peopleSyncConsoleEl}
-                                    class="bg-neutral text-neutral-content rounded-lg p-3 h-36 overflow-y-auto text-xs font-mono"
-                                >
-                                    {#each peopleSyncLogs as log}
-                                        <div class={getLogClass(log.type)}>
-                                            <span class="opacity-50"
-                                                >[{log.time}]</span
-                                            >
-                                            {log.message}
-                                        </div>
-                                    {/each}
-                                    {#if peopleSyncStatus === "syncing"}<div
-                                            class="opacity-50 mt-1"
-                                        >
-                                            <span
-                                                class="loading loading-dots loading-xs"
-                                            ></span>
-                                        </div>{/if}
-                                </div>
+                                <LogConsole
+                                    logs={peopleSyncLogs}
+                                    running={peopleSyncStatus === "syncing"}
+                                    title="People Sync Log"
+                                    height="h-36"
+                                />
                                 <div class="flex gap-2">
                                     {#if peopleSyncStatus === "syncing" || peopleSyncStatus === "paused"}
                                         <button
@@ -2672,58 +2581,12 @@
                                         class="progress progress-secondary w-full"
                                     ></progress>
                                 {/if}
-                                <div class="flex items-center justify-between">
-                                    <span class="text-xs text-base-content/40"
-                                        >MusicBrainz Log</span
-                                    >
-                                    {#if mbLogs.length > 0}
-                                        <button
-                                            class="btn btn-xs btn-ghost gap-1"
-                                            onclick={copyMBLog}
-                                        >
-                                            {#if mbCopyFeedback}✓ Copied{:else}
-                                                <svg
-                                                    xmlns="http://www.w3.org/2000/svg"
-                                                    class="h-3 w-3"
-                                                    viewBox="0 0 24 24"
-                                                    fill="none"
-                                                    stroke="currentColor"
-                                                    stroke-width="2"
-                                                    ><rect
-                                                        x="9"
-                                                        y="9"
-                                                        width="13"
-                                                        height="13"
-                                                        rx="2"
-                                                        ry="2"
-                                                    /><path
-                                                        d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"
-                                                    /></svg
-                                                > Copy
-                                            {/if}
-                                        </button>
-                                    {/if}
-                                </div>
-                                <div
-                                    bind:this={mbConsoleEl}
-                                    class="bg-neutral text-neutral-content rounded-lg p-3 h-36 overflow-y-auto text-xs font-mono"
-                                >
-                                    {#each mbLogs as log}
-                                        <div class={getLogClass(log.type)}>
-                                            <span class="opacity-50"
-                                                >[{log.time}]</span
-                                            >
-                                            {log.message}
-                                        </div>
-                                    {/each}
-                                    {#if mbStatus === "syncing"}<div
-                                            class="opacity-50 mt-1"
-                                        >
-                                            <span
-                                                class="loading loading-dots loading-xs"
-                                            ></span>
-                                        </div>{/if}
-                                </div>
+                                <LogConsole
+                                    logs={mbLogs}
+                                    running={mbStatus === "syncing"}
+                                    title="MusicBrainz Log"
+                                    height="h-36"
+                                />
                                 <div class="flex gap-2">
                                     {#if mbStatus === "syncing" || mbStatus === "paused"}
                                         <button

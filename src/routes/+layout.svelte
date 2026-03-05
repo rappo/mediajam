@@ -5,10 +5,27 @@
 	import SyncFooter from "$lib/components/SyncFooter.svelte";
 	import NowPlayingBar from "$lib/components/NowPlayingBar.svelte";
 	import ToastContainer from "$lib/components/ToastContainer.svelte";
+	import { addToast } from "$lib/stores/toast.js";
 	import { page } from "$app/stores";
 
 	/** @type {{ data: import('./$types').LayoutData, children: import('svelte').Snippet }} */
 	let { data, children } = $props();
+
+	// Show boot warnings as sticky toasts (once on mount)
+	let bootWarningsShown = false;
+	$effect(() => {
+		if (!bootWarningsShown && data.bootWarnings?.length > 0) {
+			bootWarningsShown = true;
+			for (const w of data.bootWarnings) {
+				addToast({
+					type: w.type,
+					message: w.message,
+					detail: w.detail,
+					duration: 0,
+				});
+			}
+		}
+	});
 
 	const DAISY_THEMES = [
 		"light",

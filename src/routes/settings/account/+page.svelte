@@ -1,5 +1,6 @@
 <script>
     import ServiceIcon from "$lib/components/ServiceIcon.svelte";
+    import LogConsole from "$lib/components/LogConsole.svelte";
     import { page } from "$app/stores";
     import { invalidateAll } from "$app/navigation";
 
@@ -1305,47 +1306,12 @@
                 </div>
 
                 <!-- Log Controls -->
-                <div class="flex items-center gap-4 mt-2">
-                    <label class="flex items-center gap-1.5 cursor-pointer">
-                        <input
-                            type="checkbox"
-                            class="toggle toggle-xs"
-                            bind:checked={showOnlyErrors}
-                        />
-                        <span class="text-xs text-base-content/50"
-                            >Show only errors</span
-                        >
-                    </label>
-                    <label class="flex items-center gap-1.5 cursor-pointer">
-                        <input
-                            type="checkbox"
-                            class="toggle toggle-xs toggle-info"
-                            bind:checked={followLogs}
-                        />
-                        <span class="text-xs text-base-content/50"
-                            >Follow logs</span
-                        >
-                    </label>
-                </div>
-
-                <!-- Log Console -->
-                <div
-                    bind:this={logEl}
-                    class="bg-neutral text-neutral-content rounded-lg p-3 h-40 overflow-y-auto text-xs font-mono mt-1"
-                >
-                    {#each filteredLogs as log}
-                        <div class={getLogClass(log.type)}>
-                            <span class="opacity-50">[{log.time}]</span>
-                            {log.message}
-                        </div>
-                    {/each}
-                    {#if importState.status === "running"}
-                        <div class="opacity-50 mt-1">
-                            <span class="loading loading-dots loading-xs"
-                            ></span>
-                        </div>
-                    {/if}
-                </div>
+                <LogConsole
+                    logs={importState.logs}
+                    running={importState.status === "running"}
+                    title="Import Log"
+                    height="h-40"
+                />
             </div>
         </div>
     {/if}

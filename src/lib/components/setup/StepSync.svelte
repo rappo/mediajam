@@ -1,4 +1,5 @@
 <script>
+    import LogConsole from "$lib/components/LogConsole.svelte";
     /** @type {{ wizardData: any }} */
     let { wizardData } = $props();
 
@@ -155,27 +156,6 @@
             addLog("Failed to complete setup.", "error");
         }
     }
-
-    function getLogClass(type) {
-        switch (type) {
-            case "success":
-                return "text-success";
-            case "error":
-                return "text-error";
-            case "warning":
-                return "text-warning";
-            default:
-                return "text-base-content/70";
-        }
-    }
-
-    // Auto-scroll console
-    let consoleEl = $state(null);
-    $effect(() => {
-        if (logs.length && consoleEl) {
-            consoleEl.scrollTop = consoleEl.scrollHeight;
-        }
-    });
 </script>
 
 <div>
@@ -338,24 +318,12 @@
             </div>
 
             <!-- Console Log -->
-            <div
-                bind:this={consoleEl}
-                class="sync-console bg-neutral text-neutral-content rounded-xl p-4 h-48 overflow-y-auto border border-base-300"
-            >
-                {#each logs as log}
-                    <div class="flex gap-2 {getLogClass(log.type)}">
-                        <span class="opacity-50 shrink-0"
-                            >[{log.timestamp}]</span
-                        >
-                        <span>{log.message}</span>
-                    </div>
-                {/each}
-                {#if syncStatus === "syncing"}
-                    <div class="flex items-center gap-2 opacity-50 mt-1">
-                        <span class="loading loading-dots loading-xs"></span>
-                    </div>
-                {/if}
-            </div>
+            <LogConsole
+                {logs}
+                running={syncStatus === "syncing"}
+                title="Sync Log"
+                height="h-48"
+            />
 
             <!-- Controls -->
             <div class="flex gap-3">

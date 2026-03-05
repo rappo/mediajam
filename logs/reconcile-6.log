@@ -1,0 +1,103 @@
+# Reconciliation Run 6 — 2026-03-05T21:59:07.314Z
+
+[4:59:07 PM] 📸 Creating snapshot of current playback_history...
+[4:59:07 PM] 📸 Snapshot: 79550 records
+[4:59:07 PM] 🗑️ Clearing existing lastfm/trakt from playback_history...
+[4:59:07 PM] 🗑️ Cleared 75420 lastfm + 4130 trakt entries
+[4:59:07 PM] 🗑️ Cleaned 2052 orphan external parents
+[4:59:07 PM] ⏭️ T3 embedding matching disabled — using T0–T2 + fuzzy album matching
+[4:59:07 PM] 🎵 Matching 77085 Last.fm scrobbles...
+[4:59:08 PM] 🎵 1000/77085 scrobbles — 737 matched, 263 external
+[4:59:08 PM] 🎵 2000/77085 scrobbles — 1554 matched, 446 external
+[4:59:09 PM] 🎵 3000/77085 scrobbles — 2508 matched, 492 external
+[4:59:09 PM] 🎵 4000/77085 scrobbles — 3244 matched, 756 external
+[4:59:10 PM] 🎵 5000/77085 scrobbles — 4043 matched, 957 external
+[4:59:10 PM] 🎵 6000/77085 scrobbles — 4880 matched, 1120 external
+[4:59:10 PM] 🎵 7000/77085 scrobbles — 5654 matched, 1346 external
+[4:59:11 PM] 🎵 8000/77085 scrobbles — 6351 matched, 1649 external
+[4:59:11 PM] 🎵 9000/77085 scrobbles — 7159 matched, 1841 external
+[4:59:12 PM] 🎵 10000/77085 scrobbles — 7929 matched, 2071 external
+[4:59:12 PM] 🎵 11000/77085 scrobbles — 8741 matched, 2259 external
+[4:59:13 PM] 🎵 12000/77085 scrobbles — 9341 matched, 2659 external
+[4:59:13 PM] 🎵 13000/77085 scrobbles — 10039 matched, 2961 external
+[4:59:14 PM] 🎵 14000/77085 scrobbles — 10698 matched, 3302 external
+[4:59:14 PM] 🎵 15000/77085 scrobbles — 11297 matched, 3703 external
+[4:59:15 PM] 🎵 16000/77085 scrobbles — 12033 matched, 3967 external
+[4:59:15 PM] 🎵 17000/77085 scrobbles — 12753 matched, 4247 external
+[4:59:16 PM] 🎵 18000/77085 scrobbles — 13444 matched, 4556 external
+[4:59:16 PM] 🎵 19000/77085 scrobbles — 14292 matched, 4708 external
+[4:59:17 PM] 🎵 20000/77085 scrobbles — 15089 matched, 4911 external
+[4:59:17 PM] 🎵 21000/77085 scrobbles — 15959 matched, 5041 external
+[4:59:18 PM] 🎵 22000/77085 scrobbles — 16615 matched, 5385 external
+[4:59:18 PM] 🎵 23000/77085 scrobbles — 17379 matched, 5621 external
+[4:59:18 PM] 🎵 24000/77085 scrobbles — 18014 matched, 5986 external
+[4:59:19 PM] 🎵 25000/77085 scrobbles — 18821 matched, 6179 external
+[4:59:19 PM] 🎵 26000/77085 scrobbles — 19603 matched, 6397 external
+[4:59:20 PM] 🎵 27000/77085 scrobbles — 20373 matched, 6627 external
+[4:59:20 PM] 🎵 28000/77085 scrobbles — 21151 matched, 6849 external
+[4:59:21 PM] 🎵 29000/77085 scrobbles — 21983 matched, 7017 external
+[4:59:21 PM] 🎵 30000/77085 scrobbles — 22763 matched, 7237 external
+[4:59:22 PM] 🎵 31000/77085 scrobbles — 23562 matched, 7438 external
+[4:59:22 PM] 🎵 32000/77085 scrobbles — 24282 matched, 7718 external
+[4:59:23 PM] 🎵 33000/77085 scrobbles — 25078 matched, 7922 external
+[4:59:23 PM] 🎵 34000/77085 scrobbles — 25864 matched, 8136 external
+[4:59:24 PM] 🎵 35000/77085 scrobbles — 26752 matched, 8248 external
+[4:59:24 PM] 🎵 36000/77085 scrobbles — 27673 matched, 8327 external
+[4:59:24 PM] 🎵 37000/77085 scrobbles — 28589 matched, 8411 external
+[4:59:25 PM] 🎵 38000/77085 scrobbles — 29474 matched, 8526 external
+[4:59:25 PM] 🎵 39000/77085 scrobbles — 30422 matched, 8578 external
+[4:59:25 PM] 🎵 40000/77085 scrobbles — 31397 matched, 8603 external
+[4:59:26 PM] 🎵 41000/77085 scrobbles — 32363 matched, 8637 external
+[4:59:26 PM] 🎵 42000/77085 scrobbles — 33305 matched, 8695 external
+[4:59:26 PM] 🎵 43000/77085 scrobbles — 34176 matched, 8824 external
+[4:59:27 PM] 🎵 44000/77085 scrobbles — 35124 matched, 8876 external
+[4:59:27 PM] 🎵 45000/77085 scrobbles — 36075 matched, 8925 external
+[4:59:27 PM] 🎵 46000/77085 scrobbles — 37012 matched, 8988 external
+[4:59:28 PM] 🎵 47000/77085 scrobbles — 37966 matched, 9034 external
+[4:59:28 PM] 🎵 48000/77085 scrobbles — 38865 matched, 9135 external
+[4:59:28 PM] 🎵 49000/77085 scrobbles — 39840 matched, 9160 external
+[4:59:29 PM] 🎵 50000/77085 scrobbles — 40813 matched, 9187 external
+[4:59:29 PM] 🎵 51000/77085 scrobbles — 41785 matched, 9215 external
+[4:59:29 PM] 🎵 52000/77085 scrobbles — 42658 matched, 9342 external
+[4:59:30 PM] 🎵 53000/77085 scrobbles — 43510 matched, 9490 external
+[4:59:31 PM] 🎵 54000/77085 scrobbles — 44347 matched, 9653 external
+[4:59:31 PM] 🎵 55000/77085 scrobbles — 45233 matched, 9767 external
+[4:59:32 PM] 🎵 56000/77085 scrobbles — 45988 matched, 10012 external
+[4:59:32 PM] 🎵 57000/77085 scrobbles — 46803 matched, 10197 external
+[4:59:33 PM] 🎵 58000/77085 scrobbles — 47684 matched, 10316 external
+[4:59:33 PM] 🎵 59000/77085 scrobbles — 48599 matched, 10401 external
+[4:59:34 PM] 🎵 60000/77085 scrobbles — 49492 matched, 10508 external
+[4:59:34 PM] 🎵 61000/77085 scrobbles — 50408 matched, 10592 external
+[4:59:34 PM] 🎵 62000/77085 scrobbles — 51339 matched, 10661 external
+[4:59:35 PM] 🎵 63000/77085 scrobbles — 52212 matched, 10788 external
+[4:59:35 PM] 🎵 64000/77085 scrobbles — 53102 matched, 10898 external
+[4:59:36 PM] 🎵 65000/77085 scrobbles — 53930 matched, 11070 external
+[4:59:36 PM] 🎵 66000/77085 scrobbles — 54880 matched, 11120 external
+[4:59:37 PM] 🎵 67000/77085 scrobbles — 55816 matched, 11184 external
+[4:59:37 PM] 🎵 68000/77085 scrobbles — 56764 matched, 11236 external
+[4:59:37 PM] 🎵 69000/77085 scrobbles — 57745 matched, 11255 external
+[4:59:38 PM] 🎵 70000/77085 scrobbles — 58694 matched, 11306 external
+[4:59:39 PM] 🎵 71000/77085 scrobbles — 59614 matched, 11386 external
+[4:59:39 PM] 🎵 72000/77085 scrobbles — 60543 matched, 11457 external
+[4:59:40 PM] 🎵 73000/77085 scrobbles — 61499 matched, 11501 external
+[4:59:40 PM] 🎵 74000/77085 scrobbles — 62407 matched, 11593 external
+[4:59:41 PM] 🎵 76000/77085 scrobbles — 64338 matched, 11662 external
+[4:59:41 PM] 🎵 77000/77085 scrobbles — 65225 matched, 11775 external
+[4:59:41 PM] 🎵 77085/77085 scrobbles — 65310 matched, 11775 external
+[4:59:41 PM] ✅ Last.fm: 65310 matched (T0:53936 T1:11036 T2:338 T3:0), 11775 external, 1665 consolidated
+[4:59:41 PM] 🎬 Matching 4195 Trakt history records...
+[4:59:41 PM] 🎬 500/4195 — 499 matched, 1 external
+[4:59:41 PM] 🎬 1000/4195 — 997 matched, 3 external
+[4:59:41 PM] 🎬 1500/4195 — 1495 matched, 5 external
+[4:59:42 PM] 🎬 2000/4195 — 1963 matched, 37 external
+[4:59:42 PM] 🎬 2500/4195 — 2438 matched, 62 external
+[4:59:42 PM] 🎬 3000/4195 — 2936 matched, 64 external
+[4:59:42 PM] 🎬 3500/4195 — 3436 matched, 64 external
+[4:59:42 PM] 🎬 4000/4195 — 3936 matched, 64 external
+[4:59:42 PM] 🎬 4195/4195 — 4131 matched, 64 external
+[4:59:42 PM] ✅ Trakt: 4131 matched (T0:4128 T1:3 T2:0 T3:0), 64 external, 65 consolidated
+[4:59:42 PM] 🏷️ Reclassified 0 external items to 'watched_not_owned'
+[4:59:42 PM] 📊 Generating diff report...
+[5:14:51 PM] 📊 Diff: 7465 changed, 0 improved, 0 degraded, 0 new, 0 session-consolidated
+
+# Finished — 2026-03-05T22:14:51.911Z
