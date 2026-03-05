@@ -11,6 +11,13 @@ import { embed, isEmbeddingAvailable } from '$lib/server/ollama.js';
 export async function POST({ locals }) {
     if (!locals.user) return json({ error: 'Unauthorized' }, { status: 401 });
 
+    // Check if vec0 tables exist (requires sqlite-vec + server restart)
+    try {
+        db.prepare('SELECT COUNT(*) FROM overview_embeddings LIMIT 0').get();
+    } catch {
+        return json({ error: 'Embedding tables not created. Restart the dev server to initialize sqlite-vec tables.' }, { status: 503 });
+    }
+
     // Test embedding works
     const testEmbed = await embed('test');
     if (!testEmbed) {
