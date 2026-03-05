@@ -860,6 +860,7 @@
     let ollamaHealthStatus = $state("idle"); // idle | checking | ok | error
     let ollamaHealthModels = $state([]);
     let ollamaHealthError = $state("");
+    let ollamaScanStatus = $state("idle"); // idle | scanning | found | notfound
 
     let embeddingStatus = $state("idle"); // idle | running | complete | error
     let embeddingPhase = $state("");
@@ -918,6 +919,24 @@
         } catch {
             ollamaHealthStatus = "error";
             ollamaHealthError = "Network error";
+        }
+    }
+
+    async function scanForOllama() {
+        ollamaScanStatus = "scanning";
+        try {
+            const res = await fetch("/api/ollama/scan");
+            const data = await res.json();
+            if (data.found && data.instances?.length) {
+                ollamaUrl = data.instances[0].url;
+                ollamaScanStatus = "found";
+                // Auto-test the found instance
+                await testOllamaConnection();
+            } else {
+                ollamaScanStatus = "notfound";
+            }
+        } catch {
+            ollamaScanStatus = "notfound";
         }
     }
 
@@ -1822,6 +1841,30 @@
                                 >
                             {/if}
                             Test
+                        </button>
+                        <button
+                            class="btn btn-sm btn-ghost gap-1"
+                            disabled={ollamaScanStatus === "scanning"}
+                            onclick={scanForOllama}
+                            title="Scan local network for Ollama"
+                        >
+                            {#if ollamaScanStatus === "scanning"}
+                                <span class="loading loading-spinner loading-xs"
+                                ></span>
+                            {:else}
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    class="h-4 w-4"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                    ><path
+                                        fill-rule="evenodd"
+                                        d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z"
+                                        clip-rule="evenodd"
+                                    /></svg
+                                >
+                            {/if}
+                            Scan
                         </button>
                     </div>
                     {#if ollamaHealthStatus === "ok" && ollamaHealthModels.length}
