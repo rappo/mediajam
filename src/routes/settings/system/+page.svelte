@@ -41,7 +41,7 @@
         ollamaUrl: data.settings.ollamaUrl || "",
         ollamaEmbedModel: data.settings.ollamaEmbedModel || "nomic-embed-text",
         ollamaChatModel: data.settings.ollamaChatModel || "llama3.2:3b",
-    };
+    });
 
     let saving = $state(false);
     let error = $state("");
@@ -1027,7 +1027,7 @@
 
     // Load stats when Ollama URL is set
     $effect(() => {
-        if (data.settings.ollamaUrl) {
+        if (ollamaUrl) {
             loadEmbeddingStats();
             loadTagStats();
         }
@@ -1894,7 +1894,7 @@
                 </div>
 
                 <!-- Actions -->
-                {#if data.settings.ollamaUrl}
+                {#if ollamaUrl}
                     <div class="divider text-xs text-base-content/40 my-1">
                         Actions
                     </div>
