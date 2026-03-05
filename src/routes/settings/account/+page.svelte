@@ -302,7 +302,9 @@
     /** @param {any} player */
     function isPlayerSaved(player) {
         return savedPlayers.some(
-            (/** @type {any} */ sp) => sp.deviceId === player.deviceId,
+            (/** @type {any} */ sp) =>
+                sp.deviceName === player.deviceName &&
+                sp.client === player.client,
         );
     }
 
@@ -356,23 +358,34 @@
 
     // Merge saved players with live status info
     let displayPlayerList = $derived.by(() => {
-        // Enrich saved players with live status
+        // Enrich saved players with live status — match by deviceName+client (deviceIds are unstable)
         const enrichedSaved = savedPlayers.map((/** @type {any} */ sp) => {
             const live = remotePlayers.find(
-                (/** @type {any} */ rp) => rp.deviceId === sp.deviceId,
+                (/** @type {any} */ rp) =>
+                    rp.deviceName === sp.deviceName && rp.client === sp.client,
             );
+            /** @type {'online'|'incompatible'|'offline'} */
+            let status = "offline";
+            if (live && live.supportsMediaControl) status = "online";
+            else if (live) status = "incompatible";
             return {
                 ...sp,
-                online: !!live?.supportsMediaControl,
+                // Update deviceId from live session if available (in case it changed)
+                deviceId: live?.deviceId || sp.deviceId,
+                id: live?.id || sp.id,
+                status,
+                online: status === "online",
                 supportsMediaControl: !!live?.supportsMediaControl,
                 nowPlaying: live?.nowPlaying || null,
             };
         });
-        // Unsaved live sessions
+        // Unsaved live sessions — match by deviceName+client
         const unsaved = remotePlayers.filter(
             (/** @type {any} */ rp) =>
                 !savedPlayers.some(
-                    (/** @type {any} */ sp) => sp.deviceId === rp.deviceId,
+                    (/** @type {any} */ sp) =>
+                        sp.deviceName === rp.deviceName &&
+                        sp.client === rp.client,
                 ),
         );
         return { saved: enrichedSaved, unsaved };
@@ -1038,7 +1051,10 @@
                                 {#each displayPlayerList.saved as player}
                                     <div
                                         class="flex items-center gap-2 px-3 py-2 rounded-lg bg-base-300/30 text-sm"
-                                        class:opacity-50={!player.online}
+                                        class:opacity-50={player.status ===
+                                            "offline"}
+                                        class:opacity-70={player.status ===
+                                            "incompatible"}
                                     >
                                         {#if player.client?.includes("TV")}📺
                                         {:else if player.client?.includes("Web")}💻
@@ -1059,10 +1075,16 @@
                                                 >▶ {player.nowPlaying
                                                     .name}</span
                                             >
-                                        {:else if player.online}
+                                        {:else if player.status === "online"}
                                             <span
                                                 class="badge badge-success badge-xs"
                                                 >online</span
+                                            >
+                                        {:else if player.status === "incompatible"}
+                                            <span
+                                                class="badge badge-warning badge-xs"
+                                                title="Player is online but doesn't support remote control"
+                                                >no remote</span
                                             >
                                         {:else}
                                             <span
@@ -1134,8 +1156,8 @@
                                             >
                                         {:else}
                                             <span
-                                                class="badge badge-ghost badge-xs"
-                                                >offline</span
+                                                class="badge badge-warning badge-xs"
+                                                >no remote</span
                                             >
                                         {/if}
                                         <button

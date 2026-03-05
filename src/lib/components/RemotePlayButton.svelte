@@ -32,17 +32,24 @@
             return liveSessions;
         }
         // Show saved players, enriched with live status if available
+        // Match by deviceName+client (deviceIds are unstable)
         return savedPlayers.map((sp) => {
             const live = liveSessions.find(
-                (/** @type {any} */ ls) => ls.deviceId === sp.deviceId,
+                (/** @type {any} */ ls) =>
+                    ls.deviceName === sp.deviceName && ls.client === sp.client,
             );
+            /** @type {'online'|'incompatible'|'offline'} */
+            let status = "offline";
+            if (live && live.supportsMediaControl) status = "online";
+            else if (live) status = "incompatible";
             return live
-                ? { ...sp, ...live, saved: true }
+                ? { ...sp, ...live, saved: true, status }
                 : {
                       ...sp,
                       supportsMediaControl: false,
                       online: false,
                       saved: true,
+                      status,
                   };
         });
     });
@@ -74,11 +81,12 @@
             const res = await fetch("/api/jellyfin/sessions");
             const data = await res.json();
             liveSessions = data.sessions || [];
-            // Update selected session with live data
+            // Update selected session with live data (match by deviceName+client)
             if (selectedSession) {
                 const live = liveSessions.find(
                     (/** @type {any} */ s) =>
-                        s.deviceId === selectedSession.deviceId,
+                        s.deviceName === selectedSession.deviceName &&
+                        s.client === selectedSession.client,
                 );
                 if (live) selectedSession = { ...selectedSession, ...live };
             }
@@ -189,7 +197,11 @@
                 {/if}
                 Play on {selectedSession?.deviceName || "Player"}
                 {#if selectedSession && !selectedSession.supportsMediaControl}
-                    <span class="text-xs opacity-60">(offline)</span>
+                    <span class="text-xs opacity-60"
+                        >({selectedSession.status === "incompatible"
+                            ? "no remote"
+                            : "offline"})</span
+                    >
                 {/if}
             </button>
 
@@ -257,6 +269,10 @@
                                 {#if player.supportsMediaControl}
                                     <span class="badge badge-success badge-xs"
                                         >online</span
+                                    >
+                                {:else if player.status === "incompatible" || liveSessions.find((s) => s.deviceName === player.deviceName && s.client === player.client)}
+                                    <span class="badge badge-warning badge-xs"
+                                        >no remote</span
                                     >
                                 {:else}
                                     <span class="badge badge-ghost badge-xs"
