@@ -865,6 +865,7 @@
     let embeddingPhase = $state("");
     let embeddingDone = $state(0);
     let embeddingTotal = $state(0);
+    let embeddingError = $state("");
     /** @type {{ available: boolean, overviewEmbeddings: number, titleEmbeddings: number, totalParentsWithOverview: number, totalChildren: number } | null} */
     let embeddingStats = $state(null);
 
@@ -873,6 +874,7 @@
     let taggingTotal = $state(0);
     let taggingTagged = $state(0);
     let taggingCurrent = $state("");
+    let taggingError = $state("");
     /** @type {{ totalTagged: number, totalTags: number, totalWithOverview: number, tagsByType: any[], topTags: any[] } | null} */
     let tagStats = $state(null);
 
@@ -920,6 +922,7 @@
         embeddingDone = 0;
         embeddingTotal = 0;
         embeddingPhase = "";
+        embeddingError = "";
         try {
             const res = await fetch("/api/embeddings/generate", {
                 method: "POST",
@@ -927,7 +930,8 @@
             if (!res.ok || !res.body) {
                 const err = await res.json().catch(() => ({}));
                 embeddingStatus = "error";
-                ollamaHealthError = err.error || "Failed to start";
+                embeddingError = err.error || `HTTP ${res.status}`;
+                console.error("[embeddings] Error:", embeddingError);
                 return;
             }
             const reader = res.body.getReader();
@@ -957,7 +961,7 @@
                         }
                         if (d.type === "error") {
                             embeddingStatus = "error";
-                            ollamaHealthError = d.message;
+                            embeddingError = d.message;
                         }
                     } catch {
                         /* ignore */
@@ -966,8 +970,10 @@
             }
             if (embeddingStatus === "running") embeddingStatus = "complete";
             loadEmbeddingStats();
-        } catch {
+        } catch (e) {
             embeddingStatus = "error";
+            embeddingError = e instanceof Error ? e.message : "Unknown error";
+            console.error("[embeddings] Error:", e);
         }
     }
 
@@ -977,12 +983,14 @@
         taggingTotal = 0;
         taggingTagged = 0;
         taggingCurrent = "";
+        taggingError = "";
         try {
             const res = await fetch("/api/tags/generate", { method: "POST" });
             if (!res.ok || !res.body) {
                 const err = await res.json().catch(() => ({}));
                 taggingStatus = "error";
-                ollamaHealthError = err.error || "Failed to start";
+                taggingError = err.error || `HTTP ${res.status}`;
+                console.error("[tags] Error:", taggingError);
                 return;
             }
             const reader = res.body.getReader();
@@ -1020,8 +1028,10 @@
             }
             if (taggingStatus === "running") taggingStatus = "complete";
             loadTagStats();
-        } catch {
+        } catch (e) {
             taggingStatus = "error";
+            taggingError = e instanceof Error ? e.message : "Unknown error";
+            console.error("[tags] Error:", e);
         }
     }
 
@@ -1947,6 +1957,10 @@
                         <p class="text-xs text-success">
                             ✓ Embedding generation complete
                         </p>
+                    {:else if embeddingStatus === "error"}
+                        <p class="text-xs text-error">
+                            ✗ {embeddingError || "Embedding generation failed"}
+                        </p>
                     {/if}
 
                     <!-- Generate Tags -->
@@ -1999,6 +2013,10 @@
                     {:else if taggingStatus === "complete"}
                         <p class="text-xs text-success">
                             ✓ Tag generation complete — {taggingTagged} items tagged
+                        </p>
+                    {:else if taggingStatus === "error"}
+                        <p class="text-xs text-error">
+                            ✗ {taggingError || "Tag generation failed"}
                         </p>
                     {/if}
                 {/if}
