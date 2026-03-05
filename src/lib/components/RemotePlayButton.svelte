@@ -122,7 +122,10 @@
     /** @param {string} action */
     async function sendCommand(action) {
         if (!selectedSession || !jellyfinId) return;
-        if (!selectedSession.supportsMediaControl) return;
+        // TODO: Remove this bypass if it causes issues — we're sending commands
+        // even to players that don't advertise SupportsMediaControl, since the
+        // Jellyfin server API doesn't actually enforce the flag.
+        // if (!selectedSession.supportsMediaControl) return;
         sending = true;
         feedback = "";
         showDropdown = false;
@@ -172,12 +175,14 @@
                 class="btn btn-sm btn-primary gap-2"
                 class:btn-success={feedback === "success"}
                 class:btn-error={feedback === "error"}
-                class:btn-disabled={!selectedSession?.supportsMediaControl}
-                disabled={sending || !selectedSession?.supportsMediaControl}
+                class:btn-disabled={!selectedSession}
+                disabled={sending || !selectedSession}
                 onclick={() => sendCommand("play")}
-                title={!selectedSession?.supportsMediaControl
-                    ? "Player is offline"
-                    : ""}
+                title={selectedSession?.status === "incompatible"
+                    ? "Player may not support remote control"
+                    : !selectedSession
+                      ? "No player selected"
+                      : ""}
             >
                 {#if sending}
                     <span class="loading loading-spinner loading-xs"></span>
