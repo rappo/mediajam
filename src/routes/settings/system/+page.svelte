@@ -889,6 +889,28 @@
             if (data.ok) {
                 ollamaHealthStatus = "ok";
                 ollamaHealthModels = data.models || [];
+
+                // Auto-select recommended models if current selection isn't in the list
+                const embedModels = ollamaHealthModels.filter((m) =>
+                    /embed|minilm|bert/i.test(m),
+                );
+                const genModels = ollamaHealthModels.filter(
+                    (m) => !/embed|minilm|bert/i.test(m),
+                );
+
+                if (
+                    embedModels.length &&
+                    !embedModels.includes(ollamaEmbedModel)
+                ) {
+                    ollamaEmbedModel =
+                        embedModels.find((m) => m.includes("nomic-embed")) ||
+                        embedModels[0];
+                }
+                if (genModels.length && !genModels.includes(ollamaChatModel)) {
+                    ollamaChatModel =
+                        genModels.find((m) => m.includes("llama3.2")) ||
+                        genModels[0];
+                }
             } else {
                 ollamaHealthStatus = "error";
                 ollamaHealthError = data.error || "Connection failed";

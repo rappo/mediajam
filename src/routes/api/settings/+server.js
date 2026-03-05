@@ -44,7 +44,10 @@ export async function PUT({ request }) {
             heart_border_movies: 'heart_border_movies',
             heart_border_shows: 'heart_border_shows',
             heart_border_music: 'heart_border_music',
-            heart_border_people: 'heart_border_people'
+            heart_border_people: 'heart_border_people',
+            ollama_url: 'ollama_url',
+            ollama_embed_model: 'ollama_embed_model',
+            ollama_chat_model: 'ollama_chat_model'
         };
 
         for (const [key, column] of Object.entries(allowedFields)) {
