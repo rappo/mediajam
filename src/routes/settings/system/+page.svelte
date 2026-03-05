@@ -880,7 +880,9 @@
         ollamaHealthStatus = "checking";
         ollamaHealthError = "";
         try {
-            const res = await fetch("/api/ollama/health");
+            const res = await fetch(
+                `/api/ollama/health?url=${encodeURIComponent(ollamaUrl)}`,
+            );
             const data = await res.json();
             if (data.ok) {
                 ollamaHealthStatus = "ok";
@@ -1812,25 +1814,56 @@
                                 >Embedding Model</span
                             >
                         </div>
-                        <input
-                            type="text"
+                        <select
                             bind:value={ollamaEmbedModel}
-                            placeholder="nomic-embed-text"
-                            class="input input-bordered input-sm font-mono"
-                        />
+                            class="select select-bordered select-sm font-mono"
+                        >
+                            {#if !ollamaHealthModels.length}
+                                <option value={ollamaEmbedModel}
+                                    >{ollamaEmbedModel ||
+                                        "nomic-embed-text"}</option
+                                >
+                            {:else}
+                                {#each ollamaHealthModels.filter( (m) => /embed|minilm|bert/i.test(m), ) as model}
+                                    <option value={model}
+                                        >{model}{model.includes("nomic-embed")
+                                            ? " ★ suggested"
+                                            : ""}</option
+                                    >
+                                {/each}
+                            {/if}
+                        </select>
+                        <p class="text-[10px] text-base-content/40 mt-1">
+                            Used for semantic search & album matching
+                        </p>
                     </label>
                     <label class="form-control">
                         <div class="label pb-1">
                             <span class="label-text text-xs font-medium"
-                                >Chat Model</span
+                                >Generation Model</span
                             >
                         </div>
-                        <input
-                            type="text"
+                        <select
                             bind:value={ollamaChatModel}
-                            placeholder="llama3.2:3b"
-                            class="input input-bordered input-sm font-mono"
-                        />
+                            class="select select-bordered select-sm font-mono"
+                        >
+                            {#if !ollamaHealthModels.length}
+                                <option value={ollamaChatModel}
+                                    >{ollamaChatModel || "llama3.2:3b"}</option
+                                >
+                            {:else}
+                                {#each ollamaHealthModels.filter((m) => !/embed|minilm|bert/i.test(m)) as model}
+                                    <option value={model}
+                                        >{model}{model.includes("llama3.2")
+                                            ? " ★ suggested"
+                                            : ""}</option
+                                    >
+                                {/each}
+                            {/if}
+                        </select>
+                        <p class="text-[10px] text-base-content/40 mt-1">
+                            Used for tagging, natural language queries
+                        </p>
                     </label>
                 </div>
 
