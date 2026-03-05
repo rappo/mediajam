@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import db from '$lib/server/db.js';
+import { embed, isEmbeddingAvailable } from '$lib/server/ollama.js';
 
 /**
  * GET /api/search?q=... — Global search across media and history.
@@ -82,8 +83,36 @@ export async function GET({ url, locals }) {
         LIMIT 5
     `).all(userId, like, like)) : [];
 
-    const totalCount = shows.length + movies.length + music.length + people.length + children.length + history.length;
-    console.log(`[search] results: shows=${shows.length} movies=${movies.length} music=${music.length} people=${people.length} children=${children.length} history=${history.length} total=${totalCount}`);
+    // Semantic search (when embeddings available)
+    let semantic = [];
+    if (isEmbeddingAvailable() && query.length >= 3) {
+        try {
+            const queryEmbedding = await embed(query);
+            if (queryEmbedding) {
+                semantic = /** @type {any[]} */ (db.prepare(`
+                    SELECT mp.id, mp.title, mp.poster_url, mp.release_year, mp.media_type as type,
+                           vec_distance_cosine(oe.overview_embedding, ?) as distance
+                    FROM overview_embeddings oe
+                    JOIN media_parents mp ON oe.media_parent_id = mp.id
+                    WHERE distance < 0.5
+                    ORDER BY distance
+                    LIMIT 8
+                `).all(JSON.stringify(queryEmbedding)));
+                // Remove items already in keyword results
+                const keywordIds = new Set([
+                    ...shows.map((/** @type {any} */ s) => s.id),
+                    ...movies.map((/** @type {any} */ m) => m.id),
+                    ...music.map((/** @type {any} */ m) => m.id),
+                ]);
+                semantic = semantic.filter((/** @type {any} */ s) => !keywordIds.has(s.id));
+            }
+        } catch {
+            // Embedding search failed — that's fine, return keyword results only
+        }
+    }
+
+    const totalCount = shows.length + movies.length + music.length + people.length + children.length + history.length + semantic.length;
+    console.log(`[search] results: shows=${shows.length} movies=${movies.length} music=${music.length} people=${people.length} children=${children.length} history=${history.length} semantic=${semantic.length} total=${totalCount}`);
 
     return json({
         query,
@@ -93,7 +122,8 @@ export async function GET({ url, locals }) {
             music,
             people,
             children,
-            history
+            history,
+            semantic,
         },
         totalCount
     });

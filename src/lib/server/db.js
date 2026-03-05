@@ -9,6 +9,15 @@ const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
+// Load sqlite-vec extension for vector search (optional — graceful fallback)
+try {
+    const sqliteVec = await import('sqlite-vec');
+    sqliteVec.default.load(db);
+    console.log('[db] sqlite-vec extension loaded');
+} catch (e) {
+    console.warn('[db] sqlite-vec not available — embedding features disabled:', /** @type {Error} */(e).message);
+}
+
 // Initialize schema
 db.exec(`
 -- 1. App Settings (Single Row Table)
@@ -272,7 +281,10 @@ const newAppCols = [
     ['lastfm_api_key', 'TEXT'],
     ['lastfm_shared_secret', 'TEXT'],
     ['jellyfin_pr_db_path', 'TEXT'],
-    ['jellyfin_sync_check', 'INTEGER DEFAULT 1']
+    ['jellyfin_sync_check', 'INTEGER DEFAULT 1'],
+    ['ollama_url', 'TEXT'],
+    ['ollama_embed_model', "TEXT DEFAULT 'nomic-embed-text'"],
+    ['ollama_chat_model', "TEXT DEFAULT 'llama3.2:3b'"],
 ];
 for (const [col, type] of newAppCols) {
     if (!existingCols.has(col)) {
@@ -453,6 +465,41 @@ if (!appCols.has('heart_border_music')) {
 if (!appCols.has('heart_border_people')) {
     db.exec('ALTER TABLE app_settings ADD COLUMN heart_border_people INTEGER DEFAULT 1');
 }
+
+// -- LLM Embedding & Tagging Tables --
+try {
+    db.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS media_embeddings USING vec0(
+            media_id INTEGER PRIMARY KEY,
+            title_embedding FLOAT[768]
+        )
+    `);
+    db.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS overview_embeddings USING vec0(
+            media_parent_id INTEGER PRIMARY KEY,
+            overview_embedding FLOAT[768]
+        )
+    `);
+    console.log('[db] vec0 embedding tables ready');
+} catch (e) {
+    console.warn('[db] Could not create vec0 tables (sqlite-vec not loaded):', /** @type {Error} */(e).message);
+}
+
+// -- Media Tags table (for LLM auto-tagging) --
+db.exec(`
+    CREATE TABLE IF NOT EXISTS media_tags (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        media_parent_id INTEGER NOT NULL,
+        tag_type TEXT NOT NULL,
+        tag_value TEXT NOT NULL,
+        source TEXT DEFAULT 'llm',
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY(media_parent_id) REFERENCES media_parents(id) ON DELETE CASCADE,
+        UNIQUE(media_parent_id, tag_type, tag_value)
+    )
+`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_media_tags_parent ON media_tags(media_parent_id)');
+db.exec('CREATE INDEX IF NOT EXISTS idx_media_tags_type ON media_tags(tag_type, tag_value)');
 
 // Initialize logger from DB settings
 import { initLogging } from './logger.js';

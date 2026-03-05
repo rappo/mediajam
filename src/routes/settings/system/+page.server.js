@@ -36,7 +36,10 @@ export function load() {
             hasLastfmApiKey: !!settings?.lastfm_api_key,
             hasLastfmSharedSecret: !!settings?.lastfm_shared_secret,
             jellyfinPrDbPath: settings?.jellyfin_pr_db_path || '',
-            jellyfinSyncCheck: settings?.jellyfin_sync_check ?? 1
+            jellyfinSyncCheck: settings?.jellyfin_sync_check ?? 1,
+            ollamaUrl: settings?.ollama_url || '',
+            ollamaEmbedModel: settings?.ollama_embed_model || 'nomic-embed-text',
+            ollamaChatModel: settings?.ollama_chat_model || 'llama3.2:3b',
         },
         syncState: {
             status: syncState?.status || 'idle',

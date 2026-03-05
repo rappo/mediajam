@@ -17,6 +17,15 @@
     let jellyfinPrDbPath = $state(data.settings.jellyfinPrDbPath || "");
     let jellyfinSyncCheck = $state(!!data.settings.jellyfinSyncCheck);
 
+    // LLM Integration
+    let ollamaUrl = $state(data.settings.ollamaUrl || "");
+    let ollamaEmbedModel = $state(
+        data.settings.ollamaEmbedModel || "nomic-embed-text",
+    );
+    let ollamaChatModel = $state(
+        data.settings.ollamaChatModel || "llama3.2:3b",
+    );
+
     // Snapshot initial values for dirty detection and undo
     const initialValues = {
         jellyfinUrl: data.settings.jellyfinUrl || "",
@@ -29,6 +38,9 @@
         lastfmSharedSecret: "",
         jellyfinPrDbPath: data.settings.jellyfinPrDbPath || "",
         jellyfinSyncCheck: !!data.settings.jellyfinSyncCheck,
+        ollamaUrl: data.settings.ollamaUrl || "",
+        ollamaEmbedModel: data.settings.ollamaEmbedModel || "nomic-embed-text",
+        ollamaChatModel: data.settings.ollamaChatModel || "llama3.2:3b",
     };
 
     let saving = $state(false);
@@ -45,7 +57,10 @@
             lastfmApiKey !== initialValues.lastfmApiKey ||
             lastfmSharedSecret !== initialValues.lastfmSharedSecret ||
             jellyfinPrDbPath !== initialValues.jellyfinPrDbPath ||
-            jellyfinSyncCheck !== initialValues.jellyfinSyncCheck,
+            jellyfinSyncCheck !== initialValues.jellyfinSyncCheck ||
+            ollamaUrl !== initialValues.ollamaUrl ||
+            ollamaEmbedModel !== initialValues.ollamaEmbedModel ||
+            ollamaChatModel !== initialValues.ollamaChatModel,
     );
 
     // ─── Undo Toast ──────────────────────────────────────────────────────────────
@@ -123,6 +138,9 @@
             lastfmSharedSecret,
             jellyfinPrDbPath,
             jellyfinSyncCheck,
+            ollamaUrl,
+            ollamaEmbedModel,
+            ollamaChatModel,
         };
     }
 
@@ -137,6 +155,9 @@
         lastfmSharedSecret = snapshot.lastfmSharedSecret;
         jellyfinPrDbPath = snapshot.jellyfinPrDbPath;
         jellyfinSyncCheck = snapshot.jellyfinSyncCheck;
+        ollamaUrl = snapshot.ollamaUrl;
+        ollamaEmbedModel = snapshot.ollamaEmbedModel;
+        ollamaChatModel = snapshot.ollamaChatModel;
     }
 
     // ─── Validation ──────────────────────────────────────────────────────────────
@@ -228,6 +249,9 @@
                 payload.lastfm_shared_secret = lastfmSharedSecret;
             payload.jellyfin_pr_db_path = jellyfinPrDbPath;
             payload.jellyfin_sync_check = jellyfinSyncCheck ? 1 : 0;
+            payload.ollama_url = ollamaUrl || null;
+            payload.ollama_embed_model = ollamaEmbedModel || "nomic-embed-text";
+            payload.ollama_chat_model = ollamaChatModel || "llama3.2:3b";
 
             const res = await fetch("/api/settings", {
                 method: "PUT",
@@ -831,6 +855,181 @@
     });
 
     // MusicBrainz auto-reconnect handled by the unified mount probe above
+
+    // ─── LLM Integration ────────────────────────────────────────────────────────
+    let ollamaHealthStatus = $state("idle"); // idle | checking | ok | error
+    let ollamaHealthModels = $state([]);
+    let ollamaHealthError = $state("");
+
+    let embeddingStatus = $state("idle"); // idle | running | complete | error
+    let embeddingPhase = $state("");
+    let embeddingDone = $state(0);
+    let embeddingTotal = $state(0);
+    /** @type {{ available: boolean, overviewEmbeddings: number, titleEmbeddings: number, totalParentsWithOverview: number, totalChildren: number } | null} */
+    let embeddingStats = $state(null);
+
+    let taggingStatus = $state("idle");
+    let taggingDone = $state(0);
+    let taggingTotal = $state(0);
+    let taggingTagged = $state(0);
+    let taggingCurrent = $state("");
+    /** @type {{ totalTagged: number, totalTags: number, totalWithOverview: number, tagsByType: any[], topTags: any[] } | null} */
+    let tagStats = $state(null);
+
+    async function testOllamaConnection() {
+        ollamaHealthStatus = "checking";
+        ollamaHealthError = "";
+        try {
+            const res = await fetch("/api/ollama/health");
+            const data = await res.json();
+            if (data.ok) {
+                ollamaHealthStatus = "ok";
+                ollamaHealthModels = data.models || [];
+            } else {
+                ollamaHealthStatus = "error";
+                ollamaHealthError = data.error || "Connection failed";
+            }
+        } catch {
+            ollamaHealthStatus = "error";
+            ollamaHealthError = "Network error";
+        }
+    }
+
+    async function loadEmbeddingStats() {
+        try {
+            const res = await fetch("/api/embeddings/generate");
+            embeddingStats = await res.json();
+        } catch {
+            /* ignore */
+        }
+    }
+
+    async function loadTagStats() {
+        try {
+            const res = await fetch("/api/tags/generate");
+            tagStats = await res.json();
+        } catch {
+            /* ignore */
+        }
+    }
+
+    async function generateEmbeddings() {
+        embeddingStatus = "running";
+        embeddingDone = 0;
+        embeddingTotal = 0;
+        embeddingPhase = "";
+        try {
+            const res = await fetch("/api/embeddings/generate", {
+                method: "POST",
+            });
+            if (!res.ok || !res.body) {
+                const err = await res.json().catch(() => ({}));
+                embeddingStatus = "error";
+                ollamaHealthError = err.error || "Failed to start";
+                return;
+            }
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop() || "";
+                for (const line of lines) {
+                    if (!line.startsWith("data: ")) continue;
+                    try {
+                        const d = JSON.parse(line.slice(6));
+                        if (d.type === "status") {
+                            embeddingPhase = d.phase;
+                            embeddingTotal = d.total;
+                        }
+                        if (d.type === "progress") {
+                            embeddingDone = d.done;
+                            embeddingTotal = d.total;
+                            embeddingPhase = d.phase;
+                        }
+                        if (d.type === "complete") {
+                            embeddingStatus = "complete";
+                        }
+                        if (d.type === "error") {
+                            embeddingStatus = "error";
+                            ollamaHealthError = d.message;
+                        }
+                    } catch {
+                        /* ignore */
+                    }
+                }
+            }
+            if (embeddingStatus === "running") embeddingStatus = "complete";
+            loadEmbeddingStats();
+        } catch {
+            embeddingStatus = "error";
+        }
+    }
+
+    async function generateTags() {
+        taggingStatus = "running";
+        taggingDone = 0;
+        taggingTotal = 0;
+        taggingTagged = 0;
+        taggingCurrent = "";
+        try {
+            const res = await fetch("/api/tags/generate", { method: "POST" });
+            if (!res.ok || !res.body) {
+                const err = await res.json().catch(() => ({}));
+                taggingStatus = "error";
+                ollamaHealthError = err.error || "Failed to start";
+                return;
+            }
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop() || "";
+                for (const line of lines) {
+                    if (!line.startsWith("data: ")) continue;
+                    try {
+                        const d = JSON.parse(line.slice(6));
+                        if (d.type === "status") {
+                            taggingTotal = d.total;
+                        }
+                        if (d.type === "progress") {
+                            taggingDone = d.done;
+                            taggingTotal = d.total;
+                            taggingTagged = d.tagged;
+                            taggingCurrent = d.current || "";
+                        }
+                        if (d.type === "complete") {
+                            taggingStatus = "complete";
+                        }
+                        if (d.type === "error") {
+                            taggingStatus = "error";
+                        }
+                    } catch {
+                        /* ignore */
+                    }
+                }
+            }
+            if (taggingStatus === "running") taggingStatus = "complete";
+            loadTagStats();
+        } catch {
+            taggingStatus = "error";
+        }
+    }
+
+    // Load stats when Ollama URL is set
+    $effect(() => {
+        if (data.settings.ollamaUrl) {
+            loadEmbeddingStats();
+            loadTagStats();
+        }
+    });
 
     async function runReconcile() {
         reconciling = true;
@@ -1512,6 +1711,238 @@
                         be tested without a full auth flow.
                     </p>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- LLM Integration -->
+    <div class="card bg-base-200/50 border border-base-300">
+        <div class="card-body">
+            <h2 class="card-title text-lg">
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="h-5 w-5 text-accent"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    ><path
+                        d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4zm-2 4a2 2 0 1 1 4 0v2h-4V6z"
+                    /><circle cx="12" cy="15" r="2" /></svg
+                >
+                LLM Integration
+                <span class="badge badge-ghost badge-sm">optional</span>
+            </h2>
+            <p class="text-sm text-base-content/60">
+                Connect to a local Ollama instance for semantic search, smart
+                matching, auto-tagging, and natural language queries.
+            </p>
+
+            <div class="grid gap-3 mt-4">
+                <!-- Ollama URL -->
+                <label class="form-control w-full">
+                    <div class="label pb-1">
+                        <span class="label-text text-xs font-medium"
+                            >Ollama URL</span
+                        >
+                    </div>
+                    <div class="flex gap-2">
+                        <input
+                            type="url"
+                            bind:value={ollamaUrl}
+                            placeholder="http://localhost:11434"
+                            class="input input-bordered input-sm flex-1 font-mono"
+                        />
+                        <button
+                            class="btn btn-sm btn-outline gap-1"
+                            disabled={!ollamaUrl ||
+                                ollamaHealthStatus === "checking"}
+                            onclick={testOllamaConnection}
+                        >
+                            {#if ollamaHealthStatus === "checking"}
+                                <span class="loading loading-spinner loading-xs"
+                                ></span>
+                            {:else if ollamaHealthStatus === "ok"}
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    class="h-4 w-4 text-success"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                    ><path
+                                        fill-rule="evenodd"
+                                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                        clip-rule="evenodd"
+                                    /></svg
+                                >
+                            {:else if ollamaHealthStatus === "error"}
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    class="h-4 w-4 text-error"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                    ><path
+                                        fill-rule="evenodd"
+                                        d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                                        clip-rule="evenodd"
+                                    /></svg
+                                >
+                            {/if}
+                            Test
+                        </button>
+                    </div>
+                    {#if ollamaHealthStatus === "ok" && ollamaHealthModels.length}
+                        <p class="text-[10px] text-success mt-1">
+                            Connected — {ollamaHealthModels.length} model{ollamaHealthModels.length ===
+                            1
+                                ? ""
+                                : "s"} available
+                        </p>
+                    {:else if ollamaHealthStatus === "error"}
+                        <p class="text-[10px] text-error mt-1">
+                            {ollamaHealthError}
+                        </p>
+                    {/if}
+                </label>
+
+                <!-- Model selectors -->
+                <div class="grid grid-cols-2 gap-3">
+                    <label class="form-control">
+                        <div class="label pb-1">
+                            <span class="label-text text-xs font-medium"
+                                >Embedding Model</span
+                            >
+                        </div>
+                        <input
+                            type="text"
+                            bind:value={ollamaEmbedModel}
+                            placeholder="nomic-embed-text"
+                            class="input input-bordered input-sm font-mono"
+                        />
+                    </label>
+                    <label class="form-control">
+                        <div class="label pb-1">
+                            <span class="label-text text-xs font-medium"
+                                >Chat Model</span
+                            >
+                        </div>
+                        <input
+                            type="text"
+                            bind:value={ollamaChatModel}
+                            placeholder="llama3.2:3b"
+                            class="input input-bordered input-sm font-mono"
+                        />
+                    </label>
+                </div>
+
+                <!-- Actions -->
+                {#if data.settings.ollamaUrl}
+                    <div class="divider text-xs text-base-content/40 my-1">
+                        Actions
+                    </div>
+
+                    <!-- Generate Embeddings -->
+                    <div class="flex items-center gap-3">
+                        <button
+                            class="btn btn-sm btn-outline gap-2"
+                            disabled={embeddingStatus === "running"}
+                            onclick={generateEmbeddings}
+                        >
+                            {#if embeddingStatus === "running"}
+                                <span class="loading loading-spinner loading-xs"
+                                ></span>
+                            {:else}
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    class="h-4 w-4"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                    ><path
+                                        d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"
+                                    /></svg
+                                >
+                            {/if}
+                            Generate Embeddings
+                        </button>
+                        {#if embeddingStats}
+                            <span class="text-xs text-base-content/50">
+                                {embeddingStats.overviewEmbeddings}/{embeddingStats.totalParentsWithOverview}
+                                overviews,
+                                {embeddingStats.titleEmbeddings}/{embeddingStats.totalChildren}
+                                titles
+                            </span>
+                        {/if}
+                    </div>
+                    {#if embeddingStatus === "running" && embeddingTotal > 0}
+                        <div class="flex items-center gap-2">
+                            <progress
+                                class="progress progress-primary w-full"
+                                value={embeddingDone}
+                                max={embeddingTotal}
+                            ></progress>
+                            <span
+                                class="text-xs text-base-content/50 whitespace-nowrap"
+                                >{embeddingPhase}: {embeddingDone}/{embeddingTotal}</span
+                            >
+                        </div>
+                    {:else if embeddingStatus === "complete"}
+                        <p class="text-xs text-success">
+                            ✓ Embedding generation complete
+                        </p>
+                    {/if}
+
+                    <!-- Generate Tags -->
+                    <div class="flex items-center gap-3">
+                        <button
+                            class="btn btn-sm btn-outline gap-2"
+                            disabled={taggingStatus === "running"}
+                            onclick={generateTags}
+                        >
+                            {#if taggingStatus === "running"}
+                                <span class="loading loading-spinner loading-xs"
+                                ></span>
+                            {:else}
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    class="h-4 w-4"
+                                    viewBox="0 0 20 20"
+                                    fill="currentColor"
+                                    ><path
+                                        fill-rule="evenodd"
+                                        d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7A.997.997 0 012 10V5a3 3 0 013-3h5c.256 0 .512.098.707.293l7 7zM5 6a1 1 0 100-2 1 1 0 000 2z"
+                                        clip-rule="evenodd"
+                                    /></svg
+                                >
+                            {/if}
+                            Generate Tags
+                        </button>
+                        {#if tagStats}
+                            <span class="text-xs text-base-content/50">
+                                {tagStats.totalTagged}/{tagStats.totalWithOverview}
+                                tagged ({tagStats.totalTags} tags)
+                            </span>
+                        {/if}
+                    </div>
+                    {#if taggingStatus === "running" && taggingTotal > 0}
+                        <div class="flex items-center gap-2">
+                            <progress
+                                class="progress progress-accent w-full"
+                                value={taggingDone}
+                                max={taggingTotal}
+                            ></progress>
+                            <span
+                                class="text-xs text-base-content/50 whitespace-nowrap"
+                            >
+                                {taggingDone}/{taggingTotal}
+                                {#if taggingCurrent}
+                                    — {taggingCurrent}{/if}
+                            </span>
+                        </div>
+                    {:else if taggingStatus === "complete"}
+                        <p class="text-xs text-success">
+                            ✓ Tag generation complete — {taggingTagged} items tagged
+                        </p>
+                    {/if}
+                {/if}
             </div>
         </div>
     </div>
