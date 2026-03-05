@@ -27,7 +27,7 @@
     );
 
     // Snapshot initial values for dirty detection and undo
-    const initialValues = {
+    let initialValues = $state({
         jellyfinUrl: data.settings.jellyfinUrl || "",
         tvdbApiKey: "",
         tmdbApiKey: "",
