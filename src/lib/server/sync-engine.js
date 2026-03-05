@@ -900,7 +900,7 @@ export function resetSync() {
 }
 
 // Re-export from standalone module for backward compatibility
-export { reconcileExternalMedia, deduplicateParents, deduplicateChildren } from '$lib/server/reconcile.js';
+export { reconcileExternalMedia, deduplicateParents, deduplicateChildren, deduplicateParentsByTitle } from '$lib/server/reconcile.js';
 
 export function getStatus() {
     return {

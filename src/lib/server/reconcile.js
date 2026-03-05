@@ -207,3 +207,88 @@ export function deduplicateChildren() {
 
     return { deduped, historyMoved };
 }
+
+/**
+ * Deduplicate media_parents by title: merge orphan parents (no jellyfin_id)
+ * into canonical ones (with jellyfin_id) when they share the same title + type.
+ * Also normalizes Unicode hyphens/dashes for matching.
+ * @returns {{ deduped: number, historyMoved: number, creditsMoved: number }}
+ */
+export function deduplicateParentsByTitle() {
+    // Find orphan parents that have a canonical match (same title+type, with jellyfin_id)
+    const orphans = /** @type {any[]} */ (db.prepare(`
+        SELECT orphan.id AS orphan_id, canonical.id AS keep_id, orphan.title
+        FROM media_parents orphan
+        JOIN media_parents canonical
+            ON canonical.title = orphan.title COLLATE NOCASE
+            AND canonical.media_type = orphan.media_type
+            AND canonical.jellyfin_id IS NOT NULL
+        WHERE orphan.jellyfin_id IS NULL
+        AND orphan.id != canonical.id
+    `).all());
+
+    if (orphans.length === 0) return { deduped: 0, historyMoved: 0, creditsMoved: 0 };
+
+    let deduped = 0;
+    let historyMoved = 0;
+    let creditsMoved = 0;
+
+    db.transaction(() => {
+        for (const { orphan_id, keep_id } of orphans) {
+            // Migrate children
+            const children = /** @type {any[]} */ (db.prepare(
+                'SELECT id FROM media_children WHERE parent_id = ?'
+            ).all(orphan_id));
+
+            for (const child of children) {
+                // Check if keeper already has a child with the same title
+                const keeperChild = /** @type {any} */ (db.prepare(
+                    'SELECT id FROM media_children WHERE parent_id = ? AND title = (SELECT title FROM media_children WHERE id = ?) COLLATE NOCASE LIMIT 1'
+                ).get(keep_id, child.id));
+
+                if (keeperChild) {
+                    // Migrate history to keeper's child, then delete orphan child
+                    const r = db.prepare('UPDATE playback_history SET media_id = ? WHERE media_id = ?').run(keeperChild.id, child.id);
+                    historyMoved += r.changes;
+                    db.prepare('DELETE FROM media_children WHERE id = ?').run(child.id);
+                } else {
+                    // Move child to keeper parent
+                    db.prepare('UPDATE media_children SET parent_id = ? WHERE id = ?').run(keep_id, child.id);
+                }
+            }
+
+            // Migrate person_credits
+            const existingCredits = new Set(
+                /** @type {any[]} */(db.prepare(
+                'SELECT person_id || \':\' || role_type as key FROM person_credits WHERE media_parent_id = ?'
+            ).all(keep_id)).map(r => r.key)
+            );
+            const staleCredits = /** @type {any[]} */ (db.prepare(
+                'SELECT * FROM person_credits WHERE media_parent_id = ?'
+            ).all(orphan_id));
+
+            for (const credit of staleCredits) {
+                if (!existingCredits.has(`${credit.person_id}:${credit.role_type}`)) {
+                    db.prepare('UPDATE person_credits SET media_parent_id = ? WHERE id = ?').run(keep_id, credit.id);
+                    creditsMoved++;
+                }
+            }
+            db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?').run(orphan_id);
+
+            // Delete orphan parent (only if no children remain)
+            const remaining = /** @type {any} */ (db.prepare(
+                'SELECT COUNT(*) as c FROM media_children WHERE parent_id = ?'
+            ).get(orphan_id));
+            if (!remaining || remaining.c === 0) {
+                db.prepare('DELETE FROM media_parents WHERE id = ?').run(orphan_id);
+                deduped++;
+            }
+        }
+    })();
+
+    if (deduped > 0) {
+        console.log(`[dedup] Merged ${deduped} title-duplicate parents, moved ${historyMoved} history entries and ${creditsMoved} credits`);
+    }
+
+    return { deduped, historyMoved, creditsMoved };
+}

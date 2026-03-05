@@ -1,4 +1,4 @@
-import { reconcileExternalMedia, deduplicateParents, deduplicateChildren } from '$lib/server/reconcile.js';
+import { reconcileExternalMedia, deduplicateParents, deduplicateChildren, deduplicateParentsByTitle } from '$lib/server/reconcile.js';
 import db from '$lib/server/db.js';
 import { json } from '@sveltejs/kit';
 
@@ -16,11 +16,12 @@ export async function POST({ locals }) {
         const result = reconcileExternalMedia();
         const dedupResult = deduplicateParents();
         const childDedup = deduplicateChildren();
-        const summary = `${result.merged} merged, ${result.deleted} orphans, ${dedupResult.deduped} deduped parents, ${childDedup.deduped} deduped children`;
+        const titleDedup = deduplicateParentsByTitle();
+        const summary = `${result.merged} merged, ${result.deleted} orphans, ${dedupResult.deduped + titleDedup.deduped} deduped parents, ${childDedup.deduped} deduped children`;
         console.log(`[reconcile] Manual: ${summary}`);
         db.prepare('UPDATE sync_history SET status = ?, finished_at = ?, summary = ? WHERE id = ?')
             .run('success', new Date().toISOString(), summary, histId);
-        return json({ success: true, ...result, ...dedupResult, childrenDeduped: childDedup.deduped, childHistoryMoved: childDedup.historyMoved });
+        return json({ success: true, ...result, ...dedupResult, titleDeduped: titleDedup.deduped, childrenDeduped: childDedup.deduped, childHistoryMoved: childDedup.historyMoved });
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         db.prepare('UPDATE sync_history SET status = ?, finished_at = ?, summary = ? WHERE id = ?')
