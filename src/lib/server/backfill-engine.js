@@ -78,8 +78,9 @@ function findOrCreateExternalMedia(info) {
         tmdbId, musicbrainzId, imdbId, seasonNumber, itemNumber } = info;
 
     // 1. Find or create media_parent
+    // First check for ANY existing parent with this title (collected or external) to avoid duplicates
     let parent = /** @type {any} */ (db.prepare(
-        `SELECT id FROM media_parents WHERE title = ? AND media_type = ? AND collection_status = 'external'`
+        `SELECT id FROM media_parents WHERE title = ? AND media_type = ? ORDER BY jellyfin_id IS NOT NULL DESC, id ASC LIMIT 1`
     ).get(parentTitle, mediaType));
 
     if (!parent) {

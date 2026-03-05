@@ -272,6 +272,8 @@ export async function startSync(libraryId = null, force = false) {
 
     let totalSynced = 0;
     let totalErrors = 0;
+    /** @type {string[]} */
+    let totalErrorMessages = [];
 
     updateSyncState({ status: 'syncing', progress_percent: 0 });
 
@@ -448,6 +450,8 @@ export async function startSync(libraryId = null, force = false) {
             const parentCount = items.length;
             let libSynced = 0;
             let libErrors = 0;
+            /** @type {string[]} */
+            let libErrorMessages = [];
 
             const itemLabel = lib.media_type === 'tvshows' ? 'shows' : lib.media_type === 'movies' ? 'movies' : 'artists';
 
@@ -595,6 +599,9 @@ export async function startSync(libraryId = null, force = false) {
                             } catch (e) {
                                 totalErrors++;
                                 libErrors++;
+                                const msg = `${item.Name}: episode upsert failed`;
+                                libErrorMessages.push(msg);
+                                totalErrorMessages.push(msg);
                             }
                         }
 
@@ -700,6 +707,9 @@ export async function startSync(libraryId = null, force = false) {
                             } catch (e) {
                                 totalErrors++;
                                 libErrors++;
+                                const msg = `${item.Name}: album "${album.Name}" upsert failed`;
+                                libErrorMessages.push(msg);
+                                totalErrorMessages.push(msg);
                             }
                         }
 
@@ -765,6 +775,8 @@ export async function startSync(libraryId = null, force = false) {
                     totalErrors++;
                     libErrors++;
                     const errMsg = e instanceof Error ? e.message : String(e);
+                    libErrorMessages.push(`${item.Name}: ${errMsg}`);
+                    totalErrorMessages.push(`${item.Name}: ${errMsg}`);
                     broadcast({
                         type: 'progress',
                         libraryIndex: libIdx,
@@ -797,7 +809,7 @@ export async function startSync(libraryId = null, force = false) {
                 log: libFailed
                     ? `❌ ${lib.name} failed — could not fetch items from Jellyfin`
                     : libErrors > 0
-                        ? `⚠️ ${lib.name} completed with errors — ${libSynced} items synced, ${libErrors} errors (${formatDuration(libElapsed)})`
+                        ? `⚠️ ${lib.name} completed with errors — ${libSynced} items synced, ${libErrors} errors (${formatDuration(libElapsed)})\n${libErrorMessages.slice(0, 5).map(m => `   • ${m}`).join('\n')}${libErrorMessages.length > 5 ? `\n   … and ${libErrorMessages.length - 5} more` : ''}`
                         : `✅ ${lib.name} complete — ${libSynced} items synced (${formatDuration(libElapsed)})`,
                 logType: libFailed ? 'error' : libErrors > 0 ? 'warning' : 'success'
             });
@@ -822,7 +834,7 @@ export async function startSync(libraryId = null, force = false) {
             log: allFailed
                 ? `❌ Sync failed — could not fetch any items (${totalErrors} errors)`
                 : hasErrors
-                    ? `⚠️ Sync completed with errors — ${totalSynced} items synced, ${totalErrors} errors`
+                    ? `⚠️ Sync completed with errors — ${totalSynced} items synced, ${totalErrors} errors\n${totalErrorMessages.slice(0, 5).map(m => `   • ${m}`).join('\n')}${totalErrorMessages.length > 5 ? `\n   … and ${totalErrorMessages.length - 5} more` : ''}`
                     : `🎉 Sync complete! ${totalSynced} items synced.`,
             logType: allFailed ? 'error' : hasErrors ? 'warning' : 'success'
         });

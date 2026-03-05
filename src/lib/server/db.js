@@ -12,7 +12,8 @@ db.pragma('foreign_keys = ON');
 // Load sqlite-vec extension for vector search (optional — graceful fallback)
 try {
     const sqliteVec = await import('sqlite-vec');
-    sqliteVec.default.load(db);
+    const loader = sqliteVec.default ?? sqliteVec;
+    loader.load(db);
     console.log('[db] sqlite-vec extension loaded');
 } catch (e) {
     console.warn('[db] sqlite-vec not available — embedding features disabled:', /** @type {Error} */(e).message);
