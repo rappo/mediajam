@@ -77,6 +77,7 @@
         else if (item.type === "movie") goto(`/movies/${item.id}`);
         else if (item.type === "artist") goto(`/music/${item.id}`);
         else if (item.type === "person") goto(`/people/${item.id}`);
+        else if (item.type === "album") goto(`/music/${item.parent_id}`);
         else if (item.type === "child") {
             if (item.media_type === "artist") goto(`/music/${item.parent_id}`);
             else if (item.media_type === "show") goto(`/tv/${item.parent_id}`);
@@ -99,6 +100,7 @@
             ...(r.results.shows || []),
             ...(r.results.movies || []),
             ...(r.results.music || []),
+            ...(r.results.albums || []),
             ...(r.results.people || []),
             ...(r.results.children || []),
             ...(r.results.history || []),
@@ -137,6 +139,7 @@
         show: "📺",
         movie: "🎬",
         artist: "🎵",
+        album: "💿",
         person: "👤",
         child: "📄",
         history: "⏱️",
@@ -146,6 +149,7 @@
         show: "TV Show",
         movie: "Movie",
         artist: "Artist",
+        album: "Album",
         person: "Person",
         child: "Episode/Track",
         history: "History",
@@ -153,6 +157,9 @@
 
     /** @param {any} item */
     function itemLabel(item) {
+        if (item.type === "album") {
+            return `${item.parent_title} — ${item.item_title}`;
+        }
         if (item.type === "child") {
             if (item.season_number)
                 return `${item.parent_title} S${item.season_number}E${item.item_number} — ${item.item_title}`;
@@ -174,6 +181,7 @@
                 : `${item.episode_count || 0} episodes`;
         if (item.type === "movie") return item.release_year || "";
         if (item.type === "artist") return `${item.album_count || 0} albums`;
+        if (item.type === "album") return item.parent_title || "";
         if (item.type === "person") return `${item.credit_count || 0} credits`;
         if (item.type === "history")
             return item.timestamp
@@ -308,16 +316,18 @@
             <div class="search-results">
                 {#if results && results.totalCount > 0}
                     {@const flat = flatResults(results)}
-                    {#each ["shows", "movies", "music", "people", "children", "history"] as category}
+                    {#each ["shows", "movies", "music", "albums", "people", "children", "history"] as category}
                         {#if results.results[category]?.length > 0}
                             <div class="search-category-label">
                                 {category === "children"
                                     ? "Episodes & Tracks"
                                     : category === "music"
                                       ? "Artists"
-                                      : category === "people"
-                                        ? "People"
-                                        : category}
+                                      : category === "albums"
+                                        ? "Albums"
+                                        : category === "people"
+                                          ? "People"
+                                          : category}
                             </div>
                             {#each results.results[category] as item}
                                 {@const globalIdx = flat.indexOf(item)}

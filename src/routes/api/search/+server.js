@@ -64,9 +64,21 @@ export async function GET({ url, locals }) {
                'child' as type
         FROM media_children mc
         JOIN media_parents mp ON mc.parent_id = mp.id
-        WHERE mc.title LIKE ?
+        WHERE mc.title LIKE ? AND mp.media_type != 'artist'
         ORDER BY mp.title, mc.season_number, mc.item_number
         LIMIT 8
+    `).all(like));
+
+    // Search albums by name
+    const albums = /** @type {any[]} */ (db.prepare(`
+        SELECT mc.id, mc.title as item_title,
+               mp.title as parent_title, mp.poster_url, mp.id as parent_id,
+               'album' as type
+        FROM media_children mc
+        JOIN media_parents mp ON mc.parent_id = mp.id
+        WHERE mp.media_type = 'artist' AND mc.title LIKE ?
+        ORDER BY mc.title
+        LIMIT 5
     `).all(like));
 
     // Search user's playback history
@@ -111,8 +123,8 @@ export async function GET({ url, locals }) {
         }
     }
 
-    const totalCount = shows.length + movies.length + music.length + people.length + children.length + history.length + semantic.length;
-    console.log(`[search] results: shows=${shows.length} movies=${movies.length} music=${music.length} people=${people.length} children=${children.length} history=${history.length} semantic=${semantic.length} total=${totalCount}`);
+    const totalCount = shows.length + movies.length + music.length + albums.length + people.length + children.length + history.length + semantic.length;
+    console.log(`[search] results: shows=${shows.length} movies=${movies.length} music=${music.length} albums=${albums.length} people=${people.length} children=${children.length} history=${history.length} semantic=${semantic.length} total=${totalCount}`);
 
     return json({
         query,
@@ -120,6 +132,7 @@ export async function GET({ url, locals }) {
             shows,
             movies,
             music,
+            albums,
             people,
             children,
             history,
