@@ -1824,12 +1824,25 @@
                                         "nomic-embed-text"}</option
                                 >
                             {:else}
-                                {#each ollamaHealthModels.filter( (m) => /embed|minilm|bert/i.test(m), ) as model}
+                                {@const embedModels = ollamaHealthModels.filter(
+                                    (m) => /embed|minilm|bert/i.test(m),
+                                )}
+                                {@const recommended = embedModels.filter((m) =>
+                                    m.includes("nomic-embed"),
+                                )}
+                                {@const others = embedModels.filter(
+                                    (m) => !m.includes("nomic-embed"),
+                                )}
+                                {#each recommended as model}
                                     <option value={model}
-                                        >{model}{model.includes("nomic-embed")
-                                            ? " ★ suggested"
-                                            : ""}</option
+                                        >{model} ★ recommended</option
                                     >
+                                {/each}
+                                {#if recommended.length && others.length}
+                                    <option disabled>───────────</option>
+                                {/if}
+                                {#each others as model}
+                                    <option value={model}>{model}</option>
                                 {/each}
                             {/if}
                         </select>
@@ -1852,12 +1865,25 @@
                                     >{ollamaChatModel || "llama3.2:3b"}</option
                                 >
                             {:else}
-                                {#each ollamaHealthModels.filter((m) => !/embed|minilm|bert/i.test(m)) as model}
+                                {@const genModels = ollamaHealthModels.filter(
+                                    (m) => !/embed|minilm|bert/i.test(m),
+                                )}
+                                {@const recommended = genModels.filter((m) =>
+                                    m.includes("llama3.2"),
+                                )}
+                                {@const others = genModels.filter(
+                                    (m) => !m.includes("llama3.2"),
+                                )}
+                                {#each recommended as model}
                                     <option value={model}
-                                        >{model}{model.includes("llama3.2")
-                                            ? " ★ suggested"
-                                            : ""}</option
+                                        >{model} ★ recommended</option
                                     >
+                                {/each}
+                                {#if recommended.length && others.length}
+                                    <option disabled>───────────</option>
+                                {/if}
+                                {#each others as model}
+                                    <option value={model}>{model}</option>
                                 {/each}
                             {/if}
                         </select>
