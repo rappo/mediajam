@@ -395,7 +395,7 @@
                 <button
                     class="join-item btn btn-xs gap-1 {episodeView === 'map' ? 'btn-primary' : 'btn-ghost'}"
                     onclick={() => episodeView = 'map'}
-                ><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="currentColor"><path d="M3 3h4v4H3V3m6 0h4v4H9V3m6 0h4v4h-4V3M3 9h4v4H3V9m6 0h4v4H9V9m6 0h4v4h-4V9M3 15h4v4H3v-4m6 0h4v4H9v-4m6 0h4v4h-4v-4Z"/></svg>Map</button>
+                ><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="currentColor"><path d="M3 3h4v4H3V3m6 0h4v4H9V3m6 0h4v4h-4V3M3 9h4v4H3V9m6 0h4v4H9V9m6 0h4v4h-4V9M3 15h4v4H3v-4m6 0h4v4H9v-4m6 0h4v4h-4v-4Z"/></svg>Grid</button>
                 <button
                     class="join-item btn btn-xs gap-1 {episodeView === 'ratings' ? 'btn-primary' : 'btn-ghost'}"
                     onclick={() => episodeView = 'ratings'}
