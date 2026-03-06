@@ -614,7 +614,7 @@
                 {#if activeStates.has('unwatched')}
                     <span class="inline-block w-3 h-3 rounded-full border-2 border-dashed" style="border-color: rgba(100, 116, 139, 0.4);"></span>
                 {/if}
-                Dotted = {activeStates.has('missing') ? 'Missing Files' : 'Still Airing'}
+                {activeStates.has('missing') ? 'Missing Files' : 'Still Airing'}
             </button>
         {/if}
         <button

@@ -248,6 +248,7 @@ CREATE TABLE IF NOT EXISTS persons (
     bio TEXT,
     birth_date TEXT,
     death_date TEXT,
+    birth_place TEXT,
     created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_persons_tmdb ON persons(tmdb_person_id) WHERE tmdb_person_id IS NOT NULL;
@@ -564,6 +565,14 @@ try {
 } catch {
     db.exec('ALTER TABLE persons ADD COLUMN is_favorite INTEGER DEFAULT 0');
     console.log('[db] Added is_favorite column to persons');
+}
+
+// -- Add birth_place column to persons if missing --
+try {
+    db.prepare('SELECT birth_place FROM persons LIMIT 0').get();
+} catch {
+    db.exec('ALTER TABLE persons ADD COLUMN birth_place TEXT');
+    console.log('[db] Added birth_place column to persons');
 }
 
 // -- Add logging_enabled column to app_settings --
