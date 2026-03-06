@@ -51,9 +51,12 @@
             if (ws === 'watched' || credit.play_count > 0) base = 'poster-watched';
             else if (ws === 'in_progress') base = 'poster-progress';
             else if (credit.jellyfin_id) base = 'poster-unwatched';
-            // Movies: "wanted" but no file = missing
-            if (!credit.jellyfin_id && credit.collection_status === 'wanted')
+            else if (credit.collection_status === 'wanted' || credit.arr_has_file === 0) {
+                // Wanted but no file = unwatched + missing (not stub)
+                base = 'poster-unwatched';
                 modifiers += ' poster-missing';
+            }
+            // else stays poster-stub (purely discovered, no intention to own)
         }
         return base + modifiers;
     }
