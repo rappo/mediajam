@@ -46,6 +46,19 @@
 
     /** @type {'map' | 'list' | 'ratings'} */
     let episodeView = $state('map');
+    let showWatchStatus = $state(false);
+
+    /**
+     * Get watch-status border class for rating cells
+     * @param {any} ep
+     * @returns {string}
+     */
+    function watchBorderClass(ep) {
+        if (!ep.is_collected) return 'border-2 border-dashed !border-error/70';
+        if (ep.watch_status === 'watched') return 'border-2 !border-success';
+        if (ep.watch_status === 'in_progress') return 'border-2 !border-warning';
+        return 'border-2 !border-base-content/20';
+    }
 
     /**
      * Get rating color class based on score
@@ -475,13 +488,17 @@
             </div>
         {:else if episodeView === 'ratings'}
             <!-- Ratings Heatmap -->
-            <div class="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-base-content/60 mb-2">
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-0.5 text-xs text-base-content/60 mb-2">
                 <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#0d6e3f]"></span> Outstanding (9+)</span>
                 <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#2d9d5c]"></span> Excellent (8+)</span>
                 <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#8cc152]"></span> Solid (7+)</span>
                 <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#c9a833]"></span> Fair (6+)</span>
                 <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#d35430]"></span> Poor (4+)</span>
                 <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#6b4226]"></span> Awful (&lt;4)</span>
+                <label class="flex items-center gap-1.5 ml-auto cursor-pointer">
+                    <input type="checkbox" class="toggle toggle-xs toggle-success" bind:checked={showWatchStatus} />
+                    <span>Watch Status</span>
+                </label>
             </div>
 
             <div class="overflow-x-auto">
@@ -506,7 +523,7 @@
                                     >
                                     <a
                                         href="/tv/{data.show.id}/episode/{ep.id}"
-                                        class="ep-cell {ratingColor(ep.community_rating)}"
+                                        class="ep-cell {ratingColor(ep.community_rating)} {showWatchStatus ? watchBorderClass(ep) : ''}"
                                     >
                                         <span class="ep-rating">{ep.community_rating != null ? ep.community_rating.toFixed(1) : '—'}</span>
                                     </a>
