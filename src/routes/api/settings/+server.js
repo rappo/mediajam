@@ -15,7 +15,14 @@ export async function GET() {
         heartBorderMovies: settings?.heart_border_movies !== 0,
         heartBorderShows: settings?.heart_border_shows !== 0,
         heartBorderMusic: settings?.heart_border_music !== 0,
-        heartBorderPeople: settings?.heart_border_people !== 0
+        heartBorderPeople: settings?.heart_border_people !== 0,
+        // *arr integration
+        radarrUrl: settings?.radarr_url || '',
+        radarrApiKey: settings?.radarr_api_key ? '••••••••' : '',
+        sonarrUrl: settings?.sonarr_url || '',
+        sonarrApiKey: settings?.sonarr_api_key ? '••••••••' : '',
+        lidarrUrl: settings?.lidarr_url || '',
+        lidarrApiKey: settings?.lidarr_api_key ? '••••••••' : '',
     });
 }
 
@@ -47,7 +54,14 @@ export async function PUT({ request }) {
             heart_border_people: 'heart_border_people',
             ollama_url: 'ollama_url',
             ollama_embed_model: 'ollama_embed_model',
-            ollama_chat_model: 'ollama_chat_model'
+            ollama_chat_model: 'ollama_chat_model',
+            // *arr integration
+            radarr_url: 'radarr_url',
+            radarr_api_key: 'radarr_api_key',
+            sonarr_url: 'sonarr_url',
+            sonarr_api_key: 'sonarr_api_key',
+            lidarr_url: 'lidarr_url',
+            lidarr_api_key: 'lidarr_api_key'
         };
 
         for (const [key, column] of Object.entries(allowedFields)) {

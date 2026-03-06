@@ -27,6 +27,29 @@
         data.settings.ollamaChatModel || "llama3.2:3b",
     );
 
+    // *arr Integration
+    /** @type {Array<{service: string, label: string, defaultPort: number}>} */
+    const ARR_SERVICES = [
+        { service: "radarr", label: "Radarr", defaultPort: 7878 },
+        { service: "sonarr", label: "Sonarr", defaultPort: 8989 },
+        { service: "lidarr", label: "Lidarr", defaultPort: 8686 },
+    ];
+    let radarrUrl = $state(data.settings.radarrUrl || "");
+    let radarrApiKey = $state("");
+    let sonarrUrl = $state(data.settings.sonarrUrl || "");
+    let sonarrApiKey = $state("");
+    let lidarrUrl = $state(data.settings.lidarrUrl || "");
+    let lidarrApiKey = $state("");
+    /** @type {Record<string, string>} */
+    let arrTestStatus = $state({
+        radarr: "idle",
+        sonarr: "idle",
+        lidarr: "idle",
+    });
+    /** @type {Record<string, string>} */
+    let arrTestInfo = $state({ radarr: "", sonarr: "", lidarr: "" });
+    let arrScanStatus = $state("idle"); // idle | scanning | done
+
     // Snapshot initial values for dirty detection and undo
     let initialValues = $state({
         jellyfinUrl: data.settings.jellyfinUrl || "",
@@ -938,6 +961,107 @@
             }
         } catch {
             ollamaScanStatus = "notfound";
+        }
+    }
+
+    // ─── *arr Integration Functions ─────────────────────────────────────────────
+    async function scanForArr() {
+        arrScanStatus = "scanning";
+        try {
+            const res = await fetch("/api/arr/scan");
+            const data = await res.json();
+            if (data.found && data.instances?.length) {
+                for (const inst of data.instances) {
+                    if (inst.service === "radarr" && !radarrUrl)
+                        radarrUrl = inst.url;
+                    if (inst.service === "sonarr" && !sonarrUrl)
+                        sonarrUrl = inst.url;
+                    if (inst.service === "lidarr" && !lidarrUrl)
+                        lidarrUrl = inst.url;
+                    arrTestInfo[inst.service] =
+                        `Found at ${inst.url}${inst.needsAuth ? " (needs API key)" : ""}`;
+                }
+            }
+            arrScanStatus = "done";
+        } catch {
+            arrScanStatus = "done";
+        }
+    }
+
+    /**
+     * @param {string} service
+     */
+    async function testArrConnection(service) {
+        arrTestStatus[service] = "testing";
+        arrTestInfo[service] = "";
+        const url =
+            service === "radarr"
+                ? radarrUrl
+                : service === "sonarr"
+                  ? sonarrUrl
+                  : lidarrUrl;
+        const key =
+            service === "radarr"
+                ? radarrApiKey
+                : service === "sonarr"
+                  ? sonarrApiKey
+                  : lidarrApiKey;
+        // If user hasn't entered a new key, we need to tell them
+        if (!key) {
+            arrTestStatus[service] = "error";
+            arrTestInfo[service] = "Enter API key first";
+            return;
+        }
+        try {
+            const res = await fetch("/api/arr/test", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ service, url, apiKey: key }),
+            });
+            const result = await res.json();
+            if (result.ok) {
+                arrTestStatus[service] = "ok";
+                arrTestInfo[service] =
+                    `${result.name} v${result.version} — ${result.itemCount} items`;
+            } else {
+                arrTestStatus[service] = "error";
+                arrTestInfo[service] =
+                    "Connection failed — check URL and API key";
+            }
+        } catch {
+            arrTestStatus[service] = "error";
+            arrTestInfo[service] = "Connection error";
+        }
+    }
+
+    /**
+     * @param {string} service
+     */
+    async function saveArrSettings(service) {
+        const url =
+            service === "radarr"
+                ? radarrUrl
+                : service === "sonarr"
+                  ? sonarrUrl
+                  : lidarrUrl;
+        const key =
+            service === "radarr"
+                ? radarrApiKey
+                : service === "sonarr"
+                  ? sonarrApiKey
+                  : lidarrApiKey;
+        /** @type {Record<string, string>} */
+        const body = { [`${service}_url`]: url };
+        if (key) body[`${service}_api_key`] = key;
+        try {
+            await fetch("/api/settings", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+            arrTestInfo[service] = "Settings saved ✓";
+        } catch {
+            arrTestInfo[service] = "Save failed";
         }
     }
 
@@ -2086,6 +2210,162 @@
                         </p>
                     {/if}
                 {/if}
+            </div>
+        </div>
+    </div>
+
+    <!-- *arr Media Management -->
+    <div class="card bg-base-200/50 border border-base-300">
+        <div class="card-body">
+            <h2 class="card-title text-lg">
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="h-5 w-5 text-info"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                >
+                    <path
+                        d="M4 3a2 2 0 100 4h12a2 2 0 100-4H4zM3 8h14v7a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"
+                    />
+                </svg>
+                Media Management
+            </h2>
+            <p class="text-sm text-base-content/60">
+                Connect Radarr, Sonarr, and Lidarr to see download status,
+                request missing media, and track upcoming releases.
+            </p>
+
+            <!-- Scan all button -->
+            <div class="flex items-center gap-2 mt-2">
+                <button
+                    class="btn btn-xs btn-outline gap-1"
+                    disabled={arrScanStatus === "scanning"}
+                    onclick={scanForArr}
+                >
+                    {#if arrScanStatus === "scanning"}
+                        <span class="loading loading-spinner loading-xs"></span>
+                        Scanning...
+                    {:else}
+                        🔍 Scan Network
+                    {/if}
+                </button>
+                <span class="text-xs text-base-content/50"
+                    >Scan local network for *arr instances</span
+                >
+            </div>
+
+            <div class="divider my-2"></div>
+
+            <!-- Service cards -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {#each ARR_SERVICES as svc}
+                    {@const url =
+                        svc.service === "radarr"
+                            ? radarrUrl
+                            : svc.service === "sonarr"
+                              ? sonarrUrl
+                              : lidarrUrl}
+                    {@const apiKey =
+                        svc.service === "radarr"
+                            ? radarrApiKey
+                            : svc.service === "sonarr"
+                              ? sonarrApiKey
+                              : lidarrApiKey}
+                    {@const testStatus = arrTestStatus[svc.service]}
+                    {@const testInfo = arrTestInfo[svc.service]}
+                    <div
+                        class="card bg-base-300/50 border border-base-300 p-4 space-y-3"
+                    >
+                        <div class="flex items-center gap-2">
+                            <ServiceIcon service={svc.service} size="w-5 h-5" />
+                            <span class="font-semibold text-sm"
+                                >{svc.label}</span
+                            >
+                            {#if testStatus === "ok"}
+                                <span class="badge badge-xs badge-success"
+                                    >Connected</span
+                                >
+                            {:else if testStatus === "error"}
+                                <span class="badge badge-xs badge-error"
+                                    >Failed</span
+                                >
+                            {/if}
+                        </div>
+
+                        <!-- URL -->
+                        <label class="form-control">
+                            <span class="label-text text-xs">URL</span>
+                            <input
+                                type="text"
+                                class="input input-xs input-bordered w-full font-mono"
+                                placeholder="http://localhost:{svc.defaultPort}"
+                                value={url}
+                                oninput={(e) => {
+                                    if (svc.service === "radarr")
+                                        radarrUrl = e.target.value;
+                                    else if (svc.service === "sonarr")
+                                        sonarrUrl = e.target.value;
+                                    else lidarrUrl = e.target.value;
+                                }}
+                            />
+                        </label>
+
+                        <!-- API Key -->
+                        <label class="form-control">
+                            <span class="label-text text-xs">API Key</span>
+                            <input
+                                type="password"
+                                class="input input-xs input-bordered w-full font-mono"
+                                placeholder={data.settings[
+                                    `${svc.service}ApiKey`
+                                ]
+                                    ? "••••••••"
+                                    : "Paste API key"}
+                                value={apiKey}
+                                oninput={(e) => {
+                                    if (svc.service === "radarr")
+                                        radarrApiKey = e.target.value;
+                                    else if (svc.service === "sonarr")
+                                        sonarrApiKey = e.target.value;
+                                    else lidarrApiKey = e.target.value;
+                                }}
+                            />
+                        </label>
+
+                        <!-- Actions -->
+                        <div class="flex gap-2">
+                            <button
+                                class="btn btn-xs btn-primary flex-1"
+                                disabled={!url || testStatus === "testing"}
+                                onclick={() => testArrConnection(svc.service)}
+                            >
+                                {#if testStatus === "testing"}
+                                    <span
+                                        class="loading loading-spinner loading-xs"
+                                    ></span>
+                                {:else}
+                                    🔌 Test
+                                {/if}
+                            </button>
+                            <button
+                                class="btn btn-xs btn-outline flex-1"
+                                disabled={!url ||
+                                    (!apiKey &&
+                                        !data.settings[`${svc.service}ApiKey`])}
+                                onclick={() => saveArrSettings(svc.service)}
+                            >
+                                💾 Save
+                            </button>
+                        </div>
+
+                        <!-- Status info -->
+                        {#if testInfo}
+                            <p class="text-xs text-base-content/60">
+                                {testInfo}
+                            </p>
+                        {/if}
+                    </div>
+                {/each}
             </div>
         </div>
     </div>

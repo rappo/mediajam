@@ -40,6 +40,13 @@ export function load() {
             ollamaUrl: settings?.ollama_url || '',
             ollamaEmbedModel: settings?.ollama_embed_model || 'nomic-embed-text',
             ollamaChatModel: settings?.ollama_chat_model || 'llama3.2:3b',
+            // *arr integration
+            radarrUrl: settings?.radarr_url || '',
+            radarrApiKey: settings?.radarr_api_key ? '••••••••' : '',
+            sonarrUrl: settings?.sonarr_url || '',
+            sonarrApiKey: settings?.sonarr_api_key ? '••••••••' : '',
+            lidarrUrl: settings?.lidarr_url || '',
+            lidarrApiKey: settings?.lidarr_api_key ? '••••••••' : '',
         },
         syncState: {
             status: syncState?.status || 'idle',

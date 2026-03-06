@@ -298,6 +298,13 @@ const newAppCols = [
     ['ollama_url', 'TEXT'],
     ['ollama_embed_model', "TEXT DEFAULT 'nomic-embed-text'"],
     ['ollama_chat_model', "TEXT DEFAULT 'llama3.2:3b'"],
+    // *arr integration
+    ['radarr_url', 'TEXT'],
+    ['radarr_api_key', 'TEXT'],
+    ['sonarr_url', 'TEXT'],
+    ['sonarr_api_key', 'TEXT'],
+    ['lidarr_url', 'TEXT'],
+    ['lidarr_api_key', 'TEXT'],
 ];
 for (const [col, type] of newAppCols) {
     if (!existingCols.has(col)) {
@@ -320,6 +327,19 @@ if (!mediaParentsCols.has('jellyfin_child_count')) {
 }
 if (!mediaParentsCols.has('unplayed_count')) {
     db.exec("ALTER TABLE media_parents ADD COLUMN unplayed_count INTEGER");
+}
+// *arr tracking columns
+const arrParentCols = [
+    ['radarr_id', 'INTEGER'],
+    ['sonarr_id', 'INTEGER'],
+    ['lidarr_id', 'INTEGER'],
+    ['arr_monitored', 'INTEGER DEFAULT 0'],
+    ['arr_quality_profile', 'TEXT'],
+];
+for (const [col, type] of arrParentCols) {
+    if (!mediaParentsCols.has(col)) {
+        db.exec(`ALTER TABLE media_parents ADD COLUMN ${col} ${type}`);
+    }
 }
 
 // -- media_children schema migrations --
