@@ -1,5 +1,5 @@
 <script>
-    import { invalidateAll } from "$app/navigation";
+    import { invalidateAll, goto } from "$app/navigation";
     import ExternalLinks from "$lib/components/ExternalLinks.svelte";
     import ArrAddDialog from "$lib/components/ArrAddDialog.svelte";
     import HeartBorder from "$lib/components/HeartBorder.svelte";
@@ -130,6 +130,171 @@
         }
         syncing = false;
     }
+
+    let showDeleteConfirm = $state(false);
+    let deleting = $state(false);
+
+    async function deleteItem() {
+        deleting = true;
+        try {
+            const res = await fetch(`/api/media/${data.artist.id}`, { method: 'DELETE' });
+            const result = await res.json();
+            if (result.success) {
+                const params = new URLSearchParams({ deleted: result.title, undoToken: result.undoToken, undoId: String(data.artist.id) });
+                goto(`/${result.route}?${params.toString()}`);
+            } else {
+                alert(result.error || 'Failed to delete');
+            }
+        } catch (e) {
+            alert(e instanceof Error ? e.message : 'Network error');
+        }
+        deleting = false;
+        showDeleteConfirm = false;
+    }
+
+    // ── Discovery state ──
+    let discoveryLoading = $state(false);
+    let discoveryLoaded = $state(false);
+    let discoveryError = $state("");
+    /** @type {any[]} */
+    let discoveryItems = $state([]);
+    let discoveryFilter = $state("Album");
+    let discoveryLimit = $state(24);
+    let showInLibrary = $state(false);
+    /** @type {any[]} */
+    let discoveryInLibrary = $state([]);
+    /** @type {string|null} */
+    let navigatingItem = $state(null);
+
+    let filteredDiscovery = $derived(
+        (discoveryFilter === "all"
+            ? discoveryItems
+            : discoveryItems.filter((i) => i.type === discoveryFilter)
+        ),
+    );
+
+    async function loadDiscovery() {
+        discoveryLoading = true;
+        discoveryError = "";
+        try {
+            const res = await fetch(`/api/discover/artist/${data.artist.id}`);
+            if (!res.ok) {
+                const r = await res.json();
+                throw new Error(r.error || "Failed");
+            }
+            const result = await res.json();
+            discoveryItems = result.discography || [];
+            discoveryInLibrary = result.inLibrary || [];
+            discoveryLoaded = true;
+        } catch (e) {
+            discoveryError =
+                e instanceof Error ? e.message : "Discovery failed";
+        }
+        discoveryLoading = false;
+    }
+
+    /** @param {any} item */
+    async function openDiscoveryItem(item) {
+        if (navigatingItem === item.mbid) return;
+        navigatingItem = item.mbid;
+        try {
+            const res = await fetch("/api/discover/add-album", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    artistId: data.artist.id,
+                    title: item.title,
+                    release_year: item.release_year || null,
+                    mbid: item.mbid,
+                    cover_url: item.cover_url,
+                }),
+            });
+            const result = await res.json();
+            if (result.albumId) {
+                goto(`/music/${data.artist.id}/${result.albumId}`);
+            }
+        } catch (e) {
+            console.error("Failed to create album stub:", e);
+        } finally {
+            navigatingItem = null;
+        }
+    }
+
+    // ── Lidarr add state ──
+    /** @type {string|null} */
+    let addingToArr = $state(null);
+    let addedToArr = $state(/** @type {Set<string>} */ (new Set()));
+    let addArrError = $state("");
+    let showProfileDialog = $state(false);
+    /** @type {any} */
+    let pendingItem = $state(null);
+    /** @type {any[]} */
+    let availableProfiles = $state([]);
+    /** @type {any[]} */
+    let availableRootFolders = $state([]);
+    let selectedProfileId = $state(/** @type {number|null} */ (null));
+    let selectedRootFolder = $state(/** @type {string|null} */ (null));
+    let profilesLoading = $state(false);
+
+    async function addToLidarr() {
+        if (!data.artist.musicbrainz_id) {
+            addArrError = "Artist has no MusicBrainz ID — cannot add to Lidarr";
+            setTimeout(() => (addArrError = ""), 5000);
+            return;
+        }
+        // Fetch profiles
+        profilesLoading = true;
+        try {
+            const res = await fetch("/api/arr/profiles");
+            if (!res.ok) throw new Error("Failed to fetch profiles");
+            const options = await res.json();
+            const serviceOptions = options.lidarr;
+            if (!serviceOptions) throw new Error("Lidarr not configured");
+            availableProfiles = serviceOptions.profiles || [];
+            availableRootFolders = serviceOptions.rootFolders || [];
+            selectedProfileId = availableProfiles[0]?.id || null;
+            selectedRootFolder = availableRootFolders[0]?.path || null;
+            showProfileDialog = true;
+        } catch (e) {
+            addArrError = e instanceof Error ? e.message : "Failed";
+            setTimeout(() => (addArrError = ""), 5000);
+        }
+        profilesLoading = false;
+    }
+
+    async function confirmAddToLidarr() {
+        if (!selectedProfileId) return;
+        showProfileDialog = false;
+        addingToArr = 'lidarr';
+        addArrError = "";
+        try {
+            const arrRes = await fetch(`/api/arr/lidarr/add`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    mediaParentId: data.artist.id,
+                    qualityProfileId: selectedProfileId,
+                    rootFolderPath: selectedRootFolder,
+                }),
+            });
+            if (!arrRes.ok) {
+                const r = await arrRes.json();
+                throw new Error(r.error || "Failed to add to Lidarr");
+            }
+            const next = new Set(addedToArr);
+            next.add('lidarr');
+            addedToArr = next;
+        } catch (e) {
+            addArrError = e instanceof Error ? e.message : "Failed";
+            setTimeout(() => (addArrError = ""), 5000);
+        }
+        addingToArr = null;
+    }
+
+    /** Count discovery items by type */
+    function countByType(type) {
+        return discoveryItems.filter((i) => i.type === type).length;
+    }
 </script>
 
 <svelte:head>
@@ -170,6 +335,13 @@
                     🔄 Full Sync
                 {/if}
             </button>
+        <button
+            class="btn btn-ghost btn-xs gap-1 text-error/60 hover:text-error"
+            onclick={() => (showDeleteConfirm = true)}
+            title="Delete this artist"
+        >
+            🗑️
+        </button>
         {/if}
     </div>
 
@@ -389,6 +561,7 @@
                     <a
                         href="/music/{data.artist.id}/{album.id}"
                         class="album-tile group"
+                        class:album-tile--not-collected={!album.jellyfin_id && !album.is_collected}
                     >
                         {#if album.artUrl}
                             <img
@@ -423,7 +596,10 @@
                     <!-- Album Card -->
                     <a href="/music/{data.artist.id}/{album.id}" class="block">
                         <div
-                            class="flex items-center gap-4 p-3 rounded-xl border border-base-content/5 bg-base-200/30 hover:bg-base-200/60 transition-all"
+                            class="flex items-center gap-4 p-3 rounded-xl border bg-base-200/30 hover:bg-base-200/60 transition-all"
+                            style={!album.jellyfin_id && !album.is_collected
+                                ? 'border-color: oklch(var(--wa) / 0.5); border-style: dashed;'
+                                : 'border-color: oklch(var(--bc) / 0.05);'}
                         >
                             {#if album.artUrl}
                                 <img
@@ -542,19 +718,229 @@
     </div>
 </div>
 
-<!-- TODO: Discovery — fetch full discography from MusicBrainz/Lidarr and show albums not in your library -->
-<div class="container mx-auto px-6 py-8 opacity-30">
-    <div class="card bg-base-200/30 border border-dashed border-base-300/50">
-        <div class="card-body items-center text-center py-6">
-            <div class="text-3xl mb-2">🔍</div>
-            <h3 class="font-semibold text-base-content/50">Discover More</h3>
-            <p class="text-sm text-base-content/30 max-w-md">
-                Full discography discovery coming soon — browse albums from
-                MusicBrainz that aren't in your library and add them to Lidarr.
-            </p>
+<!-- Discovery: Full Discography from MusicBrainz -->
+<div class="max-w-6xl mx-auto space-y-4 mt-6">
+    {#if !discoveryLoaded && !discoveryLoading}
+        <button
+            class="btn btn-outline btn-sm gap-2 w-full"
+            onclick={loadDiscovery}
+        >
+            🔍 Discover Full Discography
+        </button>
+    {:else if discoveryLoading}
+        <div class="flex items-center justify-center gap-2 py-8">
+            <span class="loading loading-spinner loading-md"></span>
+            <span class="text-base-content/50">Fetching discography from MusicBrainz…</span>
         </div>
-    </div>
+    {:else if discoveryError}
+        <div class="alert alert-error text-sm">{discoveryError}</div>
+    {:else}
+        <div class="space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <h2 class="text-xl font-bold flex items-center gap-2">
+                    🔍 Discography Discovery
+                    <span class="badge badge-sm badge-ghost">{filteredDiscovery.length} not in library</span>
+                </h2>
+                <div class="flex items-center gap-2">
+                    <div class="join">
+                        <button
+                            class="join-item btn btn-xs"
+                            class:btn-active={discoveryFilter === "all"}
+                            onclick={() => (discoveryFilter = "all")}>All</button
+                        >
+                        <button
+                            class="join-item btn btn-xs"
+                            class:btn-active={discoveryFilter === "Album"}
+                            onclick={() => (discoveryFilter = "Album")}>Albums{#if countByType('Album') > 0}<span class="ml-1 opacity-50">{countByType('Album')}</span>{/if}</button
+                        >
+                        <button
+                            class="join-item btn btn-xs"
+                            class:btn-active={discoveryFilter === "EP"}
+                            onclick={() => (discoveryFilter = "EP")}>EPs{#if countByType('EP') > 0}<span class="ml-1 opacity-50">{countByType('EP')}</span>{/if}</button
+                        >
+                        <button
+                            class="join-item btn btn-xs"
+                            class:btn-active={discoveryFilter === "Single"}
+                            onclick={() => (discoveryFilter = "Single")}>Singles{#if countByType('Single') > 0}<span class="ml-1 opacity-50">{countByType('Single')}</span>{/if}</button
+                        >
+                    </div>
+                    {#if discoveryInLibrary.length > 0}
+                        <label class="label cursor-pointer gap-1.5">
+                            <span class="text-xs text-base-content/50">Show owned</span>
+                            <input type="checkbox" class="toggle toggle-xs" bind:checked={showInLibrary} />
+                        </label>
+                    {/if}
+                    {#if !data.artist.lidarr_id}
+                        <button
+                            class="btn btn-xs btn-primary gap-1"
+                            disabled={addingToArr === 'lidarr' || addedToArr.has('lidarr')}
+                            onclick={addToLidarr}
+                        >
+                            {#if addingToArr === 'lidarr'}
+                                <span class="loading loading-spinner loading-xs"></span>
+                            {:else if addedToArr.has('lidarr')}
+                                ✅ Added
+                            {:else}
+                                ➕ Lidarr
+                            {/if}
+                        </button>
+                    {/if}
+                </div>
+            </div>
+
+            {#if filteredDiscovery.length === 0 && !showInLibrary}
+                <div class="card bg-base-200/30 border border-base-300/50">
+                    <div class="card-body items-center text-center py-8">
+                        <div class="text-3xl mb-2">🎉</div>
+                        <p>You have all the {discoveryFilter === 'all' ? 'releases' : discoveryFilter.toLowerCase() + 's'}! Nothing to discover.</p>
+                    </div>
+                </div>
+            {:else}
+                <div class="discovery-grid">
+                    {#each filteredDiscovery.slice(0, discoveryLimit) as item}
+                        <!-- svelte-ignore a11y_click_events_have_key_events -->
+                        <!-- svelte-ignore a11y_no_static_element_interactions -->
+                        <div
+                            class="discovery-tile group cursor-pointer"
+                            onclick={() => openDiscoveryItem(item)}
+                        >
+                            {#if navigatingItem === item.mbid}
+                                <div class="discovery-tile-img bg-base-300 flex items-center justify-center">
+                                    <span class="loading loading-spinner loading-md text-primary"></span>
+                                </div>
+                            {:else}
+                                <img
+                                    src={item.cover_url}
+                                    alt={item.title}
+                                    class="discovery-tile-img"
+                                    onerror={(e) => { e.target.style.display = 'none'; e.target.nextElementSibling.style.display = 'flex'; }}
+                                />
+                                <div class="discovery-tile-placeholder" style="display:none">
+                                    <span class="text-3xl opacity-20">💿</span>
+                                </div>
+                            {/if}
+                            <div class="discovery-tile-overlay">
+                                <p class="font-semibold text-sm leading-tight line-clamp-2">{item.title}</p>
+                                <p class="text-xs opacity-70 mt-0.5">
+                                    {item.release_year || ''}
+                                    {#if item.type !== 'Album'}
+                                        <span class="badge badge-xs badge-outline ml-1">{item.type}</span>
+                                    {/if}
+                                </p>
+                                {#if item.disambiguation}
+                                    <p class="text-xs opacity-50 italic">{item.disambiguation}</p>
+                                {/if}
+                            </div>
+                        </div>
+                    {/each}
+
+                    {#if showInLibrary}
+                        {#each discoveryInLibrary.filter(i => discoveryFilter === 'all' || i.type === discoveryFilter) as item}
+                            <a
+                                href="/music/{data.artist.id}/{item.library_id}"
+                                class="discovery-tile group opacity-60 ring-2 ring-success/30"
+                            >
+                                <img
+                                    src={item.cover_url}
+                                    alt={item.title}
+                                    class="discovery-tile-img"
+                                    onerror={(e) => { e.target.style.display = 'none'; e.target.nextElementSibling.style.display = 'flex'; }}
+                                />
+                                <div class="discovery-tile-placeholder" style="display:none">
+                                    <span class="text-3xl opacity-20">💿</span>
+                                </div>
+                                <div class="discovery-tile-overlay">
+                                    <div class="flex items-center gap-1">
+                                        <span class="badge badge-xs badge-success">✓ Owned</span>
+                                    </div>
+                                    <p class="font-semibold text-sm leading-tight line-clamp-2">{item.title}</p>
+                                    <p class="text-xs opacity-70 mt-0.5">{item.release_year || ''}</p>
+                                </div>
+                            </a>
+                        {/each}
+                    {/if}
+                </div>
+
+                {#if filteredDiscovery.length > discoveryLimit}
+                    <div class="text-center">
+                        <button
+                            class="btn btn-ghost btn-sm"
+                            onclick={() => (discoveryLimit += 24)}
+                        >
+                            Show more ({filteredDiscovery.length - discoveryLimit} remaining)
+                        </button>
+                    </div>
+                {/if}
+            {/if}
+
+            {#if addArrError}
+                <div class="alert alert-error text-sm mt-2">{addArrError}</div>
+            {/if}
+        </div>
+    {/if}
 </div>
+
+<!-- Lidarr Quality Profile Dialog -->
+{#if showProfileDialog}
+    <div class="modal modal-open">
+        <div class="modal-box">
+            <h3 class="font-bold text-lg">Add to Lidarr</h3>
+            <p class="text-sm text-base-content/60 mt-1">{data.artist.title}</p>
+            <div class="space-y-3 mt-4">
+                <div class="form-control">
+                    <label class="label" for="quality-profile"><span class="label-text">Quality Profile</span></label>
+                    <select id="quality-profile" class="select select-bordered" bind:value={selectedProfileId}>
+                        {#each availableProfiles as profile}
+                            <option value={profile.id}>{profile.name}</option>
+                        {/each}
+                    </select>
+                </div>
+                <div class="form-control">
+                    <label class="label" for="root-folder"><span class="label-text">Root Folder</span></label>
+                    <select id="root-folder" class="select select-bordered" bind:value={selectedRootFolder}>
+                        {#each availableRootFolders as folder}
+                            <option value={folder.path}>{folder.path}</option>
+                        {/each}
+                    </select>
+                </div>
+            </div>
+            <div class="modal-action">
+                <button class="btn" onclick={() => (showProfileDialog = false)}>Cancel</button>
+                <button class="btn btn-primary" onclick={confirmAddToLidarr} disabled={!selectedProfileId}>
+                    Add to Lidarr
+                </button>
+            </div>
+        </div>
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="modal-backdrop" onclick={() => (showProfileDialog = false)}></div>
+    </div>
+{/if}
+
+<!-- Delete Confirmation Modal -->
+{#if showDeleteConfirm}
+    <div class="modal modal-open">
+        <div class="modal-box">
+            <h3 class="font-bold text-lg">Delete "{data.artist.title}"?</h3>
+            <p class="py-4 text-base-content/70">
+                This will remove this artist and all its albums, play history, and ratings.
+                {#if data.artist.jellyfin_id}
+                    <br /><span class="text-warning text-sm">⚠️ This item is in Jellyfin and will reappear on the next sync.</span>
+                {/if}
+            </p>
+            <div class="modal-action">
+                <button class="btn" onclick={() => (showDeleteConfirm = false)}>Cancel</button>
+                <button class="btn btn-error" onclick={deleteItem} disabled={deleting}>
+                    {#if deleting}
+                        <span class="loading loading-spinner loading-xs"></span>
+                    {/if}
+                    Delete
+                </button>
+            </div>
+        </div>
+        <div class="modal-backdrop" onclick={() => (showDeleteConfirm = false)}></div>
+    </div>
+{/if}
 
 <style>
     .animate-fade-in {
@@ -585,6 +971,10 @@
             transform 0.15s,
             box-shadow 0.15s;
     }
+    .album-tile--not-collected {
+        outline: 2px dashed oklch(var(--wa) / 0.5);
+        outline-offset: -2px;
+    }
     .album-tile:hover {
         transform: scale(1.03);
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
@@ -608,6 +998,57 @@
         left: 0;
         right: 0;
         padding: 0.5rem 0.6rem;
+        background: linear-gradient(
+            to top,
+            rgba(0, 0, 0, 0.85) 0%,
+            rgba(0, 0, 0, 0.4) 70%,
+            transparent 100%
+        );
+        color: white;
+    }
+
+    /* Discovery grid */
+    .discovery-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 0.75rem;
+    }
+    .discovery-tile {
+        position: relative;
+        border-radius: 0.75rem;
+        overflow: hidden;
+        aspect-ratio: 1;
+        display: block;
+        background: oklch(var(--b3));
+        transition:
+            transform 0.15s,
+            box-shadow 0.15s;
+    }
+    .discovery-tile:hover {
+        transform: scale(1.03);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    }
+    .discovery-tile-img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .discovery-tile-placeholder {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: absolute;
+        top: 0;
+        left: 0;
+    }
+    .discovery-tile-overlay {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        padding: 0.4rem 0.5rem;
         background: linear-gradient(
             to top,
             rgba(0, 0, 0, 0.85) 0%,

@@ -2,6 +2,7 @@
     import StatCard from "$lib/components/StatCard.svelte";
     import DataTable from "$lib/components/DataTable.svelte";
     import Chart from "$lib/components/Chart.svelte";
+    import DeleteToast from "$lib/components/DeleteToast.svelte";
 
     let { data } = $props();
 
@@ -145,6 +146,7 @@
 </svelte:head>
 
 <div class="space-y-6">
+    <DeleteToast />
     <div>
         <h1 class="text-3xl font-bold">Music</h1>
         <p class="text-base-content/50 text-sm mt-1">

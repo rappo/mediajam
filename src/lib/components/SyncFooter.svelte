@@ -79,6 +79,9 @@
             return;
         }
 
+        // Guard against SSR — fetch should only run in the browser
+        if (typeof window === 'undefined') return;
+
         // Initial poll
         pollSyncStatus();
 

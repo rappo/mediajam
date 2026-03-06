@@ -312,6 +312,9 @@ const newAppCols = [
     ['lidarr_quality_profile_id', 'INTEGER'],
     ['lidarr_metadata_profile_id', 'INTEGER'],
     ['lidarr_root_folder', 'TEXT'],
+    // External ratings
+    ['omdb_api_key', 'TEXT'],
+    ['discogs_token', 'TEXT'],
 ];
 for (const [col, type] of newAppCols) {
     if (!existingCols.has(col)) {
@@ -428,6 +431,15 @@ const mediaChildrenCols = new Set(
 );
 if (!mediaChildrenCols.has('premiere_date')) {
     db.exec("ALTER TABLE media_children ADD COLUMN premiere_date TEXT");
+}
+if (!mediaChildrenCols.has('poster_url')) {
+    db.exec("ALTER TABLE media_children ADD COLUMN poster_url TEXT");
+}
+if (!mediaChildrenCols.has('overview')) {
+    db.exec("ALTER TABLE media_children ADD COLUMN overview TEXT");
+}
+if (!mediaChildrenCols.has('musicbrainz_id')) {
+    db.exec("ALTER TABLE media_children ADD COLUMN musicbrainz_id TEXT");
 }
 
 // -- playback_history schema migrations --
@@ -682,6 +694,26 @@ db.exec(`
         UNIQUE(person_id, discovered_media_id, role_type, character_name)
     )
 `);
+
+// -- External Ratings (cached scores from Discogs, OMDb, TMDB, MusicBrainz) --
+db.exec(`
+    CREATE TABLE IF NOT EXISTS external_ratings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        media_parent_id INTEGER,
+        media_child_id INTEGER,
+        source TEXT NOT NULL,
+        rating_type TEXT NOT NULL DEFAULT 'score',
+        value REAL NOT NULL,
+        vote_count INTEGER,
+        raw_value TEXT,
+        fetched_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY(media_parent_id) REFERENCES media_parents(id) ON DELETE CASCADE,
+        FOREIGN KEY(media_child_id) REFERENCES media_children(id) ON DELETE CASCADE,
+        UNIQUE(media_parent_id, media_child_id, source, rating_type)
+    )
+`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_external_ratings_parent ON external_ratings(media_parent_id)');
+db.exec('CREATE INDEX IF NOT EXISTS idx_external_ratings_child ON external_ratings(media_child_id)');
 
 // Initialize logger from DB settings
 import { initLogging } from './logger.js';

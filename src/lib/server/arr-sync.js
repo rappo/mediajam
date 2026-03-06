@@ -223,7 +223,7 @@ export async function syncArrService(service, url, apiKey) {
     // Main sync transaction
     db.transaction(() => {
         // Clear stale *arr IDs on Jellyfin-sourced items (still keep the row)
-        db.prepare(`UPDATE media_parents SET ${config.idColumn} = NULL, arr_monitored = 0, arr_has_file = NULL, arr_status = NULL WHERE ${config.idColumn} IS NOT NULL AND collection_status != 'wanted'`).run();
+        db.prepare(`UPDATE media_parents SET ${config.idColumn} = NULL, arr_monitored = 0, arr_has_file = NULL, arr_status = NULL, arr_slug = NULL, arr_quality_profile = NULL WHERE ${config.idColumn} IS NOT NULL AND collection_status != 'wanted'`).run();
 
         for (const item of items) {
             const externalId = String(item[config.matchField] || '');

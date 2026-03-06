@@ -1,5 +1,6 @@
 import db from '$lib/server/db.js';
 import { error } from '@sveltejs/kit';
+import { enrichAlbumFromLidarr } from '$lib/server/lidarr-enrich.js';
 
 export async function load({ params, locals, fetch }) {
     const artistId = parseInt(params.id);
@@ -12,26 +13,41 @@ export async function load({ params, locals, fetch }) {
 
     // Get artist
     const artist = /** @type {any} */ (db.prepare(`
-        SELECT id, title, poster_url, jellyfin_id, collection_status
+        SELECT id, title, poster_url, jellyfin_id, collection_status, lidarr_id
         FROM media_parents WHERE id = ? AND media_type = 'artist'
     `).get(artistId));
     if (!artist) throw error(404, 'Artist not found');
 
     // Get album (media_child of artist)
-    const album = /** @type {any} */ (db.prepare(`
+    let album = /** @type {any} */ (db.prepare(`
         SELECT
             mc.id, mc.title, mc.jellyfin_id,
             mc.item_number as release_year,
-            mc.play_count, mc.runtime_ticks
+            mc.play_count, mc.runtime_ticks,
+            mc.poster_url, mc.overview, mc.musicbrainz_id
         FROM media_children mc
         WHERE mc.id = ? AND mc.parent_id = ?
     `).get(albumId, artistId));
     if (!album) throw error(404, 'Album not found');
 
-    // Album art from Jellyfin or null
+    // On-demand Lidarr enrichment for non-Jellyfin albums under Lidarr artists
+    let lidarrEnriched = false;
+    if (!album.jellyfin_id && artist.lidarr_id) {
+        try {
+            const enrichResult = await enrichAlbumFromLidarr(albumId, artistId);
+            if (enrichResult.enriched && enrichResult.albumData) {
+                album = { ...album, ...enrichResult.albumData };
+                lidarrEnriched = true;
+            }
+        } catch (e) {
+            console.warn('[album] Lidarr enrichment failed:', e instanceof Error ? e.message : e);
+        }
+    }
+
+    // Album art: Jellyfin > Lidarr poster_url > null
     const albumArtUrl = album.jellyfin_id
         ? `${jellyfinUrl}/Items/${album.jellyfin_id}/Images/Primary?maxHeight=400`
-        : null;
+        : album.poster_url || null;
 
     // Artist image
     const artistImageUrl = artist.jellyfin_id
@@ -124,17 +140,48 @@ export async function load({ params, locals, fetch }) {
         ORDER BY play_count DESC
     `).all(albumId, userId));
 
+    // Normalize track name for fuzzy matching (lowercase, strip [Explicit], collapse ws)
+    /** @param {string} s */
+    function normTrack(s) {
+        if (!s) return '';
+        return s
+            .toLowerCase()
+            .replace(/\[explicit\]/gi, '')
+            .replace(/\(([^)]*)\bremix\b([^)]*)\)/gi, (_, a, b) => `(${a}remix${b})`)
+            .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+            .replace(/[\u201C\u201D]/g, '"')
+            .replace(/[\u2013\u2014]/g, '-')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
     // Build a map of track_name -> { play_count, last_played }
+    // Keyed by BOTH original name AND normalized name for fuzzy lookups
     /** @type {Record<string, { play_count: number, last_played: string }>} */
     const trackStatsMap = {};
     for (const row of trackHistory) {
         if (row.track_name) {
-            trackStatsMap[row.track_name] = {
-                play_count: row.play_count,
-                last_played: row.last_played
-            };
+            const stats = { play_count: row.play_count, last_played: row.last_played };
+            trackStatsMap[row.track_name] = stats;
+            // Also key by normalized name for fuzzy matching
+            const normKey = normTrack(row.track_name);
+            if (normKey && !trackStatsMap[normKey]) {
+                trackStatsMap[normKey] = stats;
+            }
         }
     }
+
+    // Pre-match: for each actual track, find its stats via normalized name
+    // and add an entry under the track's exact Name for direct template lookups
+    for (const track of tracks) {
+        const name = track.Name || track.title;
+        if (!name || trackStatsMap[name]) continue;
+        const normName = normTrack(name);
+        if (normName && trackStatsMap[normName]) {
+            trackStatsMap[name] = trackStatsMap[normName];
+        }
+    }
+
 
     // Total deduplicated plays and last played for the album
     const albumStats = /** @type {any} */ (db.prepare(`
@@ -188,6 +235,8 @@ export async function load({ params, locals, fetch }) {
         jellyfinUrl,
         runtimeMinutes: album.runtime_ticks ? Math.round(album.runtime_ticks / 600000000) : 0,
         syncCheckEnabled,
-        isUnmatched
+        isUnmatched,
+        isInLidarr: !!artist.lidarr_id,
+        lidarrEnriched
     };
 }

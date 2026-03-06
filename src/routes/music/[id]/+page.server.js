@@ -42,7 +42,10 @@ export function load({ params, locals }) {
             mc.item_number as release_year,
             mc.watch_status,
             mc.play_count,
-            mc.runtime_ticks
+            mc.runtime_ticks,
+            mc.poster_url,
+            mc.is_collected,
+            mc.musicbrainz_id
         FROM media_children mc
         WHERE mc.parent_id = ?
         ORDER BY mc.item_number ASC, mc.title ASC
@@ -82,7 +85,9 @@ export function load({ params, locals }) {
     const albumsWithImages = albums.map(album => ({
         ...album,
         play_count: albumPlayCounts[album.id] || 0,
-        artUrl: album.jellyfin_id ? `${jellyfinUrl}/Items/${album.jellyfin_id}/Images/Primary?maxHeight=200` : null,
+        artUrl: album.jellyfin_id
+            ? `${jellyfinUrl}/Items/${album.jellyfin_id}/Images/Primary?maxHeight=200`
+            : album.poster_url || null,
         runtimeMinutes: album.runtime_ticks ? Math.round(album.runtime_ticks / 600000000) : 0
     }));
 
@@ -94,9 +99,31 @@ export function load({ params, locals }) {
         ? `${jellyfinUrl}/Items/${artist.jellyfin_id}/Images/Primary?maxHeight=300`
         : artist.poster_url;
 
+    // External ratings per album (Discogs, MusicBrainz)
+    const albumRatings = /** @type {any[]} */ (db.prepare(`
+        SELECT media_child_id, source, rating_type, value, vote_count, raw_value
+        FROM external_ratings 
+        WHERE media_parent_id = ? AND media_child_id IS NOT NULL
+        ORDER BY media_child_id, source
+    `).all(artistId));
+
+    // Group ratings by album ID
+    /** @type {Record<number, any[]>} */
+    const ratingsByAlbum = {};
+    for (const r of albumRatings) {
+        if (!ratingsByAlbum[r.media_child_id]) ratingsByAlbum[r.media_child_id] = [];
+        ratingsByAlbum[r.media_child_id].push(r);
+    }
+
+    // Attach ratings to albums
+    const albumsWithRatings = albumsWithImages.map(a => ({
+        ...a,
+        ratings: ratingsByAlbum[a.id] || []
+    }));
+
     return {
         artist: { ...artist, total_plays: totalPlays, imageUrl: artistImageUrl },
-        albums: albumsWithImages,
+        albums: albumsWithRatings,
         jellyfinUrl,
         arrUrl: settings?.lidarr_url || '',
         arrService: 'lidarr',

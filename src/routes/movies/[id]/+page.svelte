@@ -6,7 +6,7 @@
     import RemotePlayButton from "$lib/components/RemotePlayButton.svelte";
     import StatCard from "$lib/components/StatCard.svelte";
     import ServiceIcon from "$lib/components/ServiceIcon.svelte";
-    import { invalidateAll } from "$app/navigation";
+    import { invalidateAll, goto } from "$app/navigation";
     import { page } from "$app/stores";
     let { data } = $props();
 
@@ -60,6 +60,56 @@
     let syncing = $state(false);
     let syncStatus = $state("");
     let syncError = $state("");
+
+    let showDeleteConfirm = $state(false);
+    let deleting = $state(false);
+
+    async function deleteItem() {
+        deleting = true;
+        try {
+            const res = await fetch(`/api/media/${data.movie.id}`, { method: 'DELETE' });
+            const result = await res.json();
+            if (result.success) {
+                const params = new URLSearchParams({ deleted: result.title, undoToken: result.undoToken, undoId: String(data.movie.id) });
+                goto(`/${result.route}?${params.toString()}`);
+            } else {
+                alert(result.error || 'Failed to delete');
+            }
+        } catch (e) {
+            alert(e instanceof Error ? e.message : 'Network error');
+        }
+        deleting = false;
+        showDeleteConfirm = false;
+    }
+
+    // External ratings
+    let externalRatings = $state(data.externalRatings || []);
+    let ratingsLoading = $state(false);
+
+    function getRating(source) {
+        return externalRatings.find(
+            (r) => r.source === source && r.rating_type === "score",
+        );
+    }
+
+    async function refreshRatings() {
+        ratingsLoading = true;
+        try {
+            const res = await fetch("/api/ratings", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    mediaParentId: data.movie.id,
+                    refresh: true,
+                }),
+            });
+            const result = await res.json();
+            if (result.ratings) externalRatings = result.ratings;
+        } catch {
+            /* ignore */
+        }
+        ratingsLoading = false;
+    }
 
     // *arr state
     let arrLoading = $state("");
@@ -190,6 +240,13 @@
             {:else}
                 🔄 Full Sync
             {/if}
+        </button>
+        <button
+            class="btn btn-ghost btn-xs text-base-content/40 hover:text-error"
+            onclick={() => showDeleteConfirm = true}
+            title="Delete this movie from Mediajam"
+        >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
         </button>
     </div>
 
@@ -618,6 +675,73 @@
                     </div>
                 </div>
             {/if}
+
+            <!-- External Ratings -->
+            {#if externalRatings.length > 0}
+                <div class="divider my-2"></div>
+                <div class="flex flex-wrap items-center gap-3">
+                    {#if getRating('omdb_imdb')}
+                        {@const r = getRating('omdb_imdb')}
+                        <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#F5C518]/10 border border-[#F5C518]/20">
+                            <ServiceIcon service="imdb" size="w-4 h-4" class="text-[#F5C518]" />
+                            <span class="font-bold text-sm">{r.raw_value}</span>
+                            {#if r.vote_count}
+                                <span class="text-xs text-base-content/40">{(r.vote_count / 1000).toFixed(0)}k</span>
+                            {/if}
+                        </div>
+                    {/if}
+                    {#if getRating('omdb_rt')}
+                        {@const r = getRating('omdb_rt')}
+                        <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FA320A]/10 border border-[#FA320A]/20">
+                            <span class="text-lg leading-none">🍅</span>
+                            <span class="font-bold text-sm">{r.raw_value}</span>
+                        </div>
+                    {/if}
+                    {#if getRating('omdb_metacritic')}
+                        {@const r = getRating('omdb_metacritic')}
+                        <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border {r.value >= 61 ? 'bg-success/10 border-success/20' : r.value >= 40 ? 'bg-warning/10 border-warning/20' : 'bg-error/10 border-error/20'}">
+                            <span class="font-bold text-xs">MC</span>
+                            <span class="font-bold text-sm">{r.raw_value}</span>
+                        </div>
+                    {/if}
+                    {#if getRating('tmdb')}
+                        {@const r = getRating('tmdb')}
+                        <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#01B4E4]/10 border border-[#01B4E4]/20">
+                            <ServiceIcon service="tmdb" size="w-3.5 h-3.5" class="text-[#01B4E4]" />
+                            <span class="font-bold text-sm">{r.raw_value}</span>
+                            {#if r.vote_count}
+                                <span class="text-xs text-base-content/40">{(r.vote_count / 1000).toFixed(0)}k</span>
+                            {/if}
+                        </div>
+                    {/if}
+                    <button
+                        class="btn btn-ghost btn-xs gap-1 text-base-content/40 hover:text-base-content"
+                        onclick={refreshRatings}
+                        disabled={ratingsLoading}
+                        title="Refresh external ratings"
+                    >
+                        {#if ratingsLoading}
+                            <span class="loading loading-spinner loading-xs"></span>
+                        {:else}
+                            ↻
+                        {/if}
+                    </button>
+                </div>
+            {:else}
+                <div class="divider my-2"></div>
+                <button
+                    class="btn btn-ghost btn-xs gap-1"
+                    onclick={refreshRatings}
+                    disabled={ratingsLoading}
+                >
+                    {#if ratingsLoading}
+                        <span class="loading loading-spinner loading-xs"></span>
+                        Fetching ratings…
+                    {:else}
+                        📊 Fetch External Ratings
+                    {/if}
+                </button>
+            {/if}
         </div>
     </div>
 
@@ -841,3 +965,37 @@
         </div>
     </div>
 </div>
+
+<!-- Delete Confirmation Modal -->
+{#if showDeleteConfirm}
+    <div class="modal modal-open">
+        <div class="modal-box">
+            <h3 class="font-bold text-lg text-error">Delete Movie</h3>
+            <p class="py-4">
+                Are you sure you want to delete <strong>{data.movie.title}</strong> from Mediajam?
+                This will remove all associated data including watch history, ratings, and credits.
+            </p>
+            {#if data.movie.jellyfin_id}
+                <div class="alert alert-warning text-sm py-2">
+                    <span>⚠️ This movie is tracked in Jellyfin and will reappear on the next sync.</span>
+                </div>
+            {/if}
+            <div class="modal-action">
+                <button class="btn btn-ghost btn-sm" onclick={() => showDeleteConfirm = false}>Cancel</button>
+                <button
+                    class="btn btn-error btn-sm"
+                    onclick={deleteItem}
+                    disabled={deleting}
+                >
+                    {#if deleting}
+                        <span class="loading loading-spinner loading-xs"></span>
+                        Deleting…
+                    {:else}
+                        Delete
+                    {/if}
+                </button>
+            </div>
+        </div>
+        <div class="modal-backdrop" onclick={() => showDeleteConfirm = false}></div>
+    </div>
+{/if}

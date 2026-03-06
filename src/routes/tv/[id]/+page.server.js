@@ -123,6 +123,12 @@ export function load({ params }) {
         ORDER BY pc.sort_order ASC
     `).all(showId));
 
+    // External ratings
+    const externalRatings = /** @type {any[]} */ (db.prepare(`
+        SELECT source, rating_type, value, vote_count, raw_value, fetched_at
+        FROM external_ratings WHERE media_parent_id = ? ORDER BY source
+    `).all(showId));
+
     return {
         show,
         seasons: sortedSeasons,
@@ -137,6 +143,7 @@ export function load({ params }) {
         totalWatched: filteredEpisodes.filter(e => e.watch_status === 'watched').length,
         totalInProgress: filteredEpisodes.filter(e => e.watch_status === 'in_progress').length,
         cast,
-        crew
+        crew,
+        externalRatings
     };
 }

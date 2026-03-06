@@ -23,6 +23,9 @@ export async function GET() {
         sonarrApiKey: settings?.sonarr_api_key ? '••••••••' : '',
         lidarrUrl: settings?.lidarr_url || '',
         lidarrApiKey: settings?.lidarr_api_key ? '••••••••' : '',
+        // External ratings
+        omdbApiKey: settings?.omdb_api_key ? '••••••••' : '',
+        discogsToken: settings?.discogs_token ? '••••••••' : '',
     });
 }
 
@@ -61,7 +64,10 @@ export async function PUT({ request }) {
             sonarr_url: 'sonarr_url',
             sonarr_api_key: 'sonarr_api_key',
             lidarr_url: 'lidarr_url',
-            lidarr_api_key: 'lidarr_api_key'
+            lidarr_api_key: 'lidarr_api_key',
+            // External ratings
+            omdb_api_key: 'omdb_api_key',
+            discogs_token: 'discogs_token'
         };
 
         for (const [key, column] of Object.entries(allowedFields)) {

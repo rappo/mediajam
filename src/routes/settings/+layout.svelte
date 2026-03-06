@@ -15,14 +15,11 @@
             label: "Admin",
             icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065zM15 12a3 3 0 11-6 0 3 3 0 016 0z",
             subsections: [
-                { hash: "jellyfin", label: "Jellyfin" },
-                { hash: "api-keys", label: "API Keys" },
-                { hash: "trackers", label: "Trackers" },
-                { hash: "llm", label: "LLM / AI" },
-                { hash: "arr", label: "Media Mgmt" },
-                { hash: "playback-reporting", label: "Playback Reporting" },
-                { hash: "data-sync", label: "Data Sync" },
-                { hash: "data-management", label: "Data Management" },
+                { tab: "server", label: "Server" },
+                { tab: "credentials", label: "Credentials" },
+                { tab: "sync", label: "Data Sync" },
+                { tab: "cleanup", label: "Data Clean-up" },
+                { tab: "import-export", label: "Import / Export" },
             ],
         },
         {
@@ -34,11 +31,6 @@
             href: "/settings/debug",
             label: "Debug",
             icon: "M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z",
-        },
-        {
-            href: "/settings/reconciliation",
-            label: "Reconcile",
-            icon: "M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15",
         },
     ];
 </script>
@@ -96,8 +88,8 @@
                                 {#each item.subsections as sub}
                                     <li>
                                         <a
-                                            href="{item.href}#{sub.hash}"
-                                            class="text-xs py-1 px-3 min-h-0 text-base-content/60 hover:text-base-content"
+                                            href="{item.href}?tab={sub.tab}"
+                                            class="text-xs py-1 px-3 min-h-0 {$page.url.searchParams.get('tab') === sub.tab || (!$page.url.searchParams.get('tab') && sub.tab === 'server') ? 'text-primary font-semibold' : 'text-base-content/60 hover:text-base-content'}"
                                         >
                                             {sub.label}
                                         </a>

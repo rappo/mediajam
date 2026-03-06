@@ -47,6 +47,9 @@ export function load() {
             sonarrApiKey: settings?.sonarr_api_key ? '••••••••' : '',
             lidarrUrl: settings?.lidarr_url || '',
             lidarrApiKey: settings?.lidarr_api_key ? '••••••••' : '',
+            // External ratings
+            omdbApiKey: settings?.omdb_api_key ? '••••••••' : '',
+            discogsToken: settings?.discogs_token ? '••••••••' : '',
         },
         syncState: {
             status: syncState?.status || 'idle',

@@ -754,6 +754,7 @@
                                             : ""}
                                     </th>
                                     <th>External IDs</th>
+                                    <th>Links</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -825,6 +826,48 @@
                                                     class="text-base-content/30"
                                                     >—</span
                                                 >
+                                            {/if}
+                                        </td>
+                                        <td class="text-xs space-x-1">
+                                            <!-- Mediajam stub link -->
+                                            <a
+                                                href="/{unmatchedType === 'artist' ? 'music' : unmatchedType === 'show' ? 'tv' : 'movies'}/{item.id}"
+                                                class="badge badge-xs badge-outline badge-primary gap-0.5 hover:brightness-125 transition-all"
+                                                title="View in Mediajam (create stub)"
+                                            >
+                                                📄 View
+                                            </a>
+                                            <!-- *arr search link -->
+                                            {#if unmatchedType === 'artist'}
+                                                <a
+                                                    href="{data.settings?.lidarrUrl || ''}/add/search?term={encodeURIComponent(item.title)}"
+                                                    target="_blank"
+                                                    rel="noopener"
+                                                    class="badge badge-xs badge-outline badge-info gap-0.5 hover:brightness-125 transition-all"
+                                                    title="Search in Lidarr"
+                                                >
+                                                    <ServiceIcon service="lidarr" size="w-3 h-3" /> Lidarr
+                                                </a>
+                                            {:else if unmatchedType === 'movie'}
+                                                <a
+                                                    href="{data.settings?.radarrUrl || ''}/add/new?term={encodeURIComponent(item.title)}"
+                                                    target="_blank"
+                                                    rel="noopener"
+                                                    class="badge badge-xs badge-outline badge-info gap-0.5 hover:brightness-125 transition-all"
+                                                    title="Search in Radarr"
+                                                >
+                                                    <ServiceIcon service="radarr" size="w-3 h-3" /> Radarr
+                                                </a>
+                                            {:else if unmatchedType === 'show'}
+                                                <a
+                                                    href="{data.settings?.sonarrUrl || ''}/add/new?term={encodeURIComponent(item.title)}"
+                                                    target="_blank"
+                                                    rel="noopener"
+                                                    class="badge badge-xs badge-outline badge-info gap-0.5 hover:brightness-125 transition-all"
+                                                    title="Search in Sonarr"
+                                                >
+                                                    <ServiceIcon service="sonarr" size="w-3 h-3" /> Sonarr
+                                                </a>
                                             {/if}
                                         </td>
                                     </tr>

@@ -18,6 +18,10 @@
     let jellyfinPrDbPath = $state(data.settings.jellyfinPrDbPath || "");
     let jellyfinSyncCheck = $state(!!data.settings.jellyfinSyncCheck);
 
+    // External Ratings
+    let omdbApiKey = $state("");
+    let discogsToken = $state("");
+
     // LLM Integration
     let ollamaUrl = $state(data.settings.ollamaUrl || "");
     let ollamaEmbedModel = $state(
@@ -53,6 +57,22 @@
     /** @type {{ time: string, message: string, type: string }[]} */
     let arrSyncLogs = $state([]);
 
+    // ─── Tab Navigation ─────────────────────────────────────────────────────────
+    const VALID_TABS = /** @type {const} */ (['server', 'credentials', 'sync', 'cleanup', 'import-export']);
+    /** @type {'server' | 'credentials' | 'sync' | 'cleanup' | 'import-export'} */
+    let activeTab = $state(
+        VALID_TABS.includes(/** @type {any} */ ($page.url.searchParams.get('tab')))
+            ? /** @type {typeof VALID_TABS[number]} */ ($page.url.searchParams.get('tab'))
+            : 'server'
+    );
+    const TABS = [
+        { id: 'server', label: 'Server', icon: 'M5 12H3l9-9 9 9h-2M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7' },
+        { id: 'credentials', label: 'Credentials', icon: 'M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z' },
+        { id: 'sync', label: 'Data Sync', icon: 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15' },
+        { id: 'cleanup', label: 'Data Clean-up', icon: 'M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.414 3.414H4.828c-1.78 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z' },
+        { id: 'import-export', label: 'Import / Export', icon: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12' },
+    ];
+
     // Snapshot initial values for dirty detection and undo
     let initialValues = $state({
         jellyfinUrl: data.settings.jellyfinUrl || "",
@@ -68,6 +88,8 @@
         ollamaUrl: data.settings.ollamaUrl || "",
         ollamaEmbedModel: data.settings.ollamaEmbedModel || "nomic-embed-text",
         ollamaChatModel: data.settings.ollamaChatModel || "llama3.2:3b",
+        omdbApiKey: "",
+        discogsToken: "",
     });
 
     let saving = $state(false);
@@ -87,7 +109,9 @@
             jellyfinSyncCheck !== initialValues.jellyfinSyncCheck ||
             ollamaUrl !== initialValues.ollamaUrl ||
             ollamaEmbedModel !== initialValues.ollamaEmbedModel ||
-            ollamaChatModel !== initialValues.ollamaChatModel,
+            ollamaChatModel !== initialValues.ollamaChatModel ||
+            omdbApiKey !== initialValues.omdbApiKey ||
+            discogsToken !== initialValues.discogsToken,
     );
 
     // ─── Undo Toast ──────────────────────────────────────────────────────────────
@@ -168,6 +192,8 @@
             ollamaUrl,
             ollamaEmbedModel,
             ollamaChatModel,
+            omdbApiKey,
+            discogsToken,
         };
     }
 
@@ -185,6 +211,8 @@
         ollamaUrl = snapshot.ollamaUrl;
         ollamaEmbedModel = snapshot.ollamaEmbedModel;
         ollamaChatModel = snapshot.ollamaChatModel;
+        omdbApiKey = snapshot.omdbApiKey;
+        discogsToken = snapshot.discogsToken;
     }
 
     // ─── Validation ──────────────────────────────────────────────────────────────
@@ -279,6 +307,10 @@
             payload.ollama_url = ollamaUrl || null;
             payload.ollama_embed_model = ollamaEmbedModel || "nomic-embed-text";
             payload.ollama_chat_model = ollamaChatModel || "llama3.2:3b";
+            if (omdbApiKey && omdbApiKey !== "••••••••")
+                payload.omdb_api_key = omdbApiKey;
+            if (discogsToken && discogsToken !== "••••••••")
+                payload.discogs_token = discogsToken;
 
             const res = await fetch("/api/settings", {
                 method: "PUT",
@@ -1422,6 +1454,22 @@
             </div>
         </div>
     {/if}
+
+    <!-- Tab Navigation -->
+    <div class="tabs tabs-boxed bg-base-200/50 border border-base-300 p-1 gap-1">
+        {#each TABS as tab}
+            <button
+                class="tab {activeTab === tab.id ? 'tab-active !bg-primary !text-primary-content' : 'hover:bg-base-300/50'} gap-1.5 transition-all"
+                onclick={() => activeTab = /** @type {typeof activeTab} */ (tab.id)}
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d={tab.icon} /></svg>
+                {tab.label}
+            </button>
+        {/each}
+    </div>
+
+    <!-- ═══════════════════════ TAB: SERVER ═══════════════════════ -->
+    {#if activeTab === 'server'}
     <!-- Jellyfin Connection -->
     <div
         id="jellyfin"
@@ -1472,6 +1520,11 @@
         </div>
     </div>
 
+    {/if}
+
+    <!-- ═══════════════════════ TAB: CREDENTIALS ═══════════════════════ -->
+    {#if activeTab === 'credentials'}
+    <p class="text-sm text-base-content/50 -mb-2">External service credentials for metadata, ratings, and tracking.</p>
     <!-- Metadata API Keys -->
     <div
         id="api-keys"
@@ -1966,6 +2019,88 @@
         </div>
     </div>
 
+    <!-- External Ratings -->
+    <div
+        class="card bg-base-200/50 backdrop-blur border border-base-300 shadow-lg"
+    >
+        <div class="card-body">
+            <h2 class="card-title text-lg flex items-center gap-2">
+                <span class="text-xl">📊</span>
+                External Ratings
+            </h2>
+            <p class="text-xs text-base-content/50">
+                Configure API keys for fetching IMDb, Rotten Tomatoes,
+                Metacritic, and Discogs community ratings.
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                <!-- OMDb -->
+                <div
+                    class="bg-base-300/30 rounded-lg p-4 border border-base-300/50"
+                >
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="text-[#F5C518] font-bold text-sm"
+                            >OMDb</span
+                        >
+                        <span class="text-xs text-base-content/40"
+                            >IMDb · RT · Metacritic</span
+                        >
+                    </div>
+                    <div class="form-control">
+                        <input
+                            id="settings-omdb"
+                            type="password"
+                            class="input input-bordered input-sm"
+                            bind:value={omdbApiKey}
+                            placeholder={data.settings.omdbApiKey
+                                ? "••••••••"
+                                : "Not set"}
+                        />
+                    </div>
+                    <a
+                        href="https://www.omdbapi.com/apikey.aspx"
+                        target="_blank"
+                        rel="noopener"
+                        class="link link-primary text-xs mt-1 inline-block"
+                        >Get free API key →</a
+                    >
+                </div>
+                <!-- Discogs -->
+                <div
+                    class="bg-base-300/30 rounded-lg p-4 border border-base-300/50"
+                >
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="font-bold text-sm">Discogs</span>
+                        <span class="text-xs text-base-content/40"
+                            >Album community ratings</span
+                        >
+                    </div>
+                    <div class="form-control">
+                        <input
+                            id="settings-discogs"
+                            type="password"
+                            class="input input-bordered input-sm"
+                            bind:value={discogsToken}
+                            placeholder={data.settings.discogsToken
+                                ? "••••••••"
+                                : "Not set"}
+                        />
+                    </div>
+                    <a
+                        href="https://www.discogs.com/settings/developers"
+                        target="_blank"
+                        rel="noopener"
+                        class="link link-primary text-xs mt-1 inline-block"
+                        >Generate personal access token →</a
+                    >
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {/if}
+
+    <!-- ═══════════════════════ TAB: SERVER (continued) ═══════════════════════ -->
+    {#if activeTab === 'server'}
     <!-- LLM Integration -->
     <div
         id="llm"
@@ -2514,6 +2649,10 @@
         </div>
     </div>
 
+    {/if}
+
+    <!-- ═══════════════════════ TAB: DATA SYNC ═══════════════════════ -->
+    {#if activeTab === 'sync'}
     <!-- Jellyfin Playback Reporting -->
     <div
         id="playback-reporting"
@@ -3150,6 +3289,10 @@
         </div>
     </div>
 
+    {/if}
+
+    <!-- ═══════════════════════ TAB: IMPORT / EXPORT ═══════════════════════ -->
+    {#if activeTab === 'import-export'}
     <!-- Data Management -->
     <div
         id="data-management"
@@ -3244,8 +3387,8 @@
                                 />
                                 <span class="text-xs"
                                     >API keys <span class="text-base-content/40"
-                                        >(TheTVDB, TMDB, MusicBrainz, Trakt,
-                                        Last.fm)</span
+                                        >(TVDB, TMDB, MusicBrainz, OMDb, Discogs,
+                                        Trakt, Last.fm, Radarr, Sonarr, Lidarr)</span
                                     ></span
                                 >
                             </label>
@@ -3413,8 +3556,10 @@
             </div>
         </div>
     </div>
+    {/if}
 
-    <!-- Save Button (always visible) -->
+    <!-- Save Button (visible on server + credentials tabs) -->
+    {#if activeTab === 'server' || activeTab === 'credentials'}
     <div class="flex items-center gap-3">
         <button
             class="btn {isDirty
@@ -3433,6 +3578,28 @@
             <span class="text-error text-sm">{error}</span>
         {/if}
     </div>
+    {/if}
+
+    <!-- ═══════════════════════ TAB: DATA CLEAN-UP ═══════════════════════ -->
+    {#if activeTab === 'cleanup'}
+    <div class="card bg-base-200/50 border border-base-300">
+        <div class="card-body">
+            <h2 class="card-title text-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-warning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.414 3.414H4.828c-1.78 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
+                Data Clean-up
+            </h2>
+            <p class="text-sm text-base-content/60">
+                Reconcile playback history, match scrobbles to your library, and clean up unmatched items.
+            </p>
+            <div class="mt-4">
+                <a href="/settings/reconciliation" class="btn btn-primary btn-sm gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                    Open Reconciliation
+                </a>
+            </div>
+        </div>
+    </div>
+    {/if}
 </div>
 
 <!-- Undo Toast -->

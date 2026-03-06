@@ -83,6 +83,12 @@ export function load({ params, locals }) {
         ORDER BY pc.sort_order ASC
     `).all(movieId));
 
+    // External ratings
+    const externalRatings = /** @type {any[]} */ (db.prepare(`
+        SELECT source, rating_type, value, vote_count, raw_value, fetched_at
+        FROM external_ratings WHERE media_parent_id = ? ORDER BY source
+    `).all(movieId));
+
     return {
         movie: {
             ...movie,
@@ -100,6 +106,7 @@ export function load({ params, locals }) {
         },
         cast,
         crew,
+        externalRatings,
         jellyfinUrl,
         arrUrl: settings?.radarr_url || '',
         arrService: 'radarr'

@@ -74,7 +74,13 @@ export async function POST({ request, url, locals }) {
             'person_credits',
             'external_ids',
             'trakt_history',
-            'sync_history'
+            'sync_history',
+            'media_tags',
+            'reconcile_runs',
+            'sync_conflicts',
+            'discovered_media',
+            'discovered_credits',
+            'external_ratings'
         ];
 
         // In overwrite mode, clear tables in reverse order

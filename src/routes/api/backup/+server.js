@@ -39,6 +39,11 @@ export async function GET({ url, locals }) {
             delete settings.trakt_client_secret;
             delete settings.lastfm_api_key;
             delete settings.lastfm_shared_secret;
+            delete settings.omdb_api_key;
+            delete settings.discogs_token;
+            delete settings.radarr_api_key;
+            delete settings.sonarr_api_key;
+            delete settings.lidarr_api_key;
         }
         // Always strip the Jellyfin access token from settings unless opted in
         if (!includeTokens) {
@@ -79,6 +84,12 @@ export async function GET({ url, locals }) {
     tables['external_ids'] = db.prepare('SELECT * FROM external_ids').all();
     tables['trakt_history'] = db.prepare('SELECT * FROM trakt_history').all();
     tables['sync_history'] = db.prepare('SELECT * FROM sync_history').all();
+    tables['media_tags'] = db.prepare('SELECT * FROM media_tags').all();
+    tables['reconcile_runs'] = db.prepare('SELECT * FROM reconcile_runs').all();
+    tables['sync_conflicts'] = db.prepare('SELECT * FROM sync_conflicts').all();
+    tables['discovered_media'] = db.prepare('SELECT * FROM discovered_media').all();
+    tables['discovered_credits'] = db.prepare('SELECT * FROM discovered_credits').all();
+    tables['external_ratings'] = db.prepare('SELECT * FROM external_ratings').all();
 
     // Build manifest
     const manifest = {

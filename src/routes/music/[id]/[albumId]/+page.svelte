@@ -120,12 +120,18 @@
                         Not in library
                     </div>
                 {/if}
+                {#if data.isInLidarr}
+                    <div class="badge badge-lg badge-outline gap-1" style="border-color: #1db954; color: #1db954">
+                        <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/lidarr.svg" alt="Lidarr" class="w-4 h-4" />
+                        In Lidarr
+                    </div>
+                {/if}
             </div>
         </div>
     </div>
 
     <!-- Unmatched Warning -->
-    {#if data.isUnmatched}
+    {#if data.isUnmatched && !data.lidarrEnriched}
         <div class="alert alert-warning shadow-sm">
             <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -153,6 +159,13 @@
                     scrobbles.
                 </p>
             </div>
+        </div>
+    {/if}
+
+    <!-- Overview / Description -->
+    {#if data.album.overview}
+        <div class="prose prose-sm max-w-none opacity-80">
+            <p>{data.album.overview}</p>
         </div>
     {/if}
 

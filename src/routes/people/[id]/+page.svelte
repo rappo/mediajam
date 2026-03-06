@@ -797,7 +797,7 @@
 </div>
 
 <!-- Discovery: Filmography from TMDb -->
-<div class="container mx-auto px-6 py-8">
+<div class="max-w-5xl mx-auto px-6 py-8">
     {#if !discoveryLoaded && !discoveryLoading}
         <button
             class="btn btn-outline btn-primary w-full gap-2"

@@ -1,6 +1,6 @@
 <script>
     let { data } = $props();
-    import { invalidateAll } from "$app/navigation";
+    import { invalidateAll, goto } from "$app/navigation";
     import DataTable from "$lib/components/DataTable.svelte";
     import ExternalLinks from "$lib/components/ExternalLinks.svelte";
     import ArrAddDialog from "$lib/components/ArrAddDialog.svelte";
@@ -127,6 +127,27 @@
         }
         syncing = false;
     }
+
+    let showDeleteConfirm = $state(false);
+    let deleting = $state(false);
+
+    async function deleteItem() {
+        deleting = true;
+        try {
+            const res = await fetch(`/api/media/${data.show.id}`, { method: 'DELETE' });
+            const result = await res.json();
+            if (result.success) {
+                const params = new URLSearchParams({ deleted: result.title, undoToken: result.undoToken, undoId: String(data.show.id) });
+                goto(`/${result.route}?${params.toString()}`);
+            } else {
+                alert(result.error || 'Failed to delete');
+            }
+        } catch (e) {
+            alert(e instanceof Error ? e.message : 'Network error');
+        }
+        deleting = false;
+        showDeleteConfirm = false;
+    }
 </script>
 
 <svelte:head>
@@ -165,6 +186,13 @@
             {:else}
                 🔄 Full Sync
             {/if}
+        </button>
+        <button
+            class="btn btn-ghost btn-xs gap-1 text-error/60 hover:text-error"
+            onclick={() => (showDeleteConfirm = true)}
+            title="Delete this show"
+        >
+            🗑️
         </button>
     </div>
 
@@ -646,6 +674,31 @@
         </div>
     </div>
 </div>
+
+<!-- Delete Confirmation Modal -->
+{#if showDeleteConfirm}
+    <div class="modal modal-open">
+        <div class="modal-box">
+            <h3 class="font-bold text-lg">Delete "{data.show.title}"?</h3>
+            <p class="py-4 text-base-content/70">
+                This will remove this show and all its episodes, watch history, and ratings.
+                {#if data.show.jellyfin_id}
+                    <br /><span class="text-warning text-sm">⚠️ This item is in Jellyfin and will reappear on the next sync.</span>
+                {/if}
+            </p>
+            <div class="modal-action">
+                <button class="btn" onclick={() => (showDeleteConfirm = false)}>Cancel</button>
+                <button class="btn btn-error" onclick={deleteItem} disabled={deleting}>
+                    {#if deleting}
+                        <span class="loading loading-spinner loading-xs"></span>
+                    {/if}
+                    Delete
+                </button>
+            </div>
+        </div>
+        <div class="modal-backdrop" onclick={() => (showDeleteConfirm = false)}></div>
+    </div>
+{/if}
 
 <style>
     .grid-container {

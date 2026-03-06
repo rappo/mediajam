@@ -127,7 +127,7 @@ const embeddingCache = new Map();
  */
 export async function buildEmbeddingIndex(onProgress) {
     const parents = /** @type {any[]} */ (db.prepare(
-        `SELECT id, title, media_type FROM media_parents WHERE jellyfin_id IS NOT NULL ORDER BY id`
+        `SELECT id, title, media_type FROM media_parents ORDER BY id`
     ).all());
 
     let embedded = 0, failed = 0;
@@ -239,10 +239,10 @@ export async function matchArtist(artistName, mbid, useLlm = true) {
         if (match) return { matchedId: match.id, confidence: 'exact', tier: 0, matchedTitle: match.title };
     }
 
-    // Tier 1: Exact title (case-insensitive)
+    // Tier 1: Exact title (case-insensitive) — match any known item (Jellyfin, *arr, or external)
     {
         const match = /** @type {any} */ (db.prepare(
-            `SELECT id, title FROM media_parents WHERE title = ? COLLATE NOCASE AND media_type = 'artist' AND jellyfin_id IS NOT NULL LIMIT 1`
+            `SELECT id, title FROM media_parents WHERE title = ? COLLATE NOCASE AND media_type = 'artist' LIMIT 1`
         ).get(artistName));
         if (match) return { matchedId: match.id, confidence: 'exact', tier: 1, matchedTitle: match.title };
     }
@@ -251,7 +251,7 @@ export async function matchArtist(artistName, mbid, useLlm = true) {
     const normalizedQuery = aggressiveNormalize(artistName);
     if (normalizedQuery.length > 0) {
         const candidates = /** @type {any[]} */ (db.prepare(
-            `SELECT id, title FROM media_parents WHERE media_type = 'artist' AND jellyfin_id IS NOT NULL`
+            `SELECT id, title FROM media_parents WHERE media_type = 'artist'`
         ).all());
         for (const c of candidates) {
             if (aggressiveNormalize(c.title) === normalizedQuery) {
@@ -307,10 +307,10 @@ export async function matchMovie(title, year, tmdbId, imdbId, useLlm = true) {
         if (match) return { matchedId: match.id, confidence: 'exact', tier: 0, matchedTitle: match.title };
     }
 
-    // Tier 1: Exact title + year
+    // Tier 1: Exact title + year — match any known item
     if (year) {
         const match = /** @type {any} */ (db.prepare(
-            `SELECT id, title FROM media_parents WHERE title = ? COLLATE NOCASE AND media_type = 'movie' AND release_year = ? AND jellyfin_id IS NOT NULL LIMIT 1`
+            `SELECT id, title FROM media_parents WHERE title = ? COLLATE NOCASE AND media_type = 'movie' AND release_year = ? LIMIT 1`
         ).get(title, year));
         if (match) return { matchedId: match.id, confidence: 'exact', tier: 1, matchedTitle: match.title };
     }
@@ -321,7 +321,7 @@ export async function matchMovie(title, year, tmdbId, imdbId, useLlm = true) {
         const yearMin = year ? year - 1 : 0;
         const yearMax = year ? year + 1 : 9999;
         const candidates = /** @type {any[]} */ (db.prepare(
-            `SELECT id, title, release_year FROM media_parents WHERE media_type = 'movie' AND jellyfin_id IS NOT NULL AND release_year BETWEEN ? AND ?`
+            `SELECT id, title, release_year FROM media_parents WHERE media_type = 'movie' AND release_year BETWEEN ? AND ?`
         ).all(yearMin, yearMax));
         for (const c of candidates) {
             if (aggressiveNormalize(c.title) === normalizedQuery) {
@@ -372,10 +372,10 @@ export async function matchShow(showTitle, tmdbId, imdbId, useLlm = true) {
         if (match) return { matchedId: match.id, confidence: 'exact', tier: 0, matchedTitle: match.title };
     }
 
-    // Tier 1: Exact title
+    // Tier 1: Exact title — match any known item
     {
         const match = /** @type {any} */ (db.prepare(
-            `SELECT id, title FROM media_parents WHERE title = ? COLLATE NOCASE AND media_type = 'show' AND jellyfin_id IS NOT NULL LIMIT 1`
+            `SELECT id, title FROM media_parents WHERE title = ? COLLATE NOCASE AND media_type = 'show' LIMIT 1`
         ).get(showTitle));
         if (match) return { matchedId: match.id, confidence: 'exact', tier: 1, matchedTitle: match.title };
     }
@@ -384,7 +384,7 @@ export async function matchShow(showTitle, tmdbId, imdbId, useLlm = true) {
     const normalizedQuery = aggressiveNormalize(showTitle);
     if (normalizedQuery.length > 0) {
         const candidates = /** @type {any[]} */ (db.prepare(
-            `SELECT id, title FROM media_parents WHERE media_type = 'show' AND jellyfin_id IS NOT NULL`
+            `SELECT id, title FROM media_parents WHERE media_type = 'show'`
         ).all());
         for (const c of candidates) {
             if (aggressiveNormalize(c.title) === normalizedQuery) {
@@ -446,22 +446,33 @@ function tokenSimilarity(a, b) {
 
 /**
  * Match a scrobble to a specific media_child under a matched parent.
- * Uses 5 tiers of increasingly fuzzy matching:
+ * Uses 7 tiers of increasingly fuzzy matching:
+ *  0. Global MusicBrainz ID lookup (cross-artist, highest priority)
  *  1. Exact title (case-insensitive)
  *  2. Normalized title (aggressiveNormalize)
  *  3. Stripped edition tags (remove parentheticals, "[Explicit]", etc.)
  *  4. Containment (one title contains the other)
  *  5. Token overlap (Jaccard ≥ 0.6 on word tokens)
+ *  6. Track name match (find album by track title)
  * @param {number} parentId
  * @param {string} albumName
  * @param {string} [trackName]
+ * @param {string} [albumMbid] - MusicBrainz release group ID for global lookup
  * @returns {number | null} media_child.id
  */
-function matchChild(parentId, albumName, trackName) {
+function matchChild(parentId, albumName, trackName, albumMbid) {
+    // Tier 0: Global MusicBrainz ID match (cross-artist)
+    if (albumMbid) {
+        const mbidMatch = /** @type {any} */ (db.prepare(
+            `SELECT id FROM media_children WHERE musicbrainz_id = ? LIMIT 1`
+        ).get(albumMbid));
+        if (mbidMatch) return mbidMatch.id;
+    }
+
     if (!albumName) {
         // No album name — only match if parent has exactly one child
         const only = /** @type {any} */ (db.prepare(
-            `SELECT id FROM media_children WHERE parent_id = ? AND jellyfin_id IS NOT NULL`
+            `SELECT id FROM media_children WHERE parent_id = ? LIMIT 1`
         ).get(parentId));
         return only ? only.id : null;
     }
@@ -474,7 +485,7 @@ function matchChild(parentId, albumName, trackName) {
 
     // Fetch all local children for fuzzy comparison
     const children = /** @type {any[]} */ (db.prepare(
-        `SELECT id, title FROM media_children WHERE parent_id = ? AND jellyfin_id IS NOT NULL`
+        `SELECT id, title FROM media_children WHERE parent_id = ?`
     ).all(parentId));
     if (children.length === 0) return null;
 
@@ -533,7 +544,7 @@ function matchChild(parentId, albumName, trackName) {
             const tracks = /** @type {any[]} */ (db.prepare(`
                 SELECT t.album_id, t.title FROM tracks t
                 JOIN media_children mc ON mc.id = t.album_id
-                WHERE mc.parent_id = ? AND mc.jellyfin_id IS NOT NULL
+                WHERE mc.parent_id = ?
             `).all(parentId));
             // Exact track title
             for (const t of tracks) {
@@ -776,6 +787,7 @@ export async function runFullReconciliation(userId, options = {}) {
         // Clean up orphan external parents (no jellyfin_id, no children with history)
         const externalsDeleted = db.prepare(`
             DELETE FROM media_parents WHERE jellyfin_id IS NULL AND collection_status IN ('external', 'watched_not_owned')
+            AND radarr_id IS NULL AND sonarr_id IS NULL AND lidarr_id IS NULL
             AND id NOT IN (SELECT DISTINCT mc.parent_id FROM media_children mc JOIN playback_history ph ON ph.media_id = mc.id)
         `).run();
         // Also clean children of deleted parents
@@ -784,6 +796,7 @@ export async function runFullReconciliation(userId, options = {}) {
         const staleChildren = db.prepare(`
             DELETE FROM media_children WHERE jellyfin_id IS NULL
             AND id NOT IN (SELECT DISTINCT media_id FROM playback_history WHERE media_id IS NOT NULL)
+            AND parent_id NOT IN (SELECT id FROM media_parents WHERE radarr_id IS NOT NULL OR sonarr_id IS NOT NULL OR lidarr_id IS NOT NULL)
         `).run();
 
         broadcast({
@@ -850,7 +863,7 @@ export async function runFullReconciliation(userId, options = {}) {
                 let mediaId = null;
                 if (artistMatch) {
                     // Found the artist — now find the specific album/child
-                    mediaId = matchChild(artistMatch.matchedId, s.album_name, s.track_name);
+                    mediaId = matchChild(artistMatch.matchedId, s.album_name, s.track_name, s.album_mbid || undefined);
                     if (mediaId) {
                         stats.lastfm[`tier${artistMatch.tier}`]++;
                         stats.lastfm.matched++;
