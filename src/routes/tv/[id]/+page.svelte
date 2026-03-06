@@ -55,9 +55,9 @@
      */
     function watchBorderClass(ep) {
         if (!ep.is_collected) return 'border-2 border-dashed !border-error/70';
-        if (ep.watch_status === 'watched') return 'border-2 !border-success';
-        if (ep.watch_status === 'in_progress') return 'border-2 !border-warning';
-        return 'border-2 !border-base-content/20';
+        if (ep.watch_status === 'watched') return 'border-2 !border-white/80';
+        if (ep.watch_status === 'in_progress') return 'border-2 !border-amber-300';
+        return '';
     }
 
     /**
