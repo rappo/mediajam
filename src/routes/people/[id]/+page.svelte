@@ -453,10 +453,14 @@
                     class="flex flex-wrap items-center gap-2 text-sm text-base-content/60 mt-1"
                 >
                     {#if data.person.birth_date}
-                        <span>Born: {data.person.birth_date}</span>
-                    {/if}
-                    {#if data.person.death_date}
-                        <span>· Died: {data.person.death_date}</span>
+                        {@const bd = new Date(data.person.birth_date)}
+                        {@const endDate = data.person.death_date ? new Date(data.person.death_date) : new Date()}
+                        {@const age = Math.floor((endDate.getTime() - bd.getTime()) / (365.25 * 24 * 60 * 60 * 1000))}
+                        {#if data.person.death_date}
+                            <span>Born: {data.person.birth_date} · Died: {data.person.death_date} (aged {age})</span>
+                        {:else}
+                            <span>Born: {data.person.birth_date} (age {age})</span>
+                        {/if}
                     {/if}
                 </div>
             </div>
