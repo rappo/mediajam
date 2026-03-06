@@ -11,9 +11,12 @@ export async function POST({ request, locals }) {
     if (isReconcileRunning()) return json({ error: 'Reconciliation already running' }, { status: 409 });
 
     let useT3 = false;
+    /** @type {string[]} */
+    let skipPhases = [];
     try {
         const body = await request.json();
         useT3 = !!body.useT3;
+        if (Array.isArray(body.skipPhases)) skipPhases = body.skipPhases;
     } catch { /* no body or invalid JSON — defaults apply */ }
 
     const userId = locals.user.id;
@@ -31,7 +34,7 @@ export async function POST({ request, locals }) {
             const removeListener = addReconcileListener(send);
 
             // Run in background — don't await in the stream start
-            runFullReconciliation(userId, { useT3 })
+            runFullReconciliation(userId, { useT3, skipPhases })
                 .then((result) => {
                     send({ type: 'reconcile_complete', ...result });
                     try { controller.close(); } catch { /* */ }

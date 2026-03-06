@@ -1,103 +1,106 @@
-# Reconciliation Run 7 — 2026-03-05T22:15:04.636Z
+# Reconciliation Run 7 — 2026-03-06T06:25:26.242Z
 
-[5:15:04 PM] 📸 Creating snapshot of current playback_history...
-[5:15:04 PM] 📸 Snapshot: 79550 records
-[5:15:04 PM] 🗑️ Clearing existing lastfm/trakt from playback_history...
-[5:15:05 PM] 🗑️ Cleared 75420 lastfm + 4130 trakt entries
-[5:15:05 PM] 🗑️ Cleaned 2052 orphan external parents
-[5:15:05 PM] ⏭️ T3 embedding matching disabled — using T0–T2 + fuzzy album matching
-[5:15:05 PM] 🎵 Matching 77085 Last.fm scrobbles...
-[5:15:05 PM] 🎵 1000/77085 scrobbles — 737 matched, 263 external
-[5:15:06 PM] 🎵 2000/77085 scrobbles — 1554 matched, 446 external
-[5:15:06 PM] 🎵 3000/77085 scrobbles — 2508 matched, 492 external
-[5:15:07 PM] 🎵 4000/77085 scrobbles — 3244 matched, 756 external
-[5:15:08 PM] 🎵 5000/77085 scrobbles — 4043 matched, 957 external
-[5:15:08 PM] 🎵 6000/77085 scrobbles — 4880 matched, 1120 external
-[5:15:09 PM] 🎵 7000/77085 scrobbles — 5654 matched, 1346 external
-[5:15:10 PM] 🎵 8000/77085 scrobbles — 6351 matched, 1649 external
-[5:15:10 PM] 🎵 9000/77085 scrobbles — 7159 matched, 1841 external
-[5:15:11 PM] 🎵 10000/77085 scrobbles — 7929 matched, 2071 external
-[5:15:11 PM] 🎵 11000/77085 scrobbles — 8741 matched, 2259 external
-[5:15:12 PM] 🎵 12000/77085 scrobbles — 9341 matched, 2659 external
-[5:15:13 PM] 🎵 13000/77085 scrobbles — 10039 matched, 2961 external
-[5:15:14 PM] 🎵 14000/77085 scrobbles — 10698 matched, 3302 external
-[5:15:14 PM] 🎵 15000/77085 scrobbles — 11297 matched, 3703 external
-[5:15:15 PM] 🎵 16000/77085 scrobbles — 12033 matched, 3967 external
-[5:15:16 PM] 🎵 17000/77085 scrobbles — 12753 matched, 4247 external
-[5:15:16 PM] 🎵 18000/77085 scrobbles — 13444 matched, 4556 external
-[5:15:17 PM] 🎵 19000/77085 scrobbles — 14292 matched, 4708 external
-[5:15:17 PM] 🎵 20000/77085 scrobbles — 15089 matched, 4911 external
-[5:15:18 PM] 🎵 21000/77085 scrobbles — 15959 matched, 5041 external
-[5:15:19 PM] 🎵 22000/77085 scrobbles — 16615 matched, 5385 external
-[5:15:19 PM] 🎵 23000/77085 scrobbles — 17379 matched, 5621 external
-[5:15:20 PM] 🎵 24000/77085 scrobbles — 18014 matched, 5986 external
-[5:15:21 PM] 🎵 25000/77085 scrobbles — 18821 matched, 6179 external
-[5:15:21 PM] 🎵 26000/77085 scrobbles — 19603 matched, 6397 external
-[5:15:22 PM] 🎵 27000/77085 scrobbles — 20373 matched, 6627 external
-[5:15:23 PM] 🎵 28000/77085 scrobbles — 21151 matched, 6849 external
-[5:15:23 PM] 🎵 29000/77085 scrobbles — 21983 matched, 7017 external
-[5:15:24 PM] 🎵 30000/77085 scrobbles — 22763 matched, 7237 external
-[5:15:24 PM] 🎵 31000/77085 scrobbles — 23562 matched, 7438 external
-[5:15:25 PM] 🎵 32000/77085 scrobbles — 24282 matched, 7718 external
-[5:15:26 PM] 🎵 33000/77085 scrobbles — 25078 matched, 7922 external
-[5:15:26 PM] 🎵 34000/77085 scrobbles — 25864 matched, 8136 external
-[5:15:27 PM] 🎵 35000/77085 scrobbles — 26752 matched, 8248 external
-[5:15:27 PM] 🎵 36000/77085 scrobbles — 27673 matched, 8327 external
-[5:15:28 PM] 🎵 37000/77085 scrobbles — 28589 matched, 8411 external
-[5:15:28 PM] 🎵 38000/77085 scrobbles — 29474 matched, 8526 external
-[5:15:29 PM] 🎵 39000/77085 scrobbles — 30422 matched, 8578 external
-[5:15:29 PM] 🎵 40000/77085 scrobbles — 31397 matched, 8603 external
-[5:15:30 PM] 🎵 41000/77085 scrobbles — 32363 matched, 8637 external
-[5:15:30 PM] 🎵 42000/77085 scrobbles — 33305 matched, 8695 external
-[5:15:31 PM] 🎵 43000/77085 scrobbles — 34176 matched, 8824 external
-[5:15:31 PM] 🎵 44000/77085 scrobbles — 35124 matched, 8876 external
-[5:15:32 PM] 🎵 45000/77085 scrobbles — 36075 matched, 8925 external
-[5:15:32 PM] 🎵 46000/77085 scrobbles — 37012 matched, 8988 external
-[5:15:33 PM] 🎵 47000/77085 scrobbles — 37966 matched, 9034 external
-[5:15:33 PM] 🎵 48000/77085 scrobbles — 38865 matched, 9135 external
-[5:15:34 PM] 🎵 49000/77085 scrobbles — 39840 matched, 9160 external
-[5:15:34 PM] 🎵 50000/77085 scrobbles — 40813 matched, 9187 external
-[5:15:35 PM] 🎵 51000/77085 scrobbles — 41785 matched, 9215 external
-[5:15:36 PM] 🎵 52000/77085 scrobbles — 42658 matched, 9342 external
-[5:15:36 PM] 🎵 53000/77085 scrobbles — 43510 matched, 9490 external
-[5:15:37 PM] 🎵 54000/77085 scrobbles — 44347 matched, 9653 external
-[5:15:38 PM] 🎵 55000/77085 scrobbles — 45233 matched, 9767 external
-[5:15:38 PM] 🎵 56000/77085 scrobbles — 45988 matched, 10012 external
-[5:15:39 PM] 🎵 57000/77085 scrobbles — 46803 matched, 10197 external
-[5:15:40 PM] 🎵 58000/77085 scrobbles — 47684 matched, 10316 external
-[5:15:40 PM] 🎵 59000/77085 scrobbles — 48599 matched, 10401 external
-[5:15:41 PM] 🎵 60000/77085 scrobbles — 49492 matched, 10508 external
-[5:15:42 PM] 🎵 61000/77085 scrobbles — 50408 matched, 10592 external
-[5:15:42 PM] 🎵 62000/77085 scrobbles — 51339 matched, 10661 external
-[5:15:43 PM] 🎵 63000/77085 scrobbles — 52212 matched, 10788 external
-[5:15:43 PM] 🎵 64000/77085 scrobbles — 53102 matched, 10898 external
-[5:15:44 PM] 🎵 65000/77085 scrobbles — 53930 matched, 11070 external
-[5:15:45 PM] 🎵 66000/77085 scrobbles — 54880 matched, 11120 external
-[5:15:45 PM] 🎵 67000/77085 scrobbles — 55816 matched, 11184 external
-[5:15:46 PM] 🎵 68000/77085 scrobbles — 56764 matched, 11236 external
-[5:15:46 PM] 🎵 69000/77085 scrobbles — 57745 matched, 11255 external
-[5:15:47 PM] 🎵 70000/77085 scrobbles — 58694 matched, 11306 external
-[5:15:47 PM] 🎵 71000/77085 scrobbles — 59614 matched, 11386 external
-[5:15:49 PM] 🎵 72000/77085 scrobbles — 60543 matched, 11457 external
-[5:15:49 PM] 🎵 73000/77085 scrobbles — 61499 matched, 11501 external
-[5:15:50 PM] 🎵 74000/77085 scrobbles — 62407 matched, 11593 external
-[5:15:50 PM] 🎵 76000/77085 scrobbles — 64338 matched, 11662 external
-[5:15:51 PM] 🎵 77000/77085 scrobbles — 65225 matched, 11775 external
-[5:15:51 PM] 🎵 77085/77085 scrobbles — 65310 matched, 11775 external
-[5:15:51 PM] ✅ Last.fm: 65310 matched (T0:53936 T1:11036 T2:338 T3:0), 11775 external, 1665 consolidated
-[5:15:51 PM] 🎬 Matching 4195 Trakt history records...
-[5:15:51 PM] 🎬 500/4195 — 499 matched, 1 external
-[5:15:51 PM] 🎬 1000/4195 — 997 matched, 3 external
-[5:15:52 PM] 🎬 1500/4195 — 1495 matched, 5 external
-[5:15:52 PM] 🎬 2000/4195 — 1963 matched, 37 external
-[5:15:52 PM] 🎬 2500/4195 — 2438 matched, 62 external
-[5:15:52 PM] 🎬 3000/4195 — 2936 matched, 64 external
-[5:15:52 PM] 🎬 3500/4195 — 3436 matched, 64 external
-[5:15:53 PM] 🎬 4000/4195 — 3936 matched, 64 external
-[5:15:53 PM] 🎬 4195/4195 — 4131 matched, 64 external
-[5:15:53 PM] ✅ Trakt: 4131 matched (T0:4128 T1:3 T2:0 T3:0), 64 external, 65 consolidated
-[5:15:53 PM] 🏷️ Reclassified 0 external items to 'watched_not_owned'
-[5:15:53 PM] 📊 Generating diff report...
-[5:31:06 PM] 📊 Diff: 7465 changed, 0 improved, 0 degraded, 0 new, 0 session-consolidated
+[1:25:26 AM] 📸 Creating snapshot of current playback_history...
+[1:25:26 AM] 📸 Snapshot: 79161 records
+[1:25:26 AM] 🗑️ Clearing existing lastfm/trakt from playback_history...
+[1:25:27 AM] 🗑️ Cleared 75036 lastfm + 4131 trakt entries
+[1:25:27 AM] 🗑️ Cleaned 2041 orphan external parents, 4393 stale external children
+[1:25:27 AM] ⏭️ T3 embedding matching disabled — using T0–T2 + fuzzy album matching
+[1:25:27 AM] 🎵 Matching 77086 Last.fm scrobbles...
+[1:25:28 AM] 🎵 1000/77086 scrobbles — 730 matched, 270 external
+[1:25:28 AM] 🎵 2000/77086 scrobbles — 1528 matched, 472 external
+[1:25:29 AM] 🎵 3000/77086 scrobbles — 2462 matched, 538 external
+[1:25:30 AM] 🎵 4000/77086 scrobbles — 3207 matched, 793 external
+[1:25:30 AM] 🎵 5000/77086 scrobbles — 3903 matched, 1097 external
+[1:25:31 AM] 🎵 6000/77086 scrobbles — 4724 matched, 1276 external
+[1:25:32 AM] 🎵 7000/77086 scrobbles — 5463 matched, 1537 external
+[1:25:32 AM] 🎵 8000/77086 scrobbles — 6149 matched, 1851 external
+[1:25:33 AM] 🎵 9000/77086 scrobbles — 6943 matched, 2057 external
+[1:25:34 AM] 🎵 10000/77086 scrobbles — 7710 matched, 2290 external
+[1:25:34 AM] 🎵 11000/77086 scrobbles — 8518 matched, 2482 external
+[1:25:35 AM] 🎵 12000/77086 scrobbles — 9092 matched, 2908 external
+[1:25:36 AM] 🎵 13000/77086 scrobbles — 9743 matched, 3257 external
+[1:25:37 AM] 🎵 14000/77086 scrobbles — 10412 matched, 3588 external
+[1:25:38 AM] 🎵 15000/77086 scrobbles — 10974 matched, 4026 external
+[1:25:38 AM] 🎵 16000/77086 scrobbles — 11650 matched, 4350 external
+[1:25:39 AM] 🎵 17000/77086 scrobbles — 12364 matched, 4636 external
+[1:25:40 AM] 🎵 18000/77086 scrobbles — 13077 matched, 4923 external
+[1:25:41 AM] 🎵 19000/77086 scrobbles — 13913 matched, 5087 external
+[1:25:41 AM] 🎵 20000/77086 scrobbles — 14685 matched, 5315 external
+[1:25:42 AM] 🎵 21000/77086 scrobbles — 15542 matched, 5458 external
+[1:25:43 AM] 🎵 22000/77086 scrobbles — 16170 matched, 5830 external
+[1:25:44 AM] 🎵 23000/77086 scrobbles — 16919 matched, 6081 external
+[1:25:44 AM] 🎵 24000/77086 scrobbles — 17548 matched, 6452 external
+[1:25:45 AM] 🎵 25000/77086 scrobbles — 18349 matched, 6651 external
+[1:25:46 AM] 🎵 26000/77086 scrobbles — 19045 matched, 6955 external
+[1:25:47 AM] 🎵 27000/77086 scrobbles — 19716 matched, 7284 external
+[1:25:47 AM] 🎵 28000/77086 scrobbles — 20417 matched, 7583 external
+[1:25:48 AM] 🎵 29000/77086 scrobbles — 21226 matched, 7774 external
+[1:25:49 AM] 🎵 30000/77086 scrobbles — 21965 matched, 8035 external
+[1:25:50 AM] 🎵 31000/77086 scrobbles — 22741 matched, 8259 external
+[1:25:51 AM] 🎵 32000/77086 scrobbles — 23439 matched, 8561 external
+[1:25:52 AM] 🎵 33000/77086 scrobbles — 24195 matched, 8805 external
+[1:25:52 AM] 🎵 34000/77086 scrobbles — 24943 matched, 9057 external
+[1:25:53 AM] 🎵 35000/77086 scrobbles — 25813 matched, 9187 external
+[1:25:54 AM] 🎵 36000/77086 scrobbles — 26721 matched, 9279 external
+[1:25:55 AM] 🎵 37000/77086 scrobbles — 27606 matched, 9394 external
+[1:25:55 AM] 🎵 38000/77086 scrobbles — 28475 matched, 9525 external
+[1:25:56 AM] 🎵 39000/77086 scrobbles — 29419 matched, 9581 external
+[1:25:56 AM] 🎵 40000/77086 scrobbles — 30387 matched, 9613 external
+[1:25:57 AM] 🎵 41000/77086 scrobbles — 31343 matched, 9657 external
+[1:25:57 AM] 🎵 42000/77086 scrobbles — 32268 matched, 9732 external
+[1:25:58 AM] 🎵 43000/77086 scrobbles — 33115 matched, 9885 external
+[1:25:59 AM] 🎵 44000/77086 scrobbles — 34053 matched, 9947 external
+[1:25:59 AM] 🎵 45000/77086 scrobbles — 35001 matched, 9999 external
+[1:26:00 AM] 🎵 46000/77086 scrobbles — 35917 matched, 10083 external
+[1:26:00 AM] 🎵 47000/77086 scrobbles — 36836 matched, 10164 external
+[1:26:01 AM] 🎵 48000/77086 scrobbles — 37736 matched, 10264 external
+[1:26:02 AM] 🎵 49000/77086 scrobbles — 38696 matched, 10304 external
+[1:26:02 AM] 🎵 50000/77086 scrobbles — 39661 matched, 10339 external
+[1:26:03 AM] 🎵 51000/77086 scrobbles — 40614 matched, 10386 external
+[1:26:04 AM] 🎵 52000/77086 scrobbles — 41437 matched, 10563 external
+[1:26:04 AM] 🎵 53000/77086 scrobbles — 42221 matched, 10779 external
+[1:26:05 AM] 🎵 54000/77086 scrobbles — 43008 matched, 10992 external
+[1:26:06 AM] 🎵 55000/77086 scrobbles — 43872 matched, 11128 external
+[1:26:07 AM] 🎵 56000/77086 scrobbles — 44581 matched, 11419 external
+[1:26:08 AM] 🎵 57000/77086 scrobbles — 45324 matched, 11676 external
+[1:26:08 AM] 🎵 58000/77086 scrobbles — 46189 matched, 11811 external
+[1:26:09 AM] 🎵 59000/77086 scrobbles — 47036 matched, 11964 external
+[1:26:10 AM] 🎵 60000/77086 scrobbles — 47922 matched, 12078 external
+[1:26:11 AM] 🎵 61000/77086 scrobbles — 48792 matched, 12208 external
+[1:26:11 AM] 🎵 62000/77086 scrobbles — 49707 matched, 12293 external
+[1:26:12 AM] 🎵 63000/77086 scrobbles — 50573 matched, 12427 external
+[1:26:12 AM] 🎵 64000/77086 scrobbles — 51394 matched, 12606 external
+[1:26:13 AM] 🎵 65000/77086 scrobbles — 52155 matched, 12845 external
+[1:26:14 AM] 🎵 66000/77086 scrobbles — 53076 matched, 12924 external
+[1:26:15 AM] 🎵 67000/77086 scrobbles — 53984 matched, 13016 external
+[1:26:15 AM] 🎵 68000/77086 scrobbles — 54876 matched, 13124 external
+[1:26:16 AM] 🎵 69000/77086 scrobbles — 55840 matched, 13160 external
+[1:26:16 AM] 🎵 70000/77086 scrobbles — 56754 matched, 13246 external
+[1:26:17 AM] 🎵 71000/77086 scrobbles — 57621 matched, 13379 external
+[1:26:18 AM] 🎵 72000/77086 scrobbles — 58488 matched, 13512 external
+[1:26:18 AM] 🎵 73000/77086 scrobbles — 59412 matched, 13588 external
+[1:26:19 AM] 🎵 74000/77086 scrobbles — 60359 matched, 13641 external
+[1:26:20 AM] 🎵 76000/77086 scrobbles — 62253 matched, 13747 external
+[1:26:21 AM] 🎵 77000/77086 scrobbles — 63240 matched, 13760 external
+[1:26:21 AM] 🎵 77086/77086 scrobbles — 63326 matched, 13760 external
+[1:26:21 AM] ✅ Last.fm: 63326 matched (T0:52041 T1:10852 T2:433 T3:0), 13760 external, 1665 consolidated
+[1:26:21 AM] 🎬 Matching 4196 Trakt history records...
+[1:26:21 AM] 🎬 500/4196 — 499 matched, 1 external
+[1:26:21 AM] 🎬 1000/4196 — 997 matched, 3 external
+[1:26:21 AM] 🎬 1500/4196 — 1495 matched, 5 external
+[1:26:22 AM] 🎬 2000/4196 — 1963 matched, 37 external
+[1:26:22 AM] 🎬 2500/4196 — 2438 matched, 62 external
+[1:26:22 AM] 🎬 3000/4196 — 2936 matched, 64 external
+[1:26:23 AM] 🎬 3500/4196 — 3436 matched, 64 external
+[1:26:23 AM] 🎬 4000/4196 — 3936 matched, 64 external
+[1:26:23 AM] 🎬 4196/4196 — 4132 matched, 64 external
+[1:26:23 AM] ✅ Trakt: 4132 matched (T0:4129 T1:3 T2:0 T3:0), 64 external, 65 consolidated
+[1:26:23 AM] 🏷️ Reclassified 0 external items to 'watched_not_owned'
+[1:26:25 AM] 🧹 Dedup: 13 parents merged, 0 children merged, 8 orphan artists→albums, 385 duplicate plays removed, 143 history entries migrated
+[1:26:25 AM] 📥 Syncing *arr services...
+[1:26:41 AM] 📥 *arr: radarr: 1277 matched + 31 created / 1308, sonarr: 360 matched + 17 created / 377, lidarr: 441 matched + 18 created / 459
+[1:26:41 AM] 📊 Generating diff report...
+[1:26:41 AM] 📊 Diff: 7416 changed, 64 improved, 0 degraded, 6 new, 0 session-consolidated
 
-# Finished — 2026-03-05T22:31:06.262Z
+# Finished — 2026-03-06T06:26:41.882Z

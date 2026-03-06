@@ -1,0 +1,7 @@
+[2026-03-06T06:23:26.413Z] Mediajam logger started (session: 2026-03-06T06-23-26, dev: true)
+[2026-03-06T06:23:41.368Z] [INFO] [arr-sync] On-demand sync started: radarr
+[2026-03-06T06:23:50.519Z] [INFO] [arr-sync] On-demand sync complete
+[2026-03-06T06:23:55.789Z] [INFO] [arr-sync] On-demand sync started: sonarr
+[2026-03-06T06:24:02.455Z] [INFO] [arr-sync] On-demand sync complete
+[2026-03-06T06:26:41.882Z] [INFO] [reconcile] Complete: LFM 63326/77086 matched, Trakt 4132/4196 matched
+[2026-03-06T06:34:29.926Z] [INFO] [reconcile] Complete: LFM 4268/77086 matched, Trakt 100/4196 matched

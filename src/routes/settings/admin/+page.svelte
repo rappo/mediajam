@@ -49,6 +49,9 @@
     /** @type {Record<string, string>} */
     let arrTestInfo = $state({ radarr: "", sonarr: "", lidarr: "" });
     let arrScanStatus = $state("idle"); // idle | scanning | done
+    let arrSyncRunning = $state(false);
+    /** @type {{ time: string, message: string, type: string }[]} */
+    let arrSyncLogs = $state([]);
 
     // Snapshot initial values for dirty detection and undo
     let initialValues = $state({
@@ -497,7 +500,7 @@
 
     function addSyncLog(message, type = "info") {
         syncLogs = [
-            ...syncLogs.slice(-100),
+            ...syncLogs.slice(-5000),
             { time: new Date().toLocaleTimeString(), message, type },
         ];
     }
@@ -964,6 +967,67 @@
         }
     }
 
+    // ─── *arr Sync ──────────────────────────────────────────────────────────────
+    /** @param {string} [service] */
+    async function startArrSync(service) {
+        arrSyncRunning = true;
+        arrSyncLogs = [];
+        const qs = service ? `?service=${service}` : "";
+        try {
+            const res = await fetch(`/api/arr/sync${qs}`, { method: "POST" });
+            if (!res.ok || !res.body) {
+                arrSyncLogs = [
+                    ...arrSyncLogs,
+                    {
+                        time: new Date().toLocaleTimeString(),
+                        message: `Failed: ${res.statusText}`,
+                        type: "error",
+                    },
+                ];
+                arrSyncRunning = false;
+                return;
+            }
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop() || "";
+                for (const line of lines) {
+                    if (!line.startsWith("data: ")) continue;
+                    try {
+                        const event = JSON.parse(line.slice(6));
+                        if (event.log) {
+                            arrSyncLogs = [
+                                ...arrSyncLogs,
+                                {
+                                    time: new Date().toLocaleTimeString(),
+                                    message: event.log,
+                                    type: event.type || "info",
+                                },
+                            ];
+                        }
+                    } catch {
+                        /* bad JSON */
+                    }
+                }
+            }
+        } catch (/** @type {any} */ e) {
+            arrSyncLogs = [
+                ...arrSyncLogs,
+                {
+                    time: new Date().toLocaleTimeString(),
+                    message: `Error: ${e.message}`,
+                    type: "error",
+                },
+            ];
+        }
+        arrSyncRunning = false;
+    }
+
     // ─── *arr Integration Functions ─────────────────────────────────────────────
     async function scanForArr() {
         arrScanStatus = "scanning";
@@ -1359,7 +1423,10 @@
         </div>
     {/if}
     <!-- Jellyfin Connection -->
-    <div class="card bg-base-200/50 border border-base-300">
+    <div
+        id="jellyfin"
+        class="card bg-base-200/50 border border-base-300 scroll-mt-20"
+    >
         <div class="card-body">
             <h2 class="card-title text-lg">
                 <ServiceIcon service="jellyfin" class="text-[#00A4DC]" />
@@ -1406,7 +1473,10 @@
     </div>
 
     <!-- Metadata API Keys -->
-    <div class="card bg-base-200/50 border border-base-300">
+    <div
+        id="api-keys"
+        class="card bg-base-200/50 border border-base-300 scroll-mt-20"
+    >
         <div class="card-body">
             <h2 class="card-title text-lg">
                 <svg
@@ -1635,7 +1705,10 @@
     </div>
 
     <!-- Tracker App Credentials -->
-    <div class="card bg-base-200/50 border border-base-300">
+    <div
+        id="trackers"
+        class="card bg-base-200/50 border border-base-300 scroll-mt-20"
+    >
         <div class="card-body">
             <h2 class="card-title text-lg">
                 <svg
@@ -1894,7 +1967,10 @@
     </div>
 
     <!-- LLM Integration -->
-    <div class="card bg-base-200/50 border border-base-300">
+    <div
+        id="llm"
+        class="card bg-base-200/50 border border-base-300 scroll-mt-20"
+    >
         <div class="card-body">
             <h2 class="card-title text-lg">
                 <svg
@@ -2215,7 +2291,10 @@
     </div>
 
     <!-- *arr Media Management -->
-    <div class="card bg-base-200/50 border border-base-300">
+    <div
+        id="arr"
+        class="card bg-base-200/50 border border-base-300 scroll-mt-20"
+    >
         <div class="card-body">
             <h2 class="card-title text-lg">
                 <svg
@@ -2252,6 +2331,54 @@
                 <span class="text-xs text-base-content/50"
                     >Scan local network for *arr instances</span
                 >
+            </div>
+
+            <!-- Sync buttons -->
+            <div class="flex flex-wrap items-center gap-2 mt-2">
+                <button
+                    class="btn btn-xs btn-primary gap-1"
+                    disabled={arrSyncRunning}
+                    onclick={() => startArrSync()}
+                >
+                    {#if arrSyncRunning}
+                        <span class="loading loading-spinner loading-xs"></span>
+                        Syncing...
+                    {:else}
+                        📥 Sync All
+                    {/if}
+                </button>
+                {#each ARR_SERVICES as svc}
+                    {@const url =
+                        svc.service === "radarr"
+                            ? radarrUrl
+                            : svc.service === "sonarr"
+                              ? sonarrUrl
+                              : lidarrUrl}
+                    {@const apiKey =
+                        svc.service === "radarr"
+                            ? radarrApiKey
+                            : svc.service === "sonarr"
+                              ? sonarrApiKey
+                              : lidarrApiKey}
+                    {#if url && (apiKey || data.settings[`${svc.service}ApiKey`])}
+                        <button
+                            class="btn btn-xs btn-outline gap-1"
+                            disabled={arrSyncRunning}
+                            onclick={() => startArrSync(svc.service)}
+                        >
+                            📡 {svc.label}
+                        </button>
+                    {/if}
+                {/each}
+            </div>
+
+            <div class="mt-3">
+                <LogConsole
+                    logs={arrSyncLogs}
+                    running={arrSyncRunning}
+                    title="*arr Sync Log"
+                    height="h-48"
+                />
             </div>
 
             <div class="divider my-2"></div>
@@ -2330,6 +2457,23 @@
                                     else lidarrApiKey = e.target.value;
                                 }}
                             />
+                            <div class="label py-0.5">
+                                <span
+                                    class="label-text-alt text-[10px] text-base-content/40"
+                                >
+                                    {#if url}
+                                        <a
+                                            href="{url}/settings/general"
+                                            target="_blank"
+                                            rel="noopener"
+                                            class="link link-hover link-primary"
+                                            >{url}/settings/general</a
+                                        >
+                                        <br />
+                                    {/if}
+                                    Settings → General → Security
+                                </span>
+                            </div>
                         </label>
 
                         <!-- Actions -->
@@ -2371,7 +2515,10 @@
     </div>
 
     <!-- Jellyfin Playback Reporting -->
-    <div class="card bg-base-200/50 border border-base-300">
+    <div
+        id="playback-reporting"
+        class="card bg-base-200/50 border border-base-300 scroll-mt-20"
+    >
         <div class="card-body">
             <h2 class="card-title text-lg">
                 <ServiceIcon service="jellyfin" class="text-[#00A4DC]" />
@@ -2394,7 +2541,10 @@
     </div>
 
     <!-- Data Sync -->
-    <div class="card bg-base-200/50 border border-base-300">
+    <div
+        id="data-sync"
+        class="card bg-base-200/50 border border-base-300 scroll-mt-20"
+    >
         <div class="card-body">
             <h2 class="card-title text-lg">
                 <svg
@@ -3001,7 +3151,10 @@
     </div>
 
     <!-- Data Management -->
-    <div class="card bg-base-200/50 border border-base-300">
+    <div
+        id="data-management"
+        class="card bg-base-200/50 border border-base-300 scroll-mt-20"
+    >
         <div class="card-body">
             <h2 class="card-title text-lg">
                 <svg

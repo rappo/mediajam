@@ -116,8 +116,16 @@
                 '<span class="badge badge-warning badge-sm">In Progress</span>',
             unwatched:
                 '<span class="badge badge-ghost badge-sm">Unwatched</span>',
+            wanted: '<span class="badge badge-error badge-sm">Missing</span>',
         };
         return map[status] || map.unwatched;
+    }
+
+    /** @param {any} row */
+    function rowClass(row) {
+        if (row.collection_status !== "wanted") return "";
+        const upcoming = ["announced", "inCinemas"].includes(row.arr_status);
+        return upcoming ? "arr-upcoming" : "arr-missing";
     }
 
     const columns = [
@@ -133,7 +141,17 @@
             key: "watch_status",
             label: "Status",
             class: "text-center w-28",
-            render: (row) => watchBadge(row.watch_status),
+            render: (row) => {
+                if (row.collection_status === "wanted") {
+                    const upcoming = ["announced", "inCinemas"].includes(
+                        row.arr_status,
+                    );
+                    return upcoming
+                        ? '<span class="badge badge-warning badge-sm">Upcoming</span>'
+                        : '<span class="badge badge-error badge-sm">Missing</span>';
+                }
+                return watchBadge(row.watch_status);
+            },
         },
         {
             key: "runtime_minutes",
@@ -241,6 +259,16 @@
             searchKey="title"
             pageSize={25}
             hideCollectedKey="collection_pct"
+            {rowClass}
         />
     </div>
 </div>
+
+<style>
+    :global(.arr-missing) {
+        border-left: 3px dashed rgba(239, 68, 68, 0.8);
+    }
+    :global(.arr-upcoming) {
+        border-left: 3px dashed oklch(0.8 0.15 75);
+    }
+</style>

@@ -3,6 +3,7 @@
     import { invalidateAll } from "$app/navigation";
     import DataTable from "$lib/components/DataTable.svelte";
     import ExternalLinks from "$lib/components/ExternalLinks.svelte";
+    import ArrAddDialog from "$lib/components/ArrAddDialog.svelte";
     import HeartBorder from "$lib/components/HeartBorder.svelte";
     import FavoriteButton from "$lib/components/FavoriteButton.svelte";
     function statusColor(status) {
@@ -37,6 +38,60 @@
     let syncing = $state(false);
     let syncStatus = $state(""); // "", "success", "failed"
     let syncError = $state("");
+
+    // *arr state
+    let arrLoading = $state("");
+    let arrError = $state("");
+    let arrMonitored = $state(!!data.show.arr_monitored);
+
+    async function onArrAdded() {
+        await invalidateAll();
+    }
+
+    async function searchSonarr() {
+        arrLoading = "search";
+        arrError = "";
+        try {
+            const res = await fetch("/api/arr/sonarr/search", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ mediaParentId: data.show.id }),
+            });
+            if (!res.ok) {
+                const r = await res.json();
+                throw new Error(r.error || "Failed");
+            }
+        } catch (e) {
+            arrError = e instanceof Error ? e.message : "Failed";
+            setTimeout(() => (arrError = ""), 5000);
+        }
+        arrLoading = "";
+    }
+
+    async function toggleMonitorSonarr() {
+        const newState = !arrMonitored;
+        arrLoading = "monitor";
+        arrError = "";
+        try {
+            const res = await fetch("/api/arr/sonarr/monitor", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    mediaParentId: data.show.id,
+                    monitored: newState,
+                }),
+            });
+            if (!res.ok) {
+                const r = await res.json();
+                throw new Error(r.error || "Failed");
+            }
+            arrMonitored = newState;
+        } catch (e) {
+            arrError = e instanceof Error ? e.message : "Failed";
+            setTimeout(() => (arrError = ""), 5000);
+        }
+        arrLoading = "";
+    }
 
     async function fullSync() {
         syncing = true;
@@ -145,6 +200,11 @@
                     tmdb_id={data.show.tmdb_id}
                     imdb_id={data.show.imdb_id}
                     tvdb_id={data.show.tvdb_id}
+                    jellyfin_id={data.show.jellyfin_id}
+                    jellyfin_url={data.jellyfinUrl}
+                    arr_slug={data.show.arr_slug}
+                    arr_url={data.arrUrl}
+                    arr_service={data.arrService}
                     mediaType="show"
                     class="mt-1"
                 />
@@ -182,6 +242,89 @@
                     </div>
                 {/if}
             </div>
+        </div>
+    </div>
+
+    <!-- Sonarr Status -->
+    <div class="card bg-base-200/50 border border-base-300">
+        <div class="card-body py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <span class="text-lg">📥</span>
+                    <span class="font-semibold text-sm">Sonarr</span>
+                </div>
+                {#if arrError}
+                    <span class="text-xs text-error">{arrError}</span>
+                {/if}
+            </div>
+            {#if data.show.sonarr_id}
+                <div class="flex flex-wrap items-center gap-2 mt-1">
+                    {#if data.arrUrl && data.show.arr_slug}
+                        <a
+                            href="{data.arrUrl}/series/{data.show.arr_slug}"
+                            target="_blank"
+                            rel="noopener"
+                            class="badge badge-success badge-sm gap-1 hover:brightness-110 cursor-pointer"
+                        >
+                            ✅ In Sonarr ↗
+                        </a>
+                    {:else}
+                        <span class="badge badge-success badge-sm gap-1"
+                            >✅ In Sonarr</span
+                        >
+                    {/if}
+                    {#if arrMonitored}
+                        <span class="badge badge-info badge-sm"
+                            >📡 Monitored</span
+                        >
+                    {:else}
+                        <span class="badge badge-ghost badge-sm"
+                            >Unmonitored</span
+                        >
+                    {/if}
+                    {#if data.show.arr_quality_profile}
+                        <span class="badge badge-ghost badge-sm"
+                            >{data.show.arr_quality_profile}</span
+                        >
+                    {/if}
+                </div>
+                <div class="flex gap-2 mt-2">
+                    <button
+                        class="btn btn-xs btn-outline gap-1"
+                        onclick={searchSonarr}
+                        disabled={arrLoading === "search"}
+                    >
+                        {#if arrLoading === "search"}<span
+                                class="loading loading-spinner loading-xs"
+                            ></span>{:else}🔍{/if} Search
+                    </button>
+                    <button
+                        class="btn btn-xs btn-outline gap-1"
+                        onclick={toggleMonitorSonarr}
+                        disabled={arrLoading === "monitor"}
+                    >
+                        {#if arrLoading === "monitor"}<span
+                                class="loading loading-spinner loading-xs"
+                            ></span>{:else if arrMonitored}📡{:else}📴{/if}
+                        {arrMonitored ? "Unmonitor" : "Monitor"}
+                    </button>
+                </div>
+            {:else if data.show.tvdb_id}
+                <div class="flex items-center gap-2 mt-1">
+                    <span class="text-xs text-base-content/50"
+                        >Not in Sonarr</span
+                    >
+                    <ArrAddDialog
+                        service="sonarr"
+                        mediaParentId={data.show.id}
+                        onComplete={onArrAdded}
+                    />
+                </div>
+            {:else}
+                <p class="text-xs text-base-content/40 mt-1">
+                    No TVDB ID — cannot link to Sonarr
+                </p>
+            {/if}
         </div>
     </div>
 
@@ -481,6 +624,20 @@
             </div>
         </div>
     {/if}
+</div>
+
+<!-- TODO: Discovery — show related shows from TMDb/TVDb not in your library -->
+<div class="container mx-auto px-6 py-8 opacity-30">
+    <div class="card bg-base-200/30 border border-dashed border-base-300/50">
+        <div class="card-body items-center text-center py-6">
+            <div class="text-3xl mb-2">🔍</div>
+            <h3 class="font-semibold text-base-content/50">Discover More</h3>
+            <p class="text-sm text-base-content/30 max-w-md">
+                Related shows discovery coming soon — browse similar series and
+                spin-offs from TMDb and add to Sonarr.
+            </p>
+        </div>
+    </div>
 </div>
 
 <style>

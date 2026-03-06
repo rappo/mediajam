@@ -11,9 +11,19 @@
             icon: "M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 3a4 4 0 100 8 4 4 0 000-8z",
         },
         {
-            href: "/settings/system",
-            label: "System",
+            href: "/settings/admin",
+            label: "Admin",
             icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065zM15 12a3 3 0 11-6 0 3 3 0 016 0z",
+            subsections: [
+                { hash: "jellyfin", label: "Jellyfin" },
+                { hash: "api-keys", label: "API Keys" },
+                { hash: "trackers", label: "Trackers" },
+                { hash: "llm", label: "LLM / AI" },
+                { hash: "arr", label: "Media Mgmt" },
+                { hash: "playback-reporting", label: "Playback Reporting" },
+                { hash: "data-sync", label: "Data Sync" },
+                { hash: "data-management", label: "Data Management" },
+            ],
         },
         {
             href: "/settings/display",
@@ -56,13 +66,16 @@
 
     <div class="flex gap-8">
         <!-- Sidebar -->
-        <nav class="w-48 shrink-0">
+        <nav
+            class="w-48 shrink-0 sticky top-20 self-start max-h-[calc(100vh-6rem)] overflow-y-auto"
+        >
             <ul class="menu bg-base-200/50 rounded-box w-full p-2 gap-1">
                 {#each navItems as item}
                     <li>
                         <a
                             href={item.href}
-                            class:active={$page.url.pathname === item.href}
+                            class:active={$page.url.pathname === item.href ||
+                                $page.url.pathname.startsWith(item.href + "/")}
                         >
                             <svg
                                 xmlns="http://www.w3.org/2000/svg"
@@ -78,6 +91,20 @@
                             </svg>
                             {item.label}
                         </a>
+                        {#if item.subsections && $page.url.pathname === item.href}
+                            <ul class="ml-2 mt-0.5">
+                                {#each item.subsections as sub}
+                                    <li>
+                                        <a
+                                            href="{item.href}#{sub.hash}"
+                                            class="text-xs py-1 px-3 min-h-0 text-base-content/60 hover:text-base-content"
+                                        >
+                                            {sub.label}
+                                        </a>
+                                    </li>
+                                {/each}
+                            </ul>
+                        {/if}
                     </li>
                 {/each}
             </ul>

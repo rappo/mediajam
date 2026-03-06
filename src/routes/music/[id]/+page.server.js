@@ -4,7 +4,7 @@ import { error } from '@sveltejs/kit';
 export function load({ params, locals }) {
     const artistId = parseInt(params.id);
     const userId = locals.user?.id || 0;
-    const settings = db.prepare('SELECT jellyfin_url FROM app_settings WHERE id = 1').get();
+    const settings = db.prepare('SELECT jellyfin_url, lidarr_url FROM app_settings WHERE id = 1').get();
     const jellyfinUrl = settings?.jellyfin_url || '';
 
     const artist = db.prepare(`
@@ -16,6 +16,14 @@ export function load({ params, locals }) {
             mp.collected_children as album_count,
             mp.total_released_children,
             mp.musicbrainz_id,
+            mp.is_favorite,
+            mp.lidarr_id,
+            mp.arr_slug,
+            mp.arr_monitored,
+            mp.arr_quality_profile,
+            mp.arr_has_file,
+            mp.arr_status,
+            mp.collection_status,
             CASE WHEN mp.total_released_children > 0
                 THEN ROUND(CAST(mp.collected_children AS REAL) / mp.total_released_children * 100, 1)
                 ELSE NULL END as collection_pct
@@ -90,6 +98,8 @@ export function load({ params, locals }) {
         artist: { ...artist, total_plays: totalPlays, imageUrl: artistImageUrl },
         albums: albumsWithImages,
         jellyfinUrl,
+        arrUrl: settings?.lidarr_url || '',
+        arrService: 'lidarr',
         totalPlayed,
         totalRuntimeMinutes: Math.round(totalRuntime / 600000000)
     };

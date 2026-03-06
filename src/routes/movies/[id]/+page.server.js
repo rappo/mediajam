@@ -5,7 +5,7 @@ import { error } from '@sveltejs/kit';
 export function load({ params, locals }) {
     const movieId = parseInt(params.id);
     const userId = locals.user?.id || 0;
-    const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_url FROM app_settings WHERE id = 1').get());
+    const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_url, radarr_url FROM app_settings WHERE id = 1').get());
     const jellyfinUrl = settings?.jellyfin_url || '';
 
     // Movie parent + child info
@@ -24,6 +24,12 @@ export function load({ params, locals }) {
             mp.collection_status,
             mp.jellyfin_user_rating,
             mp.is_favorite,
+            mp.radarr_id,
+            mp.arr_slug,
+            mp.arr_monitored,
+            mp.arr_quality_profile,
+            mp.arr_has_file,
+            mp.arr_status,
             mc.id as child_id,
             mc.watch_status,
             mc.play_count,
@@ -94,6 +100,8 @@ export function load({ params, locals }) {
         },
         cast,
         crew,
-        jellyfinUrl
+        jellyfinUrl,
+        arrUrl: settings?.radarr_url || '',
+        arrService: 'radarr'
     };
 }

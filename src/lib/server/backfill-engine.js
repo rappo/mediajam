@@ -17,7 +17,7 @@ function broadcast(data) {
     // Capture logs for snapshot
     if (data.log) {
         recentLogs.push({ time: new Date().toLocaleTimeString(), message: data.log, type: data.logType || 'info' });
-        if (recentLogs.length > 150) recentLogs = recentLogs.slice(-150);
+        if (recentLogs.length > 5000) recentLogs = recentLogs.slice(-4000);
     }
     if (data.type === 'backfill_progress') lastProgress = data;
     for (const listener of listeners) {

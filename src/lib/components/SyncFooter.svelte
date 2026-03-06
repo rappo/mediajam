@@ -24,7 +24,7 @@
     function isOnSyncPage() {
         const path =
             typeof window !== "undefined" ? window.location.pathname : "";
-        return path === "/settings/system" || path === "/settings/account";
+        return path === "/settings/admin" || path === "/settings/account";
     }
 
     async function pollSyncStatus() {
@@ -134,10 +134,10 @@
             <a
                 href={syncType.toLowerCase().includes("jellyfin") &&
                 !syncType.toLowerCase().includes("import")
-                    ? "/settings/system"
+                    ? "/settings/admin"
                     : syncType.toLowerCase().includes("people") ||
                         syncType.toLowerCase().includes("musicbrainz")
-                      ? "/settings/system"
+                      ? "/settings/admin"
                       : "/settings/account"}
                 class="btn btn-xs btn-ghost text-primary shrink-0"
             >

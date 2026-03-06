@@ -40,6 +40,7 @@ export function load({ locals }) {
         libraries,
         remoteControlEnabled: !!userPreferences.remoteControlEnabled,
         userPreferences,
-        bootWarnings: getBootWarnings()
+        bootWarnings: getBootWarnings(),
+        pendingConflicts: /** @type {any} */ (db.prepare('SELECT COUNT(*) as count FROM sync_conflicts WHERE status = ?').get('pending'))?.count || 0
     };
 }

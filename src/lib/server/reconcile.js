@@ -56,48 +56,75 @@ export function reconcileExternalMedia() {
 }
 
 /**
- * Deduplicate media_parents that share the same tmdb_id (or imdb_id).
- * This happens when a movie/show is removed and re-added to Jellyfin (new jellyfin_id).
- * Keeps the newest entry (highest id), migrates playback_history and person_credits
- * from stale entries, then deletes the stale parents and their media_children.
+/**
+ * Deduplicate media_parents that share the same external ID (tmdb_id, musicbrainz_id, or imdb_id).
+ * This happens when a movie/show/artist is re-added, or the reconciler creates externals
+ * with slightly different titles but matching external IDs.
+ * Keeps the best entry (jellyfin_id first, then highest id), migrates playback_history
+ * and person_credits from stale entries, then deletes the stale parents and their children.
  * @returns {{ deduped: number, historyMoved: number, creditsMoved: number }}
  */
 export function deduplicateParents() {
-    // Find duplicate groups by tmdb_id
-    const dupeGroups = /** @type {any[]} */ (db.prepare(`
-        SELECT tmdb_id, GROUP_CONCAT(id) as ids
-        FROM media_parents
-        WHERE tmdb_id IS NOT NULL
-        GROUP BY tmdb_id, media_type
-        HAVING COUNT(*) > 1
-    `).all());
+    // Find duplicate groups by each external ID type
+    const idColumns = ['tmdb_id', 'musicbrainz_id', 'imdb_id'];
+    /** @type {Array<{idCol: string, idVal: string, ids: string}>} */
+    const allDupeGroups = [];
 
-    if (dupeGroups.length === 0) return { deduped: 0, historyMoved: 0, creditsMoved: 0 };
+    for (const col of idColumns) {
+        const groups = /** @type {any[]} */ (db.prepare(`
+            SELECT '${col}' as idCol, ${col} as idVal, GROUP_CONCAT(id) as ids
+            FROM media_parents
+            WHERE ${col} IS NOT NULL AND ${col} != ''
+            GROUP BY ${col}, media_type
+            HAVING COUNT(*) > 1
+        `).all());
+        allDupeGroups.push(...groups);
+    }
+
+    if (allDupeGroups.length === 0) return { deduped: 0, historyMoved: 0, creditsMoved: 0 };
+
+    // Track already-deleted IDs to avoid processing a parent twice
+    const deletedIds = new Set();
 
     let deduped = 0;
     let historyMoved = 0;
     let creditsMoved = 0;
 
     db.transaction(() => {
-        for (const group of dupeGroups) {
-            const ids = group.ids.split(',').map(Number);
-            // Keep the one with the highest id (most recently synced)
-            const keepId = Math.max(...ids);
-            const staleIds = ids.filter(id => id !== keepId);
+        for (const group of allDupeGroups) {
+            const ids = group.ids.split(',').map(Number).filter((/** @type {number} */ id) => !deletedIds.has(id));
+            if (ids.length <= 1) continue;
+
+            // Prefer the entry with jellyfin_id, then highest id
+            const rows = /** @type {any[]} */ (db.prepare(
+                `SELECT id, jellyfin_id FROM media_parents WHERE id IN (${ids.join(',')})`
+            ).all());
+            rows.sort((a, b) => {
+                const aHasJf = a.jellyfin_id ? 1 : 0;
+                const bHasJf = b.jellyfin_id ? 1 : 0;
+                if (aHasJf !== bHasJf) return bHasJf - aHasJf;
+                return b.id - a.id;
+            });
+
+            const keepId = rows[0].id;
+            // Only merge orphan entries (no jellyfin_id) — never delete entries
+            // that have their own jellyfin_id, since those are legitimate separate items
+            // that happen to share an external ID (e.g. "Isis" and "Isis & Aereogramme"
+            // both share a MusicBrainz ID but are different Jellyfin entries)
+            const staleIds = rows.slice(1)
+                .filter((/** @type {any} */ r) => !r.jellyfin_id)
+                .map((/** @type {any} */ r) => r.id);
 
             for (const staleId of staleIds) {
-                // Get the child id for the keeper (for playback_history migration)
                 const keepChild = /** @type {any} */ (db.prepare(
                     'SELECT id FROM media_children WHERE parent_id = ? LIMIT 1'
                 ).get(keepId));
 
-                // Get stale children
                 const staleChildren = /** @type {any[]} */ (db.prepare(
                     'SELECT id FROM media_children WHERE parent_id = ?'
                 ).all(staleId));
 
                 if (keepChild) {
-                    // Migrate playback_history from all stale children to the keeper's child
                     for (const sc of staleChildren) {
                         const result = db.prepare(
                             'UPDATE playback_history SET media_id = ? WHERE media_id = ?'
@@ -126,21 +153,17 @@ export function deduplicateParents() {
                     }
                 }
 
-                // Delete stale person_credits that weren't moved
                 db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?').run(staleId);
-
-                // Delete stale media_children
                 db.prepare('DELETE FROM media_children WHERE parent_id = ?').run(staleId);
-
-                // Delete stale parent
                 db.prepare('DELETE FROM media_parents WHERE id = ?').run(staleId);
+                deletedIds.add(staleId);
                 deduped++;
             }
         }
     })();
 
     if (deduped > 0) {
-        console.log(`[dedup] Merged ${deduped} duplicate parents, moved ${historyMoved} history entries and ${creditsMoved} credits`);
+        console.log(`[dedup] Merged ${deduped} duplicate parents (by external ID), moved ${historyMoved} history entries and ${creditsMoved} credits`);
     }
 
     return { deduped, historyMoved, creditsMoved };
@@ -235,6 +258,24 @@ export function deduplicateParentsByTitle() {
 
     db.transaction(() => {
         for (const { orphan_id, keep_id } of orphans) {
+            // ── Copy external IDs the keeper is missing ──
+            // This prevents the orphan from being re-created on next reconcile
+            const orphanParent = /** @type {any} */ (db.prepare(
+                'SELECT musicbrainz_id, tmdb_id, imdb_id FROM media_parents WHERE id = ?'
+            ).get(orphan_id));
+            const keepParent = /** @type {any} */ (db.prepare(
+                'SELECT musicbrainz_id, tmdb_id, imdb_id FROM media_parents WHERE id = ?'
+            ).get(keep_id));
+
+            if (orphanParent && keepParent) {
+                for (const col of ['musicbrainz_id', 'tmdb_id', 'imdb_id']) {
+                    if (orphanParent[col] && !keepParent[col]) {
+                        db.prepare(`UPDATE media_parents SET ${col} = ? WHERE id = ?`).run(orphanParent[col], keep_id);
+                        keepParent[col] = orphanParent[col]; // update local ref
+                    }
+                }
+            }
+
             // Migrate children
             const children = /** @type {any[]} */ (db.prepare(
                 'SELECT id FROM media_children WHERE parent_id = ?'
@@ -291,4 +332,157 @@ export function deduplicateParentsByTitle() {
     }
 
     return { deduped, historyMoved, creditsMoved };
+}
+
+/**
+ * Deduplicate playback_history entries caused by pause/resume re-scrobbles.
+ * When the same track (same media_id + track_name) is played back-to-back
+ * within `windowMinutes`, keeps the earliest entry and removes the rest.
+ * @param {number} [windowMinutes=30] - max gap (in minutes) between plays to consider a duplicate
+ * @returns {{ removed: number }}
+ */
+export function deduplicatePlaybackHistory(windowMinutes = 30) {
+    // Find consecutive plays of the same track within the window
+    const dupes = /** @type {any[]} */ (db.prepare(`
+        WITH ordered AS (
+            SELECT
+                id,
+                media_id,
+                track_name,
+                timestamp,
+                LAG(timestamp) OVER (
+                    PARTITION BY media_id, track_name
+                    ORDER BY timestamp
+                ) AS prev_ts
+            FROM playback_history
+            WHERE track_name IS NOT NULL
+        )
+        SELECT id, media_id, track_name, timestamp, prev_ts,
+               ROUND((julianday(timestamp) - julianday(prev_ts)) * 24 * 60, 1) AS gap_minutes
+        FROM ordered
+        WHERE prev_ts IS NOT NULL
+          AND (julianday(timestamp) - julianday(prev_ts)) * 24 * 60 < ?
+        ORDER BY timestamp DESC
+    `).all(windowMinutes));
+
+    if (dupes.length === 0) return { removed: 0 };
+
+    const deleteStmt = db.prepare('DELETE FROM playback_history WHERE id = ?');
+    let removed = 0;
+
+    db.transaction(() => {
+        for (const dup of dupes) {
+            deleteStmt.run(dup.id);
+            removed++;
+        }
+    })();
+
+    if (removed > 0) {
+        console.log(`[dedup] Removed ${removed} pause/resume duplicate plays (window: ${windowMinutes}min)`);
+    }
+
+    return { removed };
+}
+
+/**
+ * Normalize title for cross-matching: lowercase, collapse whitespace,
+ * normalize Unicode hyphens/dashes/quotes to ASCII equivalents.
+ * @param {string} s
+ * @returns {string}
+ */
+function normalizeForMatch(s) {
+    return s
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+        .replace(/[\u201C\u201D\u201E\u201F\u2033\u2036]/g, '"')
+        .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\uFE58\uFE63\uFF0D]/g, '-')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+/**
+ * Merge orphan "artist" parents (no jellyfin_id/musicbrainz_id) into matching
+ * child albums under other artists. This handles the case where playback history
+ * created a stub artist that is actually a child album under a different artist.
+ *
+ * E.g. "General Patton vs. The X-Ecutioners" was created as a parent artist from
+ * Last.fm, but it's actually a child album under "Mike Patton" in Jellyfin.
+ *
+ * @returns {{ merged: number, historyMoved: number }}
+ */
+export function mergeOrphanArtistsIntoAlbums() {
+    // Find orphan artist parents with no external IDs
+    const orphans = /** @type {any[]} */ (db.prepare(`
+        SELECT id, title FROM media_parents
+        WHERE media_type = 'artist'
+        AND jellyfin_id IS NULL
+        AND (musicbrainz_id IS NULL OR musicbrainz_id = '')
+    `).all());
+
+    if (orphans.length === 0) return { merged: 0, historyMoved: 0 };
+
+    // Pre-fetch all child albums with their parent info for matching
+    const albums = /** @type {any[]} */ (db.prepare(`
+        SELECT mc.id, mc.title, mc.parent_id, mp.jellyfin_id
+        FROM media_children mc
+        JOIN media_parents mp ON mc.parent_id = mp.id
+        WHERE mp.media_type = 'artist'
+        AND mp.jellyfin_id IS NOT NULL
+    `).all());
+
+    // Build normalized lookup
+    /** @type {Map<string, any[]>} */
+    const albumsByNormTitle = new Map();
+    for (const a of albums) {
+        const nt = normalizeForMatch(a.title);
+        if (!albumsByNormTitle.has(nt)) albumsByNormTitle.set(nt, []);
+        albumsByNormTitle.get(nt)?.push(a);
+    }
+
+    let merged = 0;
+    let historyMoved = 0;
+
+    db.transaction(() => {
+        for (const orphan of orphans) {
+            const normalizedOrphan = normalizeForMatch(orphan.title);
+
+            // Skip very short/generic titles to avoid false positives
+            // (e.g. "Failure", "X", "Seven" matching unrelated albums)
+            const wordCount = normalizedOrphan.split(/\s+/).length;
+            if (wordCount < 2 && normalizedOrphan.length < 10) continue;
+
+            const matchingAlbums = albumsByNormTitle.get(normalizedOrphan);
+            if (!matchingAlbums || matchingAlbums.length === 0) continue;
+
+            // Use the first match (prefer one with jellyfin_id on parent)
+            const target = matchingAlbums[0];
+
+            // Migrate playback history from orphan's children to the target child album
+            const orphanChildren = /** @type {any[]} */ (db.prepare(
+                'SELECT id FROM media_children WHERE parent_id = ?'
+            ).all(orphan.id));
+
+            for (const oc of orphanChildren) {
+                const r = db.prepare(
+                    'UPDATE playback_history SET media_id = ? WHERE media_id = ?'
+                ).run(target.id, oc.id);
+                historyMoved += r.changes;
+            }
+
+            // Delete orphan children and parent
+            db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?').run(orphan.id);
+            db.prepare('DELETE FROM media_children WHERE parent_id = ?').run(orphan.id);
+            db.prepare('DELETE FROM media_parents WHERE id = ?').run(orphan.id);
+            merged++;
+
+            console.log(`[dedup] Merged orphan artist "${orphan.title}" (${orphan.id}) → album child ${target.id} under parent ${target.parent_id}`);
+        }
+    })();
+
+    if (merged > 0) {
+        console.log(`[dedup] Merged ${merged} orphan artists into matching albums, moved ${historyMoved} history entries`);
+    }
+
+    return { merged, historyMoved };
 }

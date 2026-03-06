@@ -19,6 +19,26 @@
     let error = $state("");
     let useT3 = $state(false);
 
+    // Phase toggles — all enabled by default
+    let enabledPhases = $state({
+        snapshot: true,
+        clearing: true,
+        embedding: true,
+        matching_lastfm: true,
+        matching_trakt: true,
+        reclassifying: true,
+        arr_sync: true,
+        diffing: true,
+    });
+
+    // Snapshot, clearing, and diffing are always required
+    const requiredPhases = ["snapshot", "clearing", "diffing"];
+    let skipPhases = $derived(
+        Object.entries(enabledPhases)
+            .filter(([_, enabled]) => !enabled)
+            .map(([id]) => id),
+    );
+
     // ─── Review state ────────────────────────────────────────────────────────────
     let showDiff = $state(false);
     let diffFilter = $state("all");
@@ -170,7 +190,7 @@
             const res = await fetch("/api/reconcile/run", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ useT3 }),
+                body: JSON.stringify({ useT3, skipPhases }),
             });
             if (!res.ok) {
                 const errData = await res.json();
@@ -254,6 +274,7 @@
             matching_lastfm: "🎵 Matching Last.fm...",
             matching_trakt: "🎬 Matching Trakt...",
             reclassifying: "🏷️ Reclassifying...",
+            arr_sync: "📥 Syncing *arr...",
             diffing: "📊 Generating diff...",
         })[currentPhase] || currentPhase,
     );
@@ -377,25 +398,26 @@
         </div>
     {/if}
 
-    <!-- Progress Steps -->
-    {#if running || stats}
-        {@const phases = [
-            { id: "snapshot", icon: "📸", label: "Snapshot" },
-            { id: "clearing", icon: "🗑️", label: "Clear" },
-            {
-                id: "embedding",
-                icon: useT3 ? "🧠" : "🔗",
-                label: useT3 ? "Embed" : "Match",
-            },
-            { id: "matching_lastfm", icon: "lastfm", label: "Last.fm" },
-            { id: "matching_trakt", icon: "trakt", label: "Trakt" },
-            { id: "reclassifying", icon: "🏷️", label: "Reclassify" },
-            { id: "diffing", icon: "📊", label: "Diff" },
-        ]}
-        {@const phaseOrder = phases.map((p) => p.id)}
-        {@const currentIdx = phaseOrder.indexOf(currentPhase)}
-        <div class="card bg-base-200/50 border border-base-300">
-            <div class="card-body py-4">
+    <!-- Pipeline Phases -->
+    <div class="card bg-base-200/50 border border-base-300">
+        <div class="card-body py-4">
+            {#if running || stats}
+                {@const phases = [
+                    { id: "snapshot", icon: "📸", label: "Snapshot" },
+                    { id: "clearing", icon: "🗑️", label: "Clear" },
+                    {
+                        id: "embedding",
+                        icon: useT3 ? "🧠" : "🔗",
+                        label: useT3 ? "Embed" : "Match",
+                    },
+                    { id: "matching_lastfm", icon: "lastfm", label: "Last.fm" },
+                    { id: "matching_trakt", icon: "trakt", label: "Trakt" },
+                    { id: "reclassifying", icon: "🏷️", label: "Reclassify" },
+                    { id: "arr_sync", icon: "📥", label: "*arr" },
+                    { id: "diffing", icon: "📊", label: "Diff" },
+                ]}
+                {@const phaseOrder = phases.map((p) => p.id)}
+                {@const currentIdx = phaseOrder.indexOf(currentPhase)}
                 <ul class="steps steps-horizontal w-full text-xs">
                     {#each phases as phase, i}
                         <li
@@ -403,14 +425,17 @@
                             class:step-primary={i < currentIdx ||
                                 (!running && stats)}
                             class:step-info={i === currentIdx && running}
-                            data-content={i < currentIdx || (!running && stats)
-                                ? "✓"
-                                : i === currentIdx && running
-                                  ? "●"
-                                  : ""}
+                            class:opacity-40={skipPhases.includes(phase.id)}
+                            data-content={skipPhases.includes(phase.id)
+                                ? "—"
+                                : i < currentIdx || (!running && stats)
+                                  ? "✓"
+                                  : i === currentIdx && running
+                                    ? "●"
+                                    : ""}
                         >
                             <span
-                                class="hidden sm:inline flex items-center gap-1"
+                                class="hidden sm:inline-flex items-center gap-1 whitespace-nowrap"
                                 >{#if ["lastfm", "trakt", "tmdb", "musicbrainz"].includes(phase.icon)}<ServiceIcon
                                         service={phase.icon}
                                         size="w-4 h-4"
@@ -455,9 +480,45 @@
                         {/if}
                     </div>
                 {/if}
-            </div>
+            {:else}
+                <!-- Pre-run: show toggleable phases -->
+                <h3 class="font-semibold text-sm mb-3">Pipeline Phases</h3>
+                <p class="text-xs text-base-content/50 mb-3">
+                    Toggle off any phases you don't want to run.
+                </p>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {#each [{ id: "snapshot", icon: "📸", label: "Snapshot" }, { id: "clearing", icon: "🗑️", label: "Clear" }, { id: "embedding", icon: useT3 ? "🧠" : "🔗", label: useT3 ? "Embed" : "Match" }, { id: "matching_lastfm", icon: "lastfm", label: "Last.fm" }, { id: "matching_trakt", icon: "trakt", label: "Trakt" }, { id: "reclassifying", icon: "🏷️", label: "Reclassify" }, { id: "arr_sync", icon: "📥", label: "*arr" }, { id: "diffing", icon: "📊", label: "Diff" }] as phase}
+                        <label
+                            class="flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors
+                                {requiredPhases.includes(phase.id)
+                                ? 'border-base-300/30 opacity-50 cursor-not-allowed'
+                                : enabledPhases[phase.id]
+                                  ? 'border-primary/30 bg-primary/5 cursor-pointer'
+                                  : 'border-base-300 bg-base-300/20 opacity-60 cursor-pointer'}"
+                        >
+                            <input
+                                type="checkbox"
+                                class="toggle toggle-xs toggle-primary"
+                                bind:checked={enabledPhases[phase.id]}
+                                disabled={requiredPhases.includes(phase.id)}
+                            />
+                            <span class="flex items-center gap-1 text-xs">
+                                {#if ["lastfm", "trakt", "tmdb", "musicbrainz"].includes(phase.icon)}
+                                    <ServiceIcon
+                                        service={phase.icon}
+                                        size="w-3.5 h-3.5"
+                                    />
+                                {:else}
+                                    {phase.icon}
+                                {/if}
+                                {phase.label}
+                            </span>
+                        </label>
+                    {/each}
+                </div>
+            {/if}
         </div>
-    {/if}
+    </div>
 
     <!-- Console Log (right below progress for visibility) -->
     <LogConsole {logs} {running} title="Reconciliation Log" height="h-64" />
@@ -718,30 +779,45 @@
                                         >
                                         <td class="text-xs space-x-1">
                                             {#if item.musicbrainz_id}
-                                                <span
-                                                    class="badge badge-xs badge-info gap-0.5"
+                                                <a
+                                                    href="https://musicbrainz.org/artist/{item.musicbrainz_id}"
+                                                    target="_blank"
+                                                    rel="noopener"
+                                                    class="badge badge-xs badge-info gap-0.5 hover:brightness-125 transition-all"
                                                     ><ServiceIcon
                                                         service="musicbrainz"
                                                         size="w-3 h-3"
-                                                    />MB</span
+                                                    />MB</a
                                                 >
                                             {/if}
                                             {#if item.tmdb_id}
-                                                <span
-                                                    class="badge badge-xs badge-success gap-0.5"
+                                                <a
+                                                    href="https://www.themoviedb.org/{unmatchedType ===
+                                                    'movie'
+                                                        ? 'movie'
+                                                        : unmatchedType ===
+                                                            'show'
+                                                          ? 'tv'
+                                                          : 'movie'}/{item.tmdb_id}"
+                                                    target="_blank"
+                                                    rel="noopener"
+                                                    class="badge badge-xs badge-success gap-0.5 hover:brightness-125 transition-all"
                                                     ><ServiceIcon
                                                         service="tmdb"
                                                         size="w-3 h-3"
-                                                    />TMDB</span
+                                                    />TMDB</a
                                                 >
                                             {/if}
                                             {#if item.imdb_id}
-                                                <span
-                                                    class="badge badge-xs badge-warning gap-0.5"
+                                                <a
+                                                    href="https://www.imdb.com/title/{item.imdb_id}/"
+                                                    target="_blank"
+                                                    rel="noopener"
+                                                    class="badge badge-xs badge-warning gap-0.5 hover:brightness-125 transition-all"
                                                     ><ServiceIcon
                                                         service="imdb"
                                                         size="w-3 h-3"
-                                                    />IMDB</span
+                                                    />IMDB</a
                                                 >
                                             {/if}
                                             {#if !item.musicbrainz_id && !item.tmdb_id && !item.imdb_id}

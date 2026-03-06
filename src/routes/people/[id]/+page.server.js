@@ -31,6 +31,9 @@ export function load({ params, locals }) {
             mp.jellyfin_id,
             mp.tmdb_id,
             mp.imdb_id,
+            mp.collection_status,
+            mp.arr_has_file,
+            mp.arr_status,
             mc.watch_status,
             mc.play_count
         FROM person_credits pc

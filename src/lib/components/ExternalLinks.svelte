@@ -8,6 +8,12 @@
      *   tmdb_person_id?: string | null,
      *   imdb_person_id?: string | null,
      *   musicbrainz_artist_id?: string | null,
+     *   jellyfin_id?: string | null,
+     *   jellyfin_url?: string | null,
+     *   arr_slug?: string | null,
+     *   arr_url?: string | null,
+     *   arr_service?: 'radarr' | 'sonarr' | 'lidarr' | null,
+     *   trakt_slug?: string | null,
      *   mediaType?: 'movie' | 'show' | 'artist' | 'person' | 'album',
      *   class?: string
      * }}
@@ -20,14 +26,30 @@
         tmdb_person_id = null,
         imdb_person_id = null,
         musicbrainz_artist_id = null,
+        jellyfin_id = null,
+        jellyfin_url = null,
+        arr_slug = null,
+        arr_url = null,
+        arr_service = null,
+        trakt_slug = null,
         mediaType = "movie",
         class: className = "",
     } = $props();
 
     // Build links array
     const links = $derived.by(() => {
-        /** @type {{ label: string, url: string, icon: string }[]} */
+        /** @type {{ label: string, url: string, icon: string, color?: string }[]} */
         const result = [];
+
+        // Jellyfin
+        if (jellyfin_id && jellyfin_url) {
+            result.push({
+                label: "Jellyfin",
+                url: `${jellyfin_url}/web/index.html#!/details?id=${jellyfin_id}`,
+                icon: "🟦",
+                color: "text-[#00A4DC]",
+            });
+        }
 
         // TMDB
         const tmdb = tmdb_id || tmdb_person_id;
@@ -61,7 +83,7 @@
             const tvdbType = mediaType === "movie" ? "movies" : "series";
             result.push({
                 label: "TVDB",
-                url: `https://thetvdb.com/${tvdbType}/${tvdb_id}`,
+                url: `https://thetvdb.com/dereferrer/${tvdbType}/${tvdb_id}`,
                 icon: "📺",
             });
         }
@@ -75,6 +97,33 @@
                 url: `https://musicbrainz.org/${mbType}/${mb}`,
                 icon: "🎵",
             });
+        }
+
+        // Trakt
+        if (trakt_slug) {
+            const traktType = mediaType === "show" ? "shows" : "movies";
+            result.push({
+                label: "Trakt",
+                url: `https://trakt.tv/${traktType}/${trakt_slug}`,
+                icon: "🎯",
+            });
+        }
+
+        // *arr service
+        if (arr_slug && arr_url && arr_service) {
+            const arrConfig = {
+                radarr: { label: "Radarr", icon: "🎥", path: "movie" },
+                sonarr: { label: "Sonarr", icon: "📡", path: "series" },
+                lidarr: { label: "Lidarr", icon: "🎶", path: "artist" },
+            };
+            const cfg = arrConfig[arr_service];
+            if (cfg) {
+                result.push({
+                    label: cfg.label,
+                    url: `${arr_url}/${cfg.path}/${arr_slug}`,
+                    icon: cfg.icon,
+                });
+            }
         }
 
         return result;

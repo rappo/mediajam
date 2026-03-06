@@ -598,10 +598,32 @@ function findOrCreateExternal(info) {
         tmdbId, musicbrainzId, imdbId, seasonNumber, itemNumber,
         collectionStatus = 'watched_not_owned', parentId: existingParentId } = info;
 
-    // Use existing parent if provided, otherwise find/create by title
-    let parent = existingParentId ? { id: existingParentId } : /** @type {any} */ (db.prepare(
-        `SELECT id FROM media_parents WHERE title = ? AND media_type = ? ORDER BY jellyfin_id IS NOT NULL DESC, id ASC LIMIT 1`
-    ).get(parentTitle, mediaType));
+    // Use existing parent if provided
+    let parent = existingParentId ? { id: existingParentId } : null;
+
+    // Try matching by external IDs first (most reliable — prevents case-difference dupes)
+    if (!parent && musicbrainzId) {
+        parent = /** @type {any} */ (db.prepare(
+            `SELECT id FROM media_parents WHERE musicbrainz_id = ? AND media_type = ? ORDER BY jellyfin_id IS NOT NULL DESC, id ASC LIMIT 1`
+        ).get(musicbrainzId, mediaType));
+    }
+    if (!parent && tmdbId) {
+        parent = /** @type {any} */ (db.prepare(
+            `SELECT id FROM media_parents WHERE tmdb_id = ? AND media_type = ? ORDER BY jellyfin_id IS NOT NULL DESC, id ASC LIMIT 1`
+        ).get(String(tmdbId), mediaType));
+    }
+    if (!parent && imdbId) {
+        parent = /** @type {any} */ (db.prepare(
+            `SELECT id FROM media_parents WHERE imdb_id = ? AND media_type = ? ORDER BY jellyfin_id IS NOT NULL DESC, id ASC LIMIT 1`
+        ).get(String(imdbId), mediaType));
+    }
+
+    // Fall back to title match
+    if (!parent) {
+        parent = /** @type {any} */ (db.prepare(
+            `SELECT id FROM media_parents WHERE title = ? AND media_type = ? ORDER BY jellyfin_id IS NOT NULL DESC, id ASC LIMIT 1`
+        ).get(parentTitle, mediaType));
+    }
 
     if (!parent) {
         const result = db.prepare(`
@@ -609,20 +631,21 @@ function findOrCreateExternal(info) {
             VALUES (?, ?, ?, ?, ?, ?, ?)
         `).run(parentTitle, mediaType, collectionStatus, releaseYear || null,
             tmdbId || null, musicbrainzId || null, imdbId || null);
-        parent = { id: result.lastInsertRowid };
+        parent = { id: Number(result.lastInsertRowid) };
     }
 
     // Find or create child
+    const parentId = /** @type {number} */ (parent.id);
     const effectiveChildTitle = childTitle || parentTitle;
     let child = /** @type {any} */ (db.prepare(
         `SELECT id FROM media_children WHERE parent_id = ? AND title = ? AND COALESCE(season_number, 0) = ? AND COALESCE(item_number, 0) = ?`
-    ).get(parent.id, effectiveChildTitle, seasonNumber || 0, itemNumber || 0));
+    ).get(parentId, effectiveChildTitle, seasonNumber || 0, itemNumber || 0));
 
     if (!child) {
         const result = db.prepare(`
             INSERT INTO media_children (parent_id, title, is_collected, season_number, item_number)
             VALUES (?, ?, 0, ?, ?)
-        `).run(parent.id, effectiveChildTitle, seasonNumber || null, itemNumber || null);
+        `).run(parentId, effectiveChildTitle, seasonNumber || null, itemNumber || null);
         child = { id: result.lastInsertRowid };
     }
 
@@ -686,11 +709,12 @@ const insertHistory = db.prepare(`
  * 6. Generate diff report
  *
  * @param {number} userId
- * @param {{useT3?: boolean}} [options]
+ * @param {{useT3?: boolean, skipPhases?: string[]}} [options]
  * @returns {Promise<{success: boolean, stats: any, diff: any}>}
  */
 export async function runFullReconciliation(userId, options = {}) {
-    const { useT3 = false } = options;
+    const { useT3 = false, skipPhases = [] } = options;
+    const shouldSkip = (/** @type {string} */ phase) => skipPhases.includes(phase);
     if (reconcileState.running) {
         throw new Error('Reconciliation already running');
     }
@@ -770,7 +794,9 @@ export async function runFullReconciliation(userId, options = {}) {
         updateRun(runId, 'running', 'clearing', stats);
 
         let hasOllama = false;
-        if (useT3) {
+        if (shouldSkip('embedding')) {
+            broadcast({ type: 'reconcile_progress', phase: 'embedding', log: `⏭️ Embedding/Match skipped by user`, logType: 'info' });
+        } else if (useT3) {
             reconcileState.phase = 'embedding';
             const ollamaHealth = await healthCheck();
             hasOllama = ollamaHealth.ok;
@@ -793,230 +819,284 @@ export async function runFullReconciliation(userId, options = {}) {
         updateRun(runId, 'running', 'embedding', stats);
 
         // ── Phase 4: Re-match Last.fm ───────────────────────────────────
-        reconcileState.phase = 'matching_lastfm';
-        const scrobbles = /** @type {any[]} */ (db.prepare(
-            `SELECT * FROM lastfm_scrobbles WHERE user_id = ? ORDER BY timestamp_uts ASC`
-        ).all(userId));
-        stats.lastfm.total = scrobbles.length;
+        if (shouldSkip('matching_lastfm')) {
+            broadcast({ type: 'reconcile_progress', phase: 'matching_lastfm', log: `⏭️ Last.fm matching skipped by user`, logType: 'info' });
+        } else {
+            reconcileState.phase = 'matching_lastfm';
+            const scrobbles = /** @type {any[]} */ (db.prepare(
+                `SELECT * FROM lastfm_scrobbles WHERE user_id = ? ORDER BY timestamp_uts ASC`
+            ).all(userId));
+            stats.lastfm.total = scrobbles.length;
 
-        broadcast({
-            type: 'reconcile_progress', phase: 'matching_lastfm',
-            log: `🎵 Matching ${scrobbles.length} Last.fm scrobbles...`, logType: 'info'
-        });
-
-        // Cache artist matches to avoid re-querying (artist name → match result)
-        /** @type {Map<string, Awaited<ReturnType<typeof matchArtist>>>} */
-        const artistCache = new Map();
-
-        for (let i = 0; i < scrobbles.length; i++) {
-            const s = scrobbles[i];
-            const cacheKey = `${s.artist_name}::${s.artist_mbid || ''}`;
-            let artistMatch = artistCache.get(cacheKey);
-
-            if (artistMatch === undefined) {
-                artistMatch = await matchArtist(s.artist_name, s.artist_mbid, hasOllama);
-                artistCache.set(cacheKey, artistMatch);
-            }
-
-            let mediaId = null;
-            if (artistMatch) {
-                // Found the artist — now find the specific album/child
-                mediaId = matchChild(artistMatch.matchedId, s.album_name, s.track_name);
-                if (mediaId) {
-                    stats.lastfm[`tier${artistMatch.tier}`]++;
-                    stats.lastfm.matched++;
-                }
-            }
-
-            // No match → create external
-            if (!mediaId) {
-                try {
-                    mediaId = findOrCreateExternal({
-                        mediaType: 'artist',
-                        parentTitle: s.artist_name,
-                        childTitle: s.album_name || s.track_name || s.artist_name,
-                        musicbrainzId: s.artist_mbid || undefined,
-                        parentId: artistMatch ? artistMatch.matchedId : undefined
-                    });
-                    stats.lastfm.external++;
-                } catch { /* skip */ }
-            }
-
-            if (!mediaId) {
-                stats.lastfm.skipped++;
-                continue;
-            }
-
-            // Track-level dedup: same artist + track within 10 min = pause/resume duplicate
-            const timestampMs = s.timestamp_uts * 1000;
-            if (isTrackDuplicate(s.artist_name, s.track_name || '', timestampMs)) {
-                stats.lastfm.consolidated++;
-                continue;
-            }
-
-            const externalEventId = `lastfm:${s.artist_name}:${s.track_name}:${s.timestamp_uts}`;
-            const result = insertHistory.run({
-                userId, mediaId, source: 'lastfm',
-                timestamp: s.timestamp,
-                durationSeconds: null, completionPct: 100,
-                externalEventId, trackName: s.track_name || null
+            broadcast({
+                type: 'reconcile_progress', phase: 'matching_lastfm',
+                log: `🎵 Matching ${scrobbles.length} Last.fm scrobbles...`, logType: 'info'
             });
 
-            if (result.changes > 0) {
-                trackSessionTracker.set(`${s.artist_name}::${s.track_name || ''}`, timestampMs);
-            }
+            // Cache artist matches to avoid re-querying (artist name → match result)
+            /** @type {Map<string, Awaited<ReturnType<typeof matchArtist>>>} */
+            const artistCache = new Map();
 
-            // Progress updates every 1000
-            if ((i + 1) % 1000 === 0 || i === scrobbles.length - 1) {
-                broadcast({
-                    type: 'reconcile_progress', phase: 'matching_lastfm',
-                    done: i + 1, total: scrobbles.length,
-                    log: `🎵 ${i + 1}/${scrobbles.length} scrobbles — ${stats.lastfm.matched} matched, ${stats.lastfm.external} external`,
-                    logType: 'info', stats: { ...stats.lastfm }
+            for (let i = 0; i < scrobbles.length; i++) {
+                const s = scrobbles[i];
+                const cacheKey = `${s.artist_name}::${s.artist_mbid || ''}`;
+                let artistMatch = artistCache.get(cacheKey);
+
+                if (artistMatch === undefined) {
+                    artistMatch = await matchArtist(s.artist_name, s.artist_mbid, hasOllama);
+                    artistCache.set(cacheKey, artistMatch);
+                }
+
+                let mediaId = null;
+                if (artistMatch) {
+                    // Found the artist — now find the specific album/child
+                    mediaId = matchChild(artistMatch.matchedId, s.album_name, s.track_name);
+                    if (mediaId) {
+                        stats.lastfm[`tier${artistMatch.tier}`]++;
+                        stats.lastfm.matched++;
+                    }
+                }
+
+                // No match → create external
+                if (!mediaId) {
+                    try {
+                        mediaId = findOrCreateExternal({
+                            mediaType: 'artist',
+                            parentTitle: s.artist_name,
+                            childTitle: s.album_name || s.track_name || s.artist_name,
+                            musicbrainzId: s.artist_mbid || undefined,
+                            parentId: artistMatch ? artistMatch.matchedId : undefined
+                        });
+                        stats.lastfm.external++;
+                    } catch { /* skip */ }
+                }
+
+                if (!mediaId) {
+                    stats.lastfm.skipped++;
+                    continue;
+                }
+
+                // Track-level dedup: same artist + track within 10 min = pause/resume duplicate
+                const timestampMs = s.timestamp_uts * 1000;
+                if (isTrackDuplicate(s.artist_name, s.track_name || '', timestampMs)) {
+                    stats.lastfm.consolidated++;
+                    continue;
+                }
+
+                const externalEventId = `lastfm:${s.artist_name}:${s.track_name}:${s.timestamp_uts}`;
+                const result = insertHistory.run({
+                    userId, mediaId, source: 'lastfm',
+                    timestamp: s.timestamp,
+                    durationSeconds: null, completionPct: 100,
+                    externalEventId, trackName: s.track_name || null
                 });
-                updateRun(runId, 'running', 'matching_lastfm', stats, JSON.stringify({ lastProcessedIndex: i }));
-            }
 
-            // Yield event loop every 100 iterations so SSE events can flush
-            if ((i + 1) % 100 === 0) {
-                await new Promise(r => setTimeout(r, 0));
-                // Check for stop request
-                if (!reconcileState.running) {
-                    broadcast({ type: 'reconcile_progress', log: '⏹️ Stopped by user', logType: 'warning' });
-                    break;
+                if (result.changes > 0) {
+                    trackSessionTracker.set(`${s.artist_name}::${s.track_name || ''}`, timestampMs);
+                }
+
+                // Progress updates every 1000
+                if ((i + 1) % 1000 === 0 || i === scrobbles.length - 1) {
+                    broadcast({
+                        type: 'reconcile_progress', phase: 'matching_lastfm',
+                        done: i + 1, total: scrobbles.length,
+                        log: `🎵 ${i + 1}/${scrobbles.length} scrobbles — ${stats.lastfm.matched} matched, ${stats.lastfm.external} external`,
+                        logType: 'info', stats: { ...stats.lastfm }
+                    });
+                    updateRun(runId, 'running', 'matching_lastfm', stats, JSON.stringify({ lastProcessedIndex: i }));
+                }
+
+                // Yield event loop every 100 iterations so SSE events can flush
+                if ((i + 1) % 100 === 0) {
+                    await new Promise(r => setTimeout(r, 0));
+                    // Check for stop request
+                    if (!reconcileState.running) {
+                        broadcast({ type: 'reconcile_progress', log: '⏹️ Stopped by user', logType: 'warning' });
+                        break;
+                    }
                 }
             }
-        }
 
-        await new Promise(r => setTimeout(r, 0)); // flush final Last.fm progress
-        broadcast({
-            type: 'reconcile_progress', phase: 'matching_lastfm',
-            log: `✅ Last.fm: ${stats.lastfm.matched} matched (T0:${stats.lastfm.tier0} T1:${stats.lastfm.tier1} T2:${stats.lastfm.tier2} T3:${stats.lastfm.tier3}), ${stats.lastfm.external} external, ${stats.lastfm.consolidated} consolidated`,
-            logType: 'success'
-        });
+            await new Promise(r => setTimeout(r, 0)); // flush final Last.fm progress
+            broadcast({
+                type: 'reconcile_progress', phase: 'matching_lastfm',
+                log: `✅ Last.fm: ${stats.lastfm.matched} matched (T0:${stats.lastfm.tier0} T1:${stats.lastfm.tier1} T2:${stats.lastfm.tier2} T3:${stats.lastfm.tier3}), ${stats.lastfm.external} external, ${stats.lastfm.consolidated} consolidated`,
+                logType: 'success'
+            });
+        } // end if !shouldSkip('matching_lastfm')
 
         // ── Phase 5: Re-match Trakt ─────────────────────────────────────
-        reconcileState.phase = 'matching_trakt';
-        sessionTracker.clear();
-        const traktHistory = /** @type {any[]} */ (db.prepare(
-            `SELECT * FROM trakt_history WHERE user_id = ? ORDER BY watched_at ASC`
-        ).all(userId));
-        stats.trakt.total = traktHistory.length;
+        if (shouldSkip('matching_trakt')) {
+            broadcast({ type: 'reconcile_progress', phase: 'matching_trakt', log: `⏭️ Trakt matching skipped by user`, logType: 'info' });
+        } else {
+            reconcileState.phase = 'matching_trakt';
+            sessionTracker.clear();
+            const traktHistory = /** @type {any[]} */ (db.prepare(
+                `SELECT * FROM trakt_history WHERE user_id = ? ORDER BY watched_at ASC`
+            ).all(userId));
+            stats.trakt.total = traktHistory.length;
 
-        broadcast({
-            type: 'reconcile_progress', phase: 'matching_trakt',
-            log: `🎬 Matching ${traktHistory.length} Trakt history records...`, logType: 'info'
-        });
-
-        for (let i = 0; i < traktHistory.length; i++) {
-            const row = traktHistory[i];
-            let mediaId = null;
-
-            if (row.type === 'movie') {
-                const movieMatch = await matchMovie(row.title, row.year, row.tmdb_id, row.imdb_id, hasOllama);
-                if (movieMatch) {
-                    mediaId = matchChild(movieMatch.matchedId, row.title);
-                    if (mediaId) {
-                        stats.trakt[`tier${movieMatch.tier}`]++;
-                        stats.trakt.matched++;
-                    }
-                }
-                if (!mediaId) {
-                    try {
-                        mediaId = findOrCreateExternal({
-                            mediaType: 'movie', parentTitle: row.title || 'Unknown Movie',
-                            releaseYear: row.year, tmdbId: row.tmdb_id, imdbId: row.imdb_id
-                        });
-                        stats.trakt.external++;
-                    } catch { /* */ }
-                }
-            } else if (row.type === 'episode') {
-                const showMatch = await matchShow(row.show_title, row.tmdb_id, row.imdb_id, hasOllama);
-                if (showMatch) {
-                    mediaId = matchEpisode(showMatch.matchedId, row.season_number, row.episode_number, row.title);
-                    if (mediaId) {
-                        stats.trakt[`tier${showMatch.tier}`]++;
-                        stats.trakt.matched++;
-                    }
-                }
-                if (!mediaId) {
-                    try {
-                        mediaId = findOrCreateExternal({
-                            mediaType: 'show', parentTitle: row.show_title || 'Unknown Show',
-                            childTitle: row.title || `S${row.season_number}E${row.episode_number}`,
-                            tmdbId: row.tmdb_id, imdbId: row.imdb_id,
-                            seasonNumber: row.season_number, itemNumber: row.episode_number
-                        });
-                        stats.trakt.external++;
-                    } catch { /* */ }
-                }
-            }
-
-            if (!mediaId) {
-                stats.trakt.skipped++;
-                continue;
-            }
-
-            // Session consolidation
-            const watchedAt = new Date(row.watched_at).getTime();
-            if (isWithinSession(mediaId, watchedAt)) {
-                stats.trakt.consolidated++;
-                continue;
-            }
-
-            const result = insertHistory.run({
-                userId, mediaId, source: 'trakt',
-                timestamp: row.watched_at,
-                durationSeconds: null, completionPct: 100,
-                externalEventId: `trakt:${row.trakt_id}`,
-                trackName: row.title || null
+            broadcast({
+                type: 'reconcile_progress', phase: 'matching_trakt',
+                log: `🎬 Matching ${traktHistory.length} Trakt history records...`, logType: 'info'
             });
 
-            if (result.changes > 0) {
-                sessionTracker.set(mediaId, watchedAt);
-            }
+            for (let i = 0; i < traktHistory.length; i++) {
+                const row = traktHistory[i];
+                let mediaId = null;
 
-            // Progress every 500
-            if ((i + 1) % 500 === 0 || i === traktHistory.length - 1) {
-                broadcast({
-                    type: 'reconcile_progress', phase: 'matching_trakt',
-                    done: i + 1, total: traktHistory.length,
-                    log: `🎬 ${i + 1}/${traktHistory.length} — ${stats.trakt.matched} matched, ${stats.trakt.external} external`,
-                    logType: 'info', stats: { ...stats.trakt }
+                if (row.type === 'movie') {
+                    const movieMatch = await matchMovie(row.title, row.year, row.tmdb_id, row.imdb_id, hasOllama);
+                    if (movieMatch) {
+                        mediaId = matchChild(movieMatch.matchedId, row.title);
+                        if (mediaId) {
+                            stats.trakt[`tier${movieMatch.tier}`]++;
+                            stats.trakt.matched++;
+                        }
+                    }
+                    if (!mediaId) {
+                        try {
+                            mediaId = findOrCreateExternal({
+                                mediaType: 'movie', parentTitle: row.title || 'Unknown Movie',
+                                releaseYear: row.year, tmdbId: row.tmdb_id, imdbId: row.imdb_id
+                            });
+                            stats.trakt.external++;
+                        } catch { /* */ }
+                    }
+                } else if (row.type === 'episode') {
+                    const showMatch = await matchShow(row.show_title, row.tmdb_id, row.imdb_id, hasOllama);
+                    if (showMatch) {
+                        mediaId = matchEpisode(showMatch.matchedId, row.season_number, row.episode_number, row.title);
+                        if (mediaId) {
+                            stats.trakt[`tier${showMatch.tier}`]++;
+                            stats.trakt.matched++;
+                        }
+                    }
+                    if (!mediaId) {
+                        try {
+                            mediaId = findOrCreateExternal({
+                                mediaType: 'show', parentTitle: row.show_title || 'Unknown Show',
+                                childTitle: row.title || `S${row.season_number}E${row.episode_number}`,
+                                tmdbId: row.tmdb_id, imdbId: row.imdb_id,
+                                seasonNumber: row.season_number, itemNumber: row.episode_number
+                            });
+                            stats.trakt.external++;
+                        } catch { /* */ }
+                    }
+                }
+
+                if (!mediaId) {
+                    stats.trakt.skipped++;
+                    continue;
+                }
+
+                // Session consolidation
+                const watchedAt = new Date(row.watched_at).getTime();
+                if (isWithinSession(mediaId, watchedAt)) {
+                    stats.trakt.consolidated++;
+                    continue;
+                }
+
+                const result = insertHistory.run({
+                    userId, mediaId, source: 'trakt',
+                    timestamp: row.watched_at,
+                    durationSeconds: null, completionPct: 100,
+                    externalEventId: `trakt:${row.trakt_id}`,
+                    trackName: row.title || null
                 });
-                updateRun(runId, 'running', 'matching_trakt', stats, JSON.stringify({ lastProcessedIndex: i }));
-            }
 
-            // Yield event loop every 100 iterations so SSE events can flush
-            if ((i + 1) % 100 === 0) {
-                await new Promise(r => setTimeout(r, 0));
-                if (!reconcileState.running) {
-                    broadcast({ type: 'reconcile_progress', log: '⏹️ Stopped by user', logType: 'warning' });
-                    break;
+                if (result.changes > 0) {
+                    sessionTracker.set(mediaId, watchedAt);
+                }
+
+                // Progress every 500
+                if ((i + 1) % 500 === 0 || i === traktHistory.length - 1) {
+                    broadcast({
+                        type: 'reconcile_progress', phase: 'matching_trakt',
+                        done: i + 1, total: traktHistory.length,
+                        log: `🎬 ${i + 1}/${traktHistory.length} — ${stats.trakt.matched} matched, ${stats.trakt.external} external`,
+                        logType: 'info', stats: { ...stats.trakt }
+                    });
+                    updateRun(runId, 'running', 'matching_trakt', stats, JSON.stringify({ lastProcessedIndex: i }));
+                }
+
+                // Yield event loop every 100 iterations so SSE events can flush
+                if ((i + 1) % 100 === 0) {
+                    await new Promise(r => setTimeout(r, 0));
+                    if (!reconcileState.running) {
+                        broadcast({ type: 'reconcile_progress', log: '⏹️ Stopped by user', logType: 'warning' });
+                        break;
+                    }
                 }
             }
-        }
 
-        await new Promise(r => setTimeout(r, 0)); // flush final Trakt progress
-        broadcast({
-            type: 'reconcile_progress', phase: 'matching_trakt',
-            log: `✅ Trakt: ${stats.trakt.matched} matched (T0:${stats.trakt.tier0} T1:${stats.trakt.tier1} T2:${stats.trakt.tier2} T3:${stats.trakt.tier3}), ${stats.trakt.external} external, ${stats.trakt.consolidated} consolidated`,
-            logType: 'success'
-        });
+            await new Promise(r => setTimeout(r, 0)); // flush final Trakt progress
+            broadcast({
+                type: 'reconcile_progress', phase: 'matching_trakt',
+                log: `✅ Trakt: ${stats.trakt.matched} matched (T0:${stats.trakt.tier0} T1:${stats.trakt.tier1} T2:${stats.trakt.tier2} T3:${stats.trakt.tier3}), ${stats.trakt.external} external, ${stats.trakt.consolidated} consolidated`,
+                logType: 'success'
+            });
+
+        } // end if !shouldSkip('matching_trakt')
 
         // ── Phase 6: Reclassify externals ────────────────────────────────
         await new Promise(r => setTimeout(r, 0)); // yield so Trakt results flush
-        reconcileState.phase = 'reclassifying';
-        const reclassified = db.prepare(`
+        if (shouldSkip('reclassifying')) {
+            broadcast({ type: 'reconcile_progress', phase: 'reclassifying', log: `⏭️ Reclassify skipped by user`, logType: 'info' });
+        } else {
+            reconcileState.phase = 'reclassifying';
+            const reclassified = db.prepare(`
             UPDATE media_parents SET collection_status = 'watched_not_owned'
             WHERE jellyfin_id IS NULL AND collection_status = 'external'
         `).run();
-        broadcast({
-            type: 'reconcile_progress', phase: 'reclassifying',
-            log: `🏷️ Reclassified ${reclassified.changes} external items to 'watched_not_owned'`, logType: 'info'
-        });
+            broadcast({
+                type: 'reconcile_progress', phase: 'reclassifying',
+                log: `🏷️ Reclassified ${reclassified.changes} external items to 'watched_not_owned'`, logType: 'info'
+            });
 
-        // ── Phase 7: Diff report ────────────────────────────────────────
+            // Dedup passes (external-ID, title, children, playback history)
+            const { deduplicateParents, deduplicateParentsByTitle, deduplicateChildren, deduplicatePlaybackHistory, mergeOrphanArtistsIntoAlbums } = await import('$lib/server/reconcile.js');
+            const dedupResult = deduplicateParents();
+            const titleDedup = deduplicateParentsByTitle();
+            const childDedup = deduplicateChildren();
+            const historyDedup = deduplicatePlaybackHistory();
+            const orphanMerge = mergeOrphanArtistsIntoAlbums();
+            const totalDeduped = dedupResult.deduped + titleDedup.deduped;
+            const totalHistMoved = dedupResult.historyMoved + titleDedup.historyMoved + childDedup.historyMoved + orphanMerge.historyMoved;
+            broadcast({
+                type: 'reconcile_progress', phase: 'reclassifying',
+                log: `🧹 Dedup: ${totalDeduped} parents merged, ${childDedup.deduped} children merged, ${orphanMerge.merged} orphan artists→albums, ${historyDedup.removed} duplicate plays removed, ${totalHistMoved} history entries migrated`,
+                logType: totalDeduped > 0 || childDedup.deduped > 0 || orphanMerge.merged > 0 ? 'success' : 'info'
+            });
+
+        } // end if !shouldSkip('reclassifying')
+
+        // ── Phase 7b: *arr Sync ─────────────────────────────────────────
+        await new Promise(r => setTimeout(r, 0)); // yield so reclassify results flush
+        if (shouldSkip('arr_sync')) {
+            broadcast({ type: 'reconcile_progress', phase: 'arr_sync', log: `⏭️ *arr sync skipped by user`, logType: 'info' });
+        } else {
+            reconcileState.phase = 'arr_sync';
+            broadcast({ type: 'reconcile_progress', phase: 'arr_sync', log: '📥 Syncing *arr services...', logType: 'info' });
+
+            try {
+                const { syncAllArr } = await import('$lib/server/arr-sync.js');
+                const arrResult = await syncAllArr();
+                const arrParts = [];
+                for (const [svc, r] of Object.entries(arrResult.results)) {
+                    arrParts.push(`${svc}: ${r.matched} matched${r.created ? ` + ${r.created} created` : ''} / ${r.total}`);
+                }
+                if (arrParts.length > 0) {
+                    broadcast({ type: 'reconcile_progress', phase: 'arr_sync', log: `📥 *arr: ${arrParts.join(', ')}`, logType: 'success' });
+                } else {
+                    broadcast({ type: 'reconcile_progress', phase: 'arr_sync', log: '📥 No *arr services configured — skipping', logType: 'info' });
+                }
+            } catch (arrErr) {
+                const arrMsg = arrErr instanceof Error ? arrErr.message : String(arrErr);
+                broadcast({ type: 'reconcile_progress', phase: 'arr_sync', log: `⚠️ *arr sync error: ${arrMsg}`, logType: 'warning' });
+                logError('reconcile', `arr-sync failed: ${arrMsg}`);
+            }
+        } // end if !shouldSkip('arr_sync')
         await new Promise(r => setTimeout(r, 0)); // yield so reclassify results flush
         reconcileState.phase = 'diffing';
         broadcast({ type: 'reconcile_progress', phase: 'diffing', log: '📊 Generating diff report...', logType: 'info' });

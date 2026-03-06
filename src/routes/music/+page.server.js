@@ -60,6 +60,7 @@ export function load({ locals, url }) {
             mp.collection_status,
             mp.collected_children as album_count,
             mp.total_released_children,
+            mp.arr_status,
             mp.musicbrainz_id,
             COALESCE(pc.play_count, 0) as total_plays,
             CASE WHEN mp.total_released_children > 0

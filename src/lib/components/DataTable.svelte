@@ -5,7 +5,8 @@
      *   data: Array<any>,
      *   searchKey?: string,
      *   pageSize?: number,
-     *   hideCollectedKey?: string
+     *   hideCollectedKey?: string,
+     *   rowClass?: (row: any) => string
      * }}
      */
     let {
@@ -14,6 +15,7 @@
         searchKey = "title",
         pageSize = 25,
         hideCollectedKey = "",
+        rowClass = () => "",
     } = $props();
 
     let search = $state("");
@@ -141,7 +143,11 @@
             </thead>
             <tbody>
                 {#each pagedData() as row, i}
-                    <tr class="hover:bg-base-300/20 transition-colors">
+                    <tr
+                        class="hover:bg-base-300/20 transition-colors {rowClass(
+                            row,
+                        )}"
+                    >
                         {#each columns as col}
                             <td class={col.class || ""}>
                                 {#if col.render}

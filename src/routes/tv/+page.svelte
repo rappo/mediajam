@@ -222,6 +222,13 @@
             },
         },
     ];
+
+    /** @param {any} row */
+    function rowClass(row) {
+        if (row.collection_status !== "wanted") return "";
+        const upcoming = ["continuing"].includes(row.arr_status);
+        return upcoming ? "arr-upcoming" : "arr-missing";
+    }
 </script>
 
 <svelte:head>
@@ -300,6 +307,16 @@
             searchKey="title"
             pageSize={25}
             hideCollectedKey="collection_pct"
+            {rowClass}
         />
     </div>
 </div>
+
+<style>
+    :global(.arr-missing) {
+        border-left: 3px dashed rgba(239, 68, 68, 0.8);
+    }
+    :global(.arr-upcoming) {
+        border-left: 3px dashed oklch(0.8 0.15 75);
+    }
+</style>

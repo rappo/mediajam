@@ -37,7 +37,13 @@ export function load({ locals }) {
             mp.imdb_id,
             mp.collected_children,
             mp.total_released_children,
-            CASE WHEN COALESCE(ps.watch_count, 0) > 0 THEN 'watched' ELSE mc.watch_status END as watch_status,
+            mp.collection_status,
+            mp.arr_status,
+            CASE
+                WHEN mp.collection_status = 'wanted' THEN 'wanted'
+                WHEN COALESCE(ps.watch_count, 0) > 0 THEN 'watched'
+                ELSE mc.watch_status
+            END as watch_status,
             COALESCE(ps.watch_count, 0) as play_count,
             ROUND(mc.runtime_ticks / 10000000.0 / 60, 0) as runtime_minutes,
             COALESCE(ps.watch_count, 0) as watch_count,

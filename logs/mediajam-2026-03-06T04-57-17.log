@@ -1,0 +1,7 @@
+[2026-03-06T04:57:17.251Z] Mediajam logger started (session: 2026-03-06T04-57-17, dev: true)
+[2026-03-06T04:57:22.672Z] [INFO] [arr-sync] On-demand sync started: lidarr
+[2026-03-06T04:57:24.322Z] [ERROR] [arr-sync] lidarr failed: FOREIGN KEY constraint failed
+[2026-03-06T04:57:24.322Z] [INFO] [arr-sync] On-demand sync complete
+[2026-03-06T05:00:38.684Z] [INFO] [arr-sync] On-demand sync started: lidarr
+[2026-03-06T05:00:41.991Z] [ERROR] [arr-sync] lidarr failed: FOREIGN KEY constraint failed
+[2026-03-06T05:00:41.991Z] [INFO] [arr-sync] On-demand sync complete

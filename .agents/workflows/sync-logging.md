@@ -4,7 +4,24 @@ description: All sync operations must have SSE streaming and console logging
 
 # Sync Logging Rule
 
-Every sync operation (Jellyfin sync, People sync, MusicBrainz enrichment, External IDs backfill, Trakt/Last.fm sync, backfill engine) **MUST** implement:
+Every sync operation (Jellyfin sync, People sync, MusicBrainz enrichment, External IDs backfill, Trakt/Last.fm sync, backfill engine, *arr sync) **MUST** implement:
+
+## MANDATORY: Use LogConsole Component
+
+**ALL log/streaming output in the UI MUST use `<LogConsole>` from `$lib/components/LogConsole.svelte`.**
+Never create custom inline log divs with manual styling. The LogConsole component provides:
+
+- Auto-scroll with follow toggle
+- Error-only filter
+- Copy all button
+- Loading indicator
+- Consistent styling
+
+```svelte
+<LogConsole logs={myLogs} running={isRunning} title="My Sync Log" height="h-48" />
+```
+
+Logs must be `{ time: string, message: string, type: 'info'|'success'|'error'|'warning' }[]`.
 
 ## Required for ALL Syncs
 
@@ -25,6 +42,7 @@ Every sync operation (Jellyfin sync, People sync, MusicBrainz enrichment, Extern
 - Server-side SSE streams must clean up listeners and intervals in `cancel()`
 - Never open duplicate SSE connections to the same endpoint from different components
 - Use the closure pattern for cleanup:
+
   ```js
   let cleanupFn = null;
   const stream = new ReadableStream({

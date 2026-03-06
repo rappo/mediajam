@@ -1,4 +1,5 @@
-import { reconcileExternalMedia, deduplicateParents, deduplicateChildren, deduplicateParentsByTitle } from '$lib/server/reconcile.js';
+import { reconcileExternalMedia, deduplicateParents, deduplicateChildren, deduplicateParentsByTitle, deduplicatePlaybackHistory } from '$lib/server/reconcile.js';
+import { syncAllArr } from '$lib/server/arr-sync.js';
 import db from '$lib/server/db.js';
 import { json } from '@sveltejs/kit';
 
@@ -17,11 +18,26 @@ export async function POST({ locals }) {
         const dedupResult = deduplicateParents();
         const childDedup = deduplicateChildren();
         const titleDedup = deduplicateParentsByTitle();
-        const summary = `${result.merged} merged, ${result.deleted} orphans, ${dedupResult.deduped + titleDedup.deduped} deduped parents, ${childDedup.deduped} deduped children`;
+        const historyDedup = deduplicatePlaybackHistory();
+
+        // Sync *arr services
+        let arrSummary = '';
+        try {
+            const arrResult = await syncAllArr();
+            const arrParts = [];
+            for (const [svc, r] of Object.entries(arrResult.results)) {
+                arrParts.push(`${svc}: ${r.matched} matched${r.created ? ` + ${r.created} created` : ''} / ${r.total}`);
+            }
+            if (arrParts.length > 0) arrSummary = `, arr: ${arrParts.join(', ')}`;
+        } catch (e) {
+            console.error('[reconcile] arr-sync error:', e);
+        }
+
+        const summary = `${result.merged} merged, ${result.deleted} orphans, ${dedupResult.deduped + titleDedup.deduped} deduped parents, ${childDedup.deduped} deduped children, ${historyDedup.removed} duplicate plays removed${arrSummary}`;
         console.log(`[reconcile] Manual: ${summary}`);
         db.prepare('UPDATE sync_history SET status = ?, finished_at = ?, summary = ? WHERE id = ?')
             .run('success', new Date().toISOString(), summary, histId);
-        return json({ success: true, ...result, ...dedupResult, titleDeduped: titleDedup.deduped, childrenDeduped: childDedup.deduped, childHistoryMoved: childDedup.historyMoved });
+        return json({ success: true, ...result, ...dedupResult, titleDeduped: titleDedup.deduped, childrenDeduped: childDedup.deduped, childHistoryMoved: childDedup.historyMoved, historyDupsRemoved: historyDedup.removed });
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         db.prepare('UPDATE sync_history SET status = ?, finished_at = ?, summary = ? WHERE id = ?')

@@ -305,6 +305,13 @@ const newAppCols = [
     ['sonarr_api_key', 'TEXT'],
     ['lidarr_url', 'TEXT'],
     ['lidarr_api_key', 'TEXT'],
+    ['radarr_quality_profile_id', 'INTEGER'],
+    ['radarr_root_folder', 'TEXT'],
+    ['sonarr_quality_profile_id', 'INTEGER'],
+    ['sonarr_root_folder', 'TEXT'],
+    ['lidarr_quality_profile_id', 'INTEGER'],
+    ['lidarr_metadata_profile_id', 'INTEGER'],
+    ['lidarr_root_folder', 'TEXT'],
 ];
 for (const [col, type] of newAppCols) {
     if (!existingCols.has(col)) {
@@ -335,11 +342,84 @@ const arrParentCols = [
     ['lidarr_id', 'INTEGER'],
     ['arr_monitored', 'INTEGER DEFAULT 0'],
     ['arr_quality_profile', 'TEXT'],
+    ['arr_has_file', 'INTEGER'],
+    ['arr_status', 'TEXT'],
+    ['arr_slug', 'TEXT'],
 ];
 for (const [col, type] of arrParentCols) {
     if (!mediaParentsCols.has(col)) {
         db.exec(`ALTER TABLE media_parents ADD COLUMN ${col} ${type}`);
     }
+}
+
+// -- Unique external-ID constraints (dedup existing data first) --
+const hasUniqueIdx = /** @type {any} */ (db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='index' AND name='uq_media_parents_musicbrainz'"
+).get());
+
+if (!hasUniqueIdx) {
+    // Temporarily disable FK checks for migration
+    db.pragma('foreign_keys = OFF');
+
+    // Dedup existing data before adding constraints
+    for (const col of ['musicbrainz_id', 'tmdb_id', 'imdb_id']) {
+        const dupes = /** @type {any[]} */ (db.prepare(`
+            SELECT ${col} as extId, media_type, GROUP_CONCAT(id) as ids
+            FROM media_parents
+            WHERE ${col} IS NOT NULL AND ${col} != ''
+            GROUP BY ${col}, media_type
+            HAVING COUNT(*) > 1
+        `).all());
+
+        if (dupes.length > 0) {
+            db.transaction(() => {
+                for (const group of dupes) {
+                    const ids = group.ids.split(',').map(Number);
+                    // Prefer entry with jellyfin_id, then highest id
+                    const rows = /** @type {any[]} */ (db.prepare(
+                        `SELECT id, jellyfin_id FROM media_parents WHERE id IN (${ids.join(',')})`
+                    ).all());
+                    rows.sort((a, b) => {
+                        const aJ = a.jellyfin_id ? 1 : 0;
+                        const bJ = b.jellyfin_id ? 1 : 0;
+                        if (aJ !== bJ) return bJ - aJ;
+                        return b.id - a.id;
+                    });
+                    const keepId = rows[0].id;
+                    const keepChild = /** @type {any} */ (db.prepare(
+                        'SELECT id FROM media_children WHERE parent_id = ? LIMIT 1'
+                    ).get(keepId));
+
+                    for (const row of rows.slice(1)) {
+                        const staleId = row.id;
+                        const staleChildren = /** @type {any[]} */ (db.prepare(
+                            'SELECT id FROM media_children WHERE parent_id = ?'
+                        ).all(staleId));
+                        for (const sc of staleChildren) {
+                            if (keepChild) {
+                                db.prepare('UPDATE playback_history SET media_id = ? WHERE media_id = ?').run(keepChild.id, sc.id);
+                            } else {
+                                db.prepare('DELETE FROM playback_history WHERE media_id = ?').run(sc.id);
+                            }
+                        }
+                        db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?').run(staleId);
+                        db.prepare('DELETE FROM media_children WHERE parent_id = ?').run(staleId);
+                        db.prepare('DELETE FROM media_parents WHERE id = ?').run(staleId);
+                    }
+                }
+            })();
+            console.log(`[migration] Deduped ${dupes.length} groups by ${col}`);
+        }
+    }
+
+    // Now add unique indexes (WHERE filters out NULLs/empty — SQLite allows multiple NULLs in unique indexes)
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS uq_media_parents_musicbrainz ON media_parents(musicbrainz_id, media_type) WHERE musicbrainz_id IS NOT NULL AND musicbrainz_id != ''`);
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS uq_media_parents_tmdb ON media_parents(tmdb_id, media_type) WHERE tmdb_id IS NOT NULL AND tmdb_id != ''`);
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS uq_media_parents_imdb ON media_parents(imdb_id) WHERE imdb_id IS NOT NULL AND imdb_id != ''`);
+    console.log('[migration] Added unique indexes on external IDs');
+
+    // Re-enable FK checks
+    db.pragma('foreign_keys = ON');
 }
 
 // -- media_children schema migrations --
@@ -546,6 +626,60 @@ db.exec(`
         progress_cursor TEXT,
         stats TEXT,
         diff_summary TEXT
+    )
+`);
+
+// -- Sync Conflicts table (for MusicBrainz ID conflicts) --
+db.exec(`
+    CREATE TABLE IF NOT EXISTS sync_conflicts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        conflict_type TEXT NOT NULL,
+        primary_id INTEGER,
+        secondary_id INTEGER,
+        external_id TEXT,
+        status TEXT DEFAULT 'pending',
+        resolution TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        resolved_at TEXT,
+        UNIQUE(conflict_type, external_id, secondary_id)
+    )
+`);
+
+// -- Discovered Media (cached from external APIs, not in collection) --
+db.exec(`
+    CREATE TABLE IF NOT EXISTS discovered_media (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        media_type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        tmdb_id TEXT,
+        imdb_id TEXT,
+        tvdb_id TEXT,
+        musicbrainz_id TEXT,
+        release_year INTEGER,
+        poster_url TEXT,
+        overview TEXT,
+        popularity REAL,
+        vote_average REAL,
+        source TEXT NOT NULL,
+        fetched_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(media_type, tmdb_id),
+        UNIQUE(media_type, musicbrainz_id)
+    )
+`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_discovered_media_type ON discovered_media(media_type)');
+
+// -- Discovered Credits (links persons to discovered_media) --
+db.exec(`
+    CREATE TABLE IF NOT EXISTS discovered_credits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        person_id INTEGER NOT NULL,
+        discovered_media_id INTEGER NOT NULL,
+        role_type TEXT NOT NULL,
+        character_name TEXT,
+        sort_order INTEGER DEFAULT 0,
+        FOREIGN KEY(person_id) REFERENCES persons(id) ON DELETE CASCADE,
+        FOREIGN KEY(discovered_media_id) REFERENCES discovered_media(id) ON DELETE CASCADE,
+        UNIQUE(person_id, discovered_media_id, role_type, character_name)
     )
 `);
 

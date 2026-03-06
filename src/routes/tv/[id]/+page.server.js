@@ -3,7 +3,7 @@ import { error } from '@sveltejs/kit';
 
 export function load({ params }) {
     const showId = parseInt(params.id);
-    const settings = db.prepare('SELECT include_specials, jellyfin_url FROM app_settings WHERE id = 1').get();
+    const settings = db.prepare('SELECT include_specials, jellyfin_url, sonarr_url FROM app_settings WHERE id = 1').get();
     const includeSpecials = settings?.include_specials === 1;
     const jellyfinUrl = settings?.jellyfin_url || '';
 
@@ -22,6 +22,12 @@ export function load({ params }) {
             mp.tmdb_id,
             mp.imdb_id,
             mp.is_favorite,
+            mp.sonarr_id,
+            mp.arr_slug,
+            mp.arr_monitored,
+            mp.arr_quality_profile,
+            mp.arr_has_file,
+            mp.arr_status,
             CASE WHEN mp.collected_children > 0
                 THEN ROUND(CAST(mp.watched_children AS REAL) / mp.collected_children * 100, 1)
                 ELSE 0 END as completion,
@@ -123,6 +129,8 @@ export function load({ params }) {
         maxEpisodes,
         includeSpecials,
         jellyfinUrl,
+        arrUrl: settings?.sonarr_url || '',
+        arrService: 'sonarr',
         totalEpisodes: totalCollected,
         totalMissing,
         totalUpcoming,

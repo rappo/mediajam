@@ -1,6 +1,7 @@
 <script>
     import { invalidateAll } from "$app/navigation";
     import ExternalLinks from "$lib/components/ExternalLinks.svelte";
+    import ArrAddDialog from "$lib/components/ArrAddDialog.svelte";
     import HeartBorder from "$lib/components/HeartBorder.svelte";
     let { data } = $props();
     let expandedAlbum = $state(null);
@@ -40,6 +41,60 @@
     let syncing = $state(false);
     let syncStatus = $state("");
     let syncError = $state("");
+
+    // *arr state
+    let arrLoading = $state("");
+    let arrError = $state("");
+    let arrMonitored = $state(!!data.artist.arr_monitored);
+
+    async function onArrAdded() {
+        await invalidateAll();
+    }
+
+    async function searchLidarr() {
+        arrLoading = "search";
+        arrError = "";
+        try {
+            const res = await fetch("/api/arr/lidarr/search", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ mediaParentId: data.artist.id }),
+            });
+            if (!res.ok) {
+                const r = await res.json();
+                throw new Error(r.error || "Failed");
+            }
+        } catch (e) {
+            arrError = e instanceof Error ? e.message : "Failed";
+            setTimeout(() => (arrError = ""), 5000);
+        }
+        arrLoading = "";
+    }
+
+    async function toggleMonitorLidarr() {
+        const newState = !arrMonitored;
+        arrLoading = "monitor";
+        arrError = "";
+        try {
+            const res = await fetch("/api/arr/lidarr/monitor", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    mediaParentId: data.artist.id,
+                    monitored: newState,
+                }),
+            });
+            if (!res.ok) {
+                const r = await res.json();
+                throw new Error(r.error || "Failed");
+            }
+            arrMonitored = newState;
+        } catch (e) {
+            arrError = e instanceof Error ? e.message : "Failed";
+            setTimeout(() => (arrError = ""), 5000);
+        }
+        arrLoading = "";
+    }
 
     async function fullSync() {
         syncing = true;
@@ -95,25 +150,27 @@
             >
             All Artists
         </a>
-        <button
-            class="btn btn-ghost btn-xs gap-1"
-            class:btn-success={syncStatus === "success"}
-            class:btn-error={syncStatus === "failed"}
-            disabled={syncing}
-            onclick={fullSync}
-            title="Re-fetch all data from Jellyfin for this artist"
-        >
-            {#if syncing}
-                <span class="loading loading-spinner loading-xs"></span>
-                Syncing…
-            {:else if syncStatus === "success"}
-                ✅ Synced
-            {:else if syncStatus === "failed"}
-                ❌ {syncError || "Failed"}
-            {:else}
-                🔄 Full Sync
-            {/if}
-        </button>
+        {#if data.artist.jellyfin_id}
+            <button
+                class="btn btn-ghost btn-xs gap-1"
+                class:btn-success={syncStatus === "success"}
+                class:btn-error={syncStatus === "failed"}
+                disabled={syncing}
+                onclick={fullSync}
+                title="Re-fetch all data from Jellyfin for this artist"
+            >
+                {#if syncing}
+                    <span class="loading loading-spinner loading-xs"></span>
+                    Syncing…
+                {:else if syncStatus === "success"}
+                    ✅ Synced
+                {:else if syncStatus === "failed"}
+                    ❌ {syncError || "Failed"}
+                {:else}
+                    🔄 Full Sync
+                {/if}
+            </button>
+        {/if}
     </div>
 
     <!-- Header -->
@@ -136,11 +193,21 @@
                 <h1 class="text-3xl font-bold">{data.artist.title}</h1>
                 <ExternalLinks
                     musicbrainz_id={data.artist.musicbrainz_id}
+                    jellyfin_id={data.artist.jellyfin_id}
+                    jellyfin_url={data.jellyfinUrl}
+                    arr_slug={data.artist.arr_slug}
+                    arr_url={data.arrUrl}
+                    arr_service={data.arrService}
                     mediaType="artist"
                     class="mt-1"
                 />
             </div>
             <div class="flex flex-wrap gap-3">
+                {#if !data.artist.jellyfin_id}
+                    <div class="badge badge-lg badge-warning gap-1">
+                        📡 External
+                    </div>
+                {/if}
                 <div class="badge badge-lg badge-info gap-1">
                     💿 {data.albums.length} albums
                 </div>
@@ -156,6 +223,94 @@
                     </div>
                 {/if}
             </div>
+        </div>
+    </div>
+
+    <!-- Lidarr Status -->
+    <div class="card bg-base-200/50 border border-base-300">
+        <div class="card-body py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <span class="text-lg">🎵</span>
+                    <span class="font-semibold text-sm">Lidarr</span>
+                </div>
+                {#if arrError}
+                    <span class="text-xs text-error">{arrError}</span>
+                {/if}
+            </div>
+            {#if data.artist.lidarr_id}
+                <div class="flex flex-wrap items-center gap-2 mt-1">
+                    {#if data.arrUrl && data.artist.arr_slug}
+                        <a
+                            href="{data.arrUrl}/artist/{data.artist.arr_slug}"
+                            target="_blank"
+                            rel="noopener"
+                            class="badge badge-success badge-sm gap-1 hover:brightness-110 cursor-pointer"
+                        >
+                            ✅ In Lidarr ↗
+                        </a>
+                    {:else}
+                        <span class="badge badge-success badge-sm gap-1"
+                            >✅ In Lidarr</span
+                        >
+                    {/if}
+                    {#if arrMonitored}
+                        <span class="badge badge-info badge-sm"
+                            >📡 Monitored</span
+                        >
+                    {:else}
+                        <span class="badge badge-ghost badge-sm"
+                            >Unmonitored</span
+                        >
+                    {/if}
+                    {#if data.artist.arr_has_file}
+                        <span class="badge badge-success badge-sm gap-1"
+                            >📁 Has Files</span
+                        >
+                    {/if}
+                    {#if data.artist.arr_quality_profile}
+                        <span class="badge badge-ghost badge-sm"
+                            >{data.artist.arr_quality_profile}</span
+                        >
+                    {/if}
+                </div>
+                <div class="flex gap-2 mt-2">
+                    <button
+                        class="btn btn-xs btn-outline gap-1"
+                        onclick={searchLidarr}
+                        disabled={arrLoading === "search"}
+                    >
+                        {#if arrLoading === "search"}<span
+                                class="loading loading-spinner loading-xs"
+                            ></span>{:else}🔍{/if} Search
+                    </button>
+                    <button
+                        class="btn btn-xs btn-outline gap-1"
+                        onclick={toggleMonitorLidarr}
+                        disabled={arrLoading === "monitor"}
+                    >
+                        {#if arrLoading === "monitor"}<span
+                                class="loading loading-spinner loading-xs"
+                            ></span>{:else if arrMonitored}📡{:else}📴{/if}
+                        {arrMonitored ? "Unmonitor" : "Monitor"}
+                    </button>
+                </div>
+            {:else if data.artist.musicbrainz_id}
+                <div class="flex items-center gap-2 mt-1">
+                    <span class="text-xs text-base-content/50"
+                        >Not in Lidarr</span
+                    >
+                    <ArrAddDialog
+                        service="lidarr"
+                        mediaParentId={data.artist.id}
+                        onComplete={onArrAdded}
+                    />
+                </div>
+            {:else}
+                <p class="text-xs text-base-content/40 mt-1">
+                    No MusicBrainz ID — cannot link to Lidarr
+                </p>
+            {/if}
         </div>
     </div>
 
@@ -384,6 +539,20 @@
                 {/each}
             </div>
         {/if}
+    </div>
+</div>
+
+<!-- TODO: Discovery — fetch full discography from MusicBrainz/Lidarr and show albums not in your library -->
+<div class="container mx-auto px-6 py-8 opacity-30">
+    <div class="card bg-base-200/30 border border-dashed border-base-300/50">
+        <div class="card-body items-center text-center py-6">
+            <div class="text-3xl mb-2">🔍</div>
+            <h3 class="font-semibold text-base-content/50">Discover More</h3>
+            <p class="text-sm text-base-content/30 max-w-md">
+                Full discography discovery coming soon — browse albums from
+                MusicBrainz that aren't in your library and add them to Lidarr.
+            </p>
+        </div>
     </div>
 </div>
 

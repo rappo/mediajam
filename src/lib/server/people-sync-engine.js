@@ -43,7 +43,7 @@ let syncHistoryId = null;
 function broadcast(data) {
     if (data.log) {
         recentLogs.push({ time: new Date().toLocaleTimeString(), message: data.log, type: data.logType || 'info' });
-        if (recentLogs.length > 150) recentLogs = recentLogs.slice(-150);
+        if (recentLogs.length > 5000) recentLogs = recentLogs.slice(-4000);
     }
     if (data.progress !== undefined) engineState.progress = data.progress;
     if (data.itemsSynced !== undefined) engineState.itemsSynced = data.itemsSynced;

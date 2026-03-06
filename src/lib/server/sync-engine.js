@@ -26,7 +26,7 @@ function broadcast(data) {
     // Capture logs and state updates
     if (data.log) {
         recentLogs.push({ time: new Date().toLocaleTimeString(), message: data.log, type: data.logType || 'info' });
-        if (recentLogs.length > 150) recentLogs = recentLogs.slice(-150);
+        if (recentLogs.length > 5000) recentLogs = recentLogs.slice(-4000);
     }
     if (data.libraryName) engineState.libraryName = data.libraryName;
     if (data.libProgress !== undefined) engineState.progress = data.libProgress;
@@ -490,7 +490,7 @@ export async function startSync(libraryId = null, force = false) {
                 try {
                     const providerIds = item.ProviderIds || {};
 
-                    upsertParent.run({
+                    const parentParams = {
                         jellyfinId: item.Id,
                         libraryId: lib.jellyfin_id,
                         title: item.Name,
@@ -508,7 +508,57 @@ export async function startSync(libraryId = null, force = false) {
                         jellyfinChildCount: item.ChildCount || 0,
                         unplayedCount: item.UserData?.UnplayedItemCount ?? null,
                         isFavorite: item.UserData?.IsFavorite ? 1 : 0
-                    });
+                    };
+
+                    try {
+                        upsertParent.run(parentParams);
+                    } catch (upsertErr) {
+                        // UNIQUE constraint on (musicbrainz_id, media_type) fires when two
+                        // different Jellyfin items share a MusicBrainz ID (e.g. Isis vs Isis & Aereogramme).
+                        if (String(upsertErr).includes('UNIQUE constraint') && parentParams.musicbrainzId) {
+                            // Find the existing primary that owns this MB ID
+                            const existing = /** @type {any} */ (db.prepare(
+                                'SELECT id, title FROM media_parents WHERE musicbrainz_id = ? AND media_type = ? LIMIT 1'
+                            ).get(parentParams.musicbrainzId, parentParams.mediaType));
+
+                            // Sync the secondary without MB ID first
+                            upsertParent.run({ ...parentParams, musicbrainzId: null });
+                            const secondaryRow = /** @type {any} */ (db.prepare(
+                                'SELECT id FROM media_parents WHERE jellyfin_id = ?'
+                            ).get(item.Id));
+                            const secondaryId = secondaryRow?.id;
+
+                            if (existing && secondaryId) {
+                                // Check for a previously resolved conflict
+                                const priorResolution = /** @type {any} */ (db.prepare(
+                                    `SELECT resolution FROM sync_conflicts 
+                                     WHERE conflict_type = 'shared_musicbrainz_id' 
+                                       AND external_id = ? AND status = 'resolved' LIMIT 1`
+                                ).get(parentParams.musicbrainzId));
+
+                                if (priorResolution?.resolution === 'merge') {
+                                    // Auto-merge: move children from secondary to primary
+                                    const moved = db.prepare(
+                                        'UPDATE media_children SET parent_id = ? WHERE parent_id = ?'
+                                    ).run(existing.id, secondaryId);
+                                    broadcast({ type: 'progress', log: `  🔀 ${item.Name}: auto-merged ${moved.changes} albums under ${existing.title}`, logType: 'info' });
+                                } else {
+                                    // Create pending conflict for user to resolve
+                                    try {
+                                        db.prepare(
+                                            `INSERT OR IGNORE INTO sync_conflicts (conflict_type, primary_id, secondary_id, external_id, status)
+                                             VALUES ('shared_musicbrainz_id', ?, ?, ?, 'pending')`
+                                        ).run(existing.id, secondaryId, parentParams.musicbrainzId);
+                                    } catch { /* ignore duplicate */ }
+                                    broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: shared MusicBrainz ID with ${existing.title} — resolve in Settings`, logType: 'warning' });
+                                }
+                            } else {
+                                broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: shared external ID, syncing without MusicBrainz ID`, logType: 'warning' });
+                            }
+                        } else {
+                            throw upsertErr;
+                        }
+                    }
 
                     libSynced++;
                     totalSynced++;
@@ -698,7 +748,8 @@ export async function startSync(libraryId = null, force = false) {
                                     isSpecial: 0,
                                     watchStatus: getWatchStatus(album.UserData),
                                     playCount: album.UserData?.PlayCount || 0,
-                                    runtimeTicks: album.RunTimeTicks || 0
+                                    runtimeTicks: album.RunTimeTicks || 0,
+                                    premiereDate: album.PremiereDate || null
                                 });
                                 childCount++;
                                 totalSynced++;
@@ -707,7 +758,8 @@ export async function startSync(libraryId = null, force = false) {
                             } catch (e) {
                                 totalErrors++;
                                 libErrors++;
-                                const msg = `${item.Name}: album "${album.Name}" upsert failed`;
+                                const errDetail = e instanceof Error ? e.message : String(e);
+                                const msg = `${item.Name}: album "${album.Name}" upsert failed: ${errDetail}`;
                                 libErrorMessages.push(msg);
                                 totalErrorMessages.push(msg);
                             }

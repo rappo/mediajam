@@ -5,6 +5,7 @@
 	import SyncFooter from "$lib/components/SyncFooter.svelte";
 	import NowPlayingBar from "$lib/components/NowPlayingBar.svelte";
 	import ToastContainer from "$lib/components/ToastContainer.svelte";
+	import ConflictDialog from "$lib/components/ConflictDialog.svelte";
 	import { addToast } from "$lib/stores/toast.js";
 	import { page } from "$app/stores";
 
@@ -73,6 +74,9 @@
 			body: JSON.stringify({ theme }),
 		});
 	}
+
+	/** @type {ConflictDialog} */
+	let conflictDialog = $state();
 </script>
 
 {#if data.isSetupComplete}
@@ -199,6 +203,33 @@
 			<!-- Search & Profile -->
 			<div class="flex-1 flex items-center justify-end gap-2">
 				<SearchBar />
+				{#if data.pendingConflicts > 0}
+					<button
+						class="btn btn-ghost btn-sm btn-circle indicator"
+						onclick={() => conflictDialog?.show()}
+						title="{data.pendingConflicts} conflict{data.pendingConflicts >
+						1
+							? 's'
+							: ''} to resolve"
+					>
+						<span
+							class="indicator-item badge badge-warning badge-xs"
+							>{data.pendingConflicts}</span
+						>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							class="h-5 w-5"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+						>
+							<path
+								d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"
+							/><path d="M13.73 21a2 2 0 01-3.46 0" />
+						</svg>
+					</button>
+				{/if}
 				<div class="dropdown dropdown-end">
 					<div
 						tabindex="0"
@@ -275,7 +306,7 @@
 							</a>
 						</li>
 						<li>
-							<a href="/settings/system">
+							<a href="/settings/admin">
 								<svg
 									xmlns="http://www.w3.org/2000/svg"
 									class="h-4 w-4"
@@ -410,6 +441,7 @@
 		<SyncFooter />
 		<NowPlayingBar remoteControlEnabled={$page.data.remoteControlEnabled} />
 		<ToastContainer />
+		<ConflictDialog bind:this={conflictDialog} />
 	</div>
 {:else}
 	{@render children()}

@@ -1,6 +1,7 @@
 <script>
     import FavoriteButton from "$lib/components/FavoriteButton.svelte";
     import ExternalLinks from "$lib/components/ExternalLinks.svelte";
+    import ArrAddDialog from "$lib/components/ArrAddDialog.svelte";
     import HeartBorder from "$lib/components/HeartBorder.svelte";
     import RemotePlayButton from "$lib/components/RemotePlayButton.svelte";
     import StatCard from "$lib/components/StatCard.svelte";
@@ -58,8 +59,61 @@
 
     let syncing = $state(false);
     let syncStatus = $state("");
-
     let syncError = $state("");
+
+    // *arr state
+    let arrLoading = $state("");
+    let arrError = $state("");
+    let arrMonitored = $state(!!data.movie.arr_monitored);
+
+    async function onArrAdded() {
+        await invalidateAll();
+    }
+
+    async function searchRadarr() {
+        arrLoading = "search";
+        arrError = "";
+        try {
+            const res = await fetch("/api/arr/radarr/search", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ mediaParentId: data.movie.id }),
+            });
+            if (!res.ok) {
+                const result = await res.json();
+                throw new Error(result.error || "Failed");
+            }
+        } catch (e) {
+            arrError = e instanceof Error ? e.message : "Failed";
+            setTimeout(() => (arrError = ""), 5000);
+        }
+        arrLoading = "";
+    }
+
+    async function toggleMonitorRadarr() {
+        const newState = !arrMonitored;
+        arrLoading = "monitor";
+        arrError = "";
+        try {
+            const res = await fetch("/api/arr/radarr/monitor", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    mediaParentId: data.movie.id,
+                    monitored: newState,
+                }),
+            });
+            if (!res.ok) {
+                const result = await res.json();
+                throw new Error(result.error || "Failed");
+            }
+            arrMonitored = newState;
+        } catch (e) {
+            arrError = e instanceof Error ? e.message : "Failed";
+            setTimeout(() => (arrError = ""), 5000);
+        }
+        arrLoading = "";
+    }
 
     async function fullSync() {
         syncing = true;
@@ -200,6 +254,11 @@
                         tmdb_id={data.movie.tmdb_id}
                         imdb_id={data.movie.imdb_id}
                         tvdb_id={data.movie.tvdb_id}
+                        jellyfin_id={data.movie.jellyfin_id}
+                        jellyfin_url={data.jellyfinUrl}
+                        arr_slug={data.movie.arr_slug}
+                        arr_url={data.arrUrl}
+                        arr_service={data.arrService}
                         mediaType="movie"
                     />
                     {#if data.movie.jellyfin_id}
@@ -348,6 +407,115 @@
                 </div>
             </div>
         {/if}
+    </div>
+
+    <!-- Radarr Status -->
+    <div class="card bg-base-200/50 border border-base-300">
+        <div class="card-body py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <span class="text-lg">📥</span>
+                    <span class="font-semibold text-sm">Radarr</span>
+                </div>
+                {#if arrError}
+                    <span class="text-xs text-error">{arrError}</span>
+                {/if}
+            </div>
+            {#if data.movie.radarr_id}
+                <div class="flex flex-wrap items-center gap-2 mt-1">
+                    {#if data.arrUrl && data.movie.arr_slug}
+                        <a
+                            href="{data.arrUrl}/movie/{data.movie.arr_slug}"
+                            target="_blank"
+                            rel="noopener"
+                            class="badge badge-success badge-sm gap-1 hover:brightness-110 cursor-pointer"
+                        >
+                            ✅ In Radarr ↗
+                        </a>
+                    {:else}
+                        <span class="badge badge-success badge-sm gap-1"
+                            >✅ In Radarr</span
+                        >
+                    {/if}
+                    {#if arrMonitored}
+                        <span class="badge badge-info badge-sm"
+                            >📡 Monitored</span
+                        >
+                    {:else}
+                        <span class="badge badge-ghost badge-sm"
+                            >Unmonitored</span
+                        >
+                    {/if}
+                    {#if data.movie.arr_has_file}
+                        <span class="badge badge-success badge-sm gap-1"
+                            >📁 Downloaded</span
+                        >
+                    {:else if data.movie.arr_status === "announced"}
+                        <span class="badge badge-ghost badge-sm gap-1"
+                            >📢 Announced</span
+                        >
+                    {:else if data.movie.arr_status === "inCinemas"}
+                        <span class="badge badge-info badge-sm gap-1"
+                            >🎬 In Cinemas</span
+                        >
+                    {:else}
+                        <span class="badge badge-warning badge-sm gap-1"
+                            >⏳ Missing</span
+                        >
+                    {/if}
+                    {#if data.movie.arr_quality_profile}
+                        <span class="badge badge-ghost badge-sm"
+                            >{data.movie.arr_quality_profile}</span
+                        >
+                    {/if}
+                </div>
+                <div class="flex gap-2 mt-2">
+                    <button
+                        class="btn btn-xs btn-outline gap-1"
+                        onclick={searchRadarr}
+                        disabled={arrLoading === "search"}
+                    >
+                        {#if arrLoading === "search"}
+                            <span class="loading loading-spinner loading-xs"
+                            ></span>
+                        {:else}
+                            🔍
+                        {/if}
+                        Search
+                    </button>
+                    <button
+                        class="btn btn-xs btn-outline gap-1"
+                        onclick={toggleMonitorRadarr}
+                        disabled={arrLoading === "monitor"}
+                    >
+                        {#if arrLoading === "monitor"}
+                            <span class="loading loading-spinner loading-xs"
+                            ></span>
+                        {:else if arrMonitored}
+                            📡
+                        {:else}
+                            📴
+                        {/if}
+                        {arrMonitored ? "Unmonitor" : "Monitor"}
+                    </button>
+                </div>
+            {:else if data.movie.tmdb_id}
+                <div class="flex items-center gap-2 mt-1">
+                    <span class="text-xs text-base-content/50"
+                        >Not in Radarr</span
+                    >
+                    <ArrAddDialog
+                        service="radarr"
+                        mediaParentId={data.movie.id}
+                        onComplete={onArrAdded}
+                    />
+                </div>
+            {:else}
+                <p class="text-xs text-base-content/40 mt-1">
+                    No TMDB ID — cannot link to Radarr
+                </p>
+            {/if}
+        </div>
     </div>
 
     <!-- External Links -->
@@ -654,4 +822,19 @@
             </div>
         </div>
     {/if}
+</div>
+
+<!-- TODO: Discovery — show related movies from TMDb (same director, franchise, similar) not in your library -->
+<div class="container mx-auto px-6 py-8 opacity-30">
+    <div class="card bg-base-200/30 border border-dashed border-base-300/50">
+        <div class="card-body items-center text-center py-6">
+            <div class="text-3xl mb-2">🔍</div>
+            <h3 class="font-semibold text-base-content/50">Discover More</h3>
+            <p class="text-sm text-base-content/30 max-w-md">
+                Related movies discovery coming soon — browse similar films,
+                franchise entries, and director filmographies from TMDb and add
+                to Radarr.
+            </p>
+        </div>
+    </div>
 </div>

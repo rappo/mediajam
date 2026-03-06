@@ -107,7 +107,7 @@
 
     function addLog(message, type = "info") {
         importState.logs = [
-            ...importState.logs.slice(-100),
+            ...importState.logs.slice(-5000),
             { time: new Date().toLocaleTimeString(), message, type },
         ];
     }
@@ -932,7 +932,7 @@
                             <p class="text-xs text-base-content/50">
                                 Jellyfin is your primary media server. Library
                                 sync is managed in <a
-                                    href="/settings/system"
+                                    href="/settings/admin"
                                     class="link link-info">System Settings</a
                                 >.
                             </p>
