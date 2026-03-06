@@ -51,7 +51,8 @@ export function load({ params }) {
             mc.watch_status,
             mc.play_count,
             mc.runtime_ticks,
-            mc.premiere_date
+            mc.premiere_date,
+            mc.community_rating
         FROM media_children mc
         WHERE mc.parent_id = ?
         ORDER BY mc.season_number ASC, mc.item_number ASC

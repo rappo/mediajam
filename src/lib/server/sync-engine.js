@@ -287,14 +287,15 @@ export async function startSync(libraryId = null, force = false) {
 	`);
 
     const upsertChild = db.prepare(`
-		INSERT INTO media_children (parent_id, jellyfin_id, title, season_number, item_number, is_special, is_collected, watch_status, play_count, runtime_ticks, premiere_date, musicbrainz_id, poster_url)
-		VALUES (@parentId, @jellyfinId, @title, @seasonNumber, @itemNumber, @isSpecial, 1, @watchStatus, @playCount, @runtimeTicks, @premiereDate, @musicbrainzId, @posterUrl)
+		INSERT INTO media_children (parent_id, jellyfin_id, title, season_number, item_number, is_special, is_collected, watch_status, play_count, runtime_ticks, premiere_date, musicbrainz_id, poster_url, community_rating)
+		VALUES (@parentId, @jellyfinId, @title, @seasonNumber, @itemNumber, @isSpecial, 1, @watchStatus, @playCount, @runtimeTicks, @premiereDate, @musicbrainzId, @posterUrl, @communityRating)
 		ON CONFLICT(jellyfin_id) DO UPDATE SET
 			title = @title, season_number = @seasonNumber, item_number = @itemNumber,
 			is_special = @isSpecial, is_collected = 1, watch_status = @watchStatus,
 			play_count = @playCount, runtime_ticks = @runtimeTicks, premiere_date = @premiereDate,
 			musicbrainz_id = COALESCE(@musicbrainzId, musicbrainz_id),
-			poster_url = COALESCE(@posterUrl, poster_url)
+			poster_url = COALESCE(@posterUrl, poster_url),
+			community_rating = COALESCE(@communityRating, community_rating)
 	`);
 
     const upsertMissingChild = db.prepare(`
@@ -656,7 +657,8 @@ export async function startSync(libraryId = null, force = false) {
                                         runtimeTicks: ep.RunTimeTicks || 0,
                                         premiereDate: ep.PremiereDate || null,
                                         musicbrainzId: null,
-                                        posterUrl: null
+                                        posterUrl: null,
+                                        communityRating: ep.CommunityRating || null
                                     });
                                 } else {
                                     upsertMissingChild.run({
@@ -701,7 +703,8 @@ export async function startSync(libraryId = null, force = false) {
                             runtimeTicks: item.RunTimeTicks || 0,
                             premiereDate: item.PremiereDate || null,
                             musicbrainzId: null,
-                            posterUrl: null
+                            posterUrl: null,
+                            communityRating: item.CommunityRating || null
                         });
 
                         // Upgrade watch status from playback history (Trakt/Last.fm may know about watches Jellyfin doesn't)
@@ -778,7 +781,8 @@ export async function startSync(libraryId = null, force = false) {
                                     runtimeTicks: album.RunTimeTicks || 0,
                                     premiereDate: album.PremiereDate || null,
                                     musicbrainzId: album.ProviderIds?.MusicBrainzReleaseGroup || album.ProviderIds?.MusicBrainzAlbum || null,
-                                    posterUrl: album.ImageTags?.Primary ? `${jellyfinUrl}/Items/${album.Id}/Images/Primary` : null
+                                    posterUrl: album.ImageTags?.Primary ? `${jellyfinUrl}/Items/${album.Id}/Images/Primary` : null,
+                                    communityRating: album.CommunityRating || null
                                 });
                                 childCount++;
                                 totalSynced++;

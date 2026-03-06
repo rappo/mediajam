@@ -44,8 +44,23 @@
     let arrError = $state("");
     let arrMonitored = $state(!!data.show.arr_monitored);
 
-    /** @type {'map' | 'list'} */
+    /** @type {'map' | 'list' | 'ratings'} */
     let episodeView = $state('map');
+
+    /**
+     * Get rating color class based on score
+     * @param {number|null} rating
+     * @returns {string}
+     */
+    function ratingColor(rating) {
+        if (rating === null || rating === undefined) return 'bg-base-300/30 text-base-content/20';
+        if (rating >= 9) return 'bg-[#1a7a1a] text-white'; // Awesome - dark green
+        if (rating >= 8) return 'bg-[#2ea82e] text-white'; // Great - green
+        if (rating >= 7) return 'bg-[#7ec850] text-black'; // Good - light green
+        if (rating >= 6) return 'bg-[#d4a017] text-black'; // Regular - yellow
+        if (rating >= 4) return 'bg-[#e06030] text-white'; // Bad - orange-red
+        return 'bg-[#9b59b6] text-white'; // Garbage - purple
+    }
 
     async function onArrAdded() {
         await invalidateAll();
@@ -382,6 +397,10 @@
                     onclick={() => episodeView = 'map'}
                 >Map</button>
                 <button
+                    class="join-item btn btn-xs {episodeView === 'ratings' ? 'btn-primary' : 'btn-ghost'}"
+                    onclick={() => episodeView = 'ratings'}
+                >Ratings</button>
+                <button
                     class="join-item btn btn-xs {episodeView === 'list' ? 'btn-primary' : 'btn-ghost'}"
                     onclick={() => episodeView = 'list'}
                 >List</button>
@@ -453,6 +472,77 @@
                         </div>
                     {/each}
                 </div>
+            </div>
+        {:else if episodeView === 'ratings'}
+            <!-- Ratings Heatmap -->
+            <div class="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-base-content/60 mb-2">
+                <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#1a7a1a]"></span> Awesome (9+)</span>
+                <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#2ea82e]"></span> Great (8+)</span>
+                <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#7ec850]"></span> Good (7+)</span>
+                <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#d4a017]"></span> Regular (6+)</span>
+                <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#e06030]"></span> Bad (4+)</span>
+                <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#9b59b6]"></span> Garbage (&lt;4)</span>
+            </div>
+
+            <div class="overflow-x-auto">
+                {#each [data.seasons.filter(s => s.number !== 0)] as nonSpecialSeasons}
+                {@const maxEps = Math.max(...nonSpecialSeasons.map(s => s.episodes.length), 1)}
+                <table class="rating-heatmap">
+                    <thead>
+                        <tr>
+                            <th class="text-xs text-base-content/40 px-1"></th>
+                            {#each nonSpecialSeasons as season}
+                                <th class="text-xs text-base-content/50 text-center px-1 pb-1">S{season.number}</th>
+                            {/each}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {#each Array(maxEps) as _, epIdx}
+                            <tr>
+                                <td class="text-xs text-base-content/40 pr-2 text-right">E{epIdx + 1}</td>
+                                {#each nonSpecialSeasons as season}
+                                    {@const ep = season.episodes.find(e => e.item_number === epIdx + 1)}
+                                    <td class="p-0.5">
+                                        {#if ep}
+                                            <a
+                                                href="/tv/{data.show.id}/episode/{ep.id}"
+                                                class="rating-cell {ratingColor(ep.community_rating)}"
+                                                title="S{season.number}E{ep.item_number} {ep.title}"
+                                            >
+                                                {#if ep.community_rating !== null && ep.community_rating !== undefined}
+                                                    {ep.community_rating.toFixed(1)}
+                                                {:else}
+                                                    —
+                                                {/if}
+                                            </a>
+                                        {:else}
+                                            <div class="rating-cell-empty"></div>
+                                        {/if}
+                                    </td>
+                                {/each}
+                            </tr>
+                        {/each}
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td class="text-xs font-bold text-base-content/60 pr-2 text-right pt-2">AVG.</td>
+                            {#each nonSpecialSeasons as season}
+                                {@const rated = season.episodes.filter(e => e.community_rating != null)}
+                                {@const avg = rated.length > 0 ? rated.reduce((s, e) => s + e.community_rating, 0) / rated.length : null}
+                                <td class="p-0.5 pt-2">
+                                    {#if avg !== null}
+                                        <div class="rating-cell font-bold {ratingColor(avg)}">
+                                            {avg.toFixed(1)}
+                                        </div>
+                                    {:else}
+                                        <div class="rating-cell-empty"></div>
+                                    {/if}
+                                </td>
+                            {/each}
+                        </tr>
+                    </tfoot>
+                </table>
+                {/each}
             </div>
         {:else}
             <!-- List view with accordion -->
@@ -787,5 +877,35 @@
         flex-shrink: 0;
         width: 48px;
         text-align: right;
+    }
+
+    .rating-heatmap {
+        border-collapse: separate;
+        border-spacing: 0;
+    }
+
+    .rating-cell {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 48px;
+        height: 36px;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 700;
+        text-decoration: none;
+        transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    .rating-cell:hover {
+        transform: scale(1.15);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        z-index: 10;
+        position: relative;
+    }
+
+    .rating-cell-empty {
+        width: 48px;
+        height: 36px;
     }
 </style>
