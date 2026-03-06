@@ -370,7 +370,8 @@
                         </div>
                         <div class="episode-cells">
                             {#each season.episodes as ep}
-                                <div
+                                <a
+                                    href="/tv/{data.show.id}/episode/{ep.id}"
                                     class="ep-cell {statusClass(
                                         ep.watch_status,
                                         ep.is_collected,
@@ -387,7 +388,7 @@
                                           : ' [MISSING]'}"
                                 >
                                     <span class="ep-num">{ep.item_number}</span>
-                                </div>
+                                </a>
                             {/each}
                         </div>
                         <div class="season-stat">
@@ -491,7 +492,13 @@
                                             >{ep.item_number}</td
                                         >
                                         <td class="font-medium">
-                                            {ep.title}
+                                            <a
+                                                href="/tv/{data.show
+                                                    .id}/episode/{ep.id}"
+                                                class="hover:text-primary transition-colors"
+                                            >
+                                                {ep.title}
+                                            </a>
                                             {#if !ep.is_collected}
                                                 <span
                                                     class="badge badge-error badge-xs ml-1"

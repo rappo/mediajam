@@ -10,8 +10,15 @@ import { json } from '@sveltejs/kit';
 export async function POST({ request, locals }) {
     if (!locals.user) return json({ error: 'Unauthorized' }, { status: 401 });
 
-    const { jellyfinId } = await request.json();
-    if (!jellyfinId) return json({ error: 'Missing jellyfinId' }, { status: 400 });
+    const body = await request.json();
+    const { jellyfinId, mediaParentId, tmdbId } = body;
+
+    // ── TMDb-only enrichment path (for stubs without Jellyfin) ──
+    if (!jellyfinId && mediaParentId && tmdbId) {
+        return tmdbEnrich(mediaParentId, tmdbId);
+    }
+
+    if (!jellyfinId) return json({ error: 'Missing jellyfinId or mediaParentId+tmdbId' }, { status: 400 });
 
     const settings = /** @type {any} */ (db.prepare('SELECT * FROM app_settings WHERE id = 1').get());
     const user = /** @type {any} */ (db.prepare('SELECT * FROM users LIMIT 1').get());
@@ -299,5 +306,121 @@ export async function POST({ request, locals }) {
     } catch (e) {
         console.error(`[item-sync] Error syncing ${parent.title}:`, e instanceof Error ? e.message : String(e));
         return json({ error: 'Sync failed', details: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    }
+}
+
+/**
+ * TMDb-only enrichment for stubs without a Jellyfin ID.
+ * Fetches details + credits from TMDb and updates the local record.
+ * @param {number} mediaParentId
+ * @param {string} tmdbId
+ */
+async function tmdbEnrich(mediaParentId, tmdbId) {
+    const parent = /** @type {any} */ (db.prepare(
+        'SELECT id, title, media_type FROM media_parents WHERE id = ?'
+    ).get(mediaParentId));
+    if (!parent) return json({ error: 'Item not found in database' }, { status: 404 });
+
+    const settings = /** @type {any} */ (db.prepare('SELECT tmdb_api_key FROM app_settings WHERE id = 1').get());
+    if (!settings?.tmdb_api_key) {
+        return json({ error: 'TMDb API key not configured' }, { status: 400 });
+    }
+
+    const apiKey = settings.tmdb_api_key;
+    const tmdbType = parent.media_type === 'movie' ? 'movie' : 'tv';
+
+    try {
+        console.log(`[item-sync] TMDb enrichment for ${parent.title} (tmdb:${tmdbId})...`);
+
+        // Fetch full details
+        const detailRes = await fetch(`https://api.themoviedb.org/3/${tmdbType}/${tmdbId}?api_key=${apiKey}&append_to_response=external_ids`);
+        if (!detailRes.ok) return json({ error: `TMDb details fetch failed: ${detailRes.status}` }, { status: 502 });
+        const detail = await detailRes.json();
+
+        // Update parent record with full metadata
+        db.prepare(`
+            UPDATE media_parents SET
+                title = COALESCE(?, title),
+                release_year = COALESCE(?, release_year),
+                poster_url = COALESCE(?, poster_url),
+                overview = COALESCE(?, overview),
+                tmdb_id = COALESCE(?, tmdb_id),
+                imdb_id = COALESCE(?, imdb_id),
+                tvdb_id = COALESCE(?, tvdb_id)
+            WHERE id = ?
+        `).run(
+            detail.title || detail.name || null,
+            (detail.release_date || detail.first_air_date || '').slice(0, 4) || null,
+            detail.poster_path ? `https://image.tmdb.org/t/p/w500${detail.poster_path}` : null,
+            detail.overview || null,
+            String(tmdbId),
+            detail.imdb_id || detail.external_ids?.imdb_id || null,
+            detail.external_ids?.tvdb_id ? String(detail.external_ids.tvdb_id) : null,
+            mediaParentId
+        );
+
+        // Fetch credits
+        const creditsRes = await fetch(`https://api.themoviedb.org/3/${tmdbType}/${tmdbId}/credits?api_key=${apiKey}`);
+        let peopleCount = 0;
+        if (creditsRes.ok) {
+            const creditsData = await creditsRes.json();
+            const cast = (creditsData.cast || []).slice(0, 20);
+            const crew = (creditsData.crew || []).filter(
+                /** @param {any} c */(c) => ['Director', 'Writer', 'Screenplay', 'Producer', 'Original Music Composer', 'Creator'].includes(c.job || c.department)
+            ).slice(0, 5);
+
+            const findByTmdb = db.prepare('SELECT id FROM persons WHERE tmdb_person_id = ?');
+            const findByName = db.prepare('SELECT id FROM persons WHERE name = ? LIMIT 1');
+            const insertPerson = db.prepare('INSERT INTO persons (name, tmdb_person_id, photo_url) VALUES (?, ?, ?)');
+            const updatePhoto = db.prepare('UPDATE persons SET photo_url = COALESCE(?, photo_url) WHERE id = ?');
+            const upsertCredit = db.prepare(
+                'INSERT OR IGNORE INTO person_credits (person_id, media_parent_id, role_type, character_name, sort_order) VALUES (?, ?, ?, ?, ?)'
+            );
+
+            const people = [
+                ...cast.map(/** @param {any} c @param {number} i */(c, i) => ({
+                    tmdb_id: String(c.id), name: c.name,
+                    photo: c.profile_path ? `https://image.tmdb.org/t/p/w185${c.profile_path}` : null,
+                    role: 'actor', char: c.character || null, order: i
+                })),
+                ...crew.map(/** @param {any} c @param {number} i */(c, i) => ({
+                    tmdb_id: String(c.id), name: c.name,
+                    photo: c.profile_path ? `https://image.tmdb.org/t/p/w185${c.profile_path}` : null,
+                    role: c.job === 'Director' ? 'director' : c.job === 'Writer' || c.job === 'Screenplay' ? 'writer'
+                        : c.job === 'Producer' ? 'producer' : c.job === 'Original Music Composer' ? 'composer' : 'creator',
+                    char: null, order: 100 + i
+                }))
+            ];
+
+            // Clear existing credits and re-insert (in case of data changes)
+            db.transaction(() => {
+                db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?').run(mediaParentId);
+                for (const p of people) {
+                    let personId;
+                    const ex = /** @type {any} */ (findByTmdb.get(p.tmdb_id));
+                    if (ex) {
+                        personId = ex.id;
+                        if (p.photo) updatePhoto.run(p.photo, personId);
+                    } else {
+                        const byName = /** @type {any} */ (findByName.get(p.name));
+                        if (byName) {
+                            personId = byName.id;
+                            db.prepare('UPDATE persons SET tmdb_person_id = COALESCE(tmdb_person_id, ?) WHERE id = ?').run(p.tmdb_id, personId);
+                            if (p.photo) updatePhoto.run(p.photo, personId);
+                        } else {
+                            personId = insertPerson.run(p.name, p.tmdb_id, p.photo).lastInsertRowid;
+                        }
+                    }
+                    upsertCredit.run(personId, mediaParentId, p.role, p.char, p.order);
+                    peopleCount++;
+                }
+            })();
+        }
+
+        console.log(`[item-sync] ✅ TMDb enrichment complete: ${parent.title}, ${peopleCount} people`);
+        return json({ success: true, parent: detail.title || detail.name, people: peopleCount, source: 'tmdb' });
+    } catch (e) {
+        console.error(`[item-sync] TMDb enrichment error for ${parent.title}:`, e instanceof Error ? e.message : String(e));
+        return json({ error: 'TMDb enrichment failed', details: e instanceof Error ? e.message : String(e) }, { status: 500 });
     }
 }

@@ -47,13 +47,79 @@ export async function POST({ request, locals }) {
         VALUES (?, ?, ?, ?, ?, ?, ?, 'discovered')
     `).run(title, media_type, String(tmdb_id), tvdbId, release_year || null, poster_url || null, overview || null);
 
+    const mediaParentId = /** @type {number} */ (result.lastInsertRowid);
+
     // Also create a media_children entry (movies need a child row for the arr add to work)
     if (media_type === 'movie') {
         db.prepare(`
             INSERT INTO media_children (parent_id, title, is_collected, season_number, item_number)
             VALUES (?, ?, 0, NULL, NULL)
-        `).run(result.lastInsertRowid, title);
+        `).run(mediaParentId, title);
     }
 
-    return json({ mediaParentId: /** @type {number} */ (result.lastInsertRowid) });
+    // ── Enrich with TMDb cast/crew ──
+    const settings = /** @type {any} */ (db.prepare('SELECT tmdb_api_key FROM app_settings WHERE id = 1').get());
+    if (settings?.tmdb_api_key) {
+        const tmdbType = media_type === 'movie' ? 'movie' : 'tv';
+        try {
+            const creditsRes = await fetch(
+                `https://api.themoviedb.org/3/${tmdbType}/${tmdb_id}/credits?api_key=${settings.tmdb_api_key}`
+            );
+            if (creditsRes.ok) {
+                const creditsData = await creditsRes.json();
+                const cast = (creditsData.cast || []).slice(0, 20);
+                const crew = (creditsData.crew || []).filter(
+                    /** @param {any} c */(c) => ['Director', 'Writer', 'Screenplay', 'Producer', 'Original Music Composer', 'Creator'].includes(c.job || c.department)
+                ).slice(0, 5);
+
+                const findByTmdb = db.prepare('SELECT id FROM persons WHERE tmdb_person_id = ?');
+                const findByName = db.prepare('SELECT id FROM persons WHERE name = ? LIMIT 1');
+                const insertPerson = db.prepare('INSERT INTO persons (name, tmdb_person_id, photo_url) VALUES (?, ?, ?)');
+                const updatePhoto = db.prepare('UPDATE persons SET photo_url = COALESCE(?, photo_url) WHERE id = ?');
+                const upsertCredit = db.prepare(
+                    'INSERT OR IGNORE INTO person_credits (person_id, media_parent_id, role_type, character_name, sort_order) VALUES (?, ?, ?, ?, ?)'
+                );
+
+                const people = [
+                    ...cast.map(/** @param {any} c @param {number} i */(c, i) => ({
+                        tmdb_id: String(c.id), name: c.name,
+                        photo: c.profile_path ? `https://image.tmdb.org/t/p/w185${c.profile_path}` : null,
+                        role: 'actor', char: c.character || null, order: i
+                    })),
+                    ...crew.map(/** @param {any} c @param {number} i */(c, i) => ({
+                        tmdb_id: String(c.id), name: c.name,
+                        photo: c.profile_path ? `https://image.tmdb.org/t/p/w185${c.profile_path}` : null,
+                        role: c.job === 'Director' ? 'director' : c.job === 'Writer' || c.job === 'Screenplay' ? 'writer'
+                            : c.job === 'Producer' ? 'producer' : c.job === 'Original Music Composer' ? 'composer' : 'creator',
+                        char: null, order: 100 + i
+                    }))
+                ];
+
+                db.transaction(() => {
+                    for (const p of people) {
+                        let personId;
+                        const ex = /** @type {any} */ (findByTmdb.get(p.tmdb_id));
+                        if (ex) {
+                            personId = ex.id;
+                            if (p.photo) updatePhoto.run(p.photo, personId);
+                        } else {
+                            const byName = /** @type {any} */ (findByName.get(p.name));
+                            if (byName) {
+                                personId = byName.id;
+                                db.prepare('UPDATE persons SET tmdb_person_id = COALESCE(tmdb_person_id, ?) WHERE id = ?').run(p.tmdb_id, personId);
+                                if (p.photo) updatePhoto.run(p.photo, personId);
+                            } else {
+                                personId = insertPerson.run(p.name, p.tmdb_id, p.photo).lastInsertRowid;
+                            }
+                        }
+                        upsertCredit.run(personId, mediaParentId, p.role, p.char, p.order);
+                    }
+                })();
+            }
+        } catch (e) {
+            console.warn('[discover/add] cast enrichment failed:', e instanceof Error ? e.message : e);
+        }
+    }
+
+    return json({ mediaParentId });
 }

@@ -120,9 +120,46 @@
     let discoveryError = $state("");
     /** @type {any[]} */
     let discoveryItems = $state([]);
-    let discoveryFilter = $state("all");
+    // Default discovery filter: whichever type the person has more local credits for
+    let discoveryFilter = $state(
+        data.movies.length > data.shows.length
+            ? "movie"
+            : data.shows.length > data.movies.length
+              ? "show"
+              : "all",
+    );
     let discoveryLimit = $state(24);
     let addingToArr = $state(/** @type {string|null} */ (null));
+    let navigatingItem = $state(/** @type {string|null} */ (null));
+
+    /** Create a stub and open the item page in a new tab */
+    async function openDiscoveryItem(item) {
+        if (navigatingItem === item.tmdb_id) return;
+        navigatingItem = item.tmdb_id;
+        try {
+            const res = await fetch("/api/discover/add", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    tmdb_id: item.tmdb_id,
+                    media_type: item.media_type,
+                    title: item.title,
+                    release_year: item.release_year,
+                    poster_url: item.poster_url,
+                    overview: item.overview,
+                }),
+            });
+            const data = await res.json();
+            if (data.mediaParentId) {
+                const path = item.media_type === "movie" ? "movies" : "tv";
+                window.open(`/${path}/${data.mediaParentId}`, "_blank");
+            }
+        } catch (e) {
+            console.error("Failed to create stub:", e);
+        } finally {
+            navigatingItem = null;
+        }
+    }
     let addedToArr = $state(/** @type {Set<string>} */ (new Set()));
     let addArrError = $state("");
 
@@ -139,9 +176,10 @@
     let profilesLoading = $state(false);
 
     let filteredDiscovery = $derived(
-        discoveryFilter === "all"
+        (discoveryFilter === "all"
             ? discoveryItems
-            : discoveryItems.filter((i) => i.media_type === discoveryFilter),
+            : discoveryItems.filter((i) => i.media_type === discoveryFilter)
+        ).toSorted((a, b) => (b.vote_average || 0) - (a.vote_average || 0)),
     );
 
     async function loadDiscovery() {
@@ -816,35 +854,91 @@
                     class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3"
                 >
                     {#each filteredDiscovery.slice(0, discoveryLimit) as item}
+                        {@const localUrl = item.in_library
+                            ? `/${item.media_type === "movie" ? "movies" : "tv"}/${item.library_id}`
+                            : null}
                         <div
                             class="card bg-base-200 card-compact border border-base-300/50 overflow-hidden group"
                         >
-                            {#if item.poster_url}
-                                <figure class="aspect-[2/3]">
-                                    <img
-                                        src={item.poster_url}
-                                        alt={item.title}
-                                        class="w-full h-full object-cover"
-                                    />
-                                </figure>
-                            {:else}
-                                <div
-                                    class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl"
+                            {#if localUrl}
+                                <a
+                                    href={localUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    class="block"
                                 >
-                                    🎬
+                                    {#if item.poster_url}
+                                        <figure class="aspect-[2/3]">
+                                            <img
+                                                src={item.poster_url}
+                                                alt={item.title}
+                                                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                            />
+                                        </figure>
+                                    {:else}
+                                        <div
+                                            class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl"
+                                        >
+                                            🎬
+                                        </div>
+                                    {/if}
+                                </a>
+                            {:else}
+                                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                                <div
+                                    class="cursor-pointer"
+                                    onclick={() => openDiscoveryItem(item)}
+                                >
+                                    {#if item.poster_url}
+                                        <figure class="aspect-[2/3] relative">
+                                            <img
+                                                src={item.poster_url}
+                                                alt={item.title}
+                                                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                            />
+                                            {#if navigatingItem === item.tmdb_id}
+                                                <div
+                                                    class="absolute inset-0 bg-black/50 flex items-center justify-center"
+                                                >
+                                                    <span
+                                                        class="loading loading-spinner loading-md text-white"
+                                                    ></span>
+                                                </div>
+                                            {/if}
+                                        </figure>
+                                    {:else}
+                                        <div
+                                            class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl"
+                                        >
+                                            🎬
+                                        </div>
+                                    {/if}
                                 </div>
                             {/if}
                             <div class="card-body !p-2 !gap-1">
-                                <h3
-                                    class="font-medium text-xs leading-tight line-clamp-2"
-                                    title={item.title}
-                                >
-                                    {item.title}
-                                </h3>
+                                {#if localUrl}
+                                    <a
+                                        href={localUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        class="font-medium text-xs leading-tight line-clamp-2 hover:text-primary transition-colors cursor-pointer"
+                                        title={item.title}>{item.title}</a
+                                    >
+                                {:else}
+                                    <!-- svelte-ignore a11y_click_events_have_key_events -->
+                                    <!-- svelte-ignore a11y_no_static_element_interactions -->
+                                    <span
+                                        class="font-medium text-xs leading-tight line-clamp-2 hover:text-primary transition-colors cursor-pointer"
+                                        title={item.title}
+                                        onclick={() => openDiscoveryItem(item)}
+                                        >{item.title}</span
+                                    >
+                                {/if}
                                 <div class="flex items-center gap-1 flex-wrap">
                                     {#if item.release_year}
                                         <span
-                                            class="text-[10px] text-base-content/40"
+                                            class="text-[10px] text-base-content/50"
                                             >{item.release_year}</span
                                         >
                                     {/if}

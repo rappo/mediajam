@@ -187,21 +187,43 @@ export async function syncArrService(service, url, apiKey) {
     let matched = 0;
     let created = 0;
 
-    // Cleanup phase — FK OFF because playback_history doesn't cascade
-    // SQLite: PRAGMA foreign_keys cannot change inside a transaction, so do this separately
-    db.pragma('foreign_keys = OFF');
-    try {
-        db.prepare(`DELETE FROM media_children WHERE parent_id IN (SELECT id FROM media_parents WHERE ${config.idColumn} IS NOT NULL AND collection_status = 'wanted')`).run();
-        db.prepare(`DELETE FROM media_parents WHERE ${config.idColumn} IS NOT NULL AND collection_status = 'wanted'`).run();
-    } catch (cleanupErr) {
-        console.warn(`[arr-sync] ${service}: cleanup of stale stubs failed:`, cleanupErr instanceof Error ? cleanupErr.message : cleanupErr);
-    }
-    db.pragma('foreign_keys = ON');
+    // ── Track existing wanted stubs for cleanup after sync ──
+    // Instead of deleting all wanted stubs upfront (which destroys person_credits),
+    // we track which stubs exist before the sync and remove only those
+    // that aren't matched by any current *arr item.
+    const existingWantedIds = new Set(
+        /** @type {any[]} */(db.prepare(
+        `SELECT id FROM media_parents WHERE ${config.idColumn} IS NOT NULL AND collection_status = 'wanted'`
+    ).all()).map((/** @type {any} */ r) => r.id)
+    );
+    /** @type {Set<number>} */
+    const seenWantedIds = new Set();
+
+    // Also look up wanted stubs by external ID when the *arr ID match fails
+    const findWantedByExternalId = db.prepare(
+        `SELECT id FROM media_parents WHERE collection_status = 'wanted' AND media_type = ? AND (
+            (tmdb_id IS NOT NULL AND tmdb_id = ?) OR
+            (imdb_id IS NOT NULL AND imdb_id = ?) OR
+            (tvdb_id IS NOT NULL AND tvdb_id = ?) OR
+            (musicbrainz_id IS NOT NULL AND musicbrainz_id = ?)
+        ) LIMIT 1`
+    );
+
+    // Update statement for wanted stubs (preserves their ID and person_credits)
+    const updateWantedStmt = db.prepare(`
+        UPDATE media_parents SET
+            title = ?, release_year = ?, poster_url = COALESCE(?, poster_url), overview = COALESCE(?, overview),
+            tmdb_id = COALESCE(?, tmdb_id), imdb_id = COALESCE(?, imdb_id),
+            tvdb_id = COALESCE(?, tvdb_id), musicbrainz_id = COALESCE(?, musicbrainz_id),
+            ${config.idColumn} = ?, arr_monitored = ?, arr_has_file = ?,
+            arr_quality_profile = ?, arr_status = ?, arr_slug = ?
+        WHERE id = ?
+    `);
 
     // Main sync transaction
     db.transaction(() => {
         // Clear stale *arr IDs on Jellyfin-sourced items (still keep the row)
-        db.prepare(`UPDATE media_parents SET ${config.idColumn} = NULL, arr_monitored = 0, arr_has_file = NULL, arr_status = NULL WHERE ${config.idColumn} IS NOT NULL`).run();
+        db.prepare(`UPDATE media_parents SET ${config.idColumn} = NULL, arr_monitored = 0, arr_has_file = NULL, arr_status = NULL WHERE ${config.idColumn} IS NOT NULL AND collection_status != 'wanted'`).run();
 
         for (const item of items) {
             const externalId = String(item[config.matchField] || '');
@@ -240,55 +262,84 @@ export async function syncArrService(service, url, apiKey) {
                     slug,
                     match.id
                 );
+                if (existingWantedIds.has(match.id)) seenWantedIds.add(match.id);
                 matched++;
             } else {
-                // Create stub — *arr item not in Jellyfin
+                // No Jellyfin match — check for existing wanted stub before creating
                 const title = meta.extractTitle(item);
                 const year = meta.extractYear(item);
                 const overview = meta.extractOverview(item);
                 const poster = meta.extractPoster(item);
                 const ids = meta.extractExternalIds(item);
+                const slug = item.titleSlug || item.foreignArtistId || null;
 
-                try {
-                    insertStmt.run(
-                        title,
-                        meta.mediaType,
-                        year,
-                        poster,
-                        overview,
-                        ids.tmdb_id || null,
-                        ids.imdb_id || null,
-                        ids.tvdb_id || null,
-                        ids.musicbrainz_id || null,
-                        item.id,
-                        item.monitored ? 1 : 0,
-                        hasFile,
-                        qualityProfileName,
-                        arrStatus,
-                        item.titleSlug || item.foreignArtistId || null
+                // Try to find an existing wanted stub by external IDs
+                let existingStub = /** @type {any} */ (findWantedByExternalId.get(
+                    meta.mediaType,
+                    ids.tmdb_id || '', ids.imdb_id || '', ids.tvdb_id || '', ids.musicbrainz_id || ''
+                ));
+
+                if (existingStub) {
+                    // Update the existing stub in-place (preserves person_credits, ID, etc.)
+                    updateWantedStmt.run(
+                        title, year, poster, overview,
+                        ids.tmdb_id || null, ids.imdb_id || null,
+                        ids.tvdb_id || null, ids.musicbrainz_id || null,
+                        item.id, item.monitored ? 1 : 0, hasFile,
+                        qualityProfileName, arrStatus, slug,
+                        existingStub.id
                     );
-                    created++;
-                } catch (insertErr) {
-                    // UNIQUE constraint — an existing entry shares an external ID
-                    // (e.g. different Lidarr artist with same MusicBrainz ID)
-                    // Find it by any external ID and update the *arr fields
-                    let existing = null;
-                    if (ids.musicbrainz_id) existing = /** @type {any} */ (db.prepare('SELECT id FROM media_parents WHERE musicbrainz_id = ? AND media_type = ? LIMIT 1').get(ids.musicbrainz_id, meta.mediaType));
-                    if (!existing && ids.tmdb_id) existing = /** @type {any} */ (db.prepare('SELECT id FROM media_parents WHERE tmdb_id = ? AND media_type = ? LIMIT 1').get(ids.tmdb_id, meta.mediaType));
-                    if (!existing && ids.imdb_id) existing = /** @type {any} */ (db.prepare('SELECT id FROM media_parents WHERE imdb_id = ? AND media_type = ? LIMIT 1').get(ids.imdb_id, meta.mediaType));
-                    if (!existing && ids.tvdb_id) existing = /** @type {any} */ (db.prepare('SELECT id FROM media_parents WHERE tvdb_id = ? AND media_type = ? LIMIT 1').get(ids.tvdb_id, meta.mediaType));
+                    seenWantedIds.add(existingStub.id);
+                    matched++;
+                } else {
+                    try {
+                        insertStmt.run(
+                            title, meta.mediaType, year, poster, overview,
+                            ids.tmdb_id || null, ids.imdb_id || null,
+                            ids.tvdb_id || null, ids.musicbrainz_id || null,
+                            item.id, item.monitored ? 1 : 0, hasFile,
+                            qualityProfileName, arrStatus, slug
+                        );
+                        created++;
+                    } catch (insertErr) {
+                        // UNIQUE constraint — an existing entry shares an external ID
+                        let existing = null;
+                        if (ids.musicbrainz_id) existing = /** @type {any} */ (db.prepare('SELECT id FROM media_parents WHERE musicbrainz_id = ? AND media_type = ? LIMIT 1').get(ids.musicbrainz_id, meta.mediaType));
+                        if (!existing && ids.tmdb_id) existing = /** @type {any} */ (db.prepare('SELECT id FROM media_parents WHERE tmdb_id = ? AND media_type = ? LIMIT 1').get(ids.tmdb_id, meta.mediaType));
+                        if (!existing && ids.imdb_id) existing = /** @type {any} */ (db.prepare('SELECT id FROM media_parents WHERE imdb_id = ? AND media_type = ? LIMIT 1').get(ids.imdb_id, meta.mediaType));
+                        if (!existing && ids.tvdb_id) existing = /** @type {any} */ (db.prepare('SELECT id FROM media_parents WHERE tvdb_id = ? AND media_type = ? LIMIT 1').get(ids.tvdb_id, meta.mediaType));
 
-                    if (existing) {
-                        const slug = item.titleSlug || item.foreignArtistId || null;
-                        updateStmt.run(item.id, item.monitored ? 1 : 0, hasFile, qualityProfileName, arrStatus, slug, existing.id);
-                        matched++;
-                    } else {
-                        errors.push(`${meta.extractTitle(item)}: ${insertErr instanceof Error ? insertErr.message : String(insertErr)}`);
+                        if (existing) {
+                            updateStmt.run(item.id, item.monitored ? 1 : 0, hasFile, qualityProfileName, arrStatus, slug, existing.id);
+                            if (existingWantedIds.has(existing.id)) seenWantedIds.add(existing.id);
+                            matched++;
+                        } else {
+                            errors.push(`${title}: ${insertErr instanceof Error ? insertErr.message : String(insertErr)}`);
+                        }
                     }
                 }
             }
         }
     })();
+
+    // ── Cleanup: remove wanted stubs no longer in *arr ──
+    const staleWantedIds = [...existingWantedIds].filter(id => !seenWantedIds.has(id));
+    if (staleWantedIds.length > 0) {
+        db.pragma('foreign_keys = OFF');
+        try {
+            db.transaction(() => {
+                for (const staleId of staleWantedIds) {
+                    db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?').run(staleId);
+                    db.prepare('DELETE FROM media_children WHERE parent_id = ?').run(staleId);
+                    db.prepare('DELETE FROM media_parents WHERE id = ?').run(staleId);
+                }
+            })();
+            console.log(`[arr-sync] ${service}: cleaned up ${staleWantedIds.length} stale wanted stubs`);
+        } catch (cleanupErr) {
+            console.warn(`[arr-sync] ${service}: cleanup of stale stubs failed:`, cleanupErr instanceof Error ? cleanupErr.message : cleanupErr);
+        }
+        db.pragma('foreign_keys = ON');
+    }
 
     console.log(`[arr-sync] ${service}: ${matched} matched, ${created} created (${items.length} total)`);
 
