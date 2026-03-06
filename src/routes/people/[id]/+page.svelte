@@ -410,12 +410,14 @@
                 <img
                     src={data.person.photoUrl + "?maxHeight=300"}
                     alt={data.person.name}
-                    class="w-36 h-48 rounded-2xl object-cover shadow-lg shrink-0"
+                    style="width: 9rem; height: 12rem;"
+                    class="rounded-2xl object-cover shadow-lg shrink-0"
                 />
             </HeartBorder>
         {:else}
             <div
-                class="w-32 h-32 md:w-40 md:h-40 rounded-2xl bg-base-300 flex items-center justify-center text-5xl shrink-0"
+                style="width: 9rem; height: 12rem;"
+                class="rounded-2xl bg-base-300 flex items-center justify-center text-5xl shrink-0"
             >
                 👤
             </div>
