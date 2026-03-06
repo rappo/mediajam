@@ -401,27 +401,29 @@
 
     <!-- Person Header -->
     <div class="flex gap-6 items-start">
-        {#if data.person.photoUrl}
+        <!-- Portrait -->
+        <div class="shrink-0" style="width: 150px; min-width: 150px;">
             <HeartBorder
-                show={!!data.person.is_favorite &&
-                    data.settings?.heartBorderPeople}
+                show={!!data.person.is_favorite && data.settings?.heartBorderPeople}
                 class="rounded-2xl"
             >
-                <img
-                    src={data.person.photoUrl + "?maxHeight=300"}
-                    alt={data.person.name}
-                    style="width: 9rem; height: 12rem;"
-                    class="rounded-2xl object-cover shadow-lg shrink-0"
-                />
+                {#if data.person.photoUrl}
+                    <img
+                        src={data.person.photoUrl + "?maxHeight=400"}
+                        alt={data.person.name}
+                        class="rounded-2xl shadow-lg"
+                        style="width: 150px; height: 200px; object-fit: cover; display: block;"
+                    />
+                {:else}
+                    <div
+                        class="rounded-2xl bg-base-300 flex items-center justify-center text-5xl"
+                        style="width: 150px; height: 200px;"
+                    >
+                        👤
+                    </div>
+                {/if}
             </HeartBorder>
-        {:else}
-            <div
-                style="width: 9rem; height: 12rem;"
-                class="rounded-2xl bg-base-300 flex items-center justify-center text-5xl shrink-0"
-            >
-                👤
-            </div>
-        {/if}
+        </div>
         <div class="space-y-3 min-w-0">
             <div>
                 <h1
