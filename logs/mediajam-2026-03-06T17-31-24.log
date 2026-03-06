@@ -1,0 +1,5 @@
+[2026-03-06T17:53:21.529Z] Mediajam logger started (session: 2026-03-06T17-31-24, dev: true)
+[2026-03-06T18:13:16.317Z] [ERROR] [reconcile] Failed: UNIQUE constraint failed: media_parents.musicbrainz_id, media_parents.media_type
+[2026-03-06T19:09:33.483Z] [ERROR] [people-sync] External ID error for person 'Neal H. Moritz' (jellyfin_id: 088beada8778bbca0112ca35838bf5ff) {"error":"UNIQUE constraint failed: persons.tmdb_person_id"}
+[2026-03-06T19:10:12.492Z] [ERROR] [people-sync] External ID error for person 'Brian Murphy' (jellyfin_id: 226b3bc8dd8319adc05d0b66ca178a7e) {"error":"UNIQUE constraint failed: persons.tmdb_person_id"}
+[2026-03-06T19:49:03.181Z] [ERROR] [people-sync] External ID error for person 'Ryudo Uzaki' (jellyfin_id: 41912a7fb0c2d1af5f5eef0fd72a0610) {"error":"UNIQUE constraint failed: persons.tmdb_person_id"}

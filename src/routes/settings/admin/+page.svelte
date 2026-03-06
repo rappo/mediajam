@@ -1,7 +1,9 @@
 <script>
     import ServiceIcon from "$lib/components/ServiceIcon.svelte";
     import LogConsole from "$lib/components/LogConsole.svelte";
+    import ReconciliationPanel from "$lib/components/ReconciliationPanel.svelte";
     import { page } from "$app/stores";
+    import { goto } from "$app/navigation";
 
     /** @type {{ data: import('./$types').PageData }} */
     let { data } = $props();
@@ -65,6 +67,20 @@
             ? /** @type {typeof VALID_TABS[number]} */ ($page.url.searchParams.get('tab'))
             : 'server'
     );
+
+    // Keep activeTab in sync with URL search params (for sidebar links)
+    $effect(() => {
+        const urlTab = $page.url.searchParams.get('tab');
+        if (urlTab && VALID_TABS.includes(/** @type {any} */ (urlTab)) && urlTab !== activeTab) {
+            activeTab = /** @type {typeof activeTab} */ (urlTab);
+        }
+    });
+
+    /** @param {string} tabId */
+    function switchTab(tabId) {
+        activeTab = tabId;
+        goto(`/settings/admin?tab=${tabId}`, { replaceState: true, noScroll: true });
+    }
     const TABS = [
         { id: 'server', label: 'Server', icon: 'M5 12H3l9-9 9 9h-2M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7' },
         { id: 'credentials', label: 'Credentials', icon: 'M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z' },
@@ -361,6 +377,7 @@
     let syncLibrary = $state("");
     let syncItemsSynced = $state(0);
     let syncErrors = $state(0);
+    let forceResync = $state(false);
     let syncLogs = $state([]);
     /** @type {EventSource | null} */
     let syncEventSource = $state(null);
@@ -904,6 +921,108 @@
         navigator.clipboard.writeText(text);
         mbCopyFeedback = true;
         setTimeout(() => (mbCopyFeedback = false), 2000);
+    }
+
+    // ─── Run All Pipeline ────────────────────────────────────────────────────────
+    let runAllActive = $state(false);
+    let runAllStep = $state(0); // 0=not started, 1=jellyfin, 2=people, 3=musicbrainz, 4=reconcile, 5=done
+    let runAllLogs = $state([]);
+    const RUN_ALL_STEPS = [
+        { num: 1, label: "Jellyfin Sync", emoji: "📚" },
+        { num: 2, label: "People Sync", emoji: "👥" },
+        { num: 3, label: "MusicBrainz Enrich", emoji: "🎵" },
+        { num: 4, label: "Reconciliation", emoji: "🔄" },
+    ];
+
+    function addRunAllLog(message, type = "info") {
+        runAllLogs = [
+            ...runAllLogs,
+            { time: new Date().toLocaleTimeString(), message, type },
+        ];
+    }
+
+    /** Wait for a condition to be true, polling every interval ms */
+    function waitFor(conditionFn, interval = 1000, timeout = 600000) {
+        return new Promise((resolve, reject) => {
+            const start = Date.now();
+            const check = () => {
+                if (conditionFn()) return resolve(undefined);
+                if (Date.now() - start > timeout) return reject(new Error("Timeout"));
+                setTimeout(check, interval);
+            };
+            check();
+        });
+    }
+
+    async function runAllSyncs() {
+        if (runAllActive) return;
+        runAllActive = true;
+        runAllStep = 0;
+        runAllLogs = [];
+        expandedSync = "jellyfin";
+
+        addRunAllLog("🚀 Starting full sync pipeline — this may take 10–30 minutes depending on library size.", "info");
+
+        try {
+            // Step 1: Jellyfin Sync
+            runAllStep = 1;
+            addRunAllLog("── Step 1/4: Jellyfin Sync ──", "info");
+            await triggerSync(null, null, forceResync);
+            await waitFor(() => syncStatus === "complete" || syncStatus === "error");
+            if (syncStatus === "error") {
+                addRunAllLog("❌ Jellyfin Sync failed — stopping pipeline.", "error");
+                runAllActive = false;
+                return;
+            }
+            addRunAllLog(`✅ Jellyfin Sync complete — ${syncItemsSynced} items, ${syncErrors} errors`, "success");
+            syncStatus = "idle";
+
+            // Step 2: People Sync
+            runAllStep = 2;
+            expandedSync = "people";
+            addRunAllLog("── Step 2/4: People Sync ──", "info");
+            await triggerPeopleSync();
+            await waitFor(() => peopleSyncStatus === "complete" || peopleSyncStatus === "error");
+            if (peopleSyncStatus === "error") {
+                addRunAllLog("⚠ People Sync had errors — continuing.", "warning");
+            } else {
+                addRunAllLog(`✅ People Sync complete — ${peopleSyncSynced} synced, ${peopleSyncErrors} errors`, "success");
+            }
+            peopleSyncStatus = "idle";
+
+            // Step 3: MusicBrainz Enrich
+            runAllStep = 3;
+            expandedSync = "musicbrainz";
+            addRunAllLog("── Step 3/4: MusicBrainz Enrich ──", "info");
+            await triggerMBEnrich();
+            await waitFor(() => mbStatus === "complete" || mbStatus === "error");
+            if (mbStatus === "error") {
+                addRunAllLog("⚠ MusicBrainz Enrich had errors — continuing.", "warning");
+            } else {
+                addRunAllLog(`✅ MusicBrainz Enrich complete — ${mbSynced} enriched, ${mbErrors} errors`, "success");
+            }
+            mbStatus = "idle";
+
+            // Step 4: Reconciliation
+            runAllStep = 4;
+            addRunAllLog("── Step 4/4: Reconciliation ──", "info");
+            addRunAllLog("Running reconciliation — this cleans up duplicates and matches external data...", "info");
+            const reconcileRes = await fetch("/api/sync/reconcile", { method: "POST" });
+            const reconcileResult = await reconcileRes.json();
+            if (reconcileResult.success) {
+                addRunAllLog(`✅ Reconciliation complete`, "success");
+            } else {
+                addRunAllLog(`⚠ Reconciliation: ${reconcileResult.error || "unknown error"}`, "warning");
+            }
+
+            runAllStep = 5;
+            addRunAllLog("🎉 Full sync pipeline complete!", "success");
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            addRunAllLog(`❌ Pipeline error: ${msg}`, "error");
+        } finally {
+            runAllActive = false;
+        }
     }
 
     // Auto-scroll MB console
@@ -1460,7 +1579,7 @@
         {#each TABS as tab}
             <button
                 class="tab {activeTab === tab.id ? 'tab-active !bg-primary !text-primary-content' : 'hover:bg-base-300/50'} gap-1.5 transition-all"
-                onclick={() => activeTab = /** @type {typeof activeTab} */ (tab.id)}
+                onclick={() => switchTab(/** @type {typeof activeTab} */ (tab.id))}
             >
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d={tab.icon} /></svg>
                 {tab.label}
@@ -1544,215 +1663,123 @@
                         d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"
                     />
                 </svg>
-                Metadata API Keys
+                Metadata & Ratings
             </h2>
+            <p class="text-xs text-base-content/50">API keys for fetching metadata, artwork, IMDb/RT/Metacritic scores, and Discogs community ratings.</p>
 
-            <!-- TVDB -->
-            <div class="form-control">
-                <label class="label" for="settings-tvdb"
-                    ><span class="label-text flex items-center gap-1.5"
-                        ><ServiceIcon
-                            service="tvdb"
-                            size="w-4 h-4"
-                            class="text-[#6CD491]"
-                        />TheTVDB API Key</span
-                    ></label
-                >
-                <div class="flex gap-2 items-start">
-                    <div class="flex-1">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                <!-- TVDB -->
+                <div class="bg-base-300/30 rounded-lg p-4 border border-base-300/50">
+                    <div class="flex items-center gap-2 mb-2">
+                        <ServiceIcon service="tvdb" size="w-4 h-4" class="text-[#6CD491]" />
+                        <span class="font-bold text-sm">TheTVDB</span>
+                        <span class="text-xs text-base-content/40">TV metadata & artwork</span>
+                        {#if validation.tvdb.status === "checking"}
+                            <span class="loading loading-spinner loading-xs text-info"></span>
+                        {:else if validation.tvdb.status === "valid"}
+                            <span class="badge badge-success badge-xs">✓</span>
+                        {:else if validation.tvdb.status === "invalid"}
+                            <span class="badge badge-error badge-xs">✗</span>
+                        {/if}
+                    </div>
+                    <div class="form-control">
                         <input
                             id="settings-tvdb"
                             type="text"
-                            class="input input-bordered input-sm w-full"
+                            class="input input-bordered input-sm"
                             bind:value={tvdbApiKey}
-                            placeholder={data.settings.hasTvdbKey
-                                ? "••••••••"
-                                : "Not set"}
+                            placeholder={data.settings.hasTvdbKey ? "••••••••" : "Not set"}
                         />
                     </div>
-                    {#if validation.tvdb.status !== "idle"}
-                        <div class="flex items-center gap-1.5 mt-1.5">
-                            {#if validation.tvdb.status === "checking"}
-                                <span
-                                    class="loading loading-spinner loading-xs text-info"
-                                ></span>
-                            {:else if validation.tvdb.status === "valid"}
-                                <span
-                                    class="badge badge-success badge-sm gap-1"
-                                >
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        class="h-3 w-3"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="3"
-                                        ><polyline
-                                            points="20 6 9 17 4 12"
-                                        /></svg
-                                    >
-                                    Valid
-                                </span>
-                            {:else}
-                                <span class="badge badge-error badge-sm gap-1">
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        class="h-3 w-3"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="3"
-                                        ><line
-                                            x1="18"
-                                            y1="6"
-                                            x2="6"
-                                            y2="18"
-                                        /><line
-                                            x1="6"
-                                            y1="6"
-                                            x2="18"
-                                            y2="18"
-                                        /></svg
-                                    >
-                                    Invalid
-                                </span>
-                            {/if}
-                        </div>
+                    {#if validation.tvdb.status === "invalid"}
+                        <p class="text-xs text-error mt-1">{validation.tvdb.message}</p>
                     {/if}
+                    <a href="https://thetvdb.com/dashboard/account/apikey" target="_blank" rel="noopener" class="link link-primary text-xs mt-1 inline-block">Get API key →</a>
                 </div>
-                {#if validation.tvdb.status === "invalid"}
-                    <p class="text-xs text-error mt-1">
-                        {validation.tvdb.message}
-                    </p>
-                {/if}
-                <label class="label" for="settings-tvdb"
-                    ><a
-                        href="https://thetvdb.com/dashboard/account/apikey"
-                        target="_blank"
-                        rel="noopener"
-                        class="label-text-alt link link-primary"
-                        >Get API key →</a
-                    ></label
-                >
-            </div>
 
-            <!-- TMDB -->
-            <div class="form-control">
-                <label class="label" for="settings-tmdb"
-                    ><span class="label-text flex items-center gap-1.5"
-                        ><ServiceIcon
-                            service="tmdb"
-                            size="w-4 h-4"
-                            class="text-[#01B4E4]"
-                        />TMDB API Key</span
-                    ></label
-                >
-                <div class="flex gap-2 items-start">
-                    <div class="flex-1">
+                <!-- TMDB -->
+                <div class="bg-base-300/30 rounded-lg p-4 border border-base-300/50">
+                    <div class="flex items-center gap-2 mb-2">
+                        <ServiceIcon service="tmdb" size="w-4 h-4" class="text-[#01B4E4]" />
+                        <span class="font-bold text-sm">TMDB</span>
+                        <span class="text-xs text-base-content/40">Movie & TV metadata</span>
+                        {#if validation.tmdb.status === "checking"}
+                            <span class="loading loading-spinner loading-xs text-info"></span>
+                        {:else if validation.tmdb.status === "valid"}
+                            <span class="badge badge-success badge-xs">✓</span>
+                        {:else if validation.tmdb.status === "invalid"}
+                            <span class="badge badge-error badge-xs">✗</span>
+                        {/if}
+                    </div>
+                    <div class="form-control">
                         <input
                             id="settings-tmdb"
                             type="text"
-                            class="input input-bordered input-sm w-full"
+                            class="input input-bordered input-sm"
                             bind:value={tmdbApiKey}
-                            placeholder={data.settings.hasTmdbKey
-                                ? "••••••••"
-                                : "Not set"}
+                            placeholder={data.settings.hasTmdbKey ? "••••••••" : "Not set"}
                         />
                     </div>
-                    {#if validation.tmdb.status !== "idle"}
-                        <div class="flex items-center gap-1.5 mt-1.5">
-                            {#if validation.tmdb.status === "checking"}
-                                <span
-                                    class="loading loading-spinner loading-xs text-info"
-                                ></span>
-                            {:else if validation.tmdb.status === "valid"}
-                                <span
-                                    class="badge badge-success badge-sm gap-1"
-                                >
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        class="h-3 w-3"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="3"
-                                        ><polyline
-                                            points="20 6 9 17 4 12"
-                                        /></svg
-                                    >
-                                    Valid
-                                </span>
-                            {:else}
-                                <span class="badge badge-error badge-sm gap-1">
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        class="h-3 w-3"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="3"
-                                        ><line
-                                            x1="18"
-                                            y1="6"
-                                            x2="6"
-                                            y2="18"
-                                        /><line
-                                            x1="6"
-                                            y1="6"
-                                            x2="18"
-                                            y2="18"
-                                        /></svg
-                                    >
-                                    Invalid
-                                </span>
-                            {/if}
-                        </div>
+                    {#if validation.tmdb.status === "invalid"}
+                        <p class="text-xs text-error mt-1">{validation.tmdb.message}</p>
                     {/if}
+                    <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener" class="link link-primary text-xs mt-1 inline-block">Get API key →</a>
                 </div>
-                {#if validation.tmdb.status === "invalid"}
-                    <p class="text-xs text-error mt-1">
-                        {validation.tmdb.message}
-                    </p>
-                {/if}
-                <label class="label" for="settings-tmdb"
-                    ><a
-                        href="https://www.themoviedb.org/settings/api"
-                        target="_blank"
-                        rel="noopener"
-                        class="label-text-alt link link-primary"
-                        >Get API key →</a
-                    ></label
-                >
-            </div>
 
-            <!-- MusicBrainz -->
-            <div class="form-control">
-                <label class="label" for="settings-mb"
-                    ><span class="label-text flex items-center gap-1.5"
-                        ><ServiceIcon
-                            service="musicbrainz"
-                            size="w-4 h-4"
-                            class="text-[#BA478F]"
-                        />MusicBrainz</span
-                    ></label
-                >
-                <input
-                    id="settings-mb"
-                    type="text"
-                    class="input input-bordered input-sm"
-                    bind:value={musicbrainzApiKey}
-                    placeholder={data.settings.hasMusicbrainzKey
-                        ? "••••••••"
-                        : "Optional"}
-                />
-                <label class="label" for="settings-mb"
-                    ><a
-                        href="https://musicbrainz.org/doc/MusicBrainz_API"
-                        target="_blank"
-                        rel="noopener"
-                        class="label-text-alt link link-primary">API docs →</a
-                    ></label
-                >
+                <!-- MusicBrainz -->
+                <div class="bg-base-300/30 rounded-lg p-4 border border-base-300/50">
+                    <div class="flex items-center gap-2 mb-2">
+                        <ServiceIcon service="musicbrainz" size="w-4 h-4" class="text-[#BA478F]" />
+                        <span class="font-bold text-sm">MusicBrainz</span>
+                        <span class="text-xs text-base-content/40">Music metadata</span>
+                    </div>
+                    <div class="form-control">
+                        <input
+                            id="settings-mb"
+                            type="text"
+                            class="input input-bordered input-sm"
+                            bind:value={musicbrainzApiKey}
+                            placeholder={data.settings.hasMusicbrainzKey ? "••••••••" : "Optional"}
+                        />
+                    </div>
+                    <a href="https://musicbrainz.org/doc/MusicBrainz_API" target="_blank" rel="noopener" class="link link-primary text-xs mt-1 inline-block">Learn more →</a>
+                </div>
+
+                <!-- OMDb -->
+                <div class="bg-base-300/30 rounded-lg p-4 border border-base-300/50">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="text-[#F5C518] font-bold text-sm">OMDb</span>
+                        <span class="text-xs text-base-content/40">IMDb · RT · Metacritic</span>
+                    </div>
+                    <div class="form-control">
+                        <input
+                            id="settings-omdb"
+                            type="password"
+                            class="input input-bordered input-sm"
+                            bind:value={omdbApiKey}
+                            placeholder={data.settings.omdbApiKey ? "••••••••" : "Not set"}
+                        />
+                    </div>
+                    <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" rel="noopener" class="link link-primary text-xs mt-1 inline-block">Get free API key →</a>
+                </div>
+
+                <!-- Discogs -->
+                <div class="bg-base-300/30 rounded-lg p-4 border border-base-300/50">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="font-bold text-sm">Discogs</span>
+                        <span class="text-xs text-base-content/40">Album community ratings</span>
+                    </div>
+                    <div class="form-control">
+                        <input
+                            id="settings-discogs"
+                            type="password"
+                            class="input input-bordered input-sm"
+                            bind:value={discogsToken}
+                            placeholder={data.settings.discogsToken ? "••••••••" : "Not set"}
+                        />
+                    </div>
+                    <a href="https://www.discogs.com/settings/developers" target="_blank" rel="noopener" class="link link-primary text-xs mt-1 inline-block">Generate personal access token →</a>
+                </div>
             </div>
         </div>
     </div>
@@ -2019,83 +2046,7 @@
         </div>
     </div>
 
-    <!-- External Ratings -->
-    <div
-        class="card bg-base-200/50 backdrop-blur border border-base-300 shadow-lg"
-    >
-        <div class="card-body">
-            <h2 class="card-title text-lg flex items-center gap-2">
-                <span class="text-xl">📊</span>
-                External Ratings
-            </h2>
-            <p class="text-xs text-base-content/50">
-                Configure API keys for fetching IMDb, Rotten Tomatoes,
-                Metacritic, and Discogs community ratings.
-            </p>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                <!-- OMDb -->
-                <div
-                    class="bg-base-300/30 rounded-lg p-4 border border-base-300/50"
-                >
-                    <div class="flex items-center gap-2 mb-2">
-                        <span class="text-[#F5C518] font-bold text-sm"
-                            >OMDb</span
-                        >
-                        <span class="text-xs text-base-content/40"
-                            >IMDb · RT · Metacritic</span
-                        >
-                    </div>
-                    <div class="form-control">
-                        <input
-                            id="settings-omdb"
-                            type="password"
-                            class="input input-bordered input-sm"
-                            bind:value={omdbApiKey}
-                            placeholder={data.settings.omdbApiKey
-                                ? "••••••••"
-                                : "Not set"}
-                        />
-                    </div>
-                    <a
-                        href="https://www.omdbapi.com/apikey.aspx"
-                        target="_blank"
-                        rel="noopener"
-                        class="link link-primary text-xs mt-1 inline-block"
-                        >Get free API key →</a
-                    >
-                </div>
-                <!-- Discogs -->
-                <div
-                    class="bg-base-300/30 rounded-lg p-4 border border-base-300/50"
-                >
-                    <div class="flex items-center gap-2 mb-2">
-                        <span class="font-bold text-sm">Discogs</span>
-                        <span class="text-xs text-base-content/40"
-                            >Album community ratings</span
-                        >
-                    </div>
-                    <div class="form-control">
-                        <input
-                            id="settings-discogs"
-                            type="password"
-                            class="input input-bordered input-sm"
-                            bind:value={discogsToken}
-                            placeholder={data.settings.discogsToken
-                                ? "••••••••"
-                                : "Not set"}
-                        />
-                    </div>
-                    <a
-                        href="https://www.discogs.com/settings/developers"
-                        target="_blank"
-                        rel="noopener"
-                        class="link link-primary text-xs mt-1 inline-block"
-                        >Generate personal access token →</a
-                    >
-                </div>
-            </div>
-        </div>
-    </div>
+
 
     {/if}
 
@@ -2700,6 +2651,57 @@
                 </svg>
                 Data Sync
             </h2>
+            <p class="text-sm text-base-content/50 mt-1">
+                Syncs pull data from external services into Mediajam. Run these after connecting a new service, changing credentials, or if your library has changed significantly. They update your local media catalog, play history, metadata, and people credits.
+            </p>
+
+            <!-- Run All Pipeline -->
+            <div class="mt-3 mb-2">
+                <div class="flex flex-wrap items-center gap-3">
+                    <button
+                        class="btn btn-sm btn-accent gap-1.5"
+                        disabled={runAllActive || syncStatus !== "idle" || peopleSyncStatus === "syncing" || mbStatus === "syncing"}
+                        onclick={runAllSyncs}
+                    >
+                        {#if runAllActive}
+                            <span class="loading loading-spinner loading-xs"></span>
+                            Running Pipeline...
+                        {:else}
+                            🚀 Run All
+                        {/if}
+                    </button>
+                    <span class="text-xs text-base-content/40">Chains: Jellyfin → People → MusicBrainz → Reconciliation (10–30 min)</span>
+                </div>
+
+                {#if runAllActive || runAllStep === 5}
+                    <!-- Step indicator -->
+                    <div class="flex gap-1 mt-2 mb-1">
+                        {#each RUN_ALL_STEPS as step}
+                            <div class="flex items-center gap-1 text-xs px-2 py-1 rounded-full border {
+                                runAllStep > step.num ? 'border-success/30 bg-success/10 text-success' :
+                                runAllStep === step.num ? 'border-info/50 bg-info/10 text-info' :
+                                'border-base-content/10 text-base-content/30'
+                            }">
+                                {#if runAllStep > step.num}✅{:else if runAllStep === step.num}<span class="loading loading-spinner loading-xs"></span>{:else}{step.emoji}{/if}
+                                {step.label}
+                            </div>
+                        {/each}
+                    </div>
+
+                    <!-- Pipeline console -->
+                    <div class="bg-base-300/50 rounded-lg p-3 mt-2 max-h-32 overflow-y-auto text-xs font-mono space-y-0.5">
+                        {#each runAllLogs as log}
+                            <div class="{log.type === 'success' ? 'text-success' : log.type === 'error' ? 'text-error' : log.type === 'warning' ? 'text-warning' : 'text-base-content/70'}">
+                                <span class="text-base-content/30">[{log.time}]</span> {log.message}
+                            </div>
+                        {/each}
+                    </div>
+
+                    {#if runAllStep === 5}
+                        <button class="btn btn-xs btn-ghost mt-1" onclick={() => { runAllStep = 0; runAllLogs = []; }}>Dismiss</button>
+                    {/if}
+                {/if}
+            </div>
 
             <div class="space-y-1 mt-2">
                 <!-- Jellyfin Sync Row -->
@@ -2716,8 +2718,9 @@
                     >
                         <span class="text-lg">📚</span>
                         <span class="font-medium text-sm flex-1"
-                            >Sync Libraries</span
+                            >Jellyfin Sync</span
                         >
+                        <span class="text-xs text-base-content/40 hidden sm:inline">Jellyfin → catalog, play counts, people</span>
                         {#if syncStatus === "syncing" || syncStatus === "paused"}
                             <span
                                 class="loading loading-spinner loading-xs text-info"
@@ -2758,33 +2761,28 @@
                     </button>
 
                     {#if expandedSync === "jellyfin" || syncStatus !== "idle"}
+                        <p class="text-xs text-base-content/50 px-4 pt-2 pb-1">Pulls your full media catalog from <strong>Jellyfin</strong> — movies, TV series + episodes, music artists + albums + tracks, along with play counts and people credits. Use the individual library buttons to sync just one type. Check <strong>Re-fetch all data</strong> to ignore cached data and pull everything fresh.</p>
                         <div
                             class="px-4 pb-4 space-y-3 border-t border-base-content/5 pt-3"
                             class:hidden={expandedSync !== "jellyfin" &&
                                 syncStatus === "idle"}
                         >
                             {#if syncStatus === "idle"}
-                                <div class="flex flex-wrap gap-2">
+                                <div class="flex flex-wrap items-center gap-2">
                                     <button
                                         class="btn btn-info btn-sm"
-                                        onclick={() => triggerSync()}
+                                        onclick={() => triggerSync(null, null, forceResync)}
                                         >Sync All</button
-                                    >
-                                    <button
-                                        class="btn btn-ghost btn-sm"
-                                        onclick={() =>
-                                            triggerSync(null, null, true)}
-                                        title="Ignores cached data and re-fetches everything"
-                                        >Full Re-sync</button
                                     >
                                     {#if data.libraries && data.libraries.length > 1}
                                         {#each data.libraries as lib}
                                             <button
-                                                class="btn btn-outline btn-xs"
+                                                class="btn btn-info btn-sm"
                                                 onclick={() =>
                                                     triggerSync(
                                                         lib.jellyfin_id,
                                                         lib.name,
+                                                        forceResync,
                                                     )}
                                             >
                                                 {#if lib.media_type === "tvshows"}📺{:else if lib.media_type === "movies"}🎬{:else if lib.media_type === "music"}🎵{:else}📁{/if}
@@ -2792,6 +2790,10 @@
                                             </button>
                                         {/each}
                                     {/if}
+                                    <label class="flex items-center gap-1.5 ml-2 cursor-pointer">
+                                        <input type="checkbox" class="checkbox checkbox-xs checkbox-info" bind:checked={forceResync} />
+                                        <span class="text-xs text-base-content/60">Re-fetch all data</span>
+                                    </label>
                                 </div>
                                 {#if syncHistoryLocal?.jellyfin?.summary}
                                     <p class="text-xs text-base-content/50">
@@ -2860,14 +2862,8 @@
                                         >
                                         <button
                                             class="btn btn-sm btn-ghost"
-                                            onclick={() => triggerSync()}
+                                            onclick={() => triggerSync(null, null, forceResync)}
                                             >Sync Again</button
-                                        >
-                                        <button
-                                            class="btn btn-sm btn-ghost"
-                                            onclick={() =>
-                                                triggerSync(null, null, true)}
-                                            >Full Re-sync</button
                                         >
                                     {/if}
                                 </div>
@@ -2890,6 +2886,7 @@
                         <span class="font-medium text-sm flex-1"
                             >Sync People</span
                         >
+                        <span class="text-xs text-base-content/40 hidden sm:inline">TMDB → cast, crew, photos</span>
                         {#if peopleSyncStatus === "syncing" || peopleSyncStatus === "paused"}
                             <span
                                 class="loading loading-spinner loading-xs text-info"
@@ -2930,6 +2927,7 @@
                     </button>
 
                     {#if expandedSync === "people" || (peopleSyncStatus !== "idle" && peopleSyncStatus !== "complete" && peopleSyncStatus !== "error")}
+                        <p class="text-xs text-base-content/50 px-4 pt-2 pb-1">Fetches cast & crew details for movies and TV shows from <strong>TMDB</strong> — photo URLs, biographies, and external IDs (IMDb, Instagram, etc). <strong>External IDs Only</strong> is a lighter pass that skips bios and just links existing people to their TMDB/IMDb profiles.</p>
                         <div
                             class="px-4 pb-4 space-y-3 border-t border-base-content/5 pt-3"
                             class:hidden={expandedSync !== "people" &&
@@ -3057,6 +3055,7 @@
                         <span class="font-medium text-sm flex-1"
                             >Enrich Music</span
                         >
+                        <span class="text-xs text-base-content/40 hidden sm:inline">MusicBrainz → metadata, links</span>
                         {#if mbStatus === "syncing" || mbStatus === "paused"}
                             <span
                                 class="loading loading-spinner loading-xs text-secondary"
@@ -3099,6 +3098,7 @@
                     </button>
 
                     {#if expandedSync === "musicbrainz" || (mbStatus !== "idle" && mbStatus !== "complete" && mbStatus !== "error")}
+                        <p class="text-xs text-base-content/50 px-4 pt-2 pb-1">Looks up music artists in <strong>MusicBrainz</strong> to enrich them with metadata, genres, external links (Wikipedia, Discogs, AllMusic), and canonical MusicBrainz IDs for better matching.</p>
                         <div
                             class="px-4 pb-4 space-y-3 border-t border-base-content/5 pt-3"
                             class:hidden={expandedSync !== "musicbrainz" &&
@@ -3196,95 +3196,6 @@
                     {/if}
                 </div>
 
-                <!-- Reconcile Row -->
-                <div
-                    class="rounded-lg border border-base-content/10 overflow-hidden"
-                >
-                    <button
-                        class="w-full flex items-center gap-3 px-4 py-3 hover:bg-base-300/50 transition-colors text-left"
-                        onclick={() =>
-                            (expandedSync =
-                                expandedSync === "reconcile"
-                                    ? null
-                                    : "reconcile")}
-                    >
-                        <span class="text-lg">🔗</span>
-                        <span class="font-medium text-sm flex-1">Reconcile</span
-                        >
-                        {#if reconciling}
-                            <span
-                                class="loading loading-spinner loading-xs text-info"
-                            ></span>
-                            <span class="badge badge-info badge-sm gap-1"
-                                >running</span
-                            >
-                        {:else if syncHistoryLocal?.reconcile}
-                            {@const h = syncHistoryLocal.reconcile}
-                            <span
-                                class="badge badge-sm gap-1"
-                                class:badge-success={h.status === "success"}
-                                class:badge-error={h.status === "failed"}
-                            >
-                                {h.status}
-                            </span>
-                            <span class="text-xs text-base-content/40"
-                                >{h.finishedAt
-                                    ? new Date(h.finishedAt).toLocaleString()
-                                    : ""}</span
-                            >
-                        {:else}
-                            <span class="text-xs text-base-content/40"
-                                >Never run</span
-                            >
-                        {/if}
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            class="h-4 w-4 text-base-content/30 transition-transform"
-                            class:rotate-180={expandedSync === "reconcile"}
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            ><polyline points="6 9 12 15 18 9"></polyline></svg
-                        >
-                    </button>
-
-                    {#if expandedSync === "reconcile"}
-                        <div
-                            class="px-4 pb-4 space-y-3 border-t border-base-content/5 pt-3"
-                        >
-                            <p class="text-xs text-base-content/50">
-                                Merge orphaned Last.fm/Trakt media entries into
-                                Jellyfin-synced items.
-                            </p>
-                            <div class="flex flex-wrap gap-2">
-                                <button
-                                    class="btn btn-info btn-sm"
-                                    disabled={reconciling}
-                                    onclick={runReconcile}
-                                >
-                                    {#if reconciling}<span
-                                            class="loading loading-spinner loading-xs"
-                                        ></span>{/if}
-                                    Run Reconcile
-                                </button>
-                            </div>
-                            {#if reconcileResult}
-                                <p class="text-xs text-base-content/50">
-                                    {#if reconcileResult.error}❌ {reconcileResult.error}{:else}✅
-                                        {reconcileResult.merged} plays migrated,
-                                        {reconcileResult.deleted} orphans removed{/if}
-                                </p>
-                            {/if}
-                            {#if syncHistoryLocal?.reconcile?.summary}
-                                <p class="text-xs text-base-content/50">
-                                    Last result: {syncHistoryLocal.reconcile
-                                        .summary}
-                                </p>
-                            {/if}
-                        </div>
-                    {/if}
-                </div>
             </div>
         </div>
     </div>
@@ -3582,23 +3493,7 @@
 
     <!-- ═══════════════════════ TAB: DATA CLEAN-UP ═══════════════════════ -->
     {#if activeTab === 'cleanup'}
-    <div class="card bg-base-200/50 border border-base-300">
-        <div class="card-body">
-            <h2 class="card-title text-lg">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-warning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.414 3.414H4.828c-1.78 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" /></svg>
-                Data Clean-up
-            </h2>
-            <p class="text-sm text-base-content/60">
-                Reconcile playback history, match scrobbles to your library, and clean up unmatched items.
-            </p>
-            <div class="mt-4">
-                <a href="/settings/reconciliation" class="btn btn-primary btn-sm gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                    Open Reconciliation
-                </a>
-            </div>
-        </div>
-    </div>
+    <ReconciliationPanel settings={{ radarrUrl: data.settings.radarrUrl, sonarrUrl: data.settings.sonarrUrl, lidarrUrl: data.settings.lidarrUrl }} />
     {/if}
 </div>
 

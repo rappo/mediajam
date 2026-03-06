@@ -515,47 +515,68 @@ export async function startSync(libraryId = null, force = false) {
                     try {
                         upsertParent.run(parentParams);
                     } catch (upsertErr) {
-                        // UNIQUE constraint on (musicbrainz_id, media_type) fires when two
-                        // different Jellyfin items share a MusicBrainz ID (e.g. Isis vs Isis & Aereogramme).
-                        if (String(upsertErr).includes('UNIQUE constraint') && parentParams.musicbrainzId) {
-                            // Find the existing primary that owns this MB ID
-                            const existing = /** @type {any} */ (db.prepare(
-                                'SELECT id, title FROM media_parents WHERE musicbrainz_id = ? AND media_type = ? LIMIT 1'
-                            ).get(parentParams.musicbrainzId, parentParams.mediaType));
+                        const errStr = String(upsertErr);
+                        if (errStr.includes('UNIQUE constraint')) {
+                            // Determine which ID caused the conflict and retry without it
+                            const retryParams = { ...parentParams };
+                            let conflictField = '';
 
-                            // Sync the secondary without MB ID first
-                            upsertParent.run({ ...parentParams, musicbrainzId: null });
-                            const secondaryRow = /** @type {any} */ (db.prepare(
-                                'SELECT id FROM media_parents WHERE jellyfin_id = ?'
-                            ).get(item.Id));
-                            const secondaryId = secondaryRow?.id;
+                            if (errStr.includes('musicbrainz_id') && parentParams.musicbrainzId) {
+                                conflictField = 'MusicBrainz ID';
+                                const existing = /** @type {any} */ (db.prepare(
+                                    'SELECT id, title FROM media_parents WHERE musicbrainz_id = ? AND media_type = ? LIMIT 1'
+                                ).get(parentParams.musicbrainzId, parentParams.mediaType));
+                                retryParams.musicbrainzId = null;
 
-                            if (existing && secondaryId) {
-                                // Check for a previously resolved conflict
-                                const priorResolution = /** @type {any} */ (db.prepare(
-                                    `SELECT resolution FROM sync_conflicts 
-                                     WHERE conflict_type = 'shared_musicbrainz_id' 
-                                       AND external_id = ? AND status = 'resolved' LIMIT 1`
-                                ).get(parentParams.musicbrainzId));
+                                // Try to insert without the conflicting ID
+                                upsertParent.run(retryParams);
+                                const secondaryRow = /** @type {any} */ (db.prepare(
+                                    'SELECT id FROM media_parents WHERE jellyfin_id = ?'
+                                ).get(item.Id));
+                                const secondaryId = secondaryRow?.id;
 
-                                if (priorResolution?.resolution === 'merge') {
-                                    // Auto-merge: move children from secondary to primary
-                                    const moved = db.prepare(
-                                        'UPDATE media_children SET parent_id = ? WHERE parent_id = ?'
-                                    ).run(existing.id, secondaryId);
-                                    broadcast({ type: 'progress', log: `  🔀 ${item.Name}: auto-merged ${moved.changes} albums under ${existing.title}`, logType: 'info' });
+                                if (existing && secondaryId) {
+                                    const priorResolution = /** @type {any} */ (db.prepare(
+                                        `SELECT resolution FROM sync_conflicts 
+                                         WHERE conflict_type = 'shared_musicbrainz_id' 
+                                           AND external_id = ? AND status = 'resolved' LIMIT 1`
+                                    ).get(parentParams.musicbrainzId));
+
+                                    if (priorResolution?.resolution === 'merge') {
+                                        const moved = db.prepare(
+                                            'UPDATE media_children SET parent_id = ? WHERE parent_id = ?'
+                                        ).run(existing.id, secondaryId);
+                                        broadcast({ type: 'progress', log: `  🔀 ${item.Name}: auto-merged ${moved.changes} albums under ${existing.title}`, logType: 'info' });
+                                    } else {
+                                        try {
+                                            db.prepare(
+                                                `INSERT OR IGNORE INTO sync_conflicts (conflict_type, primary_id, secondary_id, external_id, status)
+                                                 VALUES ('shared_musicbrainz_id', ?, ?, ?, 'pending')`
+                                            ).run(existing.id, secondaryId, parentParams.musicbrainzId);
+                                        } catch { /* ignore duplicate */ }
+                                        broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: shared MusicBrainz ID with ${existing.title} — resolve in Settings`, logType: 'warning' });
+                                    }
                                 } else {
-                                    // Create pending conflict for user to resolve
-                                    try {
-                                        db.prepare(
-                                            `INSERT OR IGNORE INTO sync_conflicts (conflict_type, primary_id, secondary_id, external_id, status)
-                                             VALUES ('shared_musicbrainz_id', ?, ?, ?, 'pending')`
-                                        ).run(existing.id, secondaryId, parentParams.musicbrainzId);
-                                    } catch { /* ignore duplicate */ }
-                                    broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: shared MusicBrainz ID with ${existing.title} — resolve in Settings`, logType: 'warning' });
+                                    broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: shared MusicBrainz ID, syncing without it`, logType: 'warning' });
                                 }
+                            } else if (errStr.includes('tmdb_id') && parentParams.tmdbId) {
+                                conflictField = 'TMDB ID';
+                                const existing = /** @type {any} */ (db.prepare(
+                                    'SELECT id, title, jellyfin_id FROM media_parents WHERE tmdb_id = ? AND media_type = ? LIMIT 1'
+                                ).get(parentParams.tmdbId, parentParams.mediaType));
+                                retryParams.tmdbId = null;
+                                upsertParent.run(retryParams);
+                                broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: shares TMDB ID ${parentParams.tmdbId} with "${existing?.title || 'unknown'}" — synced without TMDB ID`, logType: 'warning' });
+                            } else if (errStr.includes('imdb_id') && parentParams.imdbId) {
+                                conflictField = 'IMDb ID';
+                                const existing = /** @type {any} */ (db.prepare(
+                                    'SELECT id, title, jellyfin_id FROM media_parents WHERE imdb_id = ? LIMIT 1'
+                                ).get(parentParams.imdbId));
+                                retryParams.imdbId = null;
+                                upsertParent.run(retryParams);
+                                broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: shares IMDb ID ${parentParams.imdbId} with "${existing?.title || 'unknown'}" — synced without IMDb ID`, logType: 'warning' });
                             } else {
-                                broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: shared external ID, syncing without MusicBrainz ID`, logType: 'warning' });
+                                throw upsertErr;
                             }
                         } else {
                             throw upsertErr;

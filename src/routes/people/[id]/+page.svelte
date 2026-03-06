@@ -25,24 +25,53 @@
     }
 
     /**
-     * Border class for a movie poster card based on its status.
-     * Mirrors the TV episode border style conventions.
+     * Unified border class for any media card (movie, show, artist).
+     * Returns compound classes: base status + optional modifiers.
+     *   Base: poster-watched | poster-progress | poster-unwatched | poster-stub
+     *   Modifiers: poster-airing (dashed) | poster-missing (red dot)
      */
-    function movieBorderClass(credit) {
+    function mediaBorderClass(credit) {
+        let base = 'poster-stub';
+        let modifiers = '';
+
+        if (credit.media_type === 'show') {
+            // TV shows: use computed episode stats
+            if (credit.total_episodes > 0 && credit.watched_count === credit.total_episodes)
+                base = 'poster-watched';
+            else if (credit.watched_count > 0 || credit.progress_count > 0)
+                base = 'poster-progress';
+            else if (credit.jellyfin_id)
+                base = 'poster-unwatched';
+            // Modifiers
+            if (credit.upcoming_count > 0) modifiers += ' poster-airing';
+            if (credit.missing_count > 0) modifiers += ' poster-missing';
+        } else {
+            // Movies (& music): use child record watch_status/play_count
+            const ws = credit.watch_status;
+            if (ws === 'watched' || credit.play_count > 0) base = 'poster-watched';
+            else if (ws === 'in_progress') base = 'poster-progress';
+            else if (credit.jellyfin_id) base = 'poster-unwatched';
+            // Movies: "wanted" but no file = missing
+            if (!credit.jellyfin_id && credit.collection_status === 'wanted')
+                modifiers += ' poster-missing';
+        }
+        return base + modifiers;
+    }
+
+    function mediaWatchIcon(credit) {
+        if (credit.media_type === 'show') {
+            if (credit.total_episodes > 0 && credit.watched_count === credit.total_episodes)
+                return '✅';
+            if (credit.watched_count > 0 || credit.progress_count > 0)
+                return '⏳';
+            if (credit.jellyfin_id) return '🙈';
+            return '';
+        }
         const ws = credit.watch_status;
-        const cs = credit.collection_status;
-        // Watched — green solid
-        if (ws === "watched" || credit.play_count > 0) return "poster-watched";
-        // In progress
-        if (ws === "in_progress") return "poster-progress";
-        // Wanted but no file (upcoming / not downloaded)
-        if (cs === "wanted" || (cs === "collected" && !credit.arr_has_file))
-            return "poster-upcoming";
-        // Not in collection at all (external / watched_not_owned)
-        if (!credit.jellyfin_id && cs !== "collected")
-            return "poster-unavailable";
-        // Owned but unwatched
-        return "poster-unwatched";
+        if (ws === 'watched' || credit.play_count > 0) return '✅';
+        if (ws === 'in_progress') return '⏳';
+        if (credit.jellyfin_id) return '🙈';
+        return '';
     }
 
     /** @type {Record<string, { label: string, icon: string, urlFn: (id: string) => string }>} */
@@ -115,6 +144,22 @@
     import { invalidateAll } from "$app/navigation";
 
     let creditsView = $state("poster");
+    let showBorderInfo = $state(false);
+
+    // Compute which border states are present on this page (reactive)
+    let activeStates = $derived((() => {
+        const states = new Set();
+        for (const c of [...data.movies, ...data.shows, ...data.artists]) {
+            const cls = mediaBorderClass(c);
+            if (cls.includes('poster-watched')) states.add('watched');
+            if (cls.includes('poster-progress')) states.add('progress');
+            if (cls.includes('poster-unwatched')) states.add('unwatched');
+            if (cls.includes('poster-stub')) states.add('stub');
+            if (cls.includes('poster-airing')) states.add('airing');
+            if (cls.includes('poster-missing')) states.add('missing');
+        }
+        return states;
+    })());
     let discoveryLoading = $state(false);
     let discoveryLoaded = $state(false);
     let discoveryError = $state("");
@@ -129,6 +174,7 @@
               : "all",
     );
     let discoveryLimit = $state(24);
+    let discoverySearch = $state("");
     let addingToArr = $state(/** @type {string|null} */ (null));
     let navigatingItem = $state(/** @type {string|null} */ (null));
 
@@ -176,10 +222,16 @@
     let profilesLoading = $state(false);
 
     let filteredDiscovery = $derived(
-        (discoveryFilter === "all"
-            ? discoveryItems
-            : discoveryItems.filter((i) => i.media_type === discoveryFilter)
-        ).toSorted((a, b) => (b.vote_average || 0) - (a.vote_average || 0)),
+        (() => {
+            let items = discoveryFilter === "all"
+                ? discoveryItems
+                : discoveryItems.filter((i) => i.media_type === discoveryFilter);
+            if (discoverySearch.trim()) {
+                const q = discoverySearch.trim().toLowerCase();
+                items = items.filter((i) => i.title?.toLowerCase().includes(q));
+            }
+            return items.toSorted((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
+        })()
     );
 
     async function loadDiscovery() {
@@ -282,6 +334,28 @@
         addingToArr = null;
         pendingItem = null;
     }
+
+    // ── Person Sync ──
+    let personSyncing = $state(false);
+    let personSyncResult = $state(/** @type {any} */ (null));
+
+    async function syncPerson() {
+        if (personSyncing) return;
+        personSyncing = true;
+        personSyncResult = null;
+        try {
+            const res = await fetch(`/api/people/${data.person.id}/sync`, { method: 'POST' });
+            const result = await res.json();
+            personSyncResult = result;
+            if (result.success) {
+                // Refresh the page data to show updated info
+                setTimeout(() => invalidateAll(), 500);
+            }
+        } catch (e) {
+            personSyncResult = { success: false, error: e instanceof Error ? e.message : 'Sync failed' };
+        }
+        personSyncing = false;
+    }
 </script>
 
 <svelte:head>
@@ -334,6 +408,19 @@
                         id={data.person.id}
                         isFavorite={!!data.person.is_favorite}
                     />
+                    <button
+                        class="btn btn-ghost btn-xs gap-1 ml-1"
+                        disabled={personSyncing}
+                        onclick={syncPerson}
+                        title="Sync this person's data from Jellyfin, TMDB, and MusicBrainz"
+                    >
+                        {#if personSyncing}
+                            <span class="loading loading-spinner loading-xs"></span>
+                        {:else}
+                            🔄
+                        {/if}
+                        Sync
+                    </button>
                 </h1>
                 <div
                     class="flex flex-wrap items-center gap-2 text-sm text-base-content/60 mt-1"
@@ -437,6 +524,50 @@
         {/if}
     </div>
 
+    <!-- Legend (applies to all sections) -->
+    <div class="flex items-center gap-2 flex-wrap text-xs text-base-content/50">
+        {#if activeStates.has('watched')}
+            <span class="flex items-center gap-1">
+                <span class="inline-block w-3 h-3 rounded-full border-2 border-solid" style="border-color: oklch(0.75 0.18 140);"></span>Watched
+            </span>
+        {/if}
+        {#if activeStates.has('progress')}
+            <span class="flex items-center gap-1">
+                <span class="inline-block w-3 h-3 rounded-full border-2 border-solid" style="border-color: oklch(0.8 0.15 75);"></span>In Progress
+            </span>
+        {/if}
+        {#if activeStates.has('unwatched')}
+            <span class="flex items-center gap-1">
+                <span class="inline-block w-3 h-3 rounded-full border-2 border-solid" style="border-color: rgba(100, 116, 139, 0.4);"></span>Unwatched
+            </span>
+        {/if}
+        {#if activeStates.has('stub')}
+            <span class="flex items-center gap-1">
+                <span class="inline-block w-3 h-3 rounded-full border-2 border-solid" style="border-color: oklch(0.72 0.11 220 / 0.5);"></span>Stub
+            </span>
+        {/if}
+        {#if activeStates.has('missing') || activeStates.has('airing')}
+            <span class="text-base-content/30 mx-1">|</span>
+            <span class="flex items-center gap-1">
+                {#if activeStates.has('watched')}
+                    <span class="inline-block w-3 h-3 rounded-full border-2 border-dashed" style="border-color: oklch(0.75 0.18 140);"></span>
+                {/if}
+                {#if activeStates.has('progress')}
+                    <span class="inline-block w-3 h-3 rounded-full border-2 border-dashed" style="border-color: oklch(0.8 0.15 75);"></span>
+                {/if}
+                {#if activeStates.has('unwatched')}
+                    <span class="inline-block w-3 h-3 rounded-full border-2 border-dashed" style="border-color: rgba(100, 116, 139, 0.4);"></span>
+                {/if}
+                Dotted = {activeStates.has('missing') ? 'Missing Files' : 'Still Airing'}
+            </span>
+        {/if}
+        <button
+            class="btn btn-ghost btn-xs text-base-content/30 hover:text-base-content/60 min-h-0 h-5 w-5 p-0"
+            onclick={() => (showBorderInfo = true)}
+            title="What do the borders mean?"
+        >?</button>
+    </div>
+
     <!-- Movies -->
     {#if data.movies.length > 0}
         <div class="space-y-3">
@@ -456,21 +587,6 @@
                     {creditsView === "poster" ? "📋 List" : "🖼️ Poster"}
                 </button>
             </div>
-            <!-- Legend -->
-            <p class="text-xs text-base-content/50 -mt-1 mb-1">
-                <span
-                    class="inline-block w-3 h-3 rounded-sm bg-success mr-1 align-middle"
-                ></span>Watched
-                <span
-                    class="inline-block w-3 h-3 rounded-sm poster-unwatched-legend mr-1 ml-3 align-middle"
-                ></span>Unwatched
-                <span
-                    class="inline-block w-3 h-3 rounded-sm poster-upcoming-legend mr-1 ml-3 align-middle"
-                ></span>Upcoming / No File
-                <span
-                    class="inline-block w-3 h-3 rounded-sm poster-unavailable-legend mr-1 ml-3 align-middle"
-                ></span>Not In Collection
-            </p>
             {#if creditsView === "poster"}
                 <div
                     class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3"
@@ -478,7 +594,7 @@
                     {#each data.movies as credit}
                         <a
                             href="/movies/{credit.media_id}"
-                            class="card bg-base-200 card-compact overflow-hidden group transition-colors {movieBorderClass(
+                            class="card bg-base-200 card-compact overflow-hidden group transition-colors {mediaBorderClass(
                                 credit,
                             )}"
                         >
@@ -490,18 +606,24 @@
                                         alt={credit.title}
                                         class="w-full h-full object-cover"
                                     />
-                                    <div class="absolute top-1 left-1 text-sm">
-                                        {watchIcon(credit.watch_status)}
-                                    </div>
+                                    {#if mediaWatchIcon(credit)}
+                                        <div class="absolute top-1 left-1 text-sm">
+                                            {mediaWatchIcon(credit)}
+                                        </div>
+                                    {/if}
+
                                 </figure>
                             {:else}
                                 <div
                                     class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl relative"
                                 >
                                     🎬
-                                    <div class="absolute top-1 left-1 text-sm">
-                                        {watchIcon(credit.watch_status)}
-                                    </div>
+                                    {#if mediaWatchIcon(credit)}
+                                        <div class="absolute top-1 left-1 text-sm">
+                                            {mediaWatchIcon(credit)}
+                                        </div>
+                                    {/if}
+
                                 </div>
                             {/if}
                             <div class="card-body !p-2 !gap-1">
@@ -619,7 +741,9 @@
                     {#each data.shows as credit}
                         <a
                             href="/tv/{credit.media_id}"
-                            class="card bg-base-200 card-compact border border-base-300/50 overflow-hidden group hover:border-primary/40 transition-colors"
+                            class="card bg-base-200 card-compact overflow-hidden group transition-colors {mediaBorderClass(
+                                credit,
+                            )}"
                         >
                             {#if credit.poster_url}
                                 <figure class="aspect-[2/3] relative">
@@ -629,12 +753,24 @@
                                         alt={credit.title}
                                         class="w-full h-full object-cover"
                                     />
+                                    {#if mediaWatchIcon(credit)}
+                                        <div class="absolute top-1 left-1 text-sm">
+                                            {mediaWatchIcon(credit)}
+                                        </div>
+                                    {/if}
+
                                 </figure>
                             {:else}
                                 <div
-                                    class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl"
+                                    class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl relative"
                                 >
                                     📺
+                                    {#if mediaWatchIcon(credit)}
+                                        <div class="absolute top-1 left-1 text-sm">
+                                            {mediaWatchIcon(credit)}
+                                        </div>
+                                    {/if}
+
                                 </div>
                             {/if}
                             <div class="card-body !p-2 !gap-1">
@@ -824,23 +960,31 @@
                         >{filteredDiscovery.length}</span
                     >
                 </h2>
-                <div class="join">
-                    <button
-                        class="join-item btn btn-xs"
-                        class:btn-active={discoveryFilter === "all"}
-                        onclick={() => (discoveryFilter = "all")}>All</button
-                    >
-                    <button
-                        class="join-item btn btn-xs"
-                        class:btn-active={discoveryFilter === "movie"}
-                        onclick={() => (discoveryFilter = "movie")}
-                        >Movies</button
-                    >
-                    <button
-                        class="join-item btn btn-xs"
-                        class:btn-active={discoveryFilter === "show"}
-                        onclick={() => (discoveryFilter = "show")}>TV</button
-                    >
+                <div class="flex items-center gap-2">
+                    <input
+                        type="text"
+                        placeholder="Search titles…"
+                        class="input input-bordered input-xs w-40"
+                        bind:value={discoverySearch}
+                    />
+                    <div class="join">
+                        <button
+                            class="join-item btn btn-xs"
+                            class:btn-active={discoveryFilter === "all"}
+                            onclick={() => { discoveryFilter = "all"; discoveryLimit = 24; }}>All</button
+                        >
+                        <button
+                            class="join-item btn btn-xs"
+                            class:btn-active={discoveryFilter === "movie"}
+                            onclick={() => { discoveryFilter = "movie"; discoveryLimit = 24; }}
+                            >Movies</button
+                        >
+                        <button
+                            class="join-item btn btn-xs"
+                            class:btn-active={discoveryFilter === "show"}
+                            onclick={() => { discoveryFilter = "show"; discoveryLimit = 24; }}>TV</button
+                        >
+                    </div>
                 </div>
             </div>
 
@@ -1088,8 +1232,104 @@
     </div>
 {/if}
 
+<!-- Border Info Dialog -->
+{#if showBorderInfo}
+    <div class="modal modal-open">
+        <div class="modal-box max-w-lg">
+            <h3 class="font-bold text-lg mb-3">🎨 Border Guide</h3>
+            <div class="space-y-4">
+                <div>
+                    <h4 class="font-semibold text-sm text-base-content/70 mb-2">Watch Status → Border Color</h4>
+                    <table class="table table-sm">
+                        <tbody>
+                            <tr>
+                                <td><span class="inline-block w-5 h-5 rounded border-2" style="border-color: oklch(0.75 0.18 140);"></span></td>
+                                <td class="font-medium">Watched</td>
+                                <td class="text-base-content/60 text-xs">All content watched</td>
+                            </tr>
+                            <tr>
+                                <td><span class="inline-block w-5 h-5 rounded border-2" style="border-color: oklch(0.8 0.15 75);"></span></td>
+                                <td class="font-medium">In Progress</td>
+                                <td class="text-base-content/60 text-xs">Some watched, some remaining</td>
+                            </tr>
+                            <tr>
+                                <td><span class="inline-block w-5 h-5 rounded border-2" style="border-color: rgba(100, 116, 139, 0.3);"></span></td>
+                                <td class="font-medium">Unwatched</td>
+                                <td class="text-base-content/60 text-xs">In collection, nothing watched</td>
+                            </tr>
+                            <tr>
+                                <td><span class="inline-block w-5 h-5 rounded border-2" style="border-color: oklch(0.72 0.11 220 / 0.5);"></span></td>
+                                <td class="font-medium">Stub</td>
+                                <td class="text-base-content/60 text-xs">Not in Jellyfin or *arr — metadata only</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="divider my-0"></div>
+                <div>
+                    <h4 class="font-semibold text-sm text-base-content/70 mb-2">Collection Health → Border Style</h4>
+                    <table class="table table-sm">
+                        <tbody>
+                            <tr>
+                                <td><span class="inline-block w-5 h-5 rounded border-2 border-solid" style="border-color: oklch(0.75 0.18 140);"></span></td>
+                                <td class="font-medium">Solid</td>
+                                <td class="text-base-content/60 text-xs">All released content collected</td>
+                            </tr>
+                            <tr>
+                                <td><span class="inline-block w-5 h-5 rounded border-2 border-dashed" style="border-color: oklch(0.75 0.18 140);"></span></td>
+                                <td class="font-medium">Dashed</td>
+                                <td class="text-base-content/60 text-xs">Still airing — more episodes coming</td>
+                            </tr>
+                            <tr>
+                                <td><span class="inline-block w-5 h-5 rounded border-2 border-dashed" style="border-color: oklch(0.8 0.15 75);"></span></td>
+                                <td class="font-medium">Dashed</td>
+                                <td class="text-base-content/60 text-xs">Missing files — released content not on disk</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="divider my-0"></div>
+                <div>
+                    <h4 class="font-semibold text-sm text-base-content/70 mb-2">Examples</h4>
+                    <table class="table table-sm">
+                        <tbody>
+                            <tr>
+                                <td><span class="inline-block w-5 h-5 rounded border-2 border-solid" style="border-color: oklch(0.75 0.18 140);"></span></td>
+                                <td class="text-base-content/60 text-xs">Watched everything, all files present</td>
+                            </tr>
+                            <tr>
+                                <td class="flex items-center gap-1">
+                                    <span class="inline-block w-5 h-5 rounded border-2 border-dashed" style="border-color: oklch(0.75 0.18 140);"></span>
+                                </td>
+                                <td class="text-base-content/60 text-xs">Watched everything, still airing</td>
+                            </tr>
+                            <tr>
+                                <td><span class="inline-block w-5 h-5 rounded border-2 border-dashed" style="border-color: oklch(0.8 0.15 75);"></span></td>
+                                <td class="text-base-content/60 text-xs">In progress, some files missing</td>
+                            </tr>
+                            <tr>
+                                <td><span class="inline-block w-5 h-5 rounded border-2 border-dashed" style="border-color: rgba(100, 116, 139, 0.3);"></span></td>
+                                <td class="text-base-content/60 text-xs">Unwatched, some files missing</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-action">
+                <button class="btn btn-sm" onclick={() => (showBorderInfo = false)}>Close</button>
+            </div>
+        </div>
+        <div class="modal-backdrop" onclick={() => (showBorderInfo = false)}></div>
+    </div>
+{/if}
+
 <style>
-    /* ── Poster border status styles (mirroring TV episode conventions) ── */
+    /* ── Poster border system ──
+       Base classes: poster-watched, poster-progress, poster-unwatched, poster-stub
+       Modifiers:    poster-airing (dashed), poster-missing (dashed + red dot)
+    */
+
+    /* Base: Watch Status Colors (solid border) */
     :global(.poster-watched) {
         border: 2px solid oklch(var(--su, 0.75 0.18 140));
     }
@@ -1097,27 +1337,47 @@
         border: 2px solid oklch(var(--wa, 0.8 0.15 75));
     }
     :global(.poster-unwatched) {
-        border: 1px solid rgba(100, 116, 139, 0.3);
+        border: 2px solid rgba(100, 116, 139, 0.3);
     }
     :global(.poster-unwatched:hover) {
         border-color: oklch(var(--p, 0.65 0.24 270) / 0.4);
     }
-    :global(.poster-upcoming) {
-        border: 2px dashed oklch(var(--wa, 0.8 0.15 75));
+    :global(.poster-stub) {
+        border: 2px solid oklch(var(--in, 0.72 0.11 220) / 0.5);
     }
-    :global(.poster-unavailable) {
-        border: 2px dashed rgba(239, 68, 68, 0.6);
+
+    /* Modifier: Still Airing → dashed border */
+    :global(.poster-airing) {
+        border-style: dashed !important;
+    }
+
+    /* Modifier: Missing Files → dashed border */
+    :global(.poster-missing) {
+        border-style: dashed !important;
+    }
+
+    /* Red dot indicator for missing files */
+    :global(.missing-dot) {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        font-size: 12px;
+        line-height: 1;
+        filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
     }
 
     /* Legend swatches */
     :global(.poster-unwatched-legend) {
         background: rgba(100, 116, 139, 0.5);
     }
-    :global(.poster-upcoming-legend) {
-        background: rgba(245, 158, 11, 0.15);
-        border: 2px dashed oklch(var(--wa, 0.8 0.15 75));
+    :global(.poster-stub-legend) {
+        background: oklch(var(--in, 0.72 0.11 220) / 0.3);
+        border: 1px solid oklch(var(--in, 0.72 0.11 220) / 0.6);
     }
-    :global(.poster-unavailable-legend) {
+    :global(.poster-airing-legend) {
+        border: 2px dashed oklch(var(--su, 0.75 0.18 140));
+    }
+    :global(.poster-missing-legend) {
         background: rgba(239, 68, 68, 0.15);
         border: 2px dashed rgba(239, 68, 68, 0.8);
     }

@@ -303,6 +303,7 @@ async function runPeopleSync(jellyfinUrl, accessToken) {
         `);
 
         let idsUpdated = 0;
+        let idsErrors = 0;
         for (let i = 0; i < personsNeedingIds.length; i++) {
             if (!engineState.running) break;
             while (engineState.paused) {
@@ -324,22 +325,44 @@ async function runPeopleSync(jellyfinUrl, accessToken) {
                         updatePersonIds.run({ personId: person.id, tmdbId, imdbId });
                         idsUpdated++;
                     }
+                } else {
+                    idsErrors++;
+                    broadcast({
+                        type: 'progress',
+                        log: `  ⚠ ${person.name}: HTTP ${res.status} fetching external IDs`,
+                        logType: 'warning',
+                        progress: 95 + Math.floor((i / personsNeedingIds.length) * 5),
+                        itemsSynced: synced,
+                        errors: errors + idsErrors
+                    });
                 }
-            } catch { /* skip */ }
-
-            // Log progress every 100 persons
-            if ((i + 1) % 100 === 0) {
+            } catch (/** @type {any} */ err) {
+                idsErrors++;
                 broadcast({
                     type: 'progress',
-                    log: `🔗 External IDs: ${i + 1}/${personsNeedingIds.length} checked, ${idsUpdated} updated`,
+                    log: `  ✗ ${person.name}: ${err?.message || String(err)}`,
+                    logType: 'error',
+                    progress: 95 + Math.floor((i / personsNeedingIds.length) * 5),
+                    itemsSynced: synced,
+                    errors: errors + idsErrors
+                });
+            }
+
+            // Log progress every 50 persons
+            if ((i + 1) % 50 === 0) {
+                broadcast({
+                    type: 'progress',
+                    log: `🔗 ${i + 1}/${personsNeedingIds.length} checked, ${idsUpdated} updated, ${idsErrors} errors`,
                     logType: 'info',
                     progress: 95 + Math.floor((i / personsNeedingIds.length) * 5),
                     itemsSynced: synced,
-                    errors
+                    errors: errors + idsErrors
                 });
             }
             await new Promise(r => setTimeout(r, 30));
         }
+
+        errors += idsErrors;
 
         broadcast({
             type: 'progress',

@@ -34,6 +34,8 @@ export function load({ params, locals }) {
             mp.collection_status,
             mp.arr_has_file,
             mp.arr_status,
+            mp.unplayed_count,
+            mp.jellyfin_child_count,
             mc.watch_status,
             mc.play_count
         FROM person_credits pc
@@ -66,11 +68,27 @@ export function load({ params, locals }) {
     for (const entry of grouped.values()) delete entry._roleKeys;
     const credits = [...grouped.values()];
 
-    // For TV shows, attach the actual episode count from media_children
-    const episodeCountStmt = db.prepare('SELECT COUNT(*) as cnt FROM media_children WHERE parent_id = ? AND season_number > 0');
+    // For TV shows, compute real episode stats from media_children
+    // (unplayed_count from Jellyfin is unreliable — it only counts files on disk)
+    const episodeStatsStmt = db.prepare(`
+        SELECT
+            COUNT(*) as total_count,
+            SUM(CASE WHEN is_collected = 1 THEN 1 ELSE 0 END) as collected_count,
+            SUM(CASE WHEN watch_status = 'watched' THEN 1 ELSE 0 END) as watched_count,
+            SUM(CASE WHEN watch_status = 'in_progress' THEN 1 ELSE 0 END) as progress_count,
+            SUM(CASE WHEN is_collected = 0 AND (premiere_date IS NULL OR premiere_date < date('now')) THEN 1 ELSE 0 END) as missing_count,
+            SUM(CASE WHEN premiere_date > date('now') THEN 1 ELSE 0 END) as upcoming_count
+        FROM media_children WHERE parent_id = ? AND season_number > 0
+    `);
     for (const c of credits) {
         if (c.media_type === 'show') {
-            c.total_episodes = /** @type {any} */ (episodeCountStmt.get(c.media_id))?.cnt || 0;
+            const stats = /** @type {any} */ (episodeStatsStmt.get(c.media_id));
+            c.total_episodes = stats?.total_count || 0;
+            c.collected_count = stats?.collected_count || 0;
+            c.watched_count = stats?.watched_count || 0;
+            c.progress_count = stats?.progress_count || 0;
+            c.missing_count = stats?.missing_count || 0;
+            c.upcoming_count = stats?.upcoming_count || 0;
         }
     }
     const movies = credits.filter(c => c.media_type === 'movie');
@@ -79,8 +97,8 @@ export function load({ params, locals }) {
 
     // Stats
     const totalCredits = credits.length;
-    const watchedMovies = movies.filter(m => m.watch_status === 'watched').length;
-    const watchedShows = shows.filter(s => s.watch_status === 'watched' || s.play_count > 0).length;
+    const watchedMovies = movies.filter(m => m.watch_status === 'watched' || m.play_count > 0).length;
+    const watchedShows = shows.filter(s => s.total_episodes > 0 && s.watched_count === s.total_episodes).length;
 
     // External links from external_ids table (MusicBrainz relations, scraped links, etc.)
     const externalIds = /** @type {any[]} */ (db.prepare(`
