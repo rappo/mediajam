@@ -88,6 +88,46 @@ export function load({ locals }) {
         LIMIT 10
     `).all();
 
+    // ── Poster row data ──
+    const recentlyAdded = db.prepare(`
+        SELECT id, title, poster_url, release_year
+        FROM media_parents WHERE media_type = 'movie' AND poster_url IS NOT NULL
+        ORDER BY id DESC LIMIT 20
+    `).all();
+
+    const recentlyWatched = db.prepare(`
+        SELECT DISTINCT mp.id, mp.title, mp.poster_url, mp.release_year
+        FROM playback_history ph
+        JOIN media_children mc ON ph.media_id = mc.id
+        JOIN media_parents mp ON mc.parent_id = mp.id
+        WHERE mp.media_type = 'movie' AND ph.user_id = ? AND mp.poster_url IS NOT NULL
+        ORDER BY ph.timestamp DESC LIMIT 20
+    `).all(userId);
+
+    const continueWatchingMovies = db.prepare(`
+        SELECT mp.id, mp.title, mp.poster_url, mp.release_year
+        FROM media_parents mp
+        JOIN media_children mc ON mc.parent_id = mp.id
+        WHERE mp.media_type = 'movie' AND mc.watch_status = 'in_progress' AND mp.poster_url IS NOT NULL
+        ORDER BY mp.id DESC LIMIT 20
+    `).all();
+
+    const highestRated = db.prepare(`
+        SELECT id, title, poster_url, release_year, jellyfin_user_rating
+        FROM media_parents
+        WHERE media_type = 'movie' AND jellyfin_user_rating IS NOT NULL AND jellyfin_user_rating > 0
+            AND poster_url IS NOT NULL
+        ORDER BY jellyfin_user_rating DESC LIMIT 20
+    `).all();
+
+    const unwatchedMovies = db.prepare(`
+        SELECT mp.id, mp.title, mp.poster_url, mp.release_year
+        FROM media_parents mp
+        LEFT JOIN media_children mc ON mc.parent_id = mp.id
+        WHERE mp.media_type = 'movie' AND mc.watch_status = 'unwatched' AND mp.poster_url IS NOT NULL
+        ORDER BY mp.release_year DESC LIMIT 20
+    `).all();
+
     return {
         totalMovies,
         movieStats: {
@@ -100,6 +140,7 @@ export function load({ locals }) {
         movies,
         moviesByDecade,
         moviesByYear,
-        mostRewatched
+        mostRewatched,
+        posterRows: { recentlyAdded, recentlyWatched, continueWatching: continueWatchingMovies, highestRated, unwatched: unwatchedMovies }
     };
 }

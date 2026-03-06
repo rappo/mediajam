@@ -3,6 +3,7 @@
     import DataTable from "$lib/components/DataTable.svelte";
     import Chart from "$lib/components/Chart.svelte";
     import DeleteToast from "$lib/components/DeleteToast.svelte";
+    import PosterRow from "$lib/components/PosterRow.svelte";
 
     let { data } = $props();
 
@@ -245,7 +246,36 @@
         </p>
     </div>
 
-    <!-- Stat Cards -->
+    <!-- Poster Rows -->
+    <PosterRow
+        title="Continue Watching"
+        items={data.posterRows.continueWatching.map(s => ({
+            id: s.id, poster_url: s.poster_url, title: s.title,
+            subtitle: `${s.pct}% complete`, href: `/tv/${s.id}`, icon: '📺'
+        }))}
+    />
+    <PosterRow
+        title="Recently Watched"
+        items={data.posterRows.recentlyWatched.map(s => ({
+            id: s.id, poster_url: s.poster_url, title: s.title,
+            subtitle: s.release_year?.toString() || '', href: `/tv/${s.id}`, icon: '📺'
+        }))}
+    />
+    <PosterRow
+        title="Recently Added"
+        items={data.posterRows.recentlyAdded.map(s => ({
+            id: s.id, poster_url: s.poster_url, title: s.title,
+            subtitle: s.release_year?.toString() || '', href: `/tv/${s.id}`, icon: '📺'
+        }))}
+    />
+    <PosterRow
+        title="Highest Rated"
+        items={data.posterRows.highestRated.map(s => ({
+            id: s.id, poster_url: s.poster_url, title: s.title,
+            subtitle: `★ ${s.jellyfin_user_rating}`, href: `/tv/${s.id}`, icon: '📺',
+            badge: `${s.jellyfin_user_rating}`
+        }))}
+    />
     <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
         <StatCard
             icon="📺"

@@ -99,6 +99,39 @@ export function load({ locals }) {
         else collectionBuckets.missing++;
     }
 
+    // ── Poster row data ──
+    const recentlyAdded = db.prepare(`
+        SELECT id, title, poster_url, release_year
+        FROM media_parents WHERE media_type = 'show' AND poster_url IS NOT NULL
+        ORDER BY id DESC LIMIT 20
+    `).all();
+
+    const recentlyWatched = db.prepare(`
+        SELECT DISTINCT mp.id, mp.title, mp.poster_url, mp.release_year
+        FROM playback_history ph
+        JOIN media_children mc ON ph.media_id = mc.id
+        JOIN media_parents mp ON mc.parent_id = mp.id
+        WHERE mp.media_type = 'show' AND ph.user_id = ? AND mp.poster_url IS NOT NULL
+        ORDER BY ph.timestamp DESC LIMIT 20
+    `).all(userId);
+
+    const continueWatching = db.prepare(`
+        SELECT id, title, poster_url, release_year, watched_children, collected_children,
+            ROUND(CAST(watched_children AS REAL) / collected_children * 100) as pct
+        FROM media_parents
+        WHERE media_type = 'show' AND watched_children > 0 AND watched_children < collected_children
+            AND collected_children > 0 AND poster_url IS NOT NULL
+        ORDER BY id DESC LIMIT 20
+    `).all();
+
+    const highestRated = db.prepare(`
+        SELECT id, title, poster_url, release_year, jellyfin_user_rating
+        FROM media_parents
+        WHERE media_type = 'show' AND jellyfin_user_rating IS NOT NULL AND jellyfin_user_rating > 0
+            AND poster_url IS NOT NULL
+        ORDER BY jellyfin_user_rating DESC LIMIT 20
+    `).all();
+
     return {
         totalShows,
         episodeStats: {
@@ -118,6 +151,7 @@ export function load({ locals }) {
             totalCollected,
             totalReleased,
             overallPct: totalReleased > 0 ? Math.round((totalCollected / totalReleased) * 100) : 100
-        }
+        },
+        posterRows: { recentlyAdded, recentlyWatched, continueWatching, highestRated }
     };
 }

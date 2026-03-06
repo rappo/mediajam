@@ -158,6 +158,22 @@ export function load({ locals, url }) {
             .map(r => ({ label: `${r.bucket} albums`, y: r.cnt }));
     }
 
+    // ── Poster row data ──
+    const recentlyAdded = db.prepare(`
+        SELECT id, title, poster_url
+        FROM media_parents WHERE media_type = 'artist' AND poster_url IS NOT NULL
+        ORDER BY id DESC LIMIT 20
+    `).all();
+
+    const recentlyPlayed = db.prepare(`
+        SELECT DISTINCT mp.id, mp.title, mp.poster_url
+        FROM playback_history ph
+        JOIN media_children mc ON ph.media_id = mc.id
+        JOIN media_parents mp ON mc.parent_id = mp.id
+        WHERE mp.media_type = 'artist' AND ph.user_id = ? AND mp.poster_url IS NOT NULL
+        ORDER BY ph.timestamp DESC LIMIT 20
+    `).all(userId);
+
     return {
         totalArtists,
         totalAlbums: albumStats?.total_albums || 0,
@@ -179,6 +195,7 @@ export function load({ locals, url }) {
             totalPages
         },
         search,
-        sort
+        sort,
+        posterRows: { recentlyAdded, recentlyPlayed }
     };
 }

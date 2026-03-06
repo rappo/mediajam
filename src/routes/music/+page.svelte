@@ -3,6 +3,7 @@
     import DataTable from "$lib/components/DataTable.svelte";
     import Chart from "$lib/components/Chart.svelte";
     import DeleteToast from "$lib/components/DeleteToast.svelte";
+    import PosterRow from "$lib/components/PosterRow.svelte";
 
     let { data } = $props();
 
@@ -153,6 +154,22 @@
             Your music library collection
         </p>
     </div>
+
+    <!-- Poster Rows -->
+    <PosterRow
+        title="Recently Played"
+        items={data.posterRows.recentlyPlayed.map(a => ({
+            id: a.id, poster_url: a.poster_url, title: a.title,
+            subtitle: '', href: `/music/${a.id}`, icon: '🎵'
+        }))}
+    />
+    <PosterRow
+        title="Recently Added"
+        items={data.posterRows.recentlyAdded.map(a => ({
+            id: a.id, poster_url: a.poster_url, title: a.title,
+            subtitle: '', href: `/music/${a.id}`, icon: '🎵'
+        }))}
+    />
 
     <!-- Stat Cards -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">

@@ -3,6 +3,7 @@
     import DataTable from "$lib/components/DataTable.svelte";
     import Chart from "$lib/components/Chart.svelte";
     import DeleteToast from "$lib/components/DeleteToast.svelte";
+    import PosterRow from "$lib/components/PosterRow.svelte";
 
     let { data } = $props();
 
@@ -198,6 +199,44 @@
             Your complete film collection
         </p>
     </div>
+
+    <!-- Poster Rows -->
+    <PosterRow
+        title="Continue Watching"
+        items={data.posterRows.continueWatching.map(m => ({
+            id: m.id, poster_url: m.poster_url, title: m.title,
+            subtitle: m.release_year?.toString() || '', href: `/movies/${m.id}`, icon: '🎬'
+        }))}
+    />
+    <PosterRow
+        title="Recently Watched"
+        items={data.posterRows.recentlyWatched.map(m => ({
+            id: m.id, poster_url: m.poster_url, title: m.title,
+            subtitle: m.release_year?.toString() || '', href: `/movies/${m.id}`, icon: '🎬'
+        }))}
+    />
+    <PosterRow
+        title="Recently Added"
+        items={data.posterRows.recentlyAdded.map(m => ({
+            id: m.id, poster_url: m.poster_url, title: m.title,
+            subtitle: m.release_year?.toString() || '', href: `/movies/${m.id}`, icon: '🎬'
+        }))}
+    />
+    <PosterRow
+        title="Highest Rated"
+        items={data.posterRows.highestRated.map(m => ({
+            id: m.id, poster_url: m.poster_url, title: m.title,
+            subtitle: `★ ${m.jellyfin_user_rating}`, href: `/movies/${m.id}`, icon: '🎬',
+            badge: `${m.jellyfin_user_rating}`
+        }))}
+    />
+    <PosterRow
+        title="Unwatched"
+        items={data.posterRows.unwatched.map(m => ({
+            id: m.id, poster_url: m.poster_url, title: m.title,
+            subtitle: m.release_year?.toString() || '', href: `/movies/${m.id}`, icon: '🎬'
+        }))}
+    />
 
     <!-- Stat Cards -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
