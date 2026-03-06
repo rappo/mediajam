@@ -201,23 +201,33 @@
 
     <!-- Header -->
     <div class="flex gap-6 items-start">
-        {#if data.show.poster_url}
+        <!-- Poster -->
+        <div class="shrink-0" style="width: 150px; min-width: 150px;">
             <HeartBorder
                 show={!!data.show.is_favorite &&
                     data.settings?.heartBorderShows}
-                class="rounded-xl"
+                class="rounded-2xl"
             >
-                <img
-                    src={data.show.poster_url}
-                    alt={data.show.title}
-                    class="rounded-xl shadow-lg shrink-0"
-                    style="width: 150px; height: 225px; object-fit: cover; display: block;"
-                />
+                {#if data.show.poster_url}
+                    <img
+                        src={data.show.poster_url}
+                        alt={data.show.title}
+                        class="rounded-2xl shadow-lg"
+                        style="width: 150px; height: 225px; object-fit: cover; display: block;"
+                    />
+                {:else}
+                    <div
+                        class="rounded-2xl bg-base-300 flex items-center justify-center text-5xl"
+                        style="width: 150px; height: 225px;"
+                    >
+                        📺
+                    </div>
+                {/if}
             </HeartBorder>
-        {/if}
+        </div>
         <div class="space-y-3 min-w-0">
             <div>
-                <h1 class="text-3xl font-bold flex items-center gap-2">
+                <h1 class="text-3xl md:text-4xl font-bold flex items-center gap-2">
                     {data.show.title}
                     <FavoriteButton
                         type="media"
@@ -225,9 +235,11 @@
                         isFavorite={!!data.show.is_favorite}
                     />
                 </h1>
-                <p class="text-base-content/50 text-sm mt-1">
-                    {data.show.release_year || ""}
-                </p>
+                <div class="flex flex-wrap items-center gap-2 text-sm text-base-content/60 mt-1">
+                    {#if data.show.release_year}
+                        <span>{data.show.release_year}</span>
+                    {/if}
+                </div>
                 <ExternalLinks
                     tmdb_id={data.show.tmdb_id}
                     imdb_id={data.show.imdb_id}
@@ -242,7 +254,7 @@
                 />
             </div>
             {#if data.show.overview}
-                <p class="text-sm text-base-content/70 line-clamp-3">
+                <p class="text-sm text-base-content/70 line-clamp-4">
                     {data.show.overview}
                 </p>
             {/if}
