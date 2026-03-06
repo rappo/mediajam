@@ -52,11 +52,10 @@
             else if (ws === 'in_progress') base = 'poster-progress';
             else if (credit.jellyfin_id) base = 'poster-unwatched';
             else if (credit.collection_status === 'wanted' || credit.arr_has_file === 0) {
-                // Wanted but no file = unwatched + missing (not stub)
                 base = 'poster-unwatched';
-                modifiers += ' poster-missing';
             }
-            // else stays poster-stub (purely discovered, no intention to own)
+            // No jellyfin_id = no files = dotted border
+            if (!credit.jellyfin_id) modifiers += ' poster-missing';
         }
         return base + modifiers;
     }
@@ -411,7 +410,7 @@
                 <img
                     src={data.person.photoUrl + "?maxHeight=300"}
                     alt={data.person.name}
-                    class="max-h-40 w-auto rounded-2xl object-cover shadow-lg shrink-0"
+                    class="max-h-52 w-auto rounded-2xl object-cover shadow-lg shrink-0"
                 />
             </HeartBorder>
         {:else}
