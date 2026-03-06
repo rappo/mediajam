@@ -145,7 +145,28 @@
 
     let creditsView = $state("poster");
     let showBorderInfo = $state(false);
+    /** @type {Set<string>} */
+    let hiddenStates = $state(new Set());
 
+    /** Toggle a legend state filter */
+    function toggleFilter(state) {
+        if (hiddenStates.has(state)) {
+            hiddenStates.delete(state);
+        } else {
+            hiddenStates.add(state);
+        }
+        hiddenStates = new Set(hiddenStates); // trigger reactivity
+    }
+
+    /** Should this credit be visible given current filters? */
+    function shouldShow(credit) {
+        if (hiddenStates.size === 0) return true;
+        const cls = mediaBorderClass(credit);
+        for (const h of hiddenStates) {
+            if (cls.includes(`poster-${h}`)) return false;
+        }
+        return true;
+    }
     // Compute which border states are present on this page (reactive)
     let activeStates = $derived((() => {
         const states = new Set();
@@ -387,7 +408,7 @@
                 <img
                     src={data.person.photoUrl + "?maxHeight=300"}
                     alt={data.person.name}
-                    class="w-32 h-32 md:w-40 md:h-40 rounded-2xl object-cover shadow-lg shrink-0"
+                    class="max-h-40 w-auto rounded-2xl object-cover shadow-lg shrink-0"
                 />
             </HeartBorder>
         {:else}
@@ -524,31 +545,56 @@
         {/if}
     </div>
 
-    <!-- Legend (applies to all sections) -->
+    <!-- Legend (applies to all sections – click to filter) -->
     <div class="flex items-center gap-2 flex-wrap text-xs text-base-content/50">
         {#if activeStates.has('watched')}
-            <span class="flex items-center gap-1">
+            <button
+                class="flex items-center gap-1 cursor-pointer hover:text-base-content/80 transition-opacity"
+                class:opacity-30={hiddenStates.has('watched')}
+                class:line-through={hiddenStates.has('watched')}
+                onclick={() => toggleFilter('watched')}
+                title="Click to toggle watched">
                 <span class="inline-block w-3 h-3 rounded-full border-2 border-solid" style="border-color: oklch(0.75 0.18 140);"></span>Watched
-            </span>
+            </button>
         {/if}
         {#if activeStates.has('progress')}
-            <span class="flex items-center gap-1">
+            <button
+                class="flex items-center gap-1 cursor-pointer hover:text-base-content/80 transition-opacity"
+                class:opacity-30={hiddenStates.has('progress')}
+                class:line-through={hiddenStates.has('progress')}
+                onclick={() => toggleFilter('progress')}
+                title="Click to toggle in progress">
                 <span class="inline-block w-3 h-3 rounded-full border-2 border-solid" style="border-color: oklch(0.8 0.15 75);"></span>In Progress
-            </span>
+            </button>
         {/if}
         {#if activeStates.has('unwatched')}
-            <span class="flex items-center gap-1">
+            <button
+                class="flex items-center gap-1 cursor-pointer hover:text-base-content/80 transition-opacity"
+                class:opacity-30={hiddenStates.has('unwatched')}
+                class:line-through={hiddenStates.has('unwatched')}
+                onclick={() => toggleFilter('unwatched')}
+                title="Click to toggle unwatched">
                 <span class="inline-block w-3 h-3 rounded-full border-2 border-solid" style="border-color: rgba(100, 116, 139, 0.4);"></span>Unwatched
-            </span>
+            </button>
         {/if}
         {#if activeStates.has('stub')}
-            <span class="flex items-center gap-1">
+            <button
+                class="flex items-center gap-1 cursor-pointer hover:text-base-content/80 transition-opacity"
+                class:opacity-30={hiddenStates.has('stub')}
+                class:line-through={hiddenStates.has('stub')}
+                onclick={() => toggleFilter('stub')}
+                title="Click to toggle stubs">
                 <span class="inline-block w-3 h-3 rounded-full border-2 border-solid" style="border-color: oklch(0.72 0.11 220 / 0.5);"></span>Stub
-            </span>
+            </button>
         {/if}
         {#if activeStates.has('missing') || activeStates.has('airing')}
             <span class="text-base-content/30 mx-1">|</span>
-            <span class="flex items-center gap-1">
+            <button
+                class="flex items-center gap-1 cursor-pointer hover:text-base-content/80 transition-opacity"
+                class:opacity-30={hiddenStates.has('missing')}
+                class:line-through={hiddenStates.has('missing')}
+                onclick={() => toggleFilter('missing')}
+                title="Click to toggle missing">
                 {#if activeStates.has('watched')}
                     <span class="inline-block w-3 h-3 rounded-full border-2 border-dashed" style="border-color: oklch(0.75 0.18 140);"></span>
                 {/if}
@@ -559,7 +605,7 @@
                     <span class="inline-block w-3 h-3 rounded-full border-2 border-dashed" style="border-color: rgba(100, 116, 139, 0.4);"></span>
                 {/if}
                 Dotted = {activeStates.has('missing') ? 'Missing Files' : 'Still Airing'}
-            </span>
+            </button>
         {/if}
         <button
             class="btn btn-ghost btn-xs text-base-content/30 hover:text-base-content/60 min-h-0 h-5 w-5 p-0"
@@ -591,7 +637,7 @@
                 <div
                     class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3"
                 >
-                    {#each data.movies as credit}
+                    {#each data.movies.filter(shouldShow) as credit}
                         <a
                             href="/movies/{credit.media_id}"
                             class="card bg-base-200 card-compact overflow-hidden group transition-colors {mediaBorderClass(
@@ -665,7 +711,7 @@
                 </div>
             {:else}
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {#each data.movies as credit}
+                    {#each data.movies.filter(shouldShow) as credit}
                         <a
                             href="/movies/{credit.media_id}"
                             class="flex gap-3 p-3 rounded-xl bg-base-200/50 border border-base-300 hover:border-primary/30 transition-colors group"
@@ -738,7 +784,7 @@
                 <div
                     class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3"
                 >
-                    {#each data.shows as credit}
+                    {#each data.shows.filter(shouldShow) as credit}
                         <a
                             href="/tv/{credit.media_id}"
                             class="card bg-base-200 card-compact overflow-hidden group transition-colors {mediaBorderClass(
@@ -818,7 +864,7 @@
                 </div>
             {:else}
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {#each data.shows as credit}
+                    {#each data.shows.filter(shouldShow) as credit}
                         <a
                             href="/tv/{credit.media_id}"
                             class="flex gap-3 p-3 rounded-xl bg-base-200/50 border border-base-300 hover:border-primary/30 transition-colors group"
