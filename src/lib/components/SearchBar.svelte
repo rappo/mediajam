@@ -13,37 +13,43 @@
     /** @type {HTMLInputElement | null} */
     let inputEl = $state(null);
 
-    // Keyboard shortcut: Ctrl+K
-    function handleGlobalKeydown(e) {
-        if (e.ctrlKey && e.key === "k") {
-            e.preventDefault();
-            open = !open;
-            if (open) setTimeout(() => inputEl?.focus(), 50);
-        }
-        if (e.key === "Escape" && open) {
-            close();
-        }
-        // Handle keyboard nav for search results when search is open
-        if (open && results) {
-            const items = flatResults(results);
-            if (e.key === "ArrowDown" && items.length > 0) {
+    // Use $effect to register native keydown so the handler always sees latest $state
+    $effect(() => {
+        /** @param {KeyboardEvent} e */
+        function handleKeys(e) {
+            if (e.ctrlKey && e.key === "k") {
                 e.preventDefault();
-                selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
-                scrollSelectedIntoView();
-            } else if (e.key === "ArrowUp" && items.length > 0) {
-                e.preventDefault();
-                selectedIndex = Math.max(selectedIndex - 1, -1);
-                scrollSelectedIntoView();
-            } else if (e.key === "Enter" && items.length > 0) {
-                e.preventDefault();
-                if (selectedIndex >= 0 && selectedIndex < items.length) {
-                    navigateToResult(items[selectedIndex]);
-                } else {
-                    navigateToResult(items[0]);
+                open = !open;
+                if (open) setTimeout(() => inputEl?.focus(), 50);
+            }
+            if (e.key === "Escape" && open) {
+                close();
+            }
+            if (open && results) {
+                const items = flatResults(results);
+                if (e.key === "ArrowDown" && items.length > 0) {
+                    e.preventDefault();
+                    selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+                    scrollSelectedIntoView();
+                } else if (e.key === "ArrowUp" && items.length > 0) {
+                    e.preventDefault();
+                    selectedIndex = Math.max(selectedIndex - 1, -1);
+                    scrollSelectedIntoView();
+                } else if (e.key === "Enter" && items.length > 0) {
+                    e.preventDefault();
+                    if (selectedIndex >= 0 && selectedIndex < items.length) {
+                        navigateToResult(items[selectedIndex]);
+                    } else {
+                        navigateToResult(items[0]);
+                    }
                 }
             }
         }
-    }
+        document.addEventListener('keydown', handleKeys);
+        return () => document.removeEventListener('keydown', handleKeys);
+    });
+
+
 
     function close() {
         open = false;
@@ -126,31 +132,6 @@
         ];
     }
 
-    /** @param {KeyboardEvent} e */
-    function handleKeydown(e) {
-        const items = flatResults(results);
-
-        if (e.key === "ArrowDown") {
-            if (items.length > 0) {
-                e.preventDefault();
-                selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
-                scrollSelectedIntoView();
-            }
-        } else if (e.key === "ArrowUp") {
-            if (items.length > 0) {
-                e.preventDefault();
-                selectedIndex = Math.max(selectedIndex - 1, -1);
-                scrollSelectedIntoView();
-            }
-        } else if (e.key === "Enter" && items.length > 0) {
-            e.preventDefault();
-            if (selectedIndex >= 0 && selectedIndex < items.length) {
-                navigateToResult(items[selectedIndex]);
-            } else {
-                navigateToResult(items[0]);
-            }
-        }
-    }
 
     function scrollSelectedIntoView() {
         // Wait a tick for the DOM to update with the new selected class
@@ -265,7 +246,7 @@
     }
 </script>
 
-<svelte:window onkeydown={handleGlobalKeydown} />
+
 
 <!-- Search trigger button -->
 <button
@@ -326,7 +307,6 @@
                     bind:this={inputEl}
                     bind:value={query}
                     oninput={handleInput}
-                    onkeydown={handleKeydown}
                     type="text"
                     placeholder="Search shows, movies, music, people..."
                     class="search-input"
