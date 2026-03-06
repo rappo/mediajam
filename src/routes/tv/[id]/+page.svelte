@@ -54,12 +54,12 @@
      */
     function ratingColor(rating) {
         if (rating === null || rating === undefined) return 'bg-base-300/30 text-base-content/20';
-        if (rating >= 9) return 'bg-[#1a7a1a] text-white'; // Awesome - dark green
-        if (rating >= 8) return 'bg-[#2ea82e] text-white'; // Great - green
-        if (rating >= 7) return 'bg-[#7ec850] text-black'; // Good - light green
-        if (rating >= 6) return 'bg-[#d4a017] text-black'; // Regular - yellow
-        if (rating >= 4) return 'bg-[#e06030] text-white'; // Bad - orange-red
-        return 'bg-[#9b59b6] text-white'; // Garbage - purple
+        if (rating >= 9) return 'bg-[#0d6e3f] text-white'; // Outstanding - deep emerald
+        if (rating >= 8) return 'bg-[#2d9d5c] text-white'; // Excellent - emerald
+        if (rating >= 7) return 'bg-[#8cc152] text-black'; // Solid - lime
+        if (rating >= 6) return 'bg-[#c9a833] text-black'; // Fair - gold
+        if (rating >= 4) return 'bg-[#d35430] text-white'; // Poor - burnt orange
+        return 'bg-[#7b3fa0] text-white'; // Awful - violet
     }
 
     async function onArrAdded() {
@@ -476,12 +476,12 @@
         {:else if episodeView === 'ratings'}
             <!-- Ratings Heatmap -->
             <div class="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-base-content/60 mb-2">
-                <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#1a7a1a]"></span> Awesome (9+)</span>
-                <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#2ea82e]"></span> Great (8+)</span>
-                <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#7ec850]"></span> Good (7+)</span>
-                <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#d4a017]"></span> Regular (6+)</span>
-                <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#e06030]"></span> Bad (4+)</span>
-                <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#9b59b6]"></span> Garbage (&lt;4)</span>
+                <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#0d6e3f]"></span> Outstanding (9+)</span>
+                <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#2d9d5c]"></span> Excellent (8+)</span>
+                <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#8cc152]"></span> Solid (7+)</span>
+                <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#c9a833]"></span> Fair (6+)</span>
+                <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#d35430]"></span> Poor (4+)</span>
+                <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#7b3fa0]"></span> Awful (&lt;4)</span>
             </div>
 
             <div class="overflow-x-auto">
