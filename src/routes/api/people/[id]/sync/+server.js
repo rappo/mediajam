@@ -2,18 +2,20 @@ import db from '$lib/server/db.js';
 import { json, error } from '@sveltejs/kit';
 
 /** @type {import('./$types').RequestHandler} */
-export async function POST({ params }) {
+export async function POST({ params, locals }) {
+    if (!locals.user) return json({ error: 'Unauthorized' }, { status: 401 });
     const personId = parseInt(params.id);
     const person = /** @type {any} */ (db.prepare('SELECT * FROM persons WHERE id = ?').get(personId));
     if (!person) throw error(404, 'Person not found');
 
-    const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_url, jellyfin_access_token FROM app_settings WHERE id = 1').get());
-    if (!settings?.jellyfin_url || !settings?.jellyfin_access_token) {
+    const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_url FROM app_settings WHERE id = 1').get());
+    const user = /** @type {any} */ (db.prepare('SELECT jellyfin_access_token FROM users WHERE id = ?').get(locals.user.id));
+    if (!settings?.jellyfin_url || !user?.jellyfin_access_token) {
         return json({ error: 'Jellyfin not configured' }, { status: 400 });
     }
 
     const jellyfinUrl = settings.jellyfin_url;
-    const accessToken = settings.jellyfin_access_token;
+    const accessToken = user.jellyfin_access_token;
     const results = { updated: /** @type {string[]} */ ([]), errors: /** @type {string[]} */ ([]) };
 
     // Step 1: Fetch external IDs from Jellyfin if we have a jellyfin_id
