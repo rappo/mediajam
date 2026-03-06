@@ -110,21 +110,24 @@
     /** @param {KeyboardEvent} e */
     function handleKeydown(e) {
         const items = flatResults(results);
+
         if (e.key === "ArrowDown") {
-            e.preventDefault();
             if (items.length > 0) {
+                e.preventDefault();
                 selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
                 scrollSelectedIntoView();
             }
         } else if (e.key === "ArrowUp") {
-            e.preventDefault();
-            selectedIndex = Math.max(selectedIndex - 1, -1);
-            scrollSelectedIntoView();
-        } else if (e.key === "Enter") {
+            if (items.length > 0) {
+                e.preventDefault();
+                selectedIndex = Math.max(selectedIndex - 1, -1);
+                scrollSelectedIntoView();
+            }
+        } else if (e.key === "Enter" && items.length > 0) {
             e.preventDefault();
             if (selectedIndex >= 0 && selectedIndex < items.length) {
                 navigateToResult(items[selectedIndex]);
-            } else if (items.length > 0) {
+            } else {
                 navigateToResult(items[0]);
             }
         }

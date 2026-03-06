@@ -44,6 +44,9 @@
     let arrError = $state("");
     let arrMonitored = $state(!!data.show.arr_monitored);
 
+    /** @type {'map' | 'list'} */
+    let episodeView = $state('map');
+
     async function onArrAdded() {
         await invalidateAll();
     }
@@ -356,185 +359,197 @@
         </div>
     </div>
 
-    <!-- Episode Grid -->
+    <!-- Episode Grid / List -->
     <div class="space-y-2">
-        <h2 class="text-xl font-bold">Episode Map</h2>
-        <p class="text-xs text-base-content/50">
-            <span
-                class="inline-block w-3 h-3 rounded-sm bg-success mr-1 align-middle"
-            ></span>
-            Watched
-            <span
-                class="inline-block w-3 h-3 rounded-sm bg-warning mr-1 ml-3 align-middle"
-            ></span>
-            In Progress
-            <span
-                class="inline-block w-3 h-3 rounded-sm ep-unwatched-legend mr-1 ml-3 align-middle"
-            ></span>
-            Not Watched
-            <span
-                class="inline-block w-3 h-3 rounded-sm ep-missing-legend mr-1 ml-3 align-middle"
-            ></span>
-            Missing
-            <span
-                class="inline-block w-3 h-3 rounded-sm ep-upcoming-legend mr-1 ml-3 align-middle"
-            ></span>
-            Upcoming
-        </p>
+        <div class="flex items-center justify-between">
+            <h2 class="text-xl font-bold">Episodes</h2>
+            <div class="join">
+                <button
+                    class="join-item btn btn-xs {episodeView === 'map' ? 'btn-primary' : 'btn-ghost'}"
+                    onclick={() => episodeView = 'map'}
+                >Map</button>
+                <button
+                    class="join-item btn btn-xs {episodeView === 'list' ? 'btn-primary' : 'btn-ghost'}"
+                    onclick={() => episodeView = 'list'}
+                >List</button>
+            </div>
+        </div>
 
-        <div class="overflow-x-auto">
-            <div class="grid-container">
-                {#each data.seasons as season}
-                    <div class="grid-row">
-                        <div
-                            class="season-label"
-                            title="Season {season.number}"
-                        >
-                            {#if season.number === 0}
-                                <span class="text-xs">SP</span>
-                            {:else}
-                                <span class="text-xs">S{season.number}</span>
-                            {/if}
+        {#if episodeView === 'map'}
+            <p class="text-xs text-base-content/50">
+                <span
+                    class="inline-block w-3 h-3 rounded-sm bg-success mr-1 align-middle"
+                ></span>
+                Watched
+                <span
+                    class="inline-block w-3 h-3 rounded-sm bg-warning mr-1 ml-3 align-middle"
+                ></span>
+                In Progress
+                <span
+                    class="inline-block w-3 h-3 rounded-sm ep-unwatched-legend mr-1 ml-3 align-middle"
+                ></span>
+                Not Watched
+                <span
+                    class="inline-block w-3 h-3 rounded-sm ep-missing-legend mr-1 ml-3 align-middle"
+                ></span>
+                Missing
+                <span
+                    class="inline-block w-3 h-3 rounded-sm ep-upcoming-legend mr-1 ml-3 align-middle"
+                ></span>
+                Upcoming
+            </p>
+
+            <div class="overflow-x-auto">
+                <div class="grid-container">
+                    {#each data.seasons as season}
+                        <div class="grid-row">
+                            <div
+                                class="season-label"
+                                title="Season {season.number}"
+                            >
+                                {#if season.number === 0}
+                                    <span class="text-xs">SP</span>
+                                {:else}
+                                    <span class="text-xs">S{season.number}</span>
+                                {/if}
+                            </div>
+                            <div class="episode-cells">
+                                {#each season.episodes as ep}
+                                    <a
+                                        href="/tv/{data.show.id}/episode/{ep.id}"
+                                        class="ep-cell {statusClass(
+                                            ep.watch_status,
+                                            ep.is_collected,
+                                            ep.premiere_date,
+                                        )}"
+                                        title="S{season.number}E{ep.item_number}: {ep.title}{ep.is_collected
+                                            ? ep.play_count > 0
+                                                ? ` (${ep.play_count}x)`
+                                                : ''
+                                            : ep.premiere_date &&
+                                                new Date(ep.premiere_date) >
+                                                    new Date()
+                                              ? ` [UPCOMING ${new Date(ep.premiere_date).toLocaleDateString()}]`
+                                              : ' [MISSING]'}"
+                                    >
+                                        <span class="ep-num">{ep.item_number}</span>
+                                    </a>
+                                {/each}
+                            </div>
+                            <div class="season-stat">
+                                <span class="text-xs text-base-content/50">
+                                    {season.collected}/{season.total}
+                                </span>
+                            </div>
                         </div>
-                        <div class="episode-cells">
-                            {#each season.episodes as ep}
-                                <a
-                                    href="/tv/{data.show.id}/episode/{ep.id}"
-                                    class="ep-cell {statusClass(
-                                        ep.watch_status,
-                                        ep.is_collected,
-                                        ep.premiere_date,
-                                    )}"
-                                    title="S{season.number}E{ep.item_number}: {ep.title}{ep.is_collected
-                                        ? ep.play_count > 0
-                                            ? ` (${ep.play_count}x)`
-                                            : ''
-                                        : ep.premiere_date &&
-                                            new Date(ep.premiere_date) >
-                                                new Date()
-                                          ? ` [UPCOMING ${new Date(ep.premiere_date).toLocaleDateString()}]`
-                                          : ' [MISSING]'}"
-                                >
-                                    <span class="ep-num">{ep.item_number}</span>
-                                </a>
-                            {/each}
-                        </div>
-                        <div class="season-stat">
-                            <span class="text-xs text-base-content/50">
-                                {season.collected}/{season.total}
+                    {/each}
+                </div>
+            </div>
+        {:else}
+            <!-- List view with accordion -->
+            <div class="join join-vertical w-full">
+                {#each data.seasons as season, i}
+                    <div class="collapse collapse-arrow join-item bg-base-200/50 border border-base-300">
+                        <input type="radio" name="season-accordion" checked={i === 0} />
+                        <div class="collapse-title font-medium text-sm">
+                            {season.number === 0
+                                ? "Specials"
+                                : `Season ${season.number}`}
+                            <span class="text-base-content/50 ml-2">
+                                ({season.collected}/{season.total} collected
+                                {#if season.missing > 0}
+                                    · <span class="text-error"
+                                        >{season.missing} missing</span
+                                    >
+                                {/if}
+                                {#if season.upcoming > 0}
+                                    · <span class="text-base-content/40"
+                                        >{season.upcoming} upcoming</span
+                                    >
+                                {/if})
                             </span>
+                        </div>
+                        <div class="collapse-content">
+                            <div class="overflow-x-auto">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr class="text-xs text-base-content/50">
+                                            <th class="w-12">#</th>
+                                            <th>Title</th>
+                                            <th class="w-24">Status</th>
+                                            <th class="w-16">Plays</th>
+                                            <th class="w-16">Duration</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {#each season.episodes as ep}
+                                            <tr
+                                                class="hover:bg-base-300/20"
+                                                class:ep-row-missing={!ep.is_collected}
+                                            >
+                                                <td class="text-base-content/50"
+                                                    >{ep.item_number}</td
+                                                >
+                                                <td class="font-medium">
+                                                    <a
+                                                        href="/tv/{data.show
+                                                            .id}/episode/{ep.id}"
+                                                        class="hover:text-primary transition-colors"
+                                                    >
+                                                        {ep.title}
+                                                    </a>
+                                                    {#if !ep.is_collected}
+                                                        <span
+                                                            class="badge badge-error badge-xs ml-1"
+                                                            >MISSING</span
+                                                        >
+                                                    {/if}
+                                                </td>
+                                                <td>
+                                                    {#if !ep.is_collected}
+                                                        <span
+                                                            class="badge badge-error badge-sm"
+                                                            >✗</span
+                                                        >
+                                                    {:else if ep.watch_status === "watched"}
+                                                        <span
+                                                            class="badge badge-success badge-sm"
+                                                            >✓</span
+                                                        >
+                                                    {:else if ep.watch_status === "in_progress"}
+                                                        <span
+                                                            class="badge badge-warning badge-sm"
+                                                            >⏳</span
+                                                        >
+                                                    {:else}
+                                                        <span
+                                                            class="badge badge-ghost badge-sm"
+                                                            >—</span
+                                                        >
+                                                    {/if}
+                                                </td>
+                                                <td class="text-base-content/50"
+                                                    >{ep.is_collected
+                                                        ? ep.play_count || "—"
+                                                        : "—"}</td
+                                                >
+                                                <td class="text-base-content/50"
+                                                    >{ep.is_collected
+                                                        ? formatRuntime(
+                                                              ep.runtime_ticks,
+                                                          )
+                                                        : ""}</td
+                                                >
+                                            </tr>
+                                        {/each}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 {/each}
             </div>
-        </div>
-    </div>
-
-
-    <!-- Episode List -->
-    <div class="space-y-2">
-        <h2 class="text-xl font-bold">All Episodes</h2>
-        {#each data.seasons as season}
-            <details
-                class="collapse collapse-arrow bg-base-200/50 border border-base-300 rounded-xl"
-            >
-                <summary class="collapse-title font-medium text-sm">
-                    {season.number === 0
-                        ? "Specials"
-                        : `Season ${season.number}`}
-                    <span class="text-base-content/50 ml-2">
-                        ({season.collected}/{season.total} collected
-                        {#if season.missing > 0}
-                            · <span class="text-error"
-                                >{season.missing} missing</span
-                            >
-                        {/if}
-                        {#if season.upcoming > 0}
-                            · <span class="text-base-content/40"
-                                >{season.upcoming} upcoming</span
-                            >
-                        {/if})
-                    </span>
-                </summary>
-                <div class="collapse-content">
-                    <div class="overflow-x-auto">
-                        <table class="table table-sm">
-                            <thead>
-                                <tr class="text-xs text-base-content/50">
-                                    <th class="w-12">#</th>
-                                    <th>Title</th>
-                                    <th class="w-24">Status</th>
-                                    <th class="w-16">Plays</th>
-                                    <th class="w-16">Duration</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {#each season.episodes as ep}
-                                    <tr
-                                        class="hover:bg-base-300/20"
-                                        class:ep-row-missing={!ep.is_collected}
-                                    >
-                                        <td class="text-base-content/50"
-                                            >{ep.item_number}</td
-                                        >
-                                        <td class="font-medium">
-                                            <a
-                                                href="/tv/{data.show
-                                                    .id}/episode/{ep.id}"
-                                                class="hover:text-primary transition-colors"
-                                            >
-                                                {ep.title}
-                                            </a>
-                                            {#if !ep.is_collected}
-                                                <span
-                                                    class="badge badge-error badge-xs ml-1"
-                                                    >MISSING</span
-                                                >
-                                            {/if}
-                                        </td>
-                                        <td>
-                                            {#if !ep.is_collected}
-                                                <span
-                                                    class="badge badge-error badge-sm"
-                                                    >✗</span
-                                                >
-                                            {:else if ep.watch_status === "watched"}
-                                                <span
-                                                    class="badge badge-success badge-sm"
-                                                    >✓</span
-                                                >
-                                            {:else if ep.watch_status === "in_progress"}
-                                                <span
-                                                    class="badge badge-warning badge-sm"
-                                                    >⏳</span
-                                                >
-                                            {:else}
-                                                <span
-                                                    class="badge badge-ghost badge-sm"
-                                                    >—</span
-                                                >
-                                            {/if}
-                                        </td>
-                                        <td class="text-base-content/50"
-                                            >{ep.is_collected
-                                                ? ep.play_count || "—"
-                                                : "—"}</td
-                                        >
-                                        <td class="text-base-content/50"
-                                            >{ep.is_collected
-                                                ? formatRuntime(
-                                                      ep.runtime_ticks,
-                                                  )
-                                                : ""}</td
-                                        >
-                                    </tr>
-                                {/each}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </details>
-        {/each}
+        {/if}
     </div>
 
     <!-- Cast & Crew -->
