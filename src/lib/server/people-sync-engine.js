@@ -395,6 +395,148 @@ async function runPeopleSync(jellyfinUrl, accessToken) {
 }
 
 /**
+ * Enrich Sync — fetch full TMDB profile data for all persons that have a tmdb_person_id.
+ * Updates bio, birth/death dates, photo_url, birth_place, imdb_id.
+ * Middle ground between "External IDs only" and "Full Jellyfin re-sync".
+ */
+export async function startPeopleEnrichSync() {
+    if (engineState.running) return;
+
+    engineState.running = true;
+    engineState.paused = false;
+    engineState.abortController = new AbortController();
+    engineState.progress = 0;
+    engineState.itemsSynced = 0;
+    engineState.errors = 0;
+    recentLogs = [];
+    lastResult = null;
+
+    const settings = /** @type {any} */ (db.prepare('SELECT tmdb_api_key FROM app_settings WHERE id = 1').get());
+    const tmdbKey = settings?.tmdb_api_key;
+
+    if (!tmdbKey) {
+        broadcast({ type: 'error', log: '❌ No TMDB API key configured', logType: 'error' });
+        engineState.running = false;
+        return;
+    }
+
+    try {
+        const persons = /** @type {any[]} */ (db.prepare(`
+            SELECT id, name, tmdb_person_id, bio, birth_date, death_date, photo_url, imdb_person_id, birth_place
+            FROM persons
+            WHERE tmdb_person_id IS NOT NULL AND tmdb_person_id != ''
+        `).all());
+
+        if (persons.length === 0) {
+            broadcast({ type: 'complete', log: '✅ No persons with TMDB IDs to enrich.', logType: 'success', progress: 100, itemsSynced: 0, errors: 0 });
+            engineState.running = false;
+            return;
+        }
+
+        broadcast({
+            type: 'progress',
+            log: `📝 Enriching ${persons.length} persons from TMDB...`,
+            logType: 'info',
+            progress: 0, itemsSynced: 0, errors: 0
+        });
+        console.log(`[people-sync] Enrich: starting for ${persons.length} persons`);
+
+        const updatePerson = db.prepare(`
+            UPDATE persons SET
+                imdb_person_id = COALESCE(@imdbId, imdb_person_id),
+                bio = COALESCE(@bio, bio),
+                birth_date = COALESCE(@birthDate, birth_date),
+                death_date = COALESCE(@deathDate, death_date),
+                photo_url = COALESCE(@photoUrl, photo_url),
+                birth_place = COALESCE(@birthPlace, birth_place)
+            WHERE id = @personId
+        `);
+
+        let enriched = 0;
+        let skipped = 0;
+        let errors = 0;
+
+        for (let i = 0; i < persons.length; i++) {
+            if (!engineState.running) break;
+            await waitWhilePaused();
+
+            const person = persons[i];
+            try {
+                const tmdbRes = await fetch(
+                    `https://api.themoviedb.org/3/person/${person.tmdb_person_id}?api_key=${tmdbKey}&append_to_response=external_ids`
+                );
+                if (tmdbRes.ok) {
+                    const d = await tmdbRes.json();
+                    const imdbId = d.imdb_id || d.external_ids?.imdb_id || null;
+                    const bio = d.biography || null;
+                    const birthDate = d.birthday || null;
+                    const deathDate = d.deathday || null;
+                    const photoUrl = d.profile_path ? `https://image.tmdb.org/t/p/w300${d.profile_path}` : null;
+                    const birthPlace = d.place_of_birth || null;
+
+                    // Check if there's actually new data
+                    const hasNew = (imdbId && !person.imdb_person_id) ||
+                        (bio && !person.bio) ||
+                        (birthDate && !person.birth_date) ||
+                        (deathDate && !person.death_date) ||
+                        (photoUrl && !person.photo_url) ||
+                        (birthPlace && !person.birth_place);
+
+                    if (hasNew) {
+                        updatePerson.run({
+                            personId: person.id,
+                            imdbId, bio, birthDate, deathDate, photoUrl, birthPlace
+                        });
+                        enriched++;
+                    } else {
+                        skipped++;
+                    }
+                } else if (tmdbRes.status === 429) {
+                    // Rate limited — wait and retry
+                    broadcast({ type: 'progress', log: `⏳ TMDB rate limit hit, waiting 2s...`, logType: 'warning' });
+                    await sleep(2000);
+                    i--; // retry this person
+                    continue;
+                } else {
+                    errors++;
+                }
+            } catch (/** @type {any} */ err) {
+                logError('people-sync', `Enrich error for '${person.name}'`, { error: err?.message || String(err) });
+                errors++;
+            }
+
+            if ((i + 1) % 25 === 0 || i === persons.length - 1) {
+                const progress = Math.floor(((i + 1) / persons.length) * 100);
+                broadcast({
+                    type: 'progress',
+                    log: `📝 ${i + 1}/${persons.length} — ${enriched} enriched, ${skipped} up-to-date, ${errors} errors`,
+                    logType: 'info',
+                    progress, itemsSynced: enriched, errors
+                });
+            }
+            // TMDB rate limit: ~40 req/10s, so ~250ms between requests
+            await sleep(250);
+        }
+
+        broadcast({
+            type: 'complete',
+            log: `✅ Enrich done: ${enriched} updated, ${skipped} already up-to-date, ${errors} errors`,
+            logType: 'success',
+            progress: 100, itemsSynced: enriched, errors
+        });
+        console.log(`[people-sync] Enrich done: ${enriched} updated, ${skipped} skipped, ${errors} errors`);
+    } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        broadcast({ type: 'error', log: `❌ Enrich sync failed: ${msg}`, logType: 'error' });
+        console.error('[people-sync] Enrich error:', msg);
+    } finally {
+        engineState.running = false;
+        engineState.paused = false;
+        engineState.abortController = null;
+    }
+}
+
+/**
  * Start an external-IDs-only sync — backfills TMDB/IMDb IDs for persons
  * that have a jellyfin_id but are missing provider IDs.
  * Reuses the same SSE infrastructure (broadcast, pause/stop, logs).

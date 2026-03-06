@@ -751,6 +751,40 @@
         externalIdsSyncing = false;
     }
 
+    async function syncEnrichOnly() {
+        peopleSyncStatus = "syncing";
+        peopleSyncProgress = 0;
+        peopleSyncSynced = 0;
+        peopleSyncErrors = 0;
+        peopleSyncLogs = [];
+        peopleSyncResult = null;
+
+        addPeopleSyncLog("📝 Starting people enrich sync (TMDB profiles)...", "info");
+
+        try {
+            const res = await fetch("/api/people/sync", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "enrich" }),
+            });
+            const result = await res.json();
+
+            if (!result.success) {
+                addPeopleSyncLog(
+                    result.error || "Failed to start enrich sync.",
+                    "error",
+                );
+                peopleSyncStatus = "error";
+                return;
+            }
+
+            connectPeopleSyncSSE();
+        } catch {
+            addPeopleSyncLog("❌ Failed to start enrich sync.", "error");
+            peopleSyncStatus = "error";
+        }
+    }
+
     async function togglePeopleSyncPause() {
         const action = peopleSyncStatus === "paused" ? "resume" : "pause";
         await fetch("/api/people/sync", {
@@ -2939,8 +2973,15 @@
                                         class="btn btn-info btn-sm"
                                         onclick={triggerPeopleSync}
                                         disabled={peopleSyncStatus ===
-                                            "syncing"}>Start Sync</button
+                                            "syncing"}>Full Sync</button
                                     >
+                                    <button
+                                        class="btn btn-sm btn-outline btn-info"
+                                        onclick={syncEnrichOnly}
+                                        disabled={peopleSyncStatus === "syncing"}
+                                    >
+                                        Enrich All
+                                    </button>
                                     <button
                                         class="btn btn-sm btn-outline btn-info"
                                         onclick={syncExternalIdsOnly}

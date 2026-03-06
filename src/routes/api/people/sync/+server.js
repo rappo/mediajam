@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import {
     startPeopleSync,
     startExternalIdsSync,
+    startPeopleEnrichSync,
     pausePeopleSync,
     resumePeopleSync,
     stopPeopleSync,
@@ -32,6 +33,13 @@ export async function POST({ request, locals }) {
                 return json({ error: 'A sync is already running' }, { status: 409 });
             }
             startExternalIdsSync();
+            return json({ success: true, started: true });
+
+        case 'enrich':
+            if (isPeopleRunning()) {
+                return json({ error: 'A sync is already running' }, { status: 409 });
+            }
+            startPeopleEnrichSync();
             return json({ success: true, started: true });
 
         case 'pause':
