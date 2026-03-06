@@ -218,6 +218,7 @@
                 🔄 Full Sync
             {/if}
         </button>
+        {#if !data.show.jellyfin_id}
         <button
             class="btn btn-ghost btn-xs gap-1 text-error/60 hover:text-error"
             onclick={() => (showDeleteConfirm = true)}
@@ -225,6 +226,7 @@
         >
             🗑️
         </button>
+        {/if}
     </div>
 
     <!-- Header -->
