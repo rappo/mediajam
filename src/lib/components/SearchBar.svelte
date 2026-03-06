@@ -248,29 +248,43 @@
 
         // Attach keyboard handler directly to the input element in the portal
         const inp = /** @type {HTMLInputElement|null} */ (node.querySelector('.search-input'));
+        let portalSelectedIdx = -1;
+
+        function updatePortalSelection() {
+            const allItems = node.querySelectorAll('.search-result-item');
+            allItems.forEach((el, i) => {
+                if (i === portalSelectedIdx) {
+                    el.classList.add('selected');
+                    el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                } else {
+                    el.classList.remove('selected');
+                }
+            });
+        }
+
         /** @param {KeyboardEvent} e */
         function handlePortalKeydown(e) {
-            const items = flatResults(stateRef.results);
-            if (e.key === 'ArrowDown' && items.length > 0) {
+            const allItems = node.querySelectorAll('.search-result-item');
+            const count = allItems.length;
+            if (e.key === 'ArrowDown' && count > 0) {
                 e.preventDefault();
-                selectedIndex = Math.min(stateRef.selectedIndex + 1, items.length - 1);
-                scrollSelectedIntoView();
-            } else if (e.key === 'ArrowUp' && items.length > 0) {
+                portalSelectedIdx = Math.min(portalSelectedIdx + 1, count - 1);
+                updatePortalSelection();
+            } else if (e.key === 'ArrowUp' && count > 0) {
                 e.preventDefault();
-                selectedIndex = Math.max(stateRef.selectedIndex - 1, -1);
-                scrollSelectedIntoView();
-            } else if (e.key === 'Enter' && items.length > 0) {
+                portalSelectedIdx = Math.max(portalSelectedIdx - 1, -1);
+                updatePortalSelection();
+            } else if (e.key === 'Enter' && count > 0) {
                 e.preventDefault();
-                if (stateRef.selectedIndex >= 0 && stateRef.selectedIndex < items.length) {
-                    navigateToResult(items[stateRef.selectedIndex]);
-                } else {
-                    navigateToResult(items[0]);
-                }
+                const target = portalSelectedIdx >= 0 ? allItems[portalSelectedIdx] : allItems[0];
+                if (target) /** @type {HTMLElement} */ (target).click();
             } else if (e.key === 'Escape') {
                 close();
             }
         }
         if (inp) {
+            // Reset selection index when input changes (new results)
+            inp.addEventListener('input', () => { portalSelectedIdx = -1; });
             inp.addEventListener('keydown', handlePortalKeydown);
         }
 
