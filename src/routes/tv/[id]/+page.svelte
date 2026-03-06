@@ -59,7 +59,7 @@
         if (rating >= 7) return 'bg-[#8cc152] text-black'; // Solid - lime
         if (rating >= 6) return 'bg-[#c9a833] text-black'; // Fair - gold
         if (rating >= 4) return 'bg-[#d35430] text-white'; // Poor - burnt orange
-        return 'bg-[#7b3fa0] text-white'; // Awful - violet
+        return 'bg-[#6b4226] text-white'; // Awful - poop brown
     }
 
     async function onArrAdded() {
@@ -481,7 +481,7 @@
                 <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#8cc152]"></span> Solid (7+)</span>
                 <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#c9a833]"></span> Fair (6+)</span>
                 <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#d35430]"></span> Poor (4+)</span>
-                <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#7b3fa0]"></span> Awful (&lt;4)</span>
+                <span class="flex items-center gap-1"><span class="inline-block w-3 h-3 rounded-sm bg-[#6b4226]"></span> Awful (&lt;4)</span>
             </div>
 
             <div class="overflow-x-auto">
