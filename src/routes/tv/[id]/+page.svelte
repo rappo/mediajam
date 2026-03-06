@@ -415,6 +415,10 @@
                             </div>
                             <div class="episode-cells">
                                 {#each season.episodes as ep}
+                                    <div
+                                        class="tooltip"
+                                        data-tip="S{season.number}E{ep.item_number} {ep.title}"
+                                    >
                                     <a
                                         href="/tv/{data.show.id}/episode/{ep.id}"
                                         class="ep-cell {statusClass(
@@ -422,18 +426,10 @@
                                             ep.is_collected,
                                             ep.premiere_date,
                                         )}"
-                                        title="S{season.number}E{ep.item_number}: {ep.title}{ep.is_collected
-                                            ? ep.play_count > 0
-                                                ? ` (${ep.play_count}x)`
-                                                : ''
-                                            : ep.premiere_date &&
-                                                new Date(ep.premiere_date) >
-                                                    new Date()
-                                              ? ` [UPCOMING ${new Date(ep.premiere_date).toLocaleDateString()}]`
-                                              : ' [MISSING]'}"
                                     >
                                         <span class="ep-num">{ep.item_number}</span>
                                     </a>
+                                    </div>
                                 {/each}
                             </div>
                             <div class="season-stat">
@@ -450,7 +446,7 @@
             <div class="join join-vertical w-full">
                 {#each data.seasons as season, i}
                     <div class="collapse collapse-arrow join-item bg-base-200/50 border border-base-300">
-                        <input type="radio" name="season-accordion" checked={i === 0} />
+                        <input type="checkbox" name="season-accordion-{i}" />
                         <div class="collapse-title font-medium text-sm">
                             {season.number === 0
                                 ? "Specials"
