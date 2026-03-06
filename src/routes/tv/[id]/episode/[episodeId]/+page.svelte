@@ -264,8 +264,15 @@
                 class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3"
             >
                 {#each jf.guestStars as guest}
-                    <div
-                        class="flex items-center gap-3 bg-base-200 rounded-lg p-2"
+                    {@const Tag = guest.personId ? "a" : "div"}
+                    <svelte:element
+                        this={Tag}
+                        href={guest.personId
+                            ? `/people/${guest.personId}`
+                            : undefined}
+                        class="flex items-center gap-3 bg-base-200 rounded-lg p-2 {guest.personId
+                            ? 'hover:bg-base-300 transition-colors'
+                            : ''}"
                     >
                         {#if guest.photoUrl}
                             <img
@@ -292,7 +299,7 @@
                                 </div>
                             {/if}
                         </div>
-                    </div>
+                    </svelte:element>
                 {/each}
             </div>
         </div>

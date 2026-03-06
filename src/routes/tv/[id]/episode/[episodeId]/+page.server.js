@@ -105,13 +105,17 @@ export async function load({ params, locals }) {
                             : null,
                         guestStars: (item.People || [])
                             .filter((/** @type {any} */ p) => p.Type === 'GuestStar' || p.Type === 'Actor')
-                            .map((/** @type {any} */ p) => ({
-                                name: p.Name,
-                                role: p.Role || null,
-                                photoUrl: p.PrimaryImageTag && p.Id
-                                    ? `${jellyfinUrl}/Items/${p.Id}/Images/Primary?maxHeight=120`
-                                    : null
-                            })),
+                            .map((/** @type {any} */ p) => {
+                                const local = /** @type {any} */ (db.prepare('SELECT id FROM persons WHERE name = ? LIMIT 1').get(p.Name));
+                                return {
+                                    name: p.Name,
+                                    role: p.Role || null,
+                                    personId: local?.id || null,
+                                    photoUrl: p.PrimaryImageTag && p.Id
+                                        ? `${jellyfinUrl}/Items/${p.Id}/Images/Primary?maxHeight=120`
+                                        : null
+                                };
+                            }),
                         directors: (item.People || [])
                             .filter((/** @type {any} */ p) => p.Type === 'Director')
                             .map((/** @type {any} */ p) => p.Name),
@@ -133,11 +137,15 @@ export async function load({ params, locals }) {
             const res = await fetch(url);
             if (res.ok) {
                 const tmdbEp = await res.json();
-                const guestStars = (tmdbEp.guest_stars || []).slice(0, 10).map((/** @type {any} */ g) => ({
-                    name: g.name,
-                    role: g.character || null,
-                    photoUrl: g.profile_path ? `https://image.tmdb.org/t/p/w185${g.profile_path}` : null
-                }));
+                const guestStars = (tmdbEp.guest_stars || []).slice(0, 10).map((/** @type {any} */ g) => {
+                    const local = /** @type {any} */ (db.prepare('SELECT id FROM persons WHERE name = ? LIMIT 1').get(g.name));
+                    return {
+                        name: g.name,
+                        role: g.character || null,
+                        personId: local?.id || null,
+                        photoUrl: g.profile_path ? `https://image.tmdb.org/t/p/w185${g.profile_path}` : null
+                    };
+                });
                 jellyfinData = {
                     overview: tmdbEp.overview || null,
                     communityRating: tmdbEp.vote_average || null,
