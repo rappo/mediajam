@@ -14,7 +14,6 @@
     let inputEl = $state(null);
 
     // Keyboard shortcut: Ctrl+K
-    /** @param {KeyboardEvent} e */
     function handleGlobalKeydown(e) {
         if (e.ctrlKey && e.key === "k") {
             e.preventDefault();
@@ -23,6 +22,26 @@
         }
         if (e.key === "Escape" && open) {
             close();
+        }
+        // Handle keyboard nav for search results when search is open
+        if (open && results) {
+            const items = flatResults(results);
+            if (e.key === "ArrowDown" && items.length > 0) {
+                e.preventDefault();
+                selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+                scrollSelectedIntoView();
+            } else if (e.key === "ArrowUp" && items.length > 0) {
+                e.preventDefault();
+                selectedIndex = Math.max(selectedIndex - 1, -1);
+                scrollSelectedIntoView();
+            } else if (e.key === "Enter" && items.length > 0) {
+                e.preventDefault();
+                if (selectedIndex >= 0 && selectedIndex < items.length) {
+                    navigateToResult(items[selectedIndex]);
+                } else {
+                    navigateToResult(items[0]);
+                }
+            }
         }
     }
 

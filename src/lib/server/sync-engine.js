@@ -278,12 +278,16 @@ export async function startSync(libraryId = null, force = false) {
     updateSyncState({ status: 'syncing', progress_percent: 0 });
 
     const upsertParent = db.prepare(`
-		INSERT INTO media_parents (jellyfin_id, library_id, title, media_type, tvdb_id, tmdb_id, imdb_id, musicbrainz_id, release_year, poster_url, overview, jellyfin_user_rating, total_released_children, date_last_modified, jellyfin_child_count, unplayed_count, is_favorite)
-		VALUES (@jellyfinId, @libraryId, @title, @mediaType, @tvdbId, @tmdbId, @imdbId, @musicbrainzId, @releaseYear, @posterUrl, @overview, @userRating, @totalReleased, @dateLastModified, @jellyfinChildCount, @unplayedCount, @isFavorite)
+		INSERT INTO media_parents (jellyfin_id, library_id, title, media_type, tvdb_id, tmdb_id, imdb_id, musicbrainz_id, release_year, poster_url, overview, jellyfin_user_rating, total_released_children, collected_children, date_last_modified, jellyfin_child_count, unplayed_count, is_favorite)
+		VALUES (@jellyfinId, @libraryId, @title, @mediaType, @tvdbId, @tmdbId, @imdbId, @musicbrainzId, @releaseYear, @posterUrl, @overview, @userRating, @totalReleased, @collectedChildren, @dateLastModified, @jellyfinChildCount, @unplayedCount, @isFavorite)
 		ON CONFLICT(jellyfin_id) DO UPDATE SET
 			title = @title, tvdb_id = @tvdbId, tmdb_id = @tmdbId, imdb_id = @imdbId, musicbrainz_id = @musicbrainzId,
 			release_year = @releaseYear, poster_url = @posterUrl, overview = @overview, jellyfin_user_rating = @userRating,
-			total_released_children = @totalReleased, date_last_modified = @dateLastModified, jellyfin_child_count = @jellyfinChildCount, unplayed_count = @unplayedCount, is_favorite = @isFavorite
+			total_released_children = @totalReleased,
+			collected_children = CASE WHEN (SELECT COUNT(*) FROM media_children WHERE parent_id = media_parents.id AND is_special = 0) > 0
+				THEN (SELECT COUNT(*) FROM media_children WHERE parent_id = media_parents.id AND is_collected = 1 AND is_special = 0)
+				ELSE @collectedChildren END,
+			date_last_modified = @dateLastModified, jellyfin_child_count = @jellyfinChildCount, unplayed_count = @unplayedCount, is_favorite = @isFavorite
 	`);
 
     const upsertChild = db.prepare(`
@@ -507,6 +511,7 @@ export async function startSync(libraryId = null, force = false) {
                         overview: item.Overview || null,
                         userRating: item.UserData?.Rating || null,
                         totalReleased: item.RecursiveItemCount || 0,
+                        collectedChildren: item.RecursiveItemCount || 0,
                         dateLastModified: item.DateLastMediaAdded || item.DateModified || null,
                         jellyfinChildCount: item.ChildCount || 0,
                         unplayedCount: item.UserData?.UnplayedItemCount ?? null,
