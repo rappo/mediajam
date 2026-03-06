@@ -210,7 +210,8 @@
                 <img
                     src={data.show.poster_url}
                     alt={data.show.title}
-                    class="w-36 rounded-xl shadow-lg shrink-0"
+                    class="rounded-xl shadow-lg shrink-0"
+                    style="width: 150px; height: 225px; object-fit: cover; display: block;"
                 />
             </HeartBorder>
         {/if}
