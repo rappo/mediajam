@@ -1,5 +1,6 @@
 <script>
     import { goto } from "$app/navigation";
+    import { onMount } from "svelte";
     import { addToast } from "$lib/stores/toast.js";
 
     let open = $state(false);
@@ -12,6 +13,51 @@
     let debounceTimer = null;
     /** @type {HTMLInputElement | null} */
     let inputEl = $state(null);
+
+    // Use a plain object ref so native event listeners always see current state
+    const stateRef = { open: false, results: null, selectedIndex: -1 };
+    $effect(() => { stateRef.open = open; });
+    $effect(() => { stateRef.results = results; });
+    $effect(() => { stateRef.selectedIndex = selectedIndex; });
+
+    onMount(() => {
+        /** @param {KeyboardEvent} e */
+        function handleKeys(e) {
+            if (e.ctrlKey && e.key === "k") {
+                e.preventDefault();
+                open = !open;
+                if (open) setTimeout(() => inputEl?.focus(), 50);
+                return;
+            }
+            if (e.key === "Escape" && stateRef.open) {
+                close();
+                return;
+            }
+            if (stateRef.open && stateRef.results) {
+                const items = flatResults(stateRef.results);
+                if (e.key === "ArrowDown" && items.length > 0) {
+                    e.preventDefault();
+                    selectedIndex = Math.min(stateRef.selectedIndex + 1, items.length - 1);
+                    scrollSelectedIntoView();
+                } else if (e.key === "ArrowUp" && items.length > 0) {
+                    e.preventDefault();
+                    selectedIndex = Math.max(stateRef.selectedIndex - 1, -1);
+                    scrollSelectedIntoView();
+                } else if (e.key === "Enter" && items.length > 0) {
+                    e.preventDefault();
+                    if (stateRef.selectedIndex >= 0 && stateRef.selectedIndex < items.length) {
+                        navigateToResult(items[stateRef.selectedIndex]);
+                    } else {
+                        navigateToResult(items[0]);
+                    }
+                }
+            }
+        }
+        document.addEventListener('keydown', handleKeys);
+        return () => document.removeEventListener('keydown', handleKeys);
+    });
+
+
 
     function close() {
         open = false;
@@ -94,42 +140,9 @@
         ];
     }
 
-    /** @param {KeyboardEvent} e */
-    function handleKeydown(e) {
-        const items = flatResults(results);
-        if (e.key === "ArrowDown" && items.length > 0) {
-            e.preventDefault();
-            selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
-            scrollSelectedIntoView();
-        } else if (e.key === "ArrowUp" && items.length > 0) {
-            e.preventDefault();
-            selectedIndex = Math.max(selectedIndex - 1, -1);
-            scrollSelectedIntoView();
-        } else if (e.key === "Enter" && items.length > 0) {
-            e.preventDefault();
-            if (selectedIndex >= 0 && selectedIndex < items.length) {
-                navigateToResult(items[selectedIndex]);
-            } else {
-                navigateToResult(items[0]);
-            }
-        } else if (e.key === "Escape") {
-            close();
-        }
-    }
-
-    /** @param {KeyboardEvent} e */
-    function handleGlobalKeydown(e) {
-        if (e.ctrlKey && e.key === "k") {
-            e.preventDefault();
-            open = !open;
-            if (open) setTimeout(() => inputEl?.focus(), 50);
-        }
-        if (e.key === "Escape" && open) {
-            close();
-        }
-    }
 
     function scrollSelectedIntoView() {
+        // Wait a tick for the DOM to update with the new selected class
         setTimeout(() => {
             const el = document.querySelector(".search-result-item.selected");
             el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -191,9 +204,100 @@
                 : "";
         return "";
     }
+    /** @param {HTMLElement} node */
+    function portal(node) {
+        const theme = document.documentElement.getAttribute("data-theme");
+        if (theme) node.setAttribute("data-theme", theme);
+        document.body.appendChild(node);
+
+        // Read actual computed colors from a real themed element (the navbar)
+        const themedEl =
+            document.querySelector(".navbar") ||
+            document.querySelector("[data-theme]") ||
+            document.documentElement;
+        const cs = getComputedStyle(themedEl);
+        const bgColor = cs.backgroundColor; // resolved RGB
+
+        // Get primary color from a themed element
+        const tempEl = document.createElement("div");
+        tempEl.className = "text-primary";
+        tempEl.style.display = "none";
+        document.body.appendChild(tempEl);
+        const primaryColor = getComputedStyle(tempEl).color;
+        tempEl.remove();
+
+        const dialog = /** @type {HTMLElement|null} */ (
+            node.querySelector(".search-dialog")
+        );
+        if (dialog) {
+            dialog.style.backgroundColor = bgColor;
+            dialog.style.borderColor = primaryColor
+                .replace(")", " / 0.3)")
+                .replace("rgb(", "rgba(");
+            dialog.style.boxShadow = `0 0 30px 4px ${primaryColor.replace(")", " / 0.15)").replace("rgb(", "rgba(")}, 0 25px 50px -12px rgba(0,0,0,0.5)`;
+        }
+
+        const inputRow = /** @type {HTMLElement|null} */ (
+            node.querySelector(".search-input-row")
+        );
+        if (inputRow) {
+            inputRow.style.borderBottomColor = bgColor
+                .replace(")", " / 0.5)")
+                .replace("rgb(", "rgba(");
+        }
+
+        // Attach keyboard handler directly to the input element in the portal
+        const inp = /** @type {HTMLInputElement|null} */ (node.querySelector('.search-input'));
+        let portalSelectedIdx = -1;
+
+        function updatePortalSelection() {
+            const allItems = node.querySelectorAll('.search-result-item');
+            allItems.forEach((el, i) => {
+                if (i === portalSelectedIdx) {
+                    el.classList.add('selected');
+                    el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                } else {
+                    el.classList.remove('selected');
+                }
+            });
+        }
+
+        /** @param {KeyboardEvent} e */
+        function handlePortalKeydown(e) {
+            const allItems = node.querySelectorAll('.search-result-item');
+            const count = allItems.length;
+            if (e.key === 'ArrowDown' && count > 0) {
+                e.preventDefault();
+                portalSelectedIdx = Math.min(portalSelectedIdx + 1, count - 1);
+                updatePortalSelection();
+            } else if (e.key === 'ArrowUp' && count > 0) {
+                e.preventDefault();
+                portalSelectedIdx = Math.max(portalSelectedIdx - 1, -1);
+                updatePortalSelection();
+            } else if (e.key === 'Enter' && count > 0) {
+                e.preventDefault();
+                const target = portalSelectedIdx >= 0 ? allItems[portalSelectedIdx] : allItems[0];
+                if (target) /** @type {HTMLElement} */ (target).click();
+            } else if (e.key === 'Escape') {
+                close();
+            }
+        }
+        if (inp) {
+            // Reset selection index when input changes (new results)
+            inp.addEventListener('input', () => { portalSelectedIdx = -1; });
+            inp.addEventListener('keydown', handlePortalKeydown);
+        }
+
+        return {
+            destroy() {
+                if (inp) inp.removeEventListener('keydown', handlePortalKeydown);
+                node.remove();
+            },
+        };
+    }
 </script>
 
-<svelte:window onkeydown={handleGlobalKeydown} />
+
 
 <!-- Search trigger button -->
 <button
@@ -222,12 +326,12 @@
     <kbd class="kbd kbd-xs hidden lg:inline-flex">Ctrl+K</kbd>
 </button>
 
-<!-- Modal overlay - NO portal, just position:fixed with high z-index -->
+<!-- Modal overlay - portaled to body to escape navbar stacking context -->
 {#if open}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
         class="search-overlay"
-        onkeydown={handleKeydown}
+        use:portal
         onclick={(e) => {
             if (e.target === e.currentTarget) close();
         }}
@@ -358,25 +462,23 @@
         align-items: flex-start;
         justify-content: center;
         padding-top: 15vh;
-        background: rgba(0, 0, 0, 0.6);
+        background: rgba(0, 0, 0, 0.4);
         backdrop-filter: blur(8px);
     }
     .search-dialog {
         width: 100%;
         max-width: 32rem;
         border-radius: 1rem;
-        border: 1px solid oklch(var(--p) / 0.3);
+        border: 1px solid transparent;
         overflow: hidden;
         animation: search-in 0.15s ease-out;
-        background: oklch(var(--b1));
-        box-shadow: 0 0 30px 4px oklch(var(--p) / 0.15), 0 25px 50px -12px rgba(0,0,0,0.5);
     }
     .search-input-row {
         display: flex;
         align-items: center;
         gap: 0.75rem;
         padding: 0.75rem 1rem;
-        border-bottom: 1px solid oklch(var(--b3));
+        border-bottom: 1px solid transparent;
     }
     .search-icon {
         width: 1.25rem;
