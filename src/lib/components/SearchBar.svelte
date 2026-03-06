@@ -1,5 +1,6 @@
 <script>
     import { goto } from "$app/navigation";
+    import { onMount } from "svelte";
     import { addToast } from "$lib/stores/toast.js";
 
     let open = $state(false);
@@ -13,32 +14,39 @@
     /** @type {HTMLInputElement | null} */
     let inputEl = $state(null);
 
-    // Use $effect to register native keydown so the handler always sees latest $state
-    $effect(() => {
+    // Use a plain object ref so native event listeners always see current state
+    const stateRef = { open: false, results: null, selectedIndex: -1 };
+    $effect(() => { stateRef.open = open; });
+    $effect(() => { stateRef.results = results; });
+    $effect(() => { stateRef.selectedIndex = selectedIndex; });
+
+    onMount(() => {
         /** @param {KeyboardEvent} e */
         function handleKeys(e) {
             if (e.ctrlKey && e.key === "k") {
                 e.preventDefault();
                 open = !open;
                 if (open) setTimeout(() => inputEl?.focus(), 50);
+                return;
             }
-            if (e.key === "Escape" && open) {
+            if (e.key === "Escape" && stateRef.open) {
                 close();
+                return;
             }
-            if (open && results) {
-                const items = flatResults(results);
+            if (stateRef.open && stateRef.results) {
+                const items = flatResults(stateRef.results);
                 if (e.key === "ArrowDown" && items.length > 0) {
                     e.preventDefault();
-                    selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+                    selectedIndex = Math.min(stateRef.selectedIndex + 1, items.length - 1);
                     scrollSelectedIntoView();
                 } else if (e.key === "ArrowUp" && items.length > 0) {
                     e.preventDefault();
-                    selectedIndex = Math.max(selectedIndex - 1, -1);
+                    selectedIndex = Math.max(stateRef.selectedIndex - 1, -1);
                     scrollSelectedIntoView();
                 } else if (e.key === "Enter" && items.length > 0) {
                     e.preventDefault();
-                    if (selectedIndex >= 0 && selectedIndex < items.length) {
-                        navigateToResult(items[selectedIndex]);
+                    if (stateRef.selectedIndex >= 0 && stateRef.selectedIndex < items.length) {
+                        navigateToResult(items[stateRef.selectedIndex]);
                     } else {
                         navigateToResult(items[0]);
                     }
