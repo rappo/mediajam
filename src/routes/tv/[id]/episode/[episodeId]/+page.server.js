@@ -123,6 +123,11 @@ export async function load({ params, locals }) {
                             .filter((/** @type {any} */ p) => p.Type === 'Writer')
                             .map((/** @type {any} */ p) => p.Name),
                     };
+                    // Persist community rating to DB for heatmap view
+                    if (jellyfinData.communityRating) {
+                        db.prepare('UPDATE media_children SET community_rating = ? WHERE id = ?')
+                            .run(jellyfinData.communityRating, episodeId);
+                    }
                 }
             } catch (e) {
                 console.warn('[episode] Jellyfin fetch failed:', e instanceof Error ? e.message : e);
@@ -156,6 +161,11 @@ export async function load({ params, locals }) {
                     directors: (tmdbEp.crew || []).filter((/** @type {any} */ c) => c.job === 'Director').map((/** @type {any} */ c) => c.name),
                     writers: (tmdbEp.crew || []).filter((/** @type {any} */ c) => c.job === 'Writer').map((/** @type {any} */ c) => c.name),
                 };
+                // Persist community rating to DB for heatmap view
+                if (jellyfinData.communityRating) {
+                    db.prepare('UPDATE media_children SET community_rating = ? WHERE id = ?')
+                        .run(jellyfinData.communityRating, episodeId);
+                }
             }
         } catch { /* fallback: no TMDb data */ }
     }
