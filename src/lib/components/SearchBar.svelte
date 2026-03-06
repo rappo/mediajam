@@ -110,19 +110,23 @@
     /** @param {KeyboardEvent} e */
     function handleKeydown(e) {
         const items = flatResults(results);
-        if (!items.length) return;
-
         if (e.key === "ArrowDown") {
             e.preventDefault();
-            selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
-            scrollSelectedIntoView();
+            if (items.length > 0) {
+                selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+                scrollSelectedIntoView();
+            }
         } else if (e.key === "ArrowUp") {
             e.preventDefault();
             selectedIndex = Math.max(selectedIndex - 1, -1);
             scrollSelectedIntoView();
-        } else if (e.key === "Enter" && selectedIndex >= 0) {
+        } else if (e.key === "Enter") {
             e.preventDefault();
-            navigateToResult(items[selectedIndex]);
+            if (selectedIndex >= 0 && selectedIndex < items.length) {
+                navigateToResult(items[selectedIndex]);
+            } else if (items.length > 0) {
+                navigateToResult(items[0]);
+            }
         }
     }
 
@@ -274,7 +278,6 @@
     <div
         class="search-overlay"
         use:portal
-        onkeydown={handleKeydown}
         onclick={(e) => {
             if (e.target === e.currentTarget) close();
         }}

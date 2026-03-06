@@ -430,48 +430,6 @@
         </div>
     </div>
 
-    <!-- Season Breakdown -->
-    <div class="space-y-2">
-        <h2 class="text-xl font-bold">Season Breakdown</h2>
-        <div class="space-y-2">
-            {#each data.seasons as season}
-                {@const pct =
-                    season.total > 0
-                        ? Math.round((season.collected / season.total) * 100)
-                        : 0}
-                <div class="flex items-center gap-3">
-                    <span
-                        class="w-12 text-sm text-right text-base-content/60 shrink-0"
-                    >
-                        {season.number === 0 ? "Specials" : `S${season.number}`}
-                    </span>
-                    <div
-                        class="flex-1 bg-base-300 rounded-full h-4 overflow-hidden"
-                    >
-                        <div
-                            class="h-full rounded-full transition-all duration-500"
-                            style="width: {pct}%; background: {pct >= 100
-                                ? 'var(--color-success, #22c55e)'
-                                : pct > 50
-                                  ? 'var(--color-info, #22d3ee)'
-                                  : 'var(--color-warning, #f59e0b)'}"
-                        ></div>
-                    </div>
-                    <span class="w-28 text-xs text-base-content/50 shrink-0">
-                        {season.collected}/{season.total} ({pct}%)
-                        {#if season.missing > 0}
-                            <span class="text-error">-{season.missing}</span>
-                        {/if}
-                        {#if season.upcoming > 0}
-                            <span class="text-base-content/40"
-                                >+{season.upcoming} upcoming</span
-                            >
-                        {/if}
-                    </span>
-                </div>
-            {/each}
-        </div>
-    </div>
 
     <!-- Episode List -->
     <div class="space-y-2">

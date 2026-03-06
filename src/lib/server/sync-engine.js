@@ -505,7 +505,7 @@ export async function startSync(libraryId = null, force = false) {
                         posterUrl: item.ImageTags?.Primary ? `${jellyfinUrl}/Items/${item.Id}/Images/Primary` : null,
                         overview: item.Overview || null,
                         userRating: item.UserData?.Rating || null,
-                        totalReleased: 0,
+                        totalReleased: item.RecursiveItemCount || 0,
                         dateLastModified: item.DateLastMediaAdded || item.DateModified || null,
                         jellyfinChildCount: item.ChildCount || 0,
                         unplayedCount: item.UserData?.UnplayedItemCount ?? null,
