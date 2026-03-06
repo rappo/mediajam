@@ -485,64 +485,44 @@
             </div>
 
             <div class="overflow-x-auto">
-                {#each [data.seasons.filter(s => s.number !== 0)] as nonSpecialSeasons}
-                {@const maxEps = Math.max(...nonSpecialSeasons.map(s => s.episodes.length), 1)}
-                <table class="rating-heatmap">
-                    <thead>
-                        <tr>
-                            <th class="text-xs text-base-content/40 px-1"></th>
-                            {#each nonSpecialSeasons as season}
-                                <th class="text-xs text-base-content/50 text-center px-1 pb-1">S{season.number}</th>
-                            {/each}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {#each Array(maxEps) as _, epIdx}
-                            <tr>
-                                <td class="text-xs text-base-content/40 pr-2 text-right">E{epIdx + 1}</td>
-                                {#each nonSpecialSeasons as season}
-                                    {@const ep = season.episodes.find(e => e.item_number === epIdx + 1)}
-                                    <td class="p-0.5">
-                                        {#if ep}
-                                            <a
-                                                href="/tv/{data.show.id}/episode/{ep.id}"
-                                                class="rating-cell {ratingColor(ep.community_rating)}"
-                                                title="S{season.number}E{ep.item_number} {ep.title}"
-                                            >
-                                                {#if ep.community_rating !== null && ep.community_rating !== undefined}
-                                                    {ep.community_rating.toFixed(1)}
-                                                {:else}
-                                                    —
-                                                {/if}
-                                            </a>
-                                        {:else}
-                                            <div class="rating-cell-empty"></div>
-                                        {/if}
-                                    </td>
+                <div class="grid-container">
+                    {#each data.seasons as season}
+                        <div class="grid-row">
+                            <div
+                                class="season-label"
+                                title="Season {season.number}"
+                            >
+                                {#if season.number === 0}
+                                    <span class="text-xs">SP</span>
+                                {:else}
+                                    <span class="text-xs">S{season.number}</span>
+                                {/if}
+                            </div>
+                            <div class="episode-cells">
+                                {#each season.episodes as ep}
+                                    <div
+                                        class="tooltip"
+                                        data-tip="S{season.number}E{ep.item_number} {ep.title}"
+                                    >
+                                    <a
+                                        href="/tv/{data.show.id}/episode/{ep.id}"
+                                        class="ep-cell {ratingColor(ep.community_rating)}"
+                                    >
+                                        <span class="ep-rating">{ep.community_rating != null ? ep.community_rating.toFixed(1) : '—'}</span>
+                                    </a>
+                                    </div>
                                 {/each}
-                            </tr>
-                        {/each}
-                    </tbody>
-                    <tfoot>
-                        <tr>
-                            <td class="text-xs font-bold text-base-content/60 pr-2 text-right pt-2">AVG.</td>
-                            {#each nonSpecialSeasons as season}
-                                {@const rated = season.episodes.filter(e => e.community_rating != null)}
-                                {@const avg = rated.length > 0 ? rated.reduce((s, e) => s + e.community_rating, 0) / rated.length : null}
-                                <td class="p-0.5 pt-2">
-                                    {#if avg !== null}
-                                        <div class="rating-cell font-bold {ratingColor(avg)}">
-                                            {avg.toFixed(1)}
-                                        </div>
-                                    {:else}
-                                        <div class="rating-cell-empty"></div>
-                                    {/if}
-                                </td>
+                            </div>
+                            {#each [season.episodes.filter(e => e.community_rating != null)] as rated}
+                                <div class="season-stat">
+                                    <span class="text-xs text-base-content/50">
+                                        {rated.length > 0 ? (rated.reduce((s, e) => s + e.community_rating, 0) / rated.length).toFixed(1) : '—'}
+                                    </span>
+                                </div>
                             {/each}
-                        </tr>
-                    </tfoot>
-                </table>
-                {/each}
+                        </div>
+                    {/each}
+                </div>
             </div>
         {:else}
             <!-- List view with accordion -->
@@ -879,33 +859,10 @@
         text-align: right;
     }
 
-    .rating-heatmap {
-        border-collapse: separate;
-        border-spacing: 0;
-    }
-
-    .rating-cell {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 48px;
-        height: 36px;
-        border-radius: 6px;
-        font-size: 13px;
+    .ep-rating {
+        font-size: 7px;
         font-weight: 700;
-        text-decoration: none;
-        transition: transform 0.15s, box-shadow 0.15s;
-    }
-
-    .rating-cell:hover {
-        transform: scale(1.15);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-        z-index: 10;
-        position: relative;
-    }
-
-    .rating-cell-empty {
-        width: 48px;
-        height: 36px;
+        opacity: 0.9;
+        line-height: 1;
     }
 </style>
