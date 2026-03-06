@@ -246,8 +246,37 @@
                 .replace("rgb(", "rgba(");
         }
 
+        // Attach keyboard handler directly to the input element in the portal
+        const inp = /** @type {HTMLInputElement|null} */ (node.querySelector('.search-input'));
+        /** @param {KeyboardEvent} e */
+        function handlePortalKeydown(e) {
+            const items = flatResults(stateRef.results);
+            if (e.key === 'ArrowDown' && items.length > 0) {
+                e.preventDefault();
+                selectedIndex = Math.min(stateRef.selectedIndex + 1, items.length - 1);
+                scrollSelectedIntoView();
+            } else if (e.key === 'ArrowUp' && items.length > 0) {
+                e.preventDefault();
+                selectedIndex = Math.max(stateRef.selectedIndex - 1, -1);
+                scrollSelectedIntoView();
+            } else if (e.key === 'Enter' && items.length > 0) {
+                e.preventDefault();
+                if (stateRef.selectedIndex >= 0 && stateRef.selectedIndex < items.length) {
+                    navigateToResult(items[stateRef.selectedIndex]);
+                } else {
+                    navigateToResult(items[0]);
+                }
+            } else if (e.key === 'Escape') {
+                close();
+            }
+        }
+        if (inp) {
+            inp.addEventListener('keydown', handlePortalKeydown);
+        }
+
         return {
             destroy() {
+                if (inp) inp.removeEventListener('keydown', handlePortalKeydown);
                 node.remove();
             },
         };
