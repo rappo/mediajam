@@ -559,18 +559,18 @@
                         {#each data.cast as person}
                             <a
                                 href="/people/{person.id}"
-                                class="flex flex-col items-center gap-1 shrink-0 w-20 group"
+                                class="flex flex-col items-center gap-1 shrink-0 w-28 group"
                             >
                                 {#if person.photo_url}
                                     <img
                                         src={person.photo_url +
-                                            "?maxHeight=120"}
+                                            "?maxHeight=200"}
                                         alt={person.name}
-                                        class="w-16 h-16 rounded-full object-cover border-2 border-base-300 group-hover:border-primary transition-colors"
+                                        class="w-24 h-24 rounded-full object-cover border-2 border-base-300 group-hover:border-primary transition-colors"
                                     />
                                 {:else}
                                     <div
-                                        class="w-16 h-16 rounded-full bg-base-300 flex items-center justify-center text-xl"
+                                        class="w-24 h-24 rounded-full bg-base-300 flex items-center justify-center text-2xl"
                                     >
                                         👤
                                     </div>
