@@ -17,14 +17,41 @@
                 method: "POST",
                 body: file,
             });
-            const result = await res.json();
-            if (result.success) {
-                window.location.href = "/";
+
+            if (res.status === 413) {
+                importError = `File too large (${(file.size / 1024 / 1024).toFixed(1)} MB). The server rejected the upload — this may be a body size limit issue.`;
+            } else if (res.status === 403) {
+                importError =
+                    "Permission denied. Only admins can import backups.";
+            } else if (!res.ok) {
+                let detail = "";
+                try {
+                    const body = await res.json();
+                    detail = body.error || JSON.stringify(body);
+                } catch {
+                    detail = await res.text().catch(() => `HTTP ${res.status}`);
+                }
+                importError = `Import failed (${res.status}): ${detail}`;
             } else {
-                importError = result.error || "Import failed";
+                const result = await res.json();
+                if (result.success) {
+                    window.location.href = "/";
+                } else {
+                    importError =
+                        result.error ||
+                        "Import completed but reported errors. Check the server logs.";
+                }
             }
         } catch (e) {
-            importError = e instanceof Error ? e.message : "Import failed";
+            if (e instanceof TypeError && e.message.includes("fetch")) {
+                importError =
+                    "Network error — could not reach the server. Is it running?";
+            } else {
+                importError =
+                    e instanceof Error
+                        ? e.message
+                        : "An unexpected error occurred during import.";
+            }
         }
         importingBackup = false;
     }
