@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { startSync, pauseSync, resumeSync, stopSync, resetSync, addListener, isRunning, getStatus } from '$lib/server/sync-engine.js';
 import { BUILD_VERSION } from '$lib/version.js';
-import { logInfo } from '$lib/server/logger.js';
+import { logInfo, logError } from '$lib/server/logger.js';
 
 /** @type {import('./$types').RequestHandler} */
 export async function POST({ request }) {
@@ -15,8 +15,11 @@ export async function POST({ request }) {
                 // Force-reset stuck state (common after HMR or server restart)
                 resetSync();
             }
-            // Start sync in background (don't await)
-            startSync(libraryId || null, !!force);
+            // Start sync in background (don't await, but catch crashes)
+            startSync(libraryId || null, !!force).catch(err => {
+                console.error('[sync] startSync crashed:', err);
+                logError('sync', `startSync crashed: ${err instanceof Error ? err.message : String(err)}`);
+            });
             return json({ success: true, message: libraryId ? 'Library sync started.' : 'Sync started.' });
 
         case 'pause':

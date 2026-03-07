@@ -2,6 +2,19 @@ import { redirect } from '@sveltejs/kit';
 import db from '$lib/server/db.js';
 import { verifySession, SESSION_COOKIE } from '$lib/server/session.js';
 import { startAutoSyncScheduler } from '$lib/server/auto-sync.js';
+import { logError } from '$lib/server/logger.js';
+
+// Prevent unhandled errors from crashing the entire process
+process.on('unhandledRejection', (reason) => {
+    const msg = reason instanceof Error ? reason.stack || reason.message : String(reason);
+    console.error('[FATAL] Unhandled promise rejection:', msg);
+    logError('process', `Unhandled rejection: ${msg}`);
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('[FATAL] Uncaught exception:', err.stack || err.message);
+    logError('process', `Uncaught exception: ${err.stack || err.message}`);
+});
 
 /** @type {import('@sveltejs/kit').Handle} */
 export async function handle({ event, resolve }) {
