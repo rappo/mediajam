@@ -6,6 +6,7 @@
     let syncStatus = $state("idle");
     let logs = $state([]);
     let eventSource = $state(null);
+    let sseRetries = $state(0);
 
     // Per-library tracking
     let currentLibrary = $state(null);
@@ -50,79 +51,101 @@
             }
 
             // Connect to SSE stream
-            eventSource = new EventSource("/api/sync");
-
-            eventSource.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
-
-                    if (data.type === "library_start") {
-                        currentLibrary = data.libraryName;
-                        libraryCount = data.libraryCount;
-                        libraryIndex = data.libraryIndex;
-                        libProgress = 0;
-                        parentCount = 0;
-                        parentIndex = 0;
-                    } else if (data.type === "library_count") {
-                        parentCount = data.parentCount;
-                    } else if (data.type === "progress") {
-                        if (data.libProgress !== undefined) {
-                            libProgress = Math.min(100, data.libProgress);
-                        }
-                        if (data.parentIndex !== undefined) {
-                            parentIndex = data.parentIndex;
-                        }
-                        if (data.parentCount !== undefined) {
-                            parentCount = data.parentCount;
-                        }
-                        if (data.totalSynced !== undefined) {
-                            totalSynced = data.totalSynced;
-                        }
-                        if (data.errors !== undefined) {
-                            totalErrors = data.errors;
-                        }
-                        if (data.currentItem) {
-                            currentLibrary = data.libraryName || currentLibrary;
-                        }
-                        if (data.libraryIndex !== undefined) {
-                            libraryIndex = data.libraryIndex;
-                        }
-                    } else if (data.type === "library_complete") {
-                        if (data.totalSynced !== undefined)
-                            totalSynced = data.totalSynced;
-                        if (data.totalErrors !== undefined)
-                            totalErrors = data.totalErrors;
-                        libProgress = 100;
-                    } else if (data.type === "complete") {
-                        syncStatus = "complete";
-                        libProgress = 100;
-                        if (data.totalSynced !== undefined)
-                            totalSynced = data.totalSynced;
-                        if (data.totalErrors !== undefined)
-                            totalErrors = data.totalErrors;
-                        eventSource?.close();
-                    } else if (data.type === "error") {
-                        totalErrors++;
-                    }
-
-                    // Add log entry
-                    if (data.log) {
-                        addLog(data.log, data.logType || "info");
-                    }
-                } catch (e) {
-                    // ignore parse errors
-                }
-            };
-
-            eventSource.onerror = () => {
-                if (syncStatus === "syncing") {
-                    addLog("Connection lost. Retrying...", "warning");
-                }
-            };
+            connectSSE();
         } catch (e) {
             addLog("Failed to start sync.", "error");
             syncStatus = "error";
         }
+    }
+
+    function connectSSE() {
+        if (eventSource) {
+            eventSource.close();
+        }
+        eventSource = new EventSource("/api/sync");
+
+        eventSource.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                sseRetries = 0; // reset on successful message
+
+                if (data.type === "library_start") {
+                    currentLibrary = data.libraryName;
+                    libraryCount = data.libraryCount;
+                    libraryIndex = data.libraryIndex;
+                    libProgress = 0;
+                    parentCount = 0;
+                    parentIndex = 0;
+                } else if (data.type === "library_count") {
+                    parentCount = data.parentCount;
+                } else if (data.type === "progress") {
+                    if (data.libProgress !== undefined) {
+                        libProgress = Math.min(100, data.libProgress);
+                    }
+                    if (data.parentIndex !== undefined) {
+                        parentIndex = data.parentIndex;
+                    }
+                    if (data.parentCount !== undefined) {
+                        parentCount = data.parentCount;
+                    }
+                    if (data.totalSynced !== undefined) {
+                        totalSynced = data.totalSynced;
+                    }
+                    if (data.errors !== undefined) {
+                        totalErrors = data.errors;
+                    }
+                    if (data.currentItem) {
+                        currentLibrary = data.libraryName || currentLibrary;
+                    }
+                    if (data.libraryIndex !== undefined) {
+                        libraryIndex = data.libraryIndex;
+                    }
+                } else if (data.type === "library_complete") {
+                    if (data.totalSynced !== undefined)
+                        totalSynced = data.totalSynced;
+                    if (data.totalErrors !== undefined)
+                        totalErrors = data.totalErrors;
+                    libProgress = 100;
+                } else if (data.type === "complete") {
+                    syncStatus = "complete";
+                    libProgress = 100;
+                    if (data.totalSynced !== undefined)
+                        totalSynced = data.totalSynced;
+                    if (data.totalErrors !== undefined)
+                        totalErrors = data.totalErrors;
+                    eventSource?.close();
+                } else if (data.type === "error") {
+                    totalErrors++;
+                }
+
+                // Add log entry
+                if (data.log) {
+                    addLog(data.log, data.logType || "info");
+                }
+            } catch (e) {
+                // ignore parse errors
+            }
+        };
+
+        eventSource.onerror = () => {
+            if (syncStatus === "syncing" && sseRetries < 5) {
+                sseRetries++;
+                addLog(
+                    `Connection interrupted, reconnecting (attempt ${sseRetries})...`,
+                    "warning",
+                );
+                eventSource?.close();
+                setTimeout(() => {
+                    if (syncStatus === "syncing") connectSSE();
+                }, 1000 * sseRetries);
+            } else if (syncStatus === "syncing") {
+                addLog(
+                    "Connection lost after multiple retries. Sync continues in the background.",
+                    "warning",
+                );
+                eventSource?.close();
+            }
+        };
     }
 
     async function togglePause() {
@@ -423,7 +446,14 @@
                         >
                             <polyline points="20 6 9 17 4 12" />
                         </svg>
-                        Go to Dashboard
+                        Continue to Mediajam
+                    </button>
+                {:else if syncStatus === "syncing" || syncStatus === "paused"}
+                    <button
+                        class="btn btn-ghost flex-1 gap-2"
+                        onclick={finishSetup}
+                    >
+                        Skip — continue to Mediajam
                     </button>
                 {/if}
             </div>
