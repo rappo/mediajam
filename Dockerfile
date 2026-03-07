@@ -28,13 +28,13 @@ RUN npm ci --omit=dev && \
 
 RUN mkdir -p /app/data
 
-ENV PORT=3000
+ENV PORT=7331
 ENV HOST=0.0.0.0
 ENV DATABASE_PATH=/app/data/mediajam.sqlite
 
-EXPOSE 3000
+EXPOSE 7331
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD node -e "fetch('http://localhost:3000').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"
+    CMD node -e "fetch('http://localhost:7331').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"
 
 CMD ["node", "build/index.js"]
