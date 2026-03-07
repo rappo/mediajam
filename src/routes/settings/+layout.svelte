@@ -1,5 +1,6 @@
 <script>
     import { page } from "$app/stores";
+    import { BUILD_VERSION } from "$lib/version.js";
 
     /** @type {{ children: import('svelte').Snippet }} */
     let { children } = $props();
@@ -106,5 +107,10 @@
         <div class="flex-1 min-w-0">
             {@render children()}
         </div>
+    </div>
+
+    <!-- Build Version -->
+    <div class="mt-12 text-center text-xs text-base-content/30">
+        Build {BUILD_VERSION}
     </div>
 </div>
