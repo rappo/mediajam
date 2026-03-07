@@ -379,8 +379,8 @@
     let syncErrors = $state(0);
     let forceResync = $state(false);
     let syncLogs = $state([]);
-    /** @type {EventSource | null} */
-    let syncEventSource = $state(null);
+    /** @type {AbortController | null} */
+    let syncAbortController = $state(null);
     let syncSseRetries = $state(0);
     let copyFeedback = $state(false);
     /** @type {HTMLDivElement | null} */
@@ -546,8 +546,8 @@
             mounted = false;
             peopleSyncEventSource?.close();
             peopleSyncEventSource = null;
-            syncEventSource?.close();
-            syncEventSource = null;
+            syncAbortController?.abort();
+            syncAbortController = null;
             mbEventSource?.close();
             mbEventSource = null;
         };
@@ -595,7 +595,7 @@
             syncStatus = "complete";
             syncProgress = 100;
             if (d.totalSynced !== undefined) syncItemsSynced = d.totalSynced;
-            syncEventSource?.close();
+            syncAbortController?.abort();
             syncHistoryLocal = {
                 ...syncHistoryLocal,
                 jellyfin: {
@@ -610,51 +610,69 @@
         if (d.log) addSyncLog(d.log, d.logType || "info");
     }
 
-    /** Connect to SSE and wire up shared handler */
+    /** Connect to sync SSE stream using fetch + ReadableStream reader */
     async function connectSSE() {
-        if (syncEventSource) syncEventSource.close();
+        // Abort any existing connection
+        if (syncAbortController) syncAbortController.abort();
+        syncAbortController = new AbortController();
 
-        syncEventSource = new EventSource("/api/sync");
-        syncEventSource.onmessage = (event) => {
-            try {
-                syncSseRetries = 0;
-                handleSSEMessage(JSON.parse(event.data));
-            } catch {
-                /* ignore */
+        try {
+            const response = await fetch("/api/sync", {
+                signal: syncAbortController.signal,
+                headers: { Accept: "text/event-stream" },
+            });
+
+            if (!response.ok) {
+                addSyncLog(
+                    `Sync stream returned HTTP ${response.status}`,
+                    "error",
+                );
+                return;
             }
-        };
-        syncEventSource.onerror = async () => {
-            const readyState = syncEventSource?.readyState;
-            syncEventSource?.close();
+
+            if (!response.body) {
+                addSyncLog("Sync stream has no body", "error");
+                return;
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+
+                // SSE format: "data: {...}\n\n"
+                const messages = buffer.split("\n\n");
+                buffer = messages.pop() || ""; // keep incomplete message in buffer
+
+                for (const msg of messages) {
+                    const line = msg.trim();
+                    if (!line || line.startsWith(":")) continue; // skip keepalive comments
+                    const dataPrefix = "data: ";
+                    if (line.startsWith(dataPrefix)) {
+                        try {
+                            syncSseRetries = 0;
+                            handleSSEMessage(
+                                JSON.parse(line.slice(dataPrefix.length)),
+                            );
+                        } catch {
+                            /* ignore malformed */
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            // AbortError is expected when we cancel the connection
+            if (e instanceof DOMException && e.name === "AbortError") return;
 
             if (syncStatus === "syncing" && syncSseRetries < 5) {
                 syncSseRetries++;
-
-                // On first failure, run a diagnostic fetch to a non-streaming endpoint
-                if (syncSseRetries === 1) {
-                    try {
-                        const diag = await fetch("/api/sync/status");
-                        if (!diag.ok) {
-                            addSyncLog(
-                                `SSE failed (readyState=${readyState}). Status endpoint returned HTTP ${diag.status}. Check ORIGIN env var matches your browser URL.`,
-                                "error",
-                            );
-                        } else {
-                            addSyncLog(
-                                `SSE connection failed (readyState=${readyState}) but server is reachable. This may be a proxy/buffering issue or browser connection limit.`,
-                                "warning",
-                            );
-                        }
-                    } catch (e) {
-                        addSyncLog(
-                            `SSE failed and server unreachable: ${e instanceof Error ? e.message : String(e)}`,
-                            "error",
-                        );
-                    }
-                }
-
                 addSyncLog(
-                    `Reconnecting (attempt ${syncSseRetries}/5)...`,
+                    `Stream connection failed: ${e instanceof Error ? e.message : String(e)}. Reconnecting (${syncSseRetries}/5)...`,
                     "warning",
                 );
                 setTimeout(() => {
@@ -666,7 +684,7 @@
                     "warning",
                 );
             }
-        };
+        }
     }
 
     // Jellyfin sync auto-reconnect handled by the unified mount probe above
@@ -730,8 +748,8 @@
         });
         addSyncLog("Sync stopped.", "warning");
         syncStatus = "idle";
-        syncEventSource?.close();
-        syncEventSource = null;
+        syncAbortController?.abort();
+        syncAbortController = null;
     }
 
     function getLogClass(type) {

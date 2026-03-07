@@ -18,12 +18,27 @@ export async function GET({ locals }) {
         const s = getSyncStatus();
         result.jellyfin = {
             running: true,
+            paused: s.paused,
             progress: s.progress,
             libraryName: s.libraryName || 'Jellyfin Sync',
             itemsSynced: s.itemsSynced,
             errors: s.errors,
-            lastLog: s.logs?.length > 0 ? s.logs[s.logs.length - 1]?.message : null
+            logs: s.logs || []
         };
+    } else {
+        // Even when not running, return last logs so polling can pick up final state
+        const s = getSyncStatus();
+        if (s.logs && s.logs.length > 0) {
+            result.jellyfin = {
+                running: false,
+                paused: false,
+                progress: s.progress,
+                libraryName: s.libraryName || '',
+                itemsSynced: s.itemsSynced,
+                errors: s.errors,
+                logs: s.logs
+            };
+        }
     }
 
     if (isPeopleRunning()) {
