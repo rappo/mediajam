@@ -20,7 +20,7 @@ jobs:
           fi
 
       - name: Login to Forgejo Registry
-        run: echo "${{ github.token }}" | docker login 192.168.1.50:3210 -u ${{ github.repository_owner }} --password-stdin
+        run: echo "${{ secrets.REGISTRY_TOKEN }}" | docker login 192.168.1.50:3210 -u ${{ github.repository_owner }} --password-stdin
 
       - name: Build and Push
         run: |
