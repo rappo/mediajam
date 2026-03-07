@@ -381,6 +381,7 @@
     let syncLogs = $state([]);
     /** @type {EventSource | null} */
     let syncEventSource = $state(null);
+    let syncSseRetries = $state(0);
     let copyFeedback = $state(false);
     /** @type {HTMLDivElement | null} */
     let consoleEl = $state(null);
@@ -414,6 +415,7 @@
     let peopleSyncResult = $state(null);
     /** @type {EventSource | null} */
     let peopleSyncEventSource = $state(null);
+    let peopleSseRetries = $state(0);
     /** @type {HTMLDivElement | null} */
     let peopleSyncConsoleEl = $state(null);
     let peopleSyncCopyFeedback = $state(false);
@@ -475,14 +477,30 @@
         peopleSyncEventSource = new EventSource("/api/people/sync");
         peopleSyncEventSource.onmessage = (event) => {
             try {
+                peopleSseRetries = 0;
                 handlePeopleSyncSSE(JSON.parse(event.data));
             } catch {
                 /* ignore */
             }
         };
         peopleSyncEventSource.onerror = () => {
-            if (peopleSyncStatus === "syncing")
-                addPeopleSyncLog("Connection lost.", "warning");
+            if (peopleSyncStatus === "syncing" && peopleSseRetries < 5) {
+                peopleSseRetries++;
+                addPeopleSyncLog(
+                    `Connection interrupted, reconnecting (attempt ${peopleSseRetries})...`,
+                    "warning",
+                );
+                peopleSyncEventSource?.close();
+                setTimeout(() => {
+                    if (peopleSyncStatus === "syncing") connectPeopleSyncSSE();
+                }, 1000 * peopleSseRetries);
+            } else if (peopleSyncStatus === "syncing") {
+                addPeopleSyncLog(
+                    "Connection lost after multiple retries. Sync continues in the background.",
+                    "warning",
+                );
+                peopleSyncEventSource?.close();
+            }
         };
     }
 
@@ -598,14 +616,30 @@
         syncEventSource = new EventSource("/api/sync");
         syncEventSource.onmessage = (event) => {
             try {
+                syncSseRetries = 0;
                 handleSSEMessage(JSON.parse(event.data));
             } catch {
                 /* ignore */
             }
         };
         syncEventSource.onerror = () => {
-            if (syncStatus === "syncing")
-                addSyncLog("Connection lost.", "warning");
+            if (syncStatus === "syncing" && syncSseRetries < 5) {
+                syncSseRetries++;
+                addSyncLog(
+                    `Connection interrupted, reconnecting (attempt ${syncSseRetries})...`,
+                    "warning",
+                );
+                syncEventSource?.close();
+                setTimeout(() => {
+                    if (syncStatus === "syncing") connectSSE();
+                }, 1000 * syncSseRetries);
+            } else if (syncStatus === "syncing") {
+                addSyncLog(
+                    "Connection lost after multiple retries. Sync continues in the background.",
+                    "warning",
+                );
+                syncEventSource?.close();
+            }
         };
     }
 
@@ -616,6 +650,7 @@
         libraryName = null,
         force = false,
     ) {
+        syncSseRetries = 0;
         syncStatus = "syncing";
         syncProgress = 0;
         syncItemsSynced = 0;
@@ -682,6 +717,7 @@
 
     async function triggerPeopleSync() {
         peopleSyncStatus = "syncing";
+        peopleSseRetries = 0;
         peopleSyncProgress = 0;
         peopleSyncSynced = 0;
         peopleSyncErrors = 0;

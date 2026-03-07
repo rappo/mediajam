@@ -91,6 +91,7 @@
     }
 
     // ─── Import State ────────────────────────────────────────────────────────────
+    let importSseRetries = $state(0);
     let importState = $state({
         active: false,
         tier: "",
@@ -142,7 +143,72 @@
         }
     }
 
+    function connectImportSSE() {
+        if (importState.eventSource) importState.eventSource.close();
+        const es = new EventSource("/api/backfill/history");
+        importState.eventSource = es;
+
+        es.onmessage = (event) => {
+            try {
+                importSseRetries = 0;
+                const d = JSON.parse(event.data);
+
+                if (d.type === "backfill_totals") {
+                    importState.totalItems = d.totalItems || 0;
+                    importState.totalPages = d.totalPages || 0;
+                } else if (d.type === "backfill_progress") {
+                    if (d.currentPage !== undefined)
+                        importState.currentPage = d.currentPage;
+                    if (d.totalPages !== undefined)
+                        importState.totalPages = d.totalPages;
+                    if (d.progressPercent !== undefined)
+                        importState.progressPercent = d.progressPercent;
+                    if (d.totalImported !== undefined)
+                        importState.totalImported = d.totalImported;
+                    if (d.totalSkipped !== undefined)
+                        importState.totalSkipped = d.totalSkipped;
+                } else if (d.type === "backfill_complete") {
+                    importState.status = "complete";
+                    importState.progressPercent = 100;
+                    if (d.totalImported !== undefined)
+                        importState.totalImported = d.totalImported;
+                    if (d.totalSkipped !== undefined)
+                        importState.totalSkipped = d.totalSkipped;
+                    es.close();
+                } else if (d.type === "backfill_error") {
+                    importState.status = "error";
+                    es.close();
+                }
+
+                if (d.log) addLog(d.log, d.logType || "info");
+            } catch {
+                /* ignore parse errors */
+            }
+        };
+
+        es.onerror = () => {
+            if (importState.status === "running" && importSseRetries < 5) {
+                importSseRetries++;
+                addLog(
+                    `Connection interrupted, reconnecting (attempt ${importSseRetries})...`,
+                    "warning",
+                );
+                es.close();
+                setTimeout(() => {
+                    if (importState.status === "running") connectImportSSE();
+                }, 1000 * importSseRetries);
+            } else if (importState.status === "running") {
+                addLog(
+                    "Connection lost after multiple retries. Import continues in the background.",
+                    "warning",
+                );
+                es.close();
+            }
+        };
+    }
+
     async function startImport(tier) {
+        importSseRetries = 0;
         importState = {
             active: true,
             tier,
@@ -174,52 +240,7 @@
                 return;
             }
 
-            // Open SSE stream for progress
-            const es = new EventSource("/api/backfill/history");
-            importState.eventSource = es;
-
-            es.onmessage = (event) => {
-                try {
-                    const d = JSON.parse(event.data);
-
-                    if (d.type === "backfill_totals") {
-                        importState.totalItems = d.totalItems || 0;
-                        importState.totalPages = d.totalPages || 0;
-                    } else if (d.type === "backfill_progress") {
-                        if (d.currentPage !== undefined)
-                            importState.currentPage = d.currentPage;
-                        if (d.totalPages !== undefined)
-                            importState.totalPages = d.totalPages;
-                        if (d.progressPercent !== undefined)
-                            importState.progressPercent = d.progressPercent;
-                        if (d.totalImported !== undefined)
-                            importState.totalImported = d.totalImported;
-                        if (d.totalSkipped !== undefined)
-                            importState.totalSkipped = d.totalSkipped;
-                    } else if (d.type === "backfill_complete") {
-                        importState.status = "complete";
-                        importState.progressPercent = 100;
-                        if (d.totalImported !== undefined)
-                            importState.totalImported = d.totalImported;
-                        if (d.totalSkipped !== undefined)
-                            importState.totalSkipped = d.totalSkipped;
-                        es.close();
-                    } else if (d.type === "backfill_error") {
-                        importState.status = "error";
-                        es.close();
-                    }
-
-                    if (d.log) addLog(d.log, d.logType || "info");
-                } catch {
-                    /* ignore parse errors */
-                }
-            };
-
-            es.onerror = () => {
-                if (importState.status === "running") {
-                    addLog("Connection lost.", "warning");
-                }
-            };
+            connectImportSSE();
         } catch {
             addLog("Failed to start import.", "error");
             importState.status = "error";

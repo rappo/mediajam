@@ -101,7 +101,16 @@ async function fetchJellyfinItems(api, libraryId, mediaType) {
         broadcast({ type: 'progress', log: `  ✅ Server reachable (${formatDuration(pingTime)}) — ${sysInfo.data.ServerName} v${sysInfo.data.Version}`, logType: 'info' });
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        broadcast({ type: 'error', log: `  ❌ Cannot reach Jellyfin: ${msg}`, logType: 'error' });
+        const code = e?.code || 'N/A';
+        const status = e?.response?.status || 'N/A';
+        const responseData = e?.response?.data ? JSON.stringify(e.response.data).slice(0, 200) : 'N/A';
+        console.error(`[sync][DEBUG] Jellyfin connectivity check FAILED:`);
+        console.error(`[sync][DEBUG]   Error message: ${msg}`);
+        console.error(`[sync][DEBUG]   Error code: ${code}`);
+        console.error(`[sync][DEBUG]   HTTP status: ${status}`);
+        console.error(`[sync][DEBUG]   Response data: ${responseData}`);
+        if (e?.cause) console.error(`[sync][DEBUG]   Cause:`, e.cause);
+        broadcast({ type: 'error', log: `  ❌ Cannot reach Jellyfin: ${msg} (code: ${code}, status: ${status})`, logType: 'error' });
         return [];
     }
 
@@ -266,6 +275,33 @@ export async function startSync(libraryId = null, force = false) {
     const jellyfinUrl = settings.jellyfin_url;
     const accessToken = user.jellyfin_access_token || '';
     const userId = user.jellyfin_user_id || '';
+
+    // === DEBUG: Verbose connectivity logging ===
+    console.log(`[sync][DEBUG] ========================================`);
+    console.log(`[sync][DEBUG] Jellyfin URL from DB: "${jellyfinUrl}"`);
+    console.log(`[sync][DEBUG] Access token present: ${!!accessToken} (length: ${accessToken.length})`);
+    console.log(`[sync][DEBUG] User ID: ${userId}`);
+    console.log(`[sync][DEBUG] Libraries to sync: ${libraries.length}`);
+    libraries.forEach((lib, i) => console.log(`[sync][DEBUG]   ${i}: ${lib.name} (${lib.media_type}) jellyfin_id=${lib.jellyfin_id}`));
+
+    // Try DNS resolution of the Jellyfin host
+    try {
+        const url = new URL(jellyfinUrl);
+        console.log(`[sync][DEBUG] Parsed URL — protocol: ${url.protocol}, hostname: ${url.hostname}, port: ${url.port || '(default)'}`);
+        const dns = await import('dns');
+        dns.lookup(url.hostname, (err, address, family) => {
+            if (err) {
+                console.log(`[sync][DEBUG] DNS lookup FAILED for "${url.hostname}": ${err.message}`);
+            } else {
+                console.log(`[sync][DEBUG] DNS lookup OK for "${url.hostname}" → ${address} (IPv${family})`);
+            }
+        });
+    } catch (e) {
+        console.log(`[sync][DEBUG] URL parse or DNS check error: ${e instanceof Error ? e.message : String(e)}`);
+    }
+
+    broadcast({ type: 'progress', log: `🔧 DEBUG: Using Jellyfin URL: ${jellyfinUrl}`, logType: 'info' });
+    // === END DEBUG ===
 
     // Create the SDK API instance (uses Axios, no fetch/DNS issues)
     const { api } = getJellyfinApis(jellyfinUrl, accessToken);
