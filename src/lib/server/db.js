@@ -446,6 +446,9 @@ if (!mediaChildrenCols.has('overview')) {
 if (!mediaChildrenCols.has('musicbrainz_id')) {
     db.exec("ALTER TABLE media_children ADD COLUMN musicbrainz_id TEXT");
 }
+if (!mediaChildrenCols.has('community_rating')) {
+    db.exec("ALTER TABLE media_children ADD COLUMN community_rating REAL");
+}
 
 // -- playback_history schema migrations --
 const historyCols = new Set(
