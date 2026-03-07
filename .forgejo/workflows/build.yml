@@ -7,19 +7,12 @@ on:
 jobs:
   build:
     runs-on: docker
-    container:
-      image: catthehacker/ubuntu:act-latest
-      volumes:
-        - /var/run/docker.sock:/var/run/docker.sock
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install Docker CLI
-        run: |
-          if ! command -v docker &> /dev/null; then
-            apt-get update && apt-get install -y docker.io
-          fi
+        run: apk add --no-cache docker-cli
 
       - name: Login to Forgejo Registry
         run: echo "${{ github.token }}" | docker login 192.168.1.50:3210 -u ${{ github.repository_owner }} --password-stdin
