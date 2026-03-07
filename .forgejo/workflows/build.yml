@@ -12,7 +12,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Docker CLI
-        run: apk add --no-cache docker-cli
+        run: |
+          if command -v apk &> /dev/null; then
+            apk add --no-cache docker-cli
+          elif command -v apt-get &> /dev/null; then
+            apt-get update && apt-get install -y --no-install-recommends docker.io
+          fi
 
       - name: Login to Forgejo Registry
         run: echo "${{ github.token }}" | docker login 192.168.1.50:3210 -u ${{ github.repository_owner }} --password-stdin
