@@ -614,38 +614,6 @@
     async function connectSSE() {
         if (syncEventSource) syncEventSource.close();
 
-        // Pre-check: verify the SSE endpoint is reachable and returns event-stream
-        try {
-            const probe = await fetch("/api/sync", {
-                method: "GET",
-                headers: { Accept: "text/event-stream" },
-            });
-            const contentType = probe.headers.get("content-type") || "";
-            if (!probe.ok) {
-                const body = await probe.text().catch(() => "");
-                addSyncLog(
-                    `SSE endpoint returned HTTP ${probe.status}: ${body.slice(0, 200)}`,
-                    "error",
-                );
-                return;
-            }
-            if (!contentType.includes("text/event-stream")) {
-                addSyncLog(
-                    `SSE endpoint returned wrong content-type: ${contentType} (expected text/event-stream). This usually means a proxy or auth redirect.`,
-                    "error",
-                );
-                return;
-            }
-            // Abort the fetch body since we'll use EventSource instead
-            probe.body?.cancel();
-        } catch (e) {
-            addSyncLog(
-                `SSE pre-check failed: ${e instanceof Error ? e.message : String(e)}`,
-                "error",
-            );
-            return;
-        }
-
         syncEventSource = new EventSource("/api/sync");
         syncEventSource.onmessage = (event) => {
             try {
@@ -655,14 +623,40 @@
                 /* ignore */
             }
         };
-        syncEventSource.onerror = () => {
+        syncEventSource.onerror = async () => {
+            const readyState = syncEventSource?.readyState;
+            syncEventSource?.close();
+
             if (syncStatus === "syncing" && syncSseRetries < 5) {
                 syncSseRetries++;
+
+                // On first failure, run a diagnostic fetch to a non-streaming endpoint
+                if (syncSseRetries === 1) {
+                    try {
+                        const diag = await fetch("/api/sync/status");
+                        if (!diag.ok) {
+                            addSyncLog(
+                                `SSE failed (readyState=${readyState}). Status endpoint returned HTTP ${diag.status}. Check ORIGIN env var matches your browser URL.`,
+                                "error",
+                            );
+                        } else {
+                            addSyncLog(
+                                `SSE connection failed (readyState=${readyState}) but server is reachable. This may be a proxy/buffering issue or browser connection limit.`,
+                                "warning",
+                            );
+                        }
+                    } catch (e) {
+                        addSyncLog(
+                            `SSE failed and server unreachable: ${e instanceof Error ? e.message : String(e)}`,
+                            "error",
+                        );
+                    }
+                }
+
                 addSyncLog(
-                    `Connection interrupted, reconnecting (attempt ${syncSseRetries})...`,
+                    `Reconnecting (attempt ${syncSseRetries}/5)...`,
                     "warning",
                 );
-                syncEventSource?.close();
                 setTimeout(() => {
                     if (syncStatus === "syncing") connectSSE();
                 }, 1000 * syncSseRetries);
@@ -671,7 +665,6 @@
                     "Connection lost after multiple retries. Sync continues in the background.",
                     "warning",
                 );
-                syncEventSource?.close();
             }
         };
     }

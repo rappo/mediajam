@@ -1,11 +1,13 @@
 import { json } from '@sveltejs/kit';
 import { startSync, pauseSync, resumeSync, stopSync, resetSync, addListener, isRunning, getStatus } from '$lib/server/sync-engine.js';
 import { BUILD_VERSION } from '$lib/version.js';
+import { logInfo } from '$lib/server/logger.js';
 
 /** @type {import('./$types').RequestHandler} */
 export async function POST({ request }) {
     const { action, libraryId, force } = await request.json();
     console.log(`[sync][DEBUG] POST /api/sync — action=${action} build=${BUILD_VERSION}`);
+    logInfo('sync-api', `POST /api/sync — action=${action} build=${BUILD_VERSION}`);
 
     switch (action) {
         case 'start':
@@ -36,10 +38,12 @@ export async function POST({ request }) {
 
 /** @type {import('./$types').RequestHandler} */
 export async function GET({ request }) {
+    const ua = request.headers.get('user-agent')?.slice(0, 60);
+    const accept = request.headers.get('accept');
+    const hasCookie = !!request.headers.get('cookie');
     console.log(`[sync][DEBUG] GET /api/sync — SSE connection opened, build=${BUILD_VERSION}`);
-    console.log(`[sync][DEBUG]   User-Agent: ${request.headers.get('user-agent')?.slice(0, 60)}`);
-    console.log(`[sync][DEBUG]   Accept: ${request.headers.get('accept')}`);
-    console.log(`[sync][DEBUG]   Cookie present: ${!!request.headers.get('cookie')}`);
+    console.log(`[sync][DEBUG]   User-Agent: ${ua}, Accept: ${accept}, Cookie: ${hasCookie}`);
+    logInfo('sync-api', `GET /api/sync — SSE opened, build=${BUILD_VERSION}, UA=${ua}, Accept=${accept}, Cookie=${hasCookie}`);
 
     /** @type {(() => void) | null} */
     let cleanupFn = null;
