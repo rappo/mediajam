@@ -26,7 +26,7 @@ RUN npm ci --omit=dev && \
     apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/* /root/.npm /tmp/*
 
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data /app/cache
 
 ENV PORT=7331
 ENV HOST=0.0.0.0

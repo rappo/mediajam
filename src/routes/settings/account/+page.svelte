@@ -923,10 +923,14 @@
                             <div>
                                 <p class="font-medium">Jellyfin</p>
                                 {#if data.connectedServices.jellyfin}
-                                    <p class="text-xs text-success">
-                                        Connected · {data.connectedServices
-                                            .jellyfin.provider_uid}
-                                    </p>
+                                    <div
+                                        class="tooltip tooltip-right"
+                                        data-tip="jellyfin_user_id: {data.connectedServices.jellyfin.provider_uid}"
+                                    >
+                                        <p class="text-xs text-success cursor-help">
+                                            Connected as {data.user?.username || 'Unknown'}
+                                        </p>
+                                    </div>
                                 {:else}
                                     <p class="text-xs text-success">
                                         Connected via setup

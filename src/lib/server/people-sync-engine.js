@@ -93,14 +93,14 @@ export async function startPeopleSync() {
     const settings = /** @type {any} */ (db.prepare('SELECT * FROM app_settings WHERE id = 1').get());
     const user = /** @type {any} */ (db.prepare('SELECT * FROM users LIMIT 1').get());
 
-    if (!settings?.jellyfin_url || !user?.jellyfin_access_token) {
+    if (!settings?.jellyfin_url || !user?.jellyfin_access_token || !user?.jellyfin_user_id) {
         broadcast({ type: 'error', log: '❌ Missing Jellyfin configuration', logType: 'error' });
         engineState.running = false;
         return;
     }
 
     try {
-        await runPeopleSync(settings.jellyfin_url, user.jellyfin_access_token);
+        await runPeopleSync(settings.jellyfin_url, user.jellyfin_access_token, user.jellyfin_user_id);
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         broadcast({ type: 'error', log: `❌ People sync failed: ${msg}`, logType: 'error' });
@@ -116,7 +116,7 @@ export async function startPeopleSync() {
     }
 }
 
-async function runPeopleSync(jellyfinUrl, accessToken) {
+async function runPeopleSync(jellyfinUrl, accessToken, userId) {
     const { api } = getJellyfinApis(jellyfinUrl, accessToken);
     const itemsApi = getItemsApi(api);
 
@@ -313,7 +313,7 @@ async function runPeopleSync(jellyfinUrl, accessToken) {
             const person = personsNeedingIds[i];
             try {
                 const res = await fetch(
-                    `${jellyfinUrl}/Items/${person.jellyfin_id}`,
+                    `${jellyfinUrl}/Users/${userId}/Items/${person.jellyfin_id}`,
                     { headers: { 'Authorization': `MediaBrowser Token="${accessToken}"` } }
                 );
                 if (res.ok) {
@@ -556,7 +556,7 @@ export async function startExternalIdsSync() {
     const settings = /** @type {any} */ (db.prepare('SELECT * FROM app_settings WHERE id = 1').get());
     const user = /** @type {any} */ (db.prepare('SELECT * FROM users LIMIT 1').get());
 
-    if (!settings?.jellyfin_url || !user?.jellyfin_access_token) {
+    if (!settings?.jellyfin_url || !user?.jellyfin_access_token || !user?.jellyfin_user_id) {
         broadcast({ type: 'error', log: '❌ Missing Jellyfin configuration', logType: 'error' });
         engineState.running = false;
         return;
@@ -564,6 +564,7 @@ export async function startExternalIdsSync() {
 
     const jellyfinUrl = settings.jellyfin_url;
     const accessToken = user.jellyfin_access_token;
+    const userId = user.jellyfin_user_id;
 
     try {
         const personsNeedingIds = /** @type {any[]} */ (db.prepare(`
@@ -609,7 +610,7 @@ export async function startExternalIdsSync() {
             const person = personsNeedingIds[i];
             try {
                 const res = await fetch(
-                    `${jellyfinUrl}/Items/${person.jellyfin_id}`,
+                    `${jellyfinUrl}/Users/${userId}/Items/${person.jellyfin_id}`,
                     { headers: { 'Authorization': `MediaBrowser Token="${accessToken}"` } }
                 );
                 if (res.ok) {

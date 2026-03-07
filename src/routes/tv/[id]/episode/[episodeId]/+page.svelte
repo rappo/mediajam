@@ -1,6 +1,7 @@
 <script>
     /** @type {{ data: any }} */
     let { data } = $props();
+    import { imgUrl } from "$lib/utils.js";
 
     const ep = data.episode;
     const show = data.show;
@@ -66,7 +67,7 @@
     <div class="relative rounded-2xl overflow-hidden border border-base-300">
         {#if data.screenshotUrl}
             <img
-                src={data.screenshotUrl}
+                src={imgUrl(data.screenshotUrl)}
                 alt=""
                 class="w-full h-56 md:h-72 object-cover opacity-40"
             />
@@ -276,7 +277,7 @@
                     >
                         {#if guest.photoUrl}
                             <img
-                                src={guest.photoUrl}
+                                src={imgUrl(guest.photoUrl)}
                                 alt={guest.name}
                                 class="w-10 h-10 rounded-full object-cover shrink-0"
                             />
@@ -319,7 +320,7 @@
                     >
                         {#if person.photo_url}
                             <img
-                                src={person.photo_url}
+                                src={imgUrl(person.photo_url)}
                                 alt={person.name}
                                 class="w-10 h-10 rounded-full object-cover shrink-0"
                             />
@@ -365,7 +366,7 @@
                     >
                         {#if person.photo_url}
                             <img
-                                src={person.photo_url}
+                                src={imgUrl(person.photo_url)}
                                 alt={person.name}
                                 class="w-10 h-10 rounded-full object-cover shrink-0"
                             />

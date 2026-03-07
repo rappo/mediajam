@@ -2,6 +2,7 @@
     import ExternalLinks from "$lib/components/ExternalLinks.svelte";
     import FavoriteButton from "$lib/components/FavoriteButton.svelte";
     import HeartBorder from "$lib/components/HeartBorder.svelte";
+    import { imgUrl } from "$lib/utils.js";
     let { data } = $props();
 
     function roleBadge(roleType) {
@@ -409,7 +410,7 @@
             >
                 {#if data.person.photoUrl}
                     <img
-                        src={data.person.photoUrl + "?maxHeight=400"}
+                        src={imgUrl(data.person.photoUrl, 400)}
                         alt={data.person.name}
                         class="rounded-2xl shadow-lg"
                         style="width: 150px; height: 200px; object-fit: cover; display: block;"
@@ -657,8 +658,7 @@
                             {#if credit.poster_url}
                                 <figure class="aspect-[2/3] relative">
                                     <img
-                                        src={credit.poster_url +
-                                            "?maxHeight=300"}
+                                        src={imgUrl(credit.poster_url, 300)}
                                         alt={credit.title}
                                         class="w-full h-full object-cover"
                                     />
@@ -728,7 +728,7 @@
                         >
                             {#if credit.poster_url}
                                 <img
-                                    src={credit.poster_url + "?maxHeight=100"}
+                                    src={imgUrl(credit.poster_url, 100)}
                                     alt={credit.title}
                                     class="w-12 h-18 rounded-lg object-cover shrink-0"
                                 />
@@ -804,8 +804,7 @@
                             {#if credit.poster_url}
                                 <figure class="aspect-[2/3] relative">
                                     <img
-                                        src={credit.poster_url +
-                                            "?maxHeight=300"}
+                                        src={imgUrl(credit.poster_url, 300)}
                                         alt={credit.title}
                                         class="w-full h-full object-cover"
                                     />
@@ -881,7 +880,7 @@
                         >
                             {#if credit.poster_url}
                                 <img
-                                    src={credit.poster_url + "?maxHeight=100"}
+                                    src={imgUrl(credit.poster_url, 100)}
                                     alt={credit.title}
                                     class="w-12 h-18 rounded-lg object-cover shrink-0"
                                 />
@@ -954,7 +953,7 @@
                     >
                         {#if credit.poster_url}
                             <img
-                                src={credit.poster_url + "?maxHeight=100"}
+                                src={imgUrl(credit.poster_url, 100)}
                                 alt={credit.title}
                                 class="w-12 h-12 rounded-lg object-cover shrink-0"
                             />
@@ -1070,7 +1069,7 @@
                                     {#if item.poster_url}
                                         <figure class="aspect-[2/3]">
                                             <img
-                                                src={item.poster_url}
+                                                src={imgUrl(item.poster_url)}
                                                 alt={item.title}
                                                 class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                             />
@@ -1093,7 +1092,7 @@
                                     {#if item.poster_url}
                                         <figure class="aspect-[2/3] relative">
                                             <img
-                                                src={item.poster_url}
+                                                src={imgUrl(item.poster_url)}
                                                 alt={item.title}
                                                 class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                             />

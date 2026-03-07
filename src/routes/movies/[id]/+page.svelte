@@ -8,6 +8,7 @@
     import ServiceIcon from "$lib/components/ServiceIcon.svelte";
     import { invalidateAll, goto } from "$app/navigation";
     import { page } from "$app/stores";
+    import { imgUrl } from "$lib/utils.js";
     let { data } = $props();
 
     function formatRuntime(minutes) {
@@ -273,7 +274,7 @@
                         class="rounded-xl"
                     >
                         <img
-                            src={data.movie.posterUrl}
+                            src={imgUrl(data.movie.posterUrl)}
                             alt={data.movie.title}
                             class="w-32 md:w-40 rounded-xl shadow-2xl shrink-0 -mt-20"
                         />
@@ -341,7 +342,7 @@
         <div class="flex gap-6 items-start">
             {#if data.movie.posterUrl}
                 <img
-                    src={data.movie.posterUrl}
+                    src={imgUrl(data.movie.posterUrl)}
                     alt={data.movie.title}
                     class="w-36 rounded-xl shadow-lg shrink-0"
                 />
@@ -784,8 +785,7 @@
                             >
                                 {#if person.photo_url}
                                     <img
-                                        src={person.photo_url +
-                                            "?maxHeight=200"}
+                                        src={imgUrl(person.photo_url, 200)}
                                         alt={person.name}
                                         class="w-24 h-24 rounded-full object-cover border-2 border-base-300 group-hover:border-primary transition-colors"
                                     />
@@ -823,7 +823,7 @@
                             >
                                 {#if person.photo_url}
                                     <img
-                                        src={person.photo_url + "?maxHeight=80"}
+                                        src={imgUrl(person.photo_url, 80)}
                                         alt={person.name}
                                         class="w-6 h-6 rounded-full object-cover"
                                     />

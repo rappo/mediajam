@@ -606,6 +606,12 @@ if (!appCols.has('heart_border_music')) {
 if (!appCols.has('heart_border_people')) {
     db.exec('ALTER TABLE app_settings ADD COLUMN heart_border_people INTEGER DEFAULT 1');
 }
+if (!appCols.has('welcome_complete')) {
+    db.exec('ALTER TABLE app_settings ADD COLUMN welcome_complete INTEGER DEFAULT 0');
+    // Auto-mark welcome complete for existing installs that already finished setup
+    db.exec('UPDATE app_settings SET welcome_complete = 1 WHERE setup_complete = 1');
+    console.log('[db] Added welcome_complete column to app_settings');
+}
 
 // -- LLM Embedding & Tagging Tables --
 try {

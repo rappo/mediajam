@@ -28,3 +28,5 @@ mediajam.sqlite-wal
 mediajam.sqlite-shm
 uploads/
 logs/
+cache/
+*.log

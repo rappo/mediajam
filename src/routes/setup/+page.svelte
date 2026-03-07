@@ -3,22 +3,12 @@
 	import StepDiscover from "$lib/components/setup/StepDiscover.svelte";
 	import StepAuth from "$lib/components/setup/StepAuth.svelte";
 	import StepLibraries from "$lib/components/setup/StepLibraries.svelte";
-	import StepApiKeys from "$lib/components/setup/StepApiKeys.svelte";
-	import StepIntegrations from "$lib/components/setup/StepIntegrations.svelte";
-	import StepHistory from "$lib/components/setup/StepHistory.svelte";
-	import StepLLM from "$lib/components/setup/StepLLM.svelte";
-	import StepSync from "$lib/components/setup/StepSync.svelte";
 
 	const STEPS = [
 		{ label: "Welcome", icon: "👋" },
 		{ label: "Discover", icon: "🔍" },
 		{ label: "Account", icon: "👤" },
 		{ label: "Libraries", icon: "📚" },
-		{ label: "API Keys", icon: "🔑" },
-		{ label: "Integrations", icon: "🔗" },
-		{ label: "History", icon: "📊" },
-		{ label: "AI", icon: "🤖" },
-		{ label: "Sync", icon: "🔄" },
 	];
 
 	let currentStep = $state(0);
@@ -29,18 +19,6 @@
 		userId: "",
 		accessToken: "",
 		selectedLibraries: [],
-		tvdbApiKey: "",
-		tmdbApiKey: "",
-		musicbrainzApiKey: "",
-		omdbApiKey: "",
-		discogsToken: "",
-		traktClientId: "",
-		traktClientSecret: "",
-		lastfmApiKey: "",
-		lastfmSharedSecret: "",
-		ollamaUrl: "",
-		ollamaEmbedModel: "nomic-embed-text",
-		ollamaChatModel: "llama3.2:3b",
 	});
 
 	let stepKey = $state(0); // for transition
@@ -143,35 +121,8 @@
 						{:else if currentStep === 3}
 							<StepLibraries
 								{wizardData}
-								{onStepComplete}
 								onBack={prevStep}
 							/>
-						{:else if currentStep === 4}
-							<StepApiKeys
-								{wizardData}
-								{onStepComplete}
-								onBack={prevStep}
-							/>
-						{:else if currentStep === 5}
-							<StepIntegrations
-								{wizardData}
-								{onStepComplete}
-								onBack={prevStep}
-							/>
-						{:else if currentStep === 6}
-							<StepHistory
-								{wizardData}
-								{onStepComplete}
-								onBack={prevStep}
-							/>
-						{:else if currentStep === 7}
-							<StepLLM
-								{wizardData}
-								{onStepComplete}
-								onBack={prevStep}
-							/>
-						{:else if currentStep === 8}
-							<StepSync {wizardData} />
 						{/if}
 					</div>
 				{/key}

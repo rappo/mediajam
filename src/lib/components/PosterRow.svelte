@@ -1,4 +1,5 @@
 <script>
+    import { imgUrl } from "$lib/utils.js";
     /** @type {{ title: string, items: any[], emptyText?: string }} */
     let { title, items, emptyText = '' } = $props();
     /** @type {HTMLDivElement|null} */
@@ -32,7 +33,7 @@
                 {#each items as item}
                     <a href={item.href} class="poster-card" title={item.title}>
                         {#if item.poster_url}
-                            <img src={item.poster_url} alt={item.title} class="poster-img" loading="lazy" />
+                            <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img" loading="lazy" />
                         {:else}
                             <div class="poster-placeholder">
                                 <span>{item.icon || '🎬'}</span>

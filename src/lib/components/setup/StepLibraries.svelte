@@ -1,6 +1,6 @@
 <script>
-    /** @type {{ wizardData: any, onStepComplete: (data: any) => void, onBack: () => void }} */
-    let { wizardData, onStepComplete, onBack } = $props();
+    /** @type {{ wizardData: any, onBack: () => void }} */
+    let { wizardData, onBack } = $props();
 
     let libraries = $state([]);
     let selected = $state(new Set());
@@ -66,7 +66,7 @@
         selected = new Set(selected);
     }
 
-    async function saveAndContinue() {
+    async function startSyncAndFinish() {
         if (selected.size === 0) {
             error = "Please select at least one library.";
             return;
@@ -84,23 +84,40 @@
             }));
 
         try {
-            const res = await fetch("/api/setup/libraries", {
+            // 1. Save libraries
+            const libRes = await fetch("/api/setup/libraries", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ libraries: selectedLibs }),
             });
-            const data = await res.json();
+            const libData = await libRes.json();
 
-            if (data.success) {
-                onStepComplete({ selectedLibraries: selectedLibs });
-            } else {
-                error = data.error || "Failed to save library selection.";
+            if (!libData.success) {
+                error = libData.error || "Failed to save library selection.";
+                saving = false;
+                return;
             }
+
+            // 2. Mark setup complete
+            await fetch("/api/settings", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ setup_complete: 1 }),
+            });
+
+            // 3. Kick off sync in the background
+            fetch("/api/sync", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "start" }),
+            }).catch(() => { /* fire-and-forget */ });
+
+            // 4. Redirect to welcome page
+            window.location.href = "/welcome";
         } catch (e) {
             error = "An error occurred while saving.";
+            saving = false;
         }
-
-        saving = false;
     }
 
     $effect(() => {
@@ -178,14 +195,18 @@
     <div class="flex gap-3">
         <button class="btn btn-ghost" onclick={onBack}>Back</button>
         <button
-            class="btn btn-primary flex-1"
+            class="btn btn-primary flex-1 gap-2"
             disabled={selected.size === 0 || saving}
-            onclick={saveAndContinue}
+            onclick={startSyncAndFinish}
         >
             {#if saving}
                 <span class="loading loading-spinner loading-sm"></span>
+            {:else}
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+                </svg>
             {/if}
-            Continue
+            Start Sync & Start Mediajam
         </button>
     </div>
 </div>

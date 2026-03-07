@@ -101,6 +101,9 @@
                     </li>
                 {/each}
             </ul>
+            <div class="px-3 pt-3 text-[10px] text-base-content/25 select-all">
+                Build {BUILD_VERSION}
+            </div>
         </nav>
 
         <!-- Content -->
@@ -109,8 +112,5 @@
         </div>
     </div>
 
-    <!-- Build Version -->
-    <div class="mt-12 text-center text-xs text-base-content/30">
-        Build {BUILD_VERSION}
-    </div>
+
 </div>

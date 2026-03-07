@@ -2,6 +2,7 @@
     import { goto } from "$app/navigation";
     import { onMount } from "svelte";
     import { addToast } from "$lib/stores/toast.js";
+    import { imgUrl } from "$lib/utils.js";
 
     let open = $state(false);
     let query = $state("");
@@ -394,7 +395,7 @@
                                 >
                                     {#if item.poster_url}
                                         <img
-                                            src={item.poster_url}
+                                            src={imgUrl(item.poster_url)}
                                             alt=""
                                             class="search-thumb"
                                             class:search-thumb-round={item.type ===

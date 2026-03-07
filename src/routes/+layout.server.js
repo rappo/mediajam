@@ -41,6 +41,7 @@ export function load({ locals }) {
         remoteControlEnabled: !!userPreferences.remoteControlEnabled,
         userPreferences,
         bootWarnings: getBootWarnings(),
-        pendingConflicts: /** @type {any} */ (db.prepare('SELECT COUNT(*) as count FROM sync_conflicts WHERE status = ?').get('pending'))?.count || 0
+        pendingConflicts: /** @type {any} */ (db.prepare('SELECT COUNT(*) as count FROM sync_conflicts WHERE status = ?').get('pending'))?.count || 0,
+        showWelcome: (settings?.setup_complete === 1 && !settings?.welcome_complete)
     };
 }

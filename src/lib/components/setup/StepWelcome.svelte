@@ -60,43 +60,44 @@
 <div>
     <h2 class="text-2xl font-bold mb-2">Welcome to Mediajam! 🎬🎵</h2>
     <p class="text-base-content/60 text-sm mb-6">
-        Beautiful analytics and tracking for your Jellyfin media server —
-        movies, TV, music, and more.
+        Beautiful analytics and tracking for your Jellyfin media server.
     </p>
 
     <div class="bg-base-300/30 rounded-xl p-5 mb-6 space-y-4">
-        <p class="text-sm text-base-content/70">
-            This setup wizard will walk you through connecting your services.
-            Everything configured here can be changed later in Settings —
-            nothing is permanent.
+        <p class="text-sm text-base-content/80">
+            Jellyfin is the bedrock for all of your movie, TV, and music data. Let's connect that first.
         </p>
 
-        <div class="space-y-2 text-sm text-base-content/60">
-            <div class="flex items-center gap-2">
-                <span class="text-base">🔍</span>
-                <span>Connect your Jellyfin server</span>
-            </div>
-            <div class="flex items-center gap-2">
-                <span class="text-base">👤</span>
-                <span>Create your admin account</span>
-            </div>
-            <div class="flex items-center gap-2">
-                <span class="text-base">📚</span>
-                <span>Choose which libraries to track</span>
-            </div>
-            <div class="flex items-center gap-2">
-                <span class="text-base">🔑</span>
-                <span>Add API keys for metadata enrichment</span>
-            </div>
-            <div class="flex items-center gap-2">
-                <span class="text-base">🔗</span>
-                <span>Connect Trakt, Last.fm, and other integrations</span>
-            </div>
-            <div class="flex items-center gap-2">
-                <span class="text-base">🔄</span>
-                <span>Sync your library and import history</span>
-            </div>
-        </div>
+        <p class="text-sm text-base-content/60">
+            After the initial setup we will (optionally) do everything else, including:
+        </p>
+
+        <ul class="space-y-1.5 text-sm text-base-content/60 ml-1">
+            <li class="flex items-start gap-2">
+                <span class="text-base mt-0.5">📊</span>
+                <span>Grab history from <strong>Trakt</strong> and <strong>Last.fm</strong></span>
+            </li>
+            <li class="flex items-start gap-2">
+                <span class="text-base mt-0.5">📦</span>
+                <span>Connect <strong>Radarr</strong>, <strong>Sonarr</strong>, and <strong>Lidarr</strong> for collection management</span>
+            </li>
+            <li class="flex items-start gap-2">
+                <span class="text-base mt-0.5">🔑</span>
+                <span>Pull metadata from <strong>TheTVDB</strong>, <strong>TMDB</strong>, <strong>MusicBrainz</strong>, <strong>OMDb</strong>, and <strong>Discogs</strong> <span class="text-base-content/40">(whew, that's a lot)</span></span>
+            </li>
+            <li class="flex items-start gap-2">
+                <span class="text-base mt-0.5">🧹</span>
+                <span>Auto-cleanup all the various data</span>
+            </li>
+            <li class="flex items-start gap-2">
+                <span class="text-base mt-0.5">🤖</span>
+                <span>Use a local LLM to make searching data easier</span>
+            </li>
+        </ul>
+
+        <p class="text-xs text-base-content/40 mt-2">
+            You will need API keys, but we'll make this as painless as possible.
+        </p>
     </div>
 
     <button

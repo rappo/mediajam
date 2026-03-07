@@ -6,6 +6,7 @@
     import ArrAddDialog from "$lib/components/ArrAddDialog.svelte";
     import HeartBorder from "$lib/components/HeartBorder.svelte";
     import FavoriteButton from "$lib/components/FavoriteButton.svelte";
+    import { imgUrl } from "$lib/utils.js";
     function statusColor(status) {
         if (status === "watched") return "var(--color-success, #22c55e)";
         if (status === "in_progress") return "var(--color-warning, #f59e0b)";
@@ -240,7 +241,7 @@
             >
                 {#if data.show.poster_url}
                     <img
-                        src={data.show.poster_url}
+                        src={imgUrl(data.show.poster_url)}
                         alt={data.show.title}
                         class="rounded-2xl shadow-lg"
                         style="width: 150px; height: 225px; object-fit: cover; display: block;"
@@ -665,8 +666,7 @@
                             >
                                 {#if person.photo_url}
                                     <img
-                                        src={person.photo_url +
-                                            "?maxHeight=200"}
+                                        src={imgUrl(person.photo_url, 200)}
                                         alt={person.name}
                                         class="w-24 h-24 rounded-full object-cover border-2 border-base-300 group-hover:border-primary transition-colors"
                                     />
@@ -704,7 +704,7 @@
                             >
                                 {#if person.photo_url}
                                     <img
-                                        src={person.photo_url + "?maxHeight=80"}
+                                        src={imgUrl(person.photo_url, 80)}
                                         alt={person.name}
                                         class="w-6 h-6 rounded-full object-cover"
                                     />

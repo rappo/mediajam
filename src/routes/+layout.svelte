@@ -106,6 +106,16 @@
 					role="tablist"
 					class="tabs tabs-boxed bg-base-300/50 flex-nowrap"
 				>
+					{#if data.showWelcome}
+						<a
+							href="/welcome"
+							role="tab"
+							class="tab tab-sm font-medium"
+						>
+							<span class="mr-1.5">👋</span>
+							Welcome
+						</a>
+					{/if}
 					<a
 						href="/history"
 						role="tab"

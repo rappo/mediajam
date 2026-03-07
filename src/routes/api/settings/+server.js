@@ -67,7 +67,9 @@ export async function PUT({ request }) {
             lidarr_api_key: 'lidarr_api_key',
             // External ratings
             omdb_api_key: 'omdb_api_key',
-            discogs_token: 'discogs_token'
+            discogs_token: 'discogs_token',
+            // Welcome flow
+            welcome_complete: 'welcome_complete'
         };
 
         for (const [key, column] of Object.entries(allowedFields)) {

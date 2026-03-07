@@ -200,6 +200,37 @@
         importing = false;
     }
 
+    // ─── Factory Reset ──────────────────────────────────────────────────────────
+    let resetExpanded = $state(false);
+    let resetConfirmation = $state('');
+    let resetting = $state(false);
+    let resetError = $state('');
+
+    async function factoryReset() {
+        if (resetConfirmation !== 'goodbye') return;
+        resetting = true;
+        resetError = '';
+        try {
+            const res = await fetch('/api/factory-reset', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ confirmation: 'goodbye' })
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                resetError = data.error || 'Factory reset failed.';
+                resetting = false;
+                return;
+            }
+            // Wait for server to exit and restart before redirecting
+            await new Promise(r => setTimeout(r, 3000));
+            window.location.href = '/';
+        } catch (e) {
+            resetError = e instanceof Error ? e.message : 'Factory reset failed.';
+            resetting = false;
+        }
+    }
+
     function snapshotCurrentValues() {
         return {
             jellyfinUrl,
@@ -3672,6 +3703,88 @@
                     </div>
                 {/if}
             </div>
+        </div>
+    </div>
+
+    <!-- Factory Reset (Danger Zone) -->
+    <div class="card bg-base-200/50 border border-error/20 mt-6">
+        <div class="card-body">
+            <button
+                class="flex items-center gap-3 w-full text-left"
+                onclick={() => { resetExpanded = !resetExpanded; resetConfirmation = ''; resetError = ''; }}
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-error/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                    <line x1="12" y1="9" x2="12" y2="13" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+                <span class="text-sm font-medium text-error/70">Danger Zone</span>
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="h-4 w-4 text-base-content/30 transition-transform ml-auto"
+                    class:rotate-180={resetExpanded}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                ><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+
+            {#if resetExpanded}
+                <div class="mt-4 space-y-4 border-t border-error/10 pt-4">
+                    <div>
+                        <h3 class="text-sm font-semibold text-error">Factory Reset</h3>
+                        <p class="text-xs text-base-content/50 mt-1">
+                            This will permanently delete <strong>all data</strong> — your entire library, watch history,
+                            scrobbles, user accounts, settings, and linked services. The app will restart as if freshly installed.
+                        </p>
+                    </div>
+
+                    <div class="alert alert-error">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                            <line x1="12" y1="9" x2="12" y2="13" />
+                            <line x1="12" y1="17" x2="12.01" y2="17" />
+                        </svg>
+                        <span class="text-sm">This action is <strong>irreversible</strong>. Consider exporting a backup first.</span>
+                    </div>
+
+                    <div class="space-y-2">
+                        <label class="text-xs text-base-content/60" for="reset-confirm">
+                            Type <code class="bg-base-300 px-1.5 py-0.5 rounded font-mono text-error">goodbye</code> to confirm:
+                        </label>
+                        <input
+                            id="reset-confirm"
+                            type="text"
+                            class="input input-sm input-bordered w-full max-w-xs font-mono"
+                            placeholder="Type goodbye..."
+                            autocomplete="off"
+                            bind:value={resetConfirmation}
+                        />
+                    </div>
+
+                    {#if resetError}
+                        <p class="text-xs text-error">{resetError}</p>
+                    {/if}
+
+                    <button
+                        class="btn btn-error btn-sm gap-2"
+                        disabled={resetConfirmation !== 'goodbye' || resetting}
+                        onclick={factoryReset}
+                    >
+                        {#if resetting}
+                            <span class="loading loading-spinner loading-xs"></span>
+                            Resetting...
+                        {:else}
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="3 6 5 6 21 6" />
+                                <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                            </svg>
+                            Factory Reset
+                        {/if}
+                    </button>
+                </div>
+            {/if}
         </div>
     </div>
     {/if}
