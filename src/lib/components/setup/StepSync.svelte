@@ -159,10 +159,11 @@
 </script>
 
 <div>
-    <h2 class="text-2xl font-bold mb-2">Sync Your Library</h2>
+    <h2 class="text-2xl font-bold mb-2">Begin Sync</h2>
     <p class="text-base-content/60 text-sm mb-6">
-        Pull metadata from Jellyfin and external APIs to build your statistics
-        database.
+        Kick off the initial data pipeline. This runs <strong
+            >in the background</strong
+        > — you can use Mediajam while it works.
     </p>
 
     {#if syncStatus === "idle"}
@@ -207,12 +208,58 @@
                             wizardData.tvdbApiKey ? "TVDB" : null,
                             wizardData.tmdbApiKey ? "TMDB" : null,
                             wizardData.musicbrainzApiKey ? "MusicBrainz" : null,
+                            wizardData.omdbApiKey ? "OMDb" : null,
+                            wizardData.discogsToken ? "Discogs" : null,
                         ]
                             .filter(Boolean)
                             .join(", ") || "None configured — basic sync only"}
                     </p>
                 </div>
             </div>
+            {#if wizardData.traktClientId || wizardData.lastfmApiKey}
+                <div class="flex items-center gap-3">
+                    <div
+                        class="w-8 h-8 rounded-lg bg-info/20 flex items-center justify-center text-sm"
+                    >
+                        🔗
+                    </div>
+                    <div>
+                        <span class="text-sm font-medium">Integrations</span>
+                        <p class="text-xs text-base-content/50">
+                            {[
+                                wizardData.traktClientId ? "Trakt" : null,
+                                wizardData.lastfmApiKey ? "Last.fm" : null,
+                            ]
+                                .filter(Boolean)
+                                .join(", ")}
+                        </p>
+                    </div>
+                </div>
+            {/if}
+            {#if wizardData.ollamaUrl}
+                <div class="flex items-center gap-3">
+                    <div
+                        class="w-8 h-8 rounded-lg bg-warning/20 flex items-center justify-center text-sm"
+                    >
+                        🤖
+                    </div>
+                    <div>
+                        <span class="text-sm font-medium">AI / Ollama</span>
+                        <p class="text-xs text-base-content/50">
+                            {wizardData.ollamaUrl}
+                        </p>
+                    </div>
+                </div>
+            {/if}
+        </div>
+
+        <div class="bg-base-300/20 rounded-lg p-3 mb-4">
+            <p class="text-xs text-base-content/50">
+                <strong>What happens:</strong> Sync your Jellyfin libraries → fetch
+                metadata from APIs → import Trakt/Last.fm history (if connected)
+                → reconcile & clean up. You'll see progress here, but you can navigate
+                away — it continues in the background.
+            </p>
         </div>
 
         <button class="btn btn-primary btn-lg w-full gap-2" onclick={startSync}>

@@ -5,6 +5,8 @@
     let tvdbApiKey = $state(wizardData.tvdbApiKey || "");
     let tmdbApiKey = $state(wizardData.tmdbApiKey || "");
     let musicbrainzApiKey = $state(wizardData.musicbrainzApiKey || "");
+    let omdbApiKey = $state(wizardData.omdbApiKey || "");
+    let discogsToken = $state(wizardData.discogsToken || "");
     let saving = $state(false);
     let error = $state("");
 
@@ -38,17 +40,41 @@
             placeholder: "Optional — user agent string",
             icon: "🎵",
         },
+        {
+            key: "omdb",
+            label: "OMDb API Key",
+            description:
+                "Fetches Rotten Tomatoes, Metacritic, and IMDb ratings for movies and shows.",
+            registerUrl: "https://www.omdbapi.com/apikey.aspx",
+            registerLabel: "Get a free OMDb API key",
+            placeholder: "Enter your OMDb API key",
+            icon: "⭐",
+        },
+        {
+            key: "discogs",
+            label: "Discogs Token",
+            description:
+                "Used for music release metadata and artist information.",
+            registerUrl: "https://www.discogs.com/settings/developers",
+            registerLabel: "Generate a Discogs personal access token",
+            placeholder: "Enter your Discogs token",
+            icon: "💿",
+        },
     ];
 
     function getBindValue(key) {
         if (key === "tvdb") return tvdbApiKey;
         if (key === "tmdb") return tmdbApiKey;
+        if (key === "omdb") return omdbApiKey;
+        if (key === "discogs") return discogsToken;
         return musicbrainzApiKey;
     }
 
     function setBindValue(key, value) {
         if (key === "tvdb") tvdbApiKey = value;
         else if (key === "tmdb") tmdbApiKey = value;
+        else if (key === "omdb") omdbApiKey = value;
+        else if (key === "discogs") discogsToken = value;
         else musicbrainzApiKey = value;
     }
 
@@ -64,6 +90,8 @@
                     tvdb_api_key: tvdbApiKey || null,
                     tmdb_api_key: tmdbApiKey || null,
                     musicbrainz_api_key: musicbrainzApiKey || null,
+                    omdb_api_key: omdbApiKey || null,
+                    discogs_token: discogsToken || null,
                 }),
             });
 
@@ -74,6 +102,8 @@
                     tvdbApiKey,
                     tmdbApiKey,
                     musicbrainzApiKey,
+                    omdbApiKey,
+                    discogsToken,
                 });
             } else {
                 error = data.error || "Failed to save API keys.";
