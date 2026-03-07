@@ -81,6 +81,13 @@
         activeTab = tabId;
         goto(`/settings/admin?tab=${tabId}`, { replaceState: true, noScroll: true });
     }
+
+    // Load conflicts when sync tab is shown
+    $effect(() => {
+        if (activeTab === 'sync') {
+            loadConflicts();
+        }
+    });
     const TABS = [
         { id: 'server', label: 'Server', icon: 'M5 12H3l9-9 9 9h-2M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7' },
         { id: 'credentials', label: 'Credentials', icon: 'M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z' },
@@ -386,7 +393,41 @@
     /** @type {HTMLDivElement | null} */
     let consoleEl = $state(null);
 
-    // ─── People Sync ─────────────────────────────────────────────────────────────
+    // ─── Sync Conflicts ──────────────────────────────────────────────────────────
+    let syncConflicts = $state([]);
+    let conflictsLoading = $state(false);
+
+    async function loadConflicts() {
+        conflictsLoading = true;
+        try {
+            const res = await fetch("/api/conflicts");
+            if (res.ok) {
+                const data = await res.json();
+                syncConflicts = data.conflicts || [];
+            }
+        } catch {
+            /* ignore */
+        }
+        conflictsLoading = false;
+    }
+
+    async function dismissConflict(id) {
+        try {
+            await fetch("/api/conflicts", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    conflictId: id,
+                    resolution: "dismissed",
+                }),
+            });
+            syncConflicts = syncConflicts.filter((c) => c.id !== id);
+        } catch {
+            /* ignore */
+        }
+    }
+
+
     let reconciling = $state(false);
     /** @type {string|null} */
     let expandedSync = $state(null);
@@ -2985,6 +3026,51 @@
                         </div>
                     {/if}
                 </div>
+
+                <!-- Metadata Conflicts -->
+                {#if syncConflicts.length > 0}
+                    <div class="rounded-lg border border-warning/30 bg-warning/5 overflow-hidden">
+                        <div class="px-4 py-3 flex items-center gap-2">
+                            <span class="text-lg">⚠️</span>
+                            <span class="font-medium text-sm flex-1">Metadata Conflicts</span>
+                            <span class="badge badge-warning badge-sm">{syncConflicts.length}</span>
+                        </div>
+                        <div class="px-4 pb-3 space-y-2">
+                            <p class="text-xs text-base-content/60 mb-2">These items share the same external ID in Jellyfin. Fix the metadata in Jellyfin, then re-sync.</p>
+                            {#each syncConflicts as conflict}
+                                <div class="bg-base-200/50 rounded-lg p-3 text-sm">
+                                    <div class="flex items-start justify-between gap-2">
+                                        <div class="flex-1 min-w-0">
+                                            <span class="badge badge-xs badge-outline mb-1">{conflict.conflict_label}</span>
+                                            <div class="font-medium">
+                                                "{conflict.primary_title}"
+                                                {#if conflict.primary_year}<span class="text-base-content/40">({conflict.primary_year})</span>{/if}
+                                                <span class="text-warning">⇔</span>
+                                                "{conflict.secondary_title}"
+                                                {#if conflict.secondary_year}<span class="text-base-content/40">({conflict.secondary_year})</span>{/if}
+                                            </div>
+                                            <div class="text-xs text-base-content/50 mt-1 flex flex-wrap gap-2">
+                                                <span>Shared: <code class="bg-base-300 px-1 rounded">{conflict.external_id}</code></span>
+                                                {#if conflict.external_url}
+                                                    <a href={conflict.external_url} target="_blank" rel="noopener" class="link link-info">View on {conflict.conflict_type.includes('tmdb') ? 'TMDb' : conflict.conflict_type.includes('imdb') ? 'IMDb' : 'MusicBrainz'} ↗</a>
+                                                {/if}
+                                            </div>
+                                            <div class="text-xs mt-1 flex flex-wrap gap-2">
+                                                {#if conflict.primary_jellyfin_url}
+                                                    <a href={conflict.primary_jellyfin_url} target="_blank" rel="noopener" class="link link-primary">Fix "{conflict.primary_title}" in Jellyfin ↗</a>
+                                                {/if}
+                                                {#if conflict.secondary_jellyfin_url}
+                                                    <a href={conflict.secondary_jellyfin_url} target="_blank" rel="noopener" class="link link-primary">Fix "{conflict.secondary_title}" in Jellyfin ↗</a>
+                                                {/if}
+                                            </div>
+                                        </div>
+                                        <button class="btn btn-ghost btn-xs" onclick={() => dismissConflict(conflict.id)} title="Dismiss">✕</button>
+                                    </div>
+                                </div>
+                            {/each}
+                        </div>
+                    </div>
+                {/if}
 
                 <!-- People Sync Row -->
                 <div

@@ -623,6 +623,17 @@ export async function startSync(libraryId = null, force = false) {
                                 ).get(parentParams.tmdbId, parentParams.mediaType));
                                 retryParams.tmdbId = null;
                                 upsertParent.run(retryParams);
+                                const secondaryRow = /** @type {any} */ (db.prepare(
+                                    'SELECT id FROM media_parents WHERE jellyfin_id = ?'
+                                ).get(item.Id));
+                                if (existing && secondaryRow) {
+                                    try {
+                                        db.prepare(
+                                            `INSERT OR IGNORE INTO sync_conflicts (conflict_type, primary_id, secondary_id, external_id, status)
+                                             VALUES ('shared_tmdb_id', ?, ?, ?, 'pending')`
+                                        ).run(existing.id, secondaryRow.id, parentParams.tmdbId);
+                                    } catch { /* ignore duplicate */ }
+                                }
                                 broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: shares TMDB ID ${parentParams.tmdbId} with "${existing?.title || 'unknown'}" — synced without TMDB ID`, logType: 'warning' });
                             } else if (errStr.includes('imdb_id') && parentParams.imdbId) {
                                 conflictField = 'IMDb ID';
@@ -631,7 +642,19 @@ export async function startSync(libraryId = null, force = false) {
                                 ).get(parentParams.imdbId));
                                 retryParams.imdbId = null;
                                 upsertParent.run(retryParams);
+                                const secondaryRow = /** @type {any} */ (db.prepare(
+                                    'SELECT id FROM media_parents WHERE jellyfin_id = ?'
+                                ).get(item.Id));
+                                if (existing && secondaryRow) {
+                                    try {
+                                        db.prepare(
+                                            `INSERT OR IGNORE INTO sync_conflicts (conflict_type, primary_id, secondary_id, external_id, status)
+                                             VALUES ('shared_imdb_id', ?, ?, ?, 'pending')`
+                                        ).run(existing.id, secondaryRow.id, parentParams.imdbId);
+                                    } catch { /* ignore duplicate */ }
+                                }
                                 broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: shares IMDb ID ${parentParams.imdbId} with "${existing?.title || 'unknown'}" — synced without IMDb ID`, logType: 'warning' });
+
                             } else {
                                 throw upsertErr;
                             }
