@@ -4,13 +4,6 @@ import fs from 'fs';
 import path from 'path';
 import { mkdirSync } from 'fs';
 
-// Allow large backup files (default is 512KB which is too small)
-export const config = {
-    body: {
-        maxSize: Infinity
-    }
-};
-
 // We'll parse the ZIP manually using the built-in decompress approach
 // Since we need to avoid heavy deps, we'll use a temp file approach with archiver's unzip
 

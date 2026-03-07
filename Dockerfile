@@ -31,6 +31,7 @@ RUN mkdir -p /app/data
 ENV PORT=7331
 ENV HOST=0.0.0.0
 ENV DATABASE_PATH=/app/data/mediajam.sqlite
+ENV BODY_SIZE_LIMIT=Infinity
 
 EXPOSE 7331
 

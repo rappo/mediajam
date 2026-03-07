@@ -17,5 +17,6 @@ services:
       - PORT=7331
       - HOST=0.0.0.0
       - ORIGIN=http://localhost:7331
+      - BODY_SIZE_LIMIT=Infinity
       # - DATABASE_PATH=/app/data/mediajam.sqlite
     restart: unless-stopped
