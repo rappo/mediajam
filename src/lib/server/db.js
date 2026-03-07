@@ -1,7 +1,11 @@
 import Database from 'better-sqlite3';
-import { resolve } from 'path';
+import { resolve, dirname } from 'path';
+import { mkdirSync } from 'fs';
 
-const DB_PATH = resolve(process.cwd(), 'mediajam.sqlite');
+const DB_PATH = process.env.DATABASE_PATH || resolve(process.cwd(), 'mediajam.sqlite');
+
+// Ensure the directory exists (important for /app/data/ in Docker)
+mkdirSync(dirname(DB_PATH), { recursive: true });
 
 const db = new Database(DB_PATH);
 
