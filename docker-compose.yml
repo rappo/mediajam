@@ -1,8 +1,10 @@
 # Mediajam Docker Compose
-# Includes optional read-only mount for Jellyfin Playback Reporting DB
+# Pull from Forgejo container registry (built by CI)
+# Or use `docker compose build` for local builds
 services:
   mediajam:
-    build: .
+    image: 192.168.1.50:3210/rappo/mediajam:latest
+    # build: .  # uncomment for local builds
     container_name: mediajam
     ports:
       - "3000:3000"
