@@ -611,8 +611,41 @@
     }
 
     /** Connect to SSE and wire up shared handler */
-    function connectSSE() {
+    async function connectSSE() {
         if (syncEventSource) syncEventSource.close();
+
+        // Pre-check: verify the SSE endpoint is reachable and returns event-stream
+        try {
+            const probe = await fetch("/api/sync", {
+                method: "GET",
+                headers: { Accept: "text/event-stream" },
+            });
+            const contentType = probe.headers.get("content-type") || "";
+            if (!probe.ok) {
+                const body = await probe.text().catch(() => "");
+                addSyncLog(
+                    `SSE endpoint returned HTTP ${probe.status}: ${body.slice(0, 200)}`,
+                    "error",
+                );
+                return;
+            }
+            if (!contentType.includes("text/event-stream")) {
+                addSyncLog(
+                    `SSE endpoint returned wrong content-type: ${contentType} (expected text/event-stream). This usually means a proxy or auth redirect.`,
+                    "error",
+                );
+                return;
+            }
+            // Abort the fetch body since we'll use EventSource instead
+            probe.body?.cancel();
+        } catch (e) {
+            addSyncLog(
+                `SSE pre-check failed: ${e instanceof Error ? e.message : String(e)}`,
+                "error",
+            );
+            return;
+        }
+
         syncEventSource = new EventSource("/api/sync");
         syncEventSource.onmessage = (event) => {
             try {

@@ -277,27 +277,42 @@ export async function startSync(libraryId = null, force = false) {
     const userId = user.jellyfin_user_id || '';
 
     // === DEBUG: Verbose connectivity logging ===
-    console.log(`[sync][DEBUG] ========================================`);
-    console.log(`[sync][DEBUG] Jellyfin URL from DB: "${jellyfinUrl}"`);
-    console.log(`[sync][DEBUG] Access token present: ${!!accessToken} (length: ${accessToken.length})`);
-    console.log(`[sync][DEBUG] User ID: ${userId}`);
-    console.log(`[sync][DEBUG] Libraries to sync: ${libraries.length}`);
-    libraries.forEach((lib, i) => console.log(`[sync][DEBUG]   ${i}: ${lib.name} (${lib.media_type}) jellyfin_id=${lib.jellyfin_id}`));
+    const debugLines = [
+        `========================================`,
+        `Jellyfin URL from DB: "${jellyfinUrl}"`,
+        `Access token present: ${!!accessToken} (length: ${accessToken.length})`,
+        `User ID: ${userId}`,
+        `Libraries to sync: ${libraries.length}`,
+    ];
+    libraries.forEach((lib, i) => debugLines.push(`  ${i}: ${lib.name} (${lib.media_type}) jellyfin_id=${lib.jellyfin_id}`));
+
+    for (const line of debugLines) {
+        console.log(`[sync][DEBUG] ${line}`);
+        logInfo('sync', line);
+    }
 
     // Try DNS resolution of the Jellyfin host
     try {
         const url = new URL(jellyfinUrl);
-        console.log(`[sync][DEBUG] Parsed URL — protocol: ${url.protocol}, hostname: ${url.hostname}, port: ${url.port || '(default)'}`);
+        const dnsMsg = `Parsed URL — protocol: ${url.protocol}, hostname: ${url.hostname}, port: ${url.port || '(default)'}`;
+        console.log(`[sync][DEBUG] ${dnsMsg}`);
+        logInfo('sync', dnsMsg);
         const dns = await import('dns');
         dns.lookup(url.hostname, (err, address, family) => {
             if (err) {
-                console.log(`[sync][DEBUG] DNS lookup FAILED for "${url.hostname}": ${err.message}`);
+                const msg = `DNS lookup FAILED for "${url.hostname}": ${err.message}`;
+                console.log(`[sync][DEBUG] ${msg}`);
+                logError('sync', msg);
             } else {
-                console.log(`[sync][DEBUG] DNS lookup OK for "${url.hostname}" → ${address} (IPv${family})`);
+                const msg = `DNS lookup OK for "${url.hostname}" → ${address} (IPv${family})`;
+                console.log(`[sync][DEBUG] ${msg}`);
+                logInfo('sync', msg);
             }
         });
     } catch (e) {
-        console.log(`[sync][DEBUG] URL parse or DNS check error: ${e instanceof Error ? e.message : String(e)}`);
+        const msg = `URL parse or DNS check error: ${e instanceof Error ? e.message : String(e)}`;
+        console.log(`[sync][DEBUG] ${msg}`);
+        logError('sync', msg);
     }
 
     broadcast({ type: 'progress', log: `🔧 DEBUG: Using Jellyfin URL: ${jellyfinUrl}`, logType: 'info' });

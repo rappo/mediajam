@@ -1,7 +1,9 @@
 import { writeFileSync, appendFileSync, mkdirSync, existsSync } from 'fs';
-import { resolve, join } from 'path';
+import { resolve, join, dirname } from 'path';
 
-const LOG_DIR = resolve(process.cwd(), 'logs');
+// Put logs next to the database in the persistent data directory
+const DATA_DIR = dirname(process.env.DATABASE_PATH || resolve(process.cwd(), 'mediajam.sqlite'));
+const LOG_DIR = join(DATA_DIR, 'logs');
 const SESSION_ID = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 const LOG_FILE = join(LOG_DIR, `mediajam-${SESSION_ID}.log`);
 
