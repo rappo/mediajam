@@ -19,7 +19,7 @@ jobs:
         with:
           registry: 192.168.1.50:3210
           username: ${{ github.repository_owner }}
-          password: ${{ secrets.REGISTRY_TOKEN }}
+          password: ${{ github.token }}
 
       - name: Build and Push
         uses: docker/build-push-action@v5

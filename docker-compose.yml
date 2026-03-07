@@ -10,9 +10,8 @@ services:
       - "3000:3000"
     volumes:
       # Persistent storage for Mediajam's SQLite database
-      - mediajam_data:/app/data
+      - /mnt/user/appdata/mediajam:/app/data
       # Optional: Mount Jellyfin's Playback Reporting DB (read-only)
-      # Update the path below to match your Jellyfin installation
       # - /path/to/jellyfin/data/playback_reporting.db:/app/jellyfin/playback_reporting.db:ro
     environment:
       - PORT=3000
@@ -20,6 +19,3 @@ services:
       - ORIGIN=http://localhost:3000
       # - DATABASE_PATH=/app/data/mediajam.sqlite
     restart: unless-stopped
-
-volumes:
-  mediajam_data:
