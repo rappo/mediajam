@@ -42,6 +42,7 @@ export function load({ locals }) {
         userPreferences,
         bootWarnings: getBootWarnings(),
         pendingConflicts: /** @type {any} */ (db.prepare('SELECT COUNT(*) as count FROM sync_conflicts WHERE status = ?').get('pending'))?.count || 0,
-        showWelcome: (settings?.setup_complete === 1 && !settings?.welcome_complete)
+        showWelcome: (settings?.setup_complete === 1 && !settings?.welcome_complete),
+        jellyfinAuthInvalid: settings?.jellyfin_auth_status === 'invalid'
     };
 }

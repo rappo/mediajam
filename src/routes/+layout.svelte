@@ -77,6 +77,37 @@
 
 	/** @type {ConflictDialog} */
 	let conflictDialog = $state();
+
+	// Jellyfin re-auth banner
+	let reauthPassword = $state('');
+	let reauthLoading = $state(false);
+	let reauthError = $state('');
+	let reauthDismissed = $state(false);
+
+	async function reauthJellyfin() {
+		if (!reauthPassword) return;
+		reauthLoading = true;
+		reauthError = '';
+		try {
+			const res = await fetch('/api/auth/jellyfin-reauth', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ password: reauthPassword })
+			});
+			const result = await res.json();
+			if (res.ok) {
+				reauthDismissed = true;
+				reauthPassword = '';
+				addToast({ type: 'success', message: 'Jellyfin connection restored!', duration: 3000 });
+				setTimeout(() => window.location.reload(), 1000);
+			} else {
+				reauthError = result.error || 'Authentication failed';
+			}
+		} catch {
+			reauthError = 'Could not reach server';
+		}
+		reauthLoading = false;
+	}
 </script>
 
 {#if data.isSetupComplete}
@@ -442,6 +473,42 @@
 				</div>
 			</div>
 		</nav>
+
+		<!-- Jellyfin Re-auth Banner -->
+		{#if data.jellyfinAuthInvalid && !reauthDismissed}
+			<div class="bg-warning/10 border-b border-warning/30 px-6 py-3">
+				<div class="flex items-center gap-3 max-w-4xl mx-auto">
+					<span class="text-warning text-lg">🔑</span>
+					<div class="flex-1 min-w-0">
+						<p class="text-sm font-medium">Jellyfin session expired</p>
+						<p class="text-xs text-base-content/50">Enter your Jellyfin password to reconnect</p>
+					</div>
+					<form class="flex items-center gap-2" onsubmit={(e) => { e.preventDefault(); reauthJellyfin(); }}>
+						<input
+							type="password"
+							class="input input-sm input-bordered w-48"
+							placeholder="Jellyfin password"
+							autocomplete="current-password"
+							bind:value={reauthPassword}
+						/>
+						<button
+							type="submit"
+							class="btn btn-sm btn-warning"
+							disabled={!reauthPassword || reauthLoading}
+						>
+							{#if reauthLoading}
+								<span class="loading loading-spinner loading-xs"></span>
+							{:else}
+								Reconnect
+							{/if}
+						</button>
+					</form>
+					{#if reauthError}
+						<span class="text-xs text-error">{reauthError}</span>
+					{/if}
+				</div>
+			</div>
+		{/if}
 
 		<!-- Main Content -->
 		<main class="flex-1">

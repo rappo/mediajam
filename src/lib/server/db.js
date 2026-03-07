@@ -612,6 +612,9 @@ if (!appCols.has('welcome_complete')) {
     db.exec('UPDATE app_settings SET welcome_complete = 1 WHERE setup_complete = 1');
     console.log('[db] Added welcome_complete column to app_settings');
 }
+if (!appCols.has('jellyfin_auth_status')) {
+    db.exec("ALTER TABLE app_settings ADD COLUMN jellyfin_auth_status TEXT DEFAULT 'ok'");
+}
 
 // -- LLM Embedding & Tagging Tables --
 try {

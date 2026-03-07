@@ -61,6 +61,27 @@ export async function POST({ request, cookies }) {
         return json({ success: false, error: 'Invalid username or password.' }, { status: 401 });
     }
 
+    // Refresh Jellyfin token on every login for linked accounts
+    if (user.jellyfin_user_id) {
+        try {
+            const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_url FROM app_settings WHERE id = 1').get());
+            if (settings?.jellyfin_url) {
+                const api = createJellyfinApi(settings.jellyfin_url);
+                const result = await getUserApi(api).authenticateUserByName({
+                    authenticateUserByName: { Username: username, Pw: password }
+                });
+                const accessToken = result.data?.AccessToken;
+                if (accessToken) {
+                    db.prepare('UPDATE users SET jellyfin_access_token = ? WHERE id = ?').run(accessToken, user.id);
+                    db.prepare("UPDATE app_settings SET jellyfin_auth_status = 'ok' WHERE id = 1").run();
+                }
+            }
+        } catch {
+            // Jellyfin auth failed but local auth succeeded — log but don't block login
+            console.warn('[auth] Could not refresh Jellyfin token during login — sync may fail until re-authenticated');
+        }
+    }
+
     // Set session cookie
     cookies.set(SESSION_COOKIE, signSession(user.id), COOKIE_OPTIONS);
 

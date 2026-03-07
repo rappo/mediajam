@@ -155,6 +155,16 @@ async function fetchJellyfinItems(api, libraryId, mediaType) {
         } catch (e) {
             const fetchTime = Date.now() - fetchStart;
             const msg = e instanceof Error ? e.message : String(e);
+            const httpStatus = e?.response?.status || (msg.includes('401') ? 401 : null);
+
+            if (httpStatus === 401) {
+                // Jellyfin token is expired/invalid — flag it globally
+                console.error(`[sync] Jellyfin returned 401 — access token is invalid`);
+                try { db.prepare("UPDATE app_settings SET jellyfin_auth_status = 'invalid' WHERE id = 1").run(); } catch { /* */ }
+                broadcast({ type: 'auth_error', log: `🔑 Jellyfin credentials expired — re-authenticate in Settings → Account`, logType: 'error' });
+                return [];
+            }
+
             console.error(`[sync] Failed to fetch ${itemType} batch at ${startIndex} after ${formatDuration(fetchTime)}:`, msg);
             broadcast({ type: 'error', log: `Failed to fetch ${itemType} (batch at ${startIndex}, ${formatDuration(fetchTime)}): ${msg}`, logType: 'error' });
             break;
