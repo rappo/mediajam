@@ -3,13 +3,44 @@ import db from '$lib/server/db.js';
 import { getJellyfinApis, getItemsApi } from '$lib/server/jellyfin.js';
 import { logInfo, logWarn } from '$lib/server/logger.js';
 
+const UNKNOWN_DATE = '1970-01-01T00:00:00.000Z';
+
+/**
+ * Try to find a watched_at date from trakt_history for a movie by TMDB ID.
+ * @param {number} userId
+ * @param {string|null} tmdbId
+ * @returns {string|null}
+ */
+function findTraktDateForMovie(userId, tmdbId) {
+    if (!tmdbId) return null;
+    const row = /** @type {any} */ (db.prepare(
+        "SELECT watched_at FROM trakt_history WHERE user_id = ? AND tmdb_id = ? AND type = 'movie' ORDER BY watched_at DESC LIMIT 1"
+    ).get(userId, tmdbId));
+    return row?.watched_at || null;
+}
+
+/**
+ * Try to find a watched_at date from trakt_history for an episode.
+ * @param {number} userId
+ * @param {string|null} showTmdbId
+ * @param {number|null} season
+ * @param {number|null} episode
+ * @returns {string|null}
+ */
+function findTraktDateForEpisode(userId, showTmdbId, season, episode) {
+    if (!showTmdbId || season == null || episode == null) return null;
+    const row = /** @type {any} */ (db.prepare(
+        "SELECT watched_at FROM trakt_history WHERE user_id = ? AND tmdb_id = ? AND season = ? AND episode = ? ORDER BY watched_at DESC LIMIT 1"
+    ).get(userId, showTmdbId, season, episode));
+    return row?.watched_at || null;
+}
+
 /**
  * POST /api/backfill/jellyfin — Sync watch history from Jellyfin.
- * Queries all played items (movies, episodes) and creates playback_history
- * entries for any that don't already exist with source='jellyfin'.
- *
- * First run cleans up any previous bad imports (source='jellyfin'), then
- * re-imports only items that have a valid LastPlayedDate from Jellyfin.
+ * For each played item:
+ * 1. Use Jellyfin's LastPlayedDate if available
+ * 2. Else try to match a date from Trakt history
+ * 3. Else use a sentinel date (1970-01-01) to mark "watched, date unknown"
  */
 export async function POST({ locals }) {
     if (!locals.user) return json({ error: 'Unauthorized' }, { status: 401 });
@@ -27,7 +58,7 @@ export async function POST({ locals }) {
     const itemsApi = getItemsApi(api);
     const jellyfinUserId = user.jellyfin_user_id;
 
-    // Clean up previous jellyfin-sourced history (in case of bad imports)
+    // Clean up previous jellyfin-sourced history
     const cleaned = db.prepare(
         "DELETE FROM playback_history WHERE source = 'jellyfin' AND user_id = ?"
     ).run(userId);
@@ -42,8 +73,14 @@ export async function POST({ locals }) {
         'SELECT id FROM media_children WHERE jellyfin_id = ?'
     );
 
+    // For cross-referencing with media_parents (to get TMDB IDs for Trakt lookup)
+    const findParentByChildId = db.prepare(
+        'SELECT mp.tmdb_id FROM media_parents mp JOIN media_children mc ON mc.parent_id = mp.id WHERE mc.id = ?'
+    );
+
     let synced = 0;
     let skipped = 0;
+    let traktMatched = 0;
     let noDate = 0;
     let notFound = 0;
     let errors = 0;
@@ -55,7 +92,7 @@ export async function POST({ locals }) {
             includeItemTypes: ['Movie'],
             isPlayed: true,
             recursive: true,
-            fields: [],
+            fields: ['ProviderIds'],
             enableUserData: true,
             limit: 10000,
         });
@@ -64,12 +101,24 @@ export async function POST({ locals }) {
         logInfo('jellyfin-sync', `Found ${movies.length} played movies in Jellyfin`);
 
         for (const movie of movies) {
-            const playedDate = movie.UserData?.LastPlayedDate;
-            if (!playedDate) { noDate++; continue; }
-
             const childJellyfinId = movie.Id + '_child';
             const child = /** @type {any} */ (findChildByJellyfinId.get(childJellyfinId));
             if (!child) { notFound++; continue; }
+
+            let playedDate = movie.UserData?.LastPlayedDate;
+
+            if (!playedDate) {
+                // Try Trakt
+                const tmdbId = movie.ProviderIds?.Tmdb || null;
+                const traktDate = findTraktDateForMovie(userId, tmdbId);
+                if (traktDate) {
+                    playedDate = traktDate;
+                    traktMatched++;
+                } else {
+                    playedDate = UNKNOWN_DATE;
+                    noDate++;
+                }
+            }
 
             const eventId = `jellyfin:movie:${movie.Id}`;
             try {
@@ -85,7 +134,7 @@ export async function POST({ locals }) {
             includeItemTypes: ['Episode'],
             isPlayed: true,
             recursive: true,
-            fields: [],
+            fields: ['ProviderIds'],
             enableUserData: true,
             limit: 50000,
         });
@@ -94,11 +143,24 @@ export async function POST({ locals }) {
         logInfo('jellyfin-sync', `Found ${episodes.length} played episodes in Jellyfin`);
 
         for (const ep of episodes) {
-            const playedDate = ep.UserData?.LastPlayedDate;
-            if (!playedDate) { noDate++; continue; }
-
             const child = /** @type {any} */ (findChildByJellyfinId.get(ep.Id));
             if (!child) { notFound++; continue; }
+
+            let playedDate = ep.UserData?.LastPlayedDate;
+
+            if (!playedDate) {
+                // Try Trakt — need show's TMDB ID + season/episode numbers
+                const parent = /** @type {any} */ (findParentByChildId.get(child.id));
+                const showTmdbId = parent?.tmdb_id || ep.ProviderIds?.Tmdb || null;
+                const traktDate = findTraktDateForEpisode(userId, showTmdbId, ep.ParentIndexNumber ?? null, ep.IndexNumber ?? null);
+                if (traktDate) {
+                    playedDate = traktDate;
+                    traktMatched++;
+                } else {
+                    playedDate = UNKNOWN_DATE;
+                    noDate++;
+                }
+            }
 
             const eventId = `jellyfin:episode:${ep.Id}`;
             try {
@@ -127,9 +189,6 @@ export async function POST({ locals }) {
         );
 
         for (const track of tracks) {
-            const playedDate = track.UserData?.LastPlayedDate;
-            if (!playedDate) { noDate++; continue; }
-
             let mediaId = null;
             const trackRow = /** @type {any} */ (findTrackByJellyfinId.get(track.Id));
             if (trackRow) {
@@ -141,6 +200,10 @@ export async function POST({ locals }) {
 
             if (!mediaId) { notFound++; continue; }
 
+            // For audio, LastPlayedDate or unknown sentinel (no Trakt for music)
+            const playedDate = track.UserData?.LastPlayedDate || UNKNOWN_DATE;
+            if (!track.UserData?.LastPlayedDate) noDate++;
+
             const eventId = `jellyfin:audio:${track.Id}`;
             try {
                 const result = insertHistory.run({ userId, mediaId, timestamp: playedDate, externalEventId: eventId });
@@ -149,12 +212,13 @@ export async function POST({ locals }) {
             } catch { errors++; }
         }
 
-        logInfo('jellyfin-sync', `Jellyfin history sync complete: ${synced} new, ${skipped} dupes, ${noDate} no date, ${notFound} not in library, ${errors} errors, ${cleaned.changes} cleaned`);
+        logInfo('jellyfin-sync', `Complete: ${synced} synced, ${traktMatched} trakt-matched, ${noDate} unknown-date, ${skipped} dupes, ${notFound} not found, ${errors} errors, ${cleaned.changes} cleaned`);
 
         return json({
             success: true,
             synced,
             skipped,
+            traktMatched,
             noDate,
             notFound,
             errors,

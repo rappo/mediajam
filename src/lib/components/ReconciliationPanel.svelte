@@ -483,7 +483,10 @@
                                 <p>🗑️ Cleaned <strong>{jellyfinSyncResult.cleaned}</strong> previous entries</p>
                             {/if}
                             <p>✅ <strong>{jellyfinSyncResult.synced}</strong> new entries synced from <strong>{jellyfinSyncResult.total}</strong> played items</p>
-                            <p class="text-base-content/50">{jellyfinSyncResult.skipped} duplicates, {jellyfinSyncResult.noDate || 0} without date, {jellyfinSyncResult.notFound} not in library</p>
+                            <p class="text-base-content/50">
+                                {#if jellyfinSyncResult.traktMatched > 0}{jellyfinSyncResult.traktMatched} dates from Trakt, {/if}
+                                {jellyfinSyncResult.noDate || 0} unknown date, {jellyfinSyncResult.skipped} duplicates, {jellyfinSyncResult.notFound} not in library
+                            </p>
                         {/if}
                     </div>
                 {/if}
