@@ -25,6 +25,7 @@ export async function load({ params, locals }) {
             mp.collection_status,
             mp.jellyfin_user_rating,
             mp.is_favorite,
+            mp.wikipedia_url,
             mp.radarr_id,
             mp.arr_slug,
             mp.arr_monitored,

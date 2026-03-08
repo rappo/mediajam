@@ -322,6 +322,7 @@
                         arr_slug={data.movie.arr_slug}
                         arr_url={data.arrUrl}
                         arr_service={data.arrService}
+                        wikipedia_url={data.movie.wikipedia_url}
                         mediaType="movie"
                     />
                     {#if data.movie.jellyfin_id}

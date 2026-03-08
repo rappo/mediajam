@@ -1114,6 +1114,92 @@
         setTimeout(() => (mbCopyFeedback = false), 2000);
     }
 
+    // ─── Wikipedia Backfill ──────────────────────────────────────────────────────
+    let wikiStatus = $state("idle"); // idle | syncing | complete | error
+    let wikiTotal = $state(0);
+    let wikiDone = $state(0);
+    let wikiFound = $state(0);
+    let wikiLogs = $state([]);
+
+    function addWikiLog(message, type = "info") {
+        wikiLogs = [...wikiLogs.slice(-100), { time: new Date().toLocaleTimeString(), message, type }];
+    }
+
+    async function triggerWikipedia() {
+        wikiStatus = "syncing";
+        wikiLogs = [];
+        wikiTotal = 0;
+        wikiDone = 0;
+        wikiFound = 0;
+        addWikiLog("Starting Wikipedia backfill...", "info");
+
+        try {
+            const res = await fetch("/api/backfill/wikipedia", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "start" })
+            });
+            if (!res.ok) {
+                const err = await res.json();
+                addWikiLog(err.error || "Failed to start", "error");
+                wikiStatus = "error";
+                return;
+            }
+        } catch {
+            addWikiLog("Failed to start Wikipedia backfill", "error");
+            wikiStatus = "error";
+            return;
+        }
+
+        // Connect SSE
+        const sseRes = await fetch("/api/backfill/wikipedia");
+        const reader = sseRes.body?.getReader();
+        if (!reader) return;
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+            for (const line of lines) {
+                if (!line.startsWith("data: ")) continue;
+                try {
+                    const d = JSON.parse(line.slice(6));
+                    if (d.log) addWikiLog(d.log, d.logType || "info");
+                    if (d.total !== undefined) wikiTotal = d.total;
+                    if (d.done !== undefined) wikiDone = d.done;
+                    if (d.found !== undefined) wikiFound = d.found;
+                    if (d.type === "complete") {
+                        wikiStatus = "complete";
+                        reader.cancel();
+                        return;
+                    }
+                    if (d.type === "error" && !d.phase) {
+                        wikiStatus = "error";
+                        reader.cancel();
+                        return;
+                    }
+                    if (d.type === "stopped") {
+                        wikiStatus = "idle";
+                        reader.cancel();
+                        return;
+                    }
+                } catch { /* skip malformed */ }
+            }
+        }
+    }
+
+    async function stopWikipedia() {
+        await fetch("/api/backfill/wikipedia", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "stop" })
+        });
+    }
+
     // ─── Run All Pipeline ────────────────────────────────────────────────────────
     let runAllActive = $state(false);
     let runAllStep = $state(0); // 0=not started, 1=jellyfin, 2=people, 3=musicbrainz, 4=reconcile, 5=done
@@ -3440,6 +3526,53 @@
                 </div>
 
             </div>
+        </div>
+    </div>
+
+    <!-- Wikipedia Backfill -->
+    <div class="card bg-base-200/50 border border-base-300 mt-4">
+        <div class="card-body p-0">
+            <button
+                class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-base-300/30 transition-colors rounded-xl"
+                onclick={() => expandedSync = expandedSync === 'wikipedia' ? '' : 'wikipedia'}
+            >
+                <div class="flex items-center gap-2">
+                    <span class="text-lg">📚</span>
+                    <span class="font-medium">Wikipedia Summaries</span>
+                    {#if wikiStatus === "syncing"}
+                        <span class="loading loading-spinner loading-xs"></span>
+                    {:else if wikiStatus === "complete"}
+                        <span class="text-success text-xs">✓ {wikiFound} found</span>
+                    {/if}
+                </div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-base-content/30 transition-transform" class:rotate-180={expandedSync === 'wikipedia'} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+
+            {#if expandedSync === 'wikipedia'}
+                <p class="text-xs text-base-content/50 px-4 pt-2 pb-1">Fetches Wikipedia summaries for movies, TV shows, music artists, and people via <strong>TMDb → Wikidata → Wikipedia</strong>. Stores alongside existing overviews.</p>
+                <div class="px-4 pb-4 space-y-3 border-t border-base-content/5 pt-3">
+                    {#if wikiStatus === "idle" || wikiStatus === "complete" || wikiStatus === "error"}
+                        <div class="flex flex-wrap gap-2">
+                            <button class="btn btn-secondary btn-sm" onclick={triggerWikipedia} disabled={wikiStatus === 'syncing'}>Start Backfill</button>
+                        </div>
+                    {:else}
+                        <div class="flex items-center gap-3">
+                            <progress class="progress progress-secondary w-full" value={wikiDone} max={wikiTotal || 1}></progress>
+                            <span class="text-xs text-base-content/60 whitespace-nowrap">{wikiDone}/{wikiTotal} ({wikiFound} found)</span>
+                            <button class="btn btn-ghost btn-xs" onclick={stopWikipedia}>Stop</button>
+                        </div>
+                    {/if}
+                    {#if wikiLogs.length > 0}
+                        <div class="bg-base-300/50 rounded-lg p-3 max-h-48 overflow-y-auto text-xs font-mono space-y-0.5">
+                            {#each wikiLogs as log}
+                                <div class="{log.type === 'success' ? 'text-success' : log.type === 'error' ? 'text-error' : log.type === 'warning' ? 'text-warning' : 'text-base-content/70'}">
+                                    <span class="text-base-content/30">[{log.time}]</span> {log.message}
+                                </div>
+                            {/each}
+                        </div>
+                    {/if}
+                </div>
+            {/if}
         </div>
     </div>
 

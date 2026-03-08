@@ -372,6 +372,7 @@
                     arr_slug={data.artist.arr_slug}
                     arr_url={data.arrUrl}
                     arr_service={data.arrService}
+                    wikipedia_url={data.artist.wikipedia_url}
                     mediaType="artist"
                     class="mt-1"
                 />

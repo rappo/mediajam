@@ -14,6 +14,7 @@
      *   arr_url?: string | null,
      *   arr_service?: 'radarr' | 'sonarr' | 'lidarr' | null,
      *   trakt_slug?: string | null,
+     *   wikipedia_url?: string | null,
      *   mediaType?: 'movie' | 'show' | 'artist' | 'person' | 'album',
      *   class?: string
      * }}
@@ -32,6 +33,7 @@
         arr_url = null,
         arr_service = null,
         trakt_slug = null,
+        wikipedia_url = null,
         mediaType = "movie",
         class: className = "",
     } = $props();
@@ -124,6 +126,15 @@
                     icon: cfg.icon,
                 });
             }
+        }
+
+        // Wikipedia
+        if (wikipedia_url) {
+            result.push({
+                label: "Wikipedia",
+                url: wikipedia_url,
+                icon: "📖",
+            });
         }
 
         return result;

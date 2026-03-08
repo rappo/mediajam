@@ -616,6 +616,22 @@ if (!appCols.has('jellyfin_auth_status')) {
     db.exec("ALTER TABLE app_settings ADD COLUMN jellyfin_auth_status TEXT DEFAULT 'ok'");
 }
 
+// -- Add Wikipedia columns to media_parents and persons --
+const mpCols2 = new Set(db.prepare("PRAGMA table_info(media_parents)").all().map((/** @type {any} */ c) => c.name));
+if (!mpCols2.has('wikipedia_url')) {
+    db.exec("ALTER TABLE media_parents ADD COLUMN wikipedia_url TEXT");
+    db.exec("ALTER TABLE media_parents ADD COLUMN wikipedia_summary TEXT");
+    db.exec("ALTER TABLE media_parents ADD COLUMN wikipedia_fetched_at TEXT");
+    console.log('[db] Added Wikipedia columns to media_parents');
+}
+const pCols2 = new Set(db.prepare("PRAGMA table_info(persons)").all().map((/** @type {any} */ c) => c.name));
+if (!pCols2.has('wikipedia_url')) {
+    db.exec("ALTER TABLE persons ADD COLUMN wikipedia_url TEXT");
+    db.exec("ALTER TABLE persons ADD COLUMN wikipedia_summary TEXT");
+    db.exec("ALTER TABLE persons ADD COLUMN wikipedia_fetched_at TEXT");
+    console.log('[db] Added Wikipedia columns to persons');
+}
+
 // -- LLM Embedding & Tagging Tables --
 try {
     db.exec(`

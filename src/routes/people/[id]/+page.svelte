@@ -480,6 +480,7 @@
                     musicbrainz_artist_id={data.person.musicbrainz_artist_id}
                     jellyfin_id={data.person.jellyfin_id}
                     jellyfin_url={data.jellyfinUrl}
+                    wikipedia_url={data.person.wikipedia_url}
                     mediaType="person"
                 />
                 {#each data.externalIds.filter((e) => !(e.source === "imdb" && data.person.imdb_person_id)) as ext}

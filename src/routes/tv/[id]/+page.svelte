@@ -280,6 +280,7 @@
                     arr_slug={data.show.arr_slug}
                     arr_url={data.arrUrl}
                     arr_service={data.arrService}
+                    wikipedia_url={data.show.wikipedia_url}
                     mediaType="show"
                     class="mt-1"
                 />
