@@ -17,7 +17,7 @@ export async function GET({ url, locals }) {
             mc.title,
             mc.item_number,
             mc.season_number,
-            mc.collection_status,
+            mc.is_collected,
             mc.watch_status,
             mc.play_count,
             mc.runtime_ticks,
