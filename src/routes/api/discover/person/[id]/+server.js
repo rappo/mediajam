@@ -13,24 +13,36 @@ export async function GET({ params, locals }) {
 
     try {
         const personId = parseInt(params.id);
+        console.log(`[discover/person] Looking up person id=${personId}`);
+
         const person = /** @type {any} */ (db.prepare('SELECT * FROM persons WHERE id = ?').get(personId));
         if (!person) return json({ error: 'Person not found' }, { status: 404 });
+        console.log(`[discover/person] Found: "${person.name}", tmdb_person_id=${person.tmdb_person_id || 'none'}`);
 
         const settings = /** @type {any} */ (db.prepare('SELECT tmdb_api_key FROM app_settings WHERE id = 1').get());
         if (!settings?.tmdb_api_key) {
+            console.error(`[discover/person] No TMDb API key configured`);
             return json({ error: 'TMDb API key not configured. Add it in Settings → System.' }, { status: 400 });
         }
         const apiKey = settings.tmdb_api_key;
+        console.log(`[discover/person] TMDb API key present (${apiKey.length} chars, starts with ${apiKey.substring(0, 4)}...)`);
 
         // Step 1: Get or find TMDb person ID
         let tmdbPersonId = person.tmdb_person_id || null;
         if (!tmdbPersonId) {
             // Search TMDb by name
             const searchUrl = `${TMDB_BASE}/search/person?api_key=${apiKey}&query=${encodeURIComponent(person.name)}&page=1`;
-            const searchRes = await fetch(searchUrl);
+            console.log(`[discover/person] Searching TMDb for "${person.name}"...`);
+            let searchRes;
+            try {
+                searchRes = await fetch(searchUrl);
+            } catch (/** @type {any} */ fetchErr) {
+                console.error(`[discover/person] TMDb search NETWORK ERROR:`, fetchErr.message || fetchErr);
+                return json({ error: `TMDb search network error: ${fetchErr.message}` }, { status: 502 });
+            }
             if (!searchRes.ok) {
                 const errBody = await searchRes.text().catch(() => '');
-                console.error(`[discover/person] TMDb search failed: ${searchRes.status}`, errBody);
+                console.error(`[discover/person] TMDb search HTTP ${searchRes.status}: ${errBody}`);
                 return json({ error: `TMDb search failed: ${searchRes.status} — ${errBody}` }, { status: 502 });
             }
             const searchData = await searchRes.json();
@@ -38,18 +50,27 @@ export async function GET({ params, locals }) {
             if (!match) return json({ error: `No TMDb match found for "${person.name}"` }, { status: 404 });
 
             tmdbPersonId = String(match.id);
+            console.log(`[discover/person] TMDb search matched: tmdb_id=${tmdbPersonId}`);
             // Save for future lookups
             db.prepare('UPDATE persons SET tmdb_person_id = ? WHERE id = ?').run(tmdbPersonId, personId);
         }
 
         // Step 2: Fetch combined credits from TMDb
         const creditsUrl = `${TMDB_BASE}/person/${tmdbPersonId}/combined_credits?api_key=${apiKey}`;
-        const creditsRes = await fetch(creditsUrl);
+        console.log(`[discover/person] Fetching credits for tmdb_person_id=${tmdbPersonId}...`);
+        let creditsRes;
+        try {
+            creditsRes = await fetch(creditsUrl);
+        } catch (/** @type {any} */ fetchErr) {
+            console.error(`[discover/person] TMDb credits NETWORK ERROR:`, fetchErr.message || fetchErr);
+            return json({ error: `TMDb credits network error: ${fetchErr.message}` }, { status: 502 });
+        }
         if (!creditsRes.ok) {
             const errBody = await creditsRes.text().catch(() => '');
-            console.error(`[discover/person] TMDb credits failed: ${creditsRes.status}`, errBody);
+            console.error(`[discover/person] TMDb credits HTTP ${creditsRes.status}: ${errBody}`);
             return json({ error: `TMDb credits failed: ${creditsRes.status} — ${errBody}` }, { status: 502 });
         }
+        console.log(`[discover/person] Credits fetched OK`);
         const creditsData = await creditsRes.json();
 
         // Combine cast + crew, deduplicate by TMDb ID
