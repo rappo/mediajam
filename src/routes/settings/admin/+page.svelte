@@ -37,9 +37,9 @@
     // *arr Integration
     /** @type {Array<{service: string, label: string, defaultPort: number}>} */
     const ARR_SERVICES = [
-        { service: "radarr", label: "Radarr", defaultPort: 7878 },
-        { service: "sonarr", label: "Sonarr", defaultPort: 8989 },
-        { service: "lidarr", label: "Lidarr", defaultPort: 8686 },
+        { service: "radarr", label: "Radarr (movies)", defaultPort: 7878 },
+        { service: "sonarr", label: "Sonarr (TV)", defaultPort: 8989 },
+        { service: "lidarr", label: "Lidarr (music)", defaultPort: 8686 },
     ];
     let radarrUrl = $state(data.settings.radarrUrl || "");
     let radarrApiKey = $state("");
@@ -2705,55 +2705,6 @@
                 >
             </div>
 
-            <!-- Sync buttons -->
-            <div class="flex flex-wrap items-center gap-2 mt-2">
-                <button
-                    class="btn btn-xs btn-primary gap-1"
-                    disabled={arrSyncRunning}
-                    onclick={() => startArrSync()}
-                >
-                    {#if arrSyncRunning}
-                        <span class="loading loading-spinner loading-xs"></span>
-                        Syncing...
-                    {:else}
-                        📥 Sync All
-                    {/if}
-                </button>
-                {#each ARR_SERVICES as svc}
-                    {@const url =
-                        svc.service === "radarr"
-                            ? radarrUrl
-                            : svc.service === "sonarr"
-                              ? sonarrUrl
-                              : lidarrUrl}
-                    {@const apiKey =
-                        svc.service === "radarr"
-                            ? radarrApiKey
-                            : svc.service === "sonarr"
-                              ? sonarrApiKey
-                              : lidarrApiKey}
-                    {#if url && (apiKey || data.settings[`${svc.service}ApiKey`])}
-                        <button
-                            class="btn btn-xs btn-outline gap-1"
-                            disabled={arrSyncRunning}
-                            onclick={() => startArrSync(svc.service)}
-                        >
-                            📡 {svc.label}
-                        </button>
-                    {/if}
-                {/each}
-            </div>
-
-            <div class="mt-3">
-                <LogConsole
-                    logs={arrSyncLogs}
-                    running={arrSyncRunning}
-                    title="*arr Sync Log"
-                    height="h-48"
-                />
-            </div>
-
-            <div class="divider my-2"></div>
 
             <!-- Service cards -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -3551,6 +3502,98 @@
                                     </p>
                                 {/if}
                             {/if}
+                        </div>
+                    {/if}
+                </div>
+
+
+                <!-- *arr Sync Row -->
+                <div
+                    class="rounded-lg border border-base-content/10 overflow-hidden"
+                >
+                    <button
+                        class="w-full flex items-center gap-3 px-4 py-3 hover:bg-base-300/50 transition-colors text-left"
+                        onclick={() =>
+                            (expandedSync =
+                                expandedSync === "arr"
+                                    ? null
+                                    : "arr")}
+                    >
+                        <span class="text-lg">📡</span>
+                        <span class="font-medium text-sm flex-1"
+                            >*arr Sync</span
+                        >
+                        <span class="text-xs text-base-content/40 hidden sm:inline">Radarr, Sonarr, Lidarr → wanted items, download status</span>
+                        {#if arrSyncRunning}
+                            <span
+                                class="loading loading-spinner loading-xs text-info"
+                            ></span>
+                            <span class="badge badge-info badge-sm gap-1"
+                                >syncing</span
+                            >
+                        {/if}
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="h-4 w-4 text-base-content/30 transition-transform"
+                            class:rotate-180={expandedSync === "arr"}
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            ><polyline points="6 9 12 15 18 9"></polyline></svg
+                        >
+                    </button>
+
+                    {#if expandedSync === "arr" || arrSyncRunning}
+                        <p class="text-xs text-base-content/50 px-4 pt-2 pb-1">Syncs your <strong>Radarr</strong> (movies), <strong>Sonarr</strong> (TV), and <strong>Lidarr</strong> (music) libraries into Mediajam — imports wanted items, download status, quality profiles, and upcoming releases. Configure connections on the <strong>Server</strong> tab.</p>
+                        <div
+                            class="px-4 pb-4 space-y-3 border-t border-base-content/5 pt-3"
+                        >
+                            <div class="flex flex-wrap items-center gap-2">
+                                <button
+                                    class="btn btn-sm btn-primary gap-1"
+                                    disabled={arrSyncRunning}
+                                    onclick={() => startArrSync()}
+                                >
+                                    {#if arrSyncRunning}
+                                        <span class="loading loading-spinner loading-xs"></span>
+                                        Syncing...
+                                    {:else}
+                                        📥 Sync All
+                                    {/if}
+                                </button>
+                                {#each ARR_SERVICES as svc}
+                                    {@const url =
+                                        svc.service === "radarr"
+                                            ? radarrUrl
+                                            : svc.service === "sonarr"
+                                              ? sonarrUrl
+                                              : lidarrUrl}
+                                    {@const apiKey =
+                                        svc.service === "radarr"
+                                            ? radarrApiKey
+                                            : svc.service === "sonarr"
+                                              ? sonarrApiKey
+                                              : lidarrApiKey}
+                                    {#if url && (apiKey || data.settings[`${svc.service}ApiKey`])}
+                                        <button
+                                            class="btn btn-sm btn-outline gap-1"
+                                            disabled={arrSyncRunning}
+                                            onclick={() => startArrSync(svc.service)}
+                                        >
+                                            <ServiceIcon service={svc.service} size="w-4 h-4" />
+                                            {svc.label}
+                                        </button>
+                                    {/if}
+                                {/each}
+                            </div>
+
+                            <LogConsole
+                                logs={arrSyncLogs}
+                                running={arrSyncRunning}
+                                title="*arr Sync Log"
+                                height="h-48"
+                            />
                         </div>
                     {/if}
                 </div>
