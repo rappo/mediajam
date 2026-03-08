@@ -61,6 +61,7 @@ export async function handle({ event, resolve }) {
         }
 
         // Require auth for everything except /login, /api/auth, and /api/setup
+        // TODO: Remove '/api/debug' from public paths once album research is complete
         const publicPaths = ['/login', '/reset-password', '/api/auth', '/api/setup', '/api/debug'];
         const isPublic = publicPaths.some(p => event.url.pathname.startsWith(p));
 

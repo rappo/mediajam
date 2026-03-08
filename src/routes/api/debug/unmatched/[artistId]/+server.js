@@ -1,3 +1,4 @@
+// TODO: Remove this debug endpoint once album research/iteration is complete
 import db from '$lib/server/db.js';
 import { json } from '@sveltejs/kit';
 

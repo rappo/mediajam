@@ -28,7 +28,7 @@ export function load() {
     // Compute pending/unsynced counts per sync type
     const lastJellyfinSync = historyByType.jellyfin?.finishedAt || syncState?.last_sync_timestamp || null;
     const jellyfinPending = lastJellyfinSync
-        ? /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM media_parents WHERE created_at > ?`).get(lastJellyfinSync))?.cnt || 0
+        ? /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM media_parents WHERE date_last_modified > ?`).get(lastJellyfinSync))?.cnt || 0
         : /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM media_parents WHERE jellyfin_id IS NULL`).get())?.cnt || 0;
 
     const peopleTotal = /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM persons`).get())?.cnt || 0;
