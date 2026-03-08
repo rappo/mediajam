@@ -45,6 +45,7 @@ export function load({ locals }) {
         pendingConflicts: /** @type {any} */ (db.prepare('SELECT COUNT(*) as count FROM sync_conflicts WHERE status = ?').get('pending'))?.count || 0,
         showWelcome: (settings?.setup_complete === 1 && !settings?.welcome_complete),
         jellyfinAuthInvalid: settings?.jellyfin_auth_status === 'invalid',
-        activityUnread: getUnreadCount()
+        activityUnread: getUnreadCount(),
+        ollamaConfigured: !!settings?.ollama_url,
     };
 }

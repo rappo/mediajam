@@ -126,11 +126,32 @@ Question: ${question}`;
     // Execute with timeout
     try {
         const results = db.prepare(cleanSql).all();
+        const sliced = results.slice(0, 50);
+
+        // Generate natural language summary of results
+        let summary = null;
+        if (sliced.length > 0) {
+            try {
+                const summaryPrompt = `The user asked: "${question}"
+
+The query returned ${results.length} result(s). Here is the data (JSON):
+${JSON.stringify(sliced.slice(0, 15), null, 2)}
+
+Provide a brief, friendly, conversational answer to the user's question based on this data. Be concise (2-3 sentences max). Use specific names, numbers, and facts from the data. Do NOT mention SQL or databases.`;
+
+                summary = await generate(summaryPrompt, {
+                    temperature: 0.3,
+                    system: 'You are a helpful media library assistant. Answer the user\'s question naturally and conversationally based on the query results provided. Be concise and specific.',
+                });
+            } catch { /* summary generation failed, that's ok */ }
+        }
+
         return json({
             question,
             sql: cleanSql,
-            results: results.slice(0, 50),
+            results: sliced,
             count: results.length,
+            summary,
         });
     } catch (e) {
         return json({

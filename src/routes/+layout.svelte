@@ -7,6 +7,7 @@
 	import ToastContainer from "$lib/components/ToastContainer.svelte";
 	import ConflictDialog from "$lib/components/ConflictDialog.svelte";
 	import ActivityLog from "$lib/components/ActivityLog.svelte";
+	import ChatWidget from "$lib/components/ChatWidget.svelte";
 	import { addToast } from "$lib/stores/toast.js";
 	import { jellyfinAuthInvalid } from "$lib/stores/auth.js";
 	import { page } from "$app/stores";
@@ -254,6 +255,7 @@
 			<!-- Search & Profile -->
 			<div class="flex-1 flex items-center justify-end gap-2">
 				<SearchBar />
+				<ChatWidget ollamaConfigured={data.ollamaConfigured} />
 				<ActivityLog initialUnread={data.activityUnread} {conflictDialog} />
 				<div class="dropdown dropdown-end">
 					<div
