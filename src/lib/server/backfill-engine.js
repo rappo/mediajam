@@ -402,26 +402,30 @@ export function reprocessTrakt(userId) {
     backfillState = { running: true, currentTier: 'trakt' };
     broadcast({ type: 'backfill_start', tier: 'trakt', log: '🔄 Re-processing Trakt history with session consolidation...', logType: 'info' });
 
-    // Delete existing Trakt playback history
-    const deleted = db.prepare("DELETE FROM playback_history WHERE user_id = ? AND source = 'trakt'").run(userId);
-    broadcast({ type: 'backfill_progress', tier: 'trakt', log: `  🗑️ Cleared ${deleted.changes} existing Trakt history entries`, logType: 'info' });
+    // Wrap delete+reimport in a transaction so failures roll back the delete
+    const result = db.transaction(() => {
+        // Delete existing Trakt playback history
+        const deleted = db.prepare("DELETE FROM playback_history WHERE user_id = ? AND source = 'trakt'").run(userId);
+        broadcast({ type: 'backfill_progress', tier: 'trakt', log: `  🗑️ Cleared ${deleted.changes} existing Trakt history entries`, logType: 'info' });
 
-    // Re-process from raw data (now with session consolidation)
-    const result = processTraktHistory(userId);
+        // Re-process from raw data (now with session consolidation)
+        const processed = processTraktHistory(userId);
 
-    // Recalculate play_count on media_children from actual playback_history rows
-    const recalculated = db.prepare(`
-        UPDATE media_children SET play_count = (
-            SELECT COUNT(*) FROM playback_history WHERE media_id = media_children.id
-        )
-        WHERE id IN (
-            SELECT DISTINCT media_id FROM playback_history WHERE user_id = ?
-            UNION
-            SELECT DISTINCT media_id FROM playback_history WHERE user_id = ? AND source = 'trakt'
-        )
-    `).run(userId, userId);
+        // Recalculate play_count on media_children from actual playback_history rows
+        const recalculated = db.prepare(`
+            UPDATE media_children SET play_count = (
+                SELECT COUNT(*) FROM playback_history WHERE media_id = media_children.id
+            )
+            WHERE id IN (
+                SELECT DISTINCT media_id FROM playback_history WHERE user_id = ?
+                UNION
+                SELECT DISTINCT media_id FROM playback_history WHERE user_id = ? AND source = 'trakt'
+            )
+        `).run(userId, userId);
 
-    broadcast({ type: 'backfill_progress', tier: 'trakt', log: `  📊 Recalculated play counts for ${recalculated.changes} items`, logType: 'info' });
+        broadcast({ type: 'backfill_progress', tier: 'trakt', log: `  📊 Recalculated play counts for ${recalculated.changes} items`, logType: 'info' });
+        return processed;
+    })();
 
     broadcast({
         type: 'backfill_complete', tier: 'trakt',
@@ -707,12 +711,15 @@ export async function reprocessLastfm(userId) {
     backfillState = { running: true, currentTier: 'lastfm' };
     broadcast({ type: 'backfill_start', tier: 'lastfm', log: '🔄 Re-processing Last.fm scrobbles from local data...', logType: 'info' });
 
-    // Delete existing lastfm entries from playback_history
-    const deleted = db.prepare("DELETE FROM playback_history WHERE source = 'lastfm' AND user_id = ?").run(userId);
-    broadcast({ type: 'backfill_progress', tier: 'lastfm', log: `  🗑️ Cleared ${deleted.changes} existing Last.fm play history entries`, logType: 'info' });
+    // Wrap delete+reimport in a transaction so failures roll back the delete
+    const result = db.transaction(() => {
+        // Delete existing lastfm entries from playback_history
+        const deleted = db.prepare("DELETE FROM playback_history WHERE source = 'lastfm' AND user_id = ?").run(userId);
+        broadcast({ type: 'backfill_progress', tier: 'lastfm', log: `  🗑️ Cleared ${deleted.changes} existing Last.fm play history entries`, logType: 'info' });
 
-    // Re-process from raw scrobbles
-    const result = processLastfmScrobbles(userId);
+        // Re-process from raw scrobbles
+        return processLastfmScrobbles(userId);
+    })();
 
     broadcast({
         type: 'backfill_complete', tier: 'lastfm',

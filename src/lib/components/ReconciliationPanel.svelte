@@ -20,6 +20,11 @@
     let error = $state("");
     let useT3 = $state(false);
 
+    // Rebuild (recovery) state
+    let rebuilding = $state(false);
+    /** @type {any} */
+    let rebuildResult = $state(null);
+
     // Phase toggles — all enabled by default
     let enabledPhases = $state({
         snapshot: true,
@@ -199,6 +204,19 @@
         } catch {
             /* no run yet */
         }
+    }
+
+    // ─── Rebuild Play History ────────────────────────────────────────────────────
+    async function rebuildHistory() {
+        rebuilding = true;
+        rebuildResult = null;
+        try {
+            const res = await fetch("/api/backfill/rebuild", { method: "POST" });
+            rebuildResult = await res.json();
+        } catch (/** @type {any} */ e) {
+            rebuildResult = { error: e.message || String(e) };
+        }
+        rebuilding = false;
     }
 
     // ─── Start Reconciliation ────────────────────────────────────────────────────
@@ -399,6 +417,38 @@
                             >T3 Embedding (experimental, uses Ollama)</span
                         >
                     </label>
+                {/if}
+            </div>
+
+            <!-- Rebuild Play History (Recovery) -->
+            <div class="mt-3 pt-3 border-t border-base-300/50">
+                <div class="flex items-center gap-3">
+                    <button
+                        class="btn btn-warning btn-sm btn-outline gap-2"
+                        onclick={rebuildHistory}
+                        disabled={rebuilding || running}
+                    >
+                        {#if rebuilding}
+                            <span class="loading loading-spinner loading-xs"></span> Rebuilding...
+                        {:else}
+                            🔄 Rebuild Play History
+                        {/if}
+                    </button>
+                    <span class="text-xs text-base-content/50">Re-import from raw Trakt/Last.fm data without deleting existing history</span>
+                </div>
+                {#if rebuildResult}
+                    <div class="mt-2 text-xs bg-base-300/30 rounded-lg p-3 space-y-1">
+                        {#if rebuildResult.error}
+                            <p class="text-error">❌ {rebuildResult.error}</p>
+                        {:else}
+                            {#if rebuildResult.results?.trakt}
+                                <p>🎬 <strong>Trakt:</strong> {rebuildResult.results.trakt.imported} imported, {rebuildResult.results.trakt.external} external, {rebuildResult.results.trakt.skipped} skipped{rebuildResult.results.trakt.consolidated ? `, ${rebuildResult.results.trakt.consolidated} consolidated` : ''}</p>
+                            {/if}
+                            {#if rebuildResult.results?.lastfm}
+                                <p>🎵 <strong>Last.fm:</strong> {rebuildResult.results.lastfm.imported} imported, {rebuildResult.results.lastfm.external} external, {rebuildResult.results.lastfm.skipped} skipped</p>
+                            {/if}
+                        {/if}
+                    </div>
                 {/if}
             </div>
         </div>

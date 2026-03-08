@@ -950,9 +950,18 @@ export async function runFullReconciliation(userId, options = {}) {
 
         updateRun(runId, 'running', 'snapshot', stats);
 
-        // ── Phase 2: Clear ──────────────────────────────────────────────
+        // ── Phase 2: Clear (with backup for recovery) ────────────────────
         reconcileState.phase = 'clearing';
-        broadcast({ type: 'reconcile_progress', phase: 'clearing', log: '🗑️ Clearing existing lastfm/trakt from playback_history...', logType: 'info' });
+        broadcast({ type: 'reconcile_progress', phase: 'clearing', log: '🗑️ Backing up and clearing existing lastfm/trakt from playback_history...', logType: 'info' });
+
+        // Create a real (non-temp) backup table so it survives errors
+        db.exec(`DROP TABLE IF EXISTS _reconcile_backup`);
+        db.exec(`CREATE TABLE _reconcile_backup AS
+            SELECT * FROM playback_history
+            WHERE source IN ('lastfm', 'trakt') AND user_id = ${userId}
+        `);
+        const backupCount = /** @type {any} */ (db.prepare('SELECT COUNT(*) as c FROM _reconcile_backup').get())?.c || 0;
+        broadcast({ type: 'reconcile_progress', phase: 'clearing', log: `💾 Backed up ${backupCount} rows before clearing`, logType: 'info' });
 
         const deletedLastfm = db.prepare(`DELETE FROM playback_history WHERE source = 'lastfm' AND user_id = ?`).run(userId);
         const deletedTrakt = db.prepare(`DELETE FROM playback_history WHERE source = 'trakt' AND user_id = ?`).run(userId);
@@ -1317,6 +1326,7 @@ export async function runFullReconciliation(userId, options = {}) {
             .run(finishedAt, JSON.stringify(stats), JSON.stringify(diff), runId);
 
         db.exec(`DROP TABLE IF EXISTS _reconcile_snapshot`);
+        db.exec(`DROP TABLE IF EXISTS _reconcile_backup`);
 
         broadcast({ type: 'reconcile_complete', stats, diff, duration: finishedAt });
         logInfo('reconcile', `Complete: LFM ${stats.lastfm.matched}/${stats.lastfm.total} matched, Trakt ${stats.trakt.matched}/${stats.trakt.total} matched`);
@@ -1328,9 +1338,23 @@ export async function runFullReconciliation(userId, options = {}) {
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         logError('reconcile', `Failed: ${msg}`);
+
+        // Attempt to restore from backup if it exists
+        try {
+            const hasBackup = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='_reconcile_backup'").get();
+            if (hasBackup) {
+                const restored = db.prepare(`INSERT OR IGNORE INTO playback_history SELECT * FROM _reconcile_backup`).run();
+                console.log(`[reconcile] Restored ${restored.changes} playback_history rows from backup after failure`);
+                broadcast({ type: 'reconcile_progress', phase: 'recovery', log: `🔄 Restored ${restored.changes} playback_history rows from backup`, logType: 'warning' });
+            }
+        } catch (restoreErr) {
+            console.error('[reconcile] Failed to restore backup:', restoreErr instanceof Error ? restoreErr.message : String(restoreErr));
+        }
+
         db.prepare(`UPDATE reconcile_runs SET status = 'failed', finished_at = ?, stats = ? WHERE id = ?`)
             .run(new Date().toISOString(), JSON.stringify({ ...stats, error: msg }), runId);
         db.exec(`DROP TABLE IF EXISTS _reconcile_snapshot`);
+        db.exec(`DROP TABLE IF EXISTS _reconcile_backup`);
         reconcileState = { running: false, phase: '', runId: 0 };
         closeLogFile();
         broadcast({ type: 'reconcile_error', error: msg });
