@@ -61,7 +61,7 @@ export async function handle({ event, resolve }) {
         }
 
         // Require auth for everything except /login, /api/auth, and /api/setup
-        const publicPaths = ['/login', '/reset-password', '/api/auth', '/api/setup', '/api/debug'];
+        const publicPaths = ['/login', '/reset-password', '/api/auth', '/api/setup'];
         const isPublic = publicPaths.some(p => event.url.pathname.startsWith(p));
 
         if (!event.locals.user && !isPublic) {
