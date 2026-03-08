@@ -43,10 +43,13 @@
     ];
     let radarrUrl = $state(data.settings.radarrUrl || "");
     let radarrApiKey = $state("");
+    let radarrExternalUrl = $state(data.settings.radarrExternalUrl || "");
     let sonarrUrl = $state(data.settings.sonarrUrl || "");
     let sonarrApiKey = $state("");
+    let sonarrExternalUrl = $state(data.settings.sonarrExternalUrl || "");
     let lidarrUrl = $state(data.settings.lidarrUrl || "");
     let lidarrApiKey = $state("");
+    let lidarrExternalUrl = $state(data.settings.lidarrExternalUrl || "");
     /** @type {Record<string, string>} */
     let arrTestStatus = $state({
         radarr: "idle",
@@ -1542,8 +1545,14 @@
                 : service === "sonarr"
                   ? sonarrApiKey
                   : lidarrApiKey;
+        const extUrl =
+            service === "radarr"
+                ? radarrExternalUrl
+                : service === "sonarr"
+                  ? sonarrExternalUrl
+                  : lidarrExternalUrl;
         /** @type {Record<string, string>} */
-        const body = { [`${service}_url`]: url };
+        const body = { [`${service}_url`]: url, [`${service}_external_url`]: extUrl };
         if (key) body[`${service}_api_key`] = key;
         try {
             await fetch("/api/settings", {
@@ -2835,6 +2844,27 @@
                                         <br />
                                     {/if}
                                     Settings → General → Security
+                                </span>
+                            </div>
+                        </label>
+
+                        <!-- External URL (browser-facing) -->
+                        <label class="form-control">
+                            <span class="label-text text-xs">External URL <span class="text-base-content/40">(for links)</span></span>
+                            <input
+                                type="text"
+                                class="input input-xs input-bordered w-full font-mono"
+                                placeholder="http://192.168.1.50:{svc.defaultPort}"
+                                value={svc.service === 'radarr' ? radarrExternalUrl : svc.service === 'sonarr' ? sonarrExternalUrl : lidarrExternalUrl}
+                                oninput={(e) => {
+                                    if (svc.service === 'radarr') radarrExternalUrl = e.target.value;
+                                    else if (svc.service === 'sonarr') sonarrExternalUrl = e.target.value;
+                                    else lidarrExternalUrl = e.target.value;
+                                }}
+                            />
+                            <div class="label py-0.5">
+                                <span class="label-text-alt text-[10px] text-base-content/40">
+                                    Browser-reachable address (if different from API URL)
                                 </span>
                             </div>
                         </label>

@@ -6,7 +6,7 @@ import { checkJellyfinFavorite } from '$lib/server/jellyfin-favorites.js';
 export async function load({ params, locals }) {
     const movieId = parseInt(params.id);
     const userId = locals.user?.id || 0;
-    const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_url, radarr_url FROM app_settings WHERE id = 1').get());
+    const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_url, radarr_url, radarr_external_url FROM app_settings WHERE id = 1').get());
     const jellyfinUrl = settings?.jellyfin_url || '';
 
     // Movie parent + child info
@@ -114,7 +114,7 @@ export async function load({ params, locals }) {
         crew,
         externalRatings,
         jellyfinUrl,
-        arrUrl: settings?.radarr_url || '',
+        arrUrl: settings?.radarr_external_url || settings?.radarr_url || '',
         arrService: 'radarr'
     };
 }

@@ -4,7 +4,7 @@ import { checkJellyfinFavorite } from '$lib/server/jellyfin-favorites.js';
 
 export async function load({ params }) {
     const showId = parseInt(params.id);
-    const settings = /** @type {any} */ (db.prepare('SELECT include_specials, jellyfin_url, sonarr_url FROM app_settings WHERE id = 1').get());
+    const settings = /** @type {any} */ (db.prepare('SELECT include_specials, jellyfin_url, sonarr_url, sonarr_external_url FROM app_settings WHERE id = 1').get());
     const includeSpecials = settings?.include_specials === 1;
     const jellyfinUrl = settings?.jellyfin_url || '';
 
@@ -172,7 +172,7 @@ export async function load({ params }) {
         maxEpisodes,
         includeSpecials,
         jellyfinUrl,
-        arrUrl: settings?.sonarr_url || '',
+        arrUrl: settings?.sonarr_external_url || settings?.sonarr_url || '',
         arrService: 'sonarr',
         totalEpisodes: totalCollected,
         totalMissing,

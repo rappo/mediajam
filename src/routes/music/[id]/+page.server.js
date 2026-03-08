@@ -5,7 +5,7 @@ import { checkJellyfinFavorite } from '$lib/server/jellyfin-favorites.js';
 export async function load({ params, locals }) {
     const artistId = parseInt(params.id);
     const userId = locals.user?.id || 0;
-    const settings = db.prepare('SELECT jellyfin_url, lidarr_url FROM app_settings WHERE id = 1').get();
+    const settings = db.prepare('SELECT jellyfin_url, lidarr_url, lidarr_external_url FROM app_settings WHERE id = 1').get();
     const jellyfinUrl = settings?.jellyfin_url || '';
 
     const artist = db.prepare(`
@@ -129,7 +129,7 @@ export async function load({ params, locals }) {
         artist: { ...artist, is_favorite: liveFavorite ?? artist.is_favorite, total_plays: totalPlays, imageUrl: artistImageUrl },
         albums: albumsWithRatings,
         jellyfinUrl,
-        arrUrl: settings?.lidarr_url || '',
+        arrUrl: settings?.lidarr_external_url || settings?.lidarr_url || '',
         arrService: 'lidarr',
         totalPlayed,
         totalRuntimeMinutes: Math.round(totalRuntime / 600000000)

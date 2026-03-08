@@ -19,10 +19,13 @@ export async function GET() {
         // *arr integration
         radarrUrl: settings?.radarr_url || '',
         radarrApiKey: settings?.radarr_api_key ? '••••••••' : '',
+        radarrExternalUrl: settings?.radarr_external_url || '',
         sonarrUrl: settings?.sonarr_url || '',
         sonarrApiKey: settings?.sonarr_api_key ? '••••••••' : '',
+        sonarrExternalUrl: settings?.sonarr_external_url || '',
         lidarrUrl: settings?.lidarr_url || '',
         lidarrApiKey: settings?.lidarr_api_key ? '••••••••' : '',
+        lidarrExternalUrl: settings?.lidarr_external_url || '',
         // External ratings
         omdbApiKey: settings?.omdb_api_key ? '••••••••' : '',
         discogsToken: settings?.discogs_token ? '••••••••' : '',
@@ -61,10 +64,13 @@ export async function PUT({ request }) {
             // *arr integration
             radarr_url: 'radarr_url',
             radarr_api_key: 'radarr_api_key',
+            radarr_external_url: 'radarr_external_url',
             sonarr_url: 'sonarr_url',
             sonarr_api_key: 'sonarr_api_key',
+            sonarr_external_url: 'sonarr_external_url',
             lidarr_url: 'lidarr_url',
             lidarr_api_key: 'lidarr_api_key',
+            lidarr_external_url: 'lidarr_external_url',
             // External ratings
             omdb_api_key: 'omdb_api_key',
             discogs_token: 'discogs_token',

@@ -306,10 +306,13 @@ const newAppCols = [
     // *arr integration
     ['radarr_url', 'TEXT'],
     ['radarr_api_key', 'TEXT'],
+    ['radarr_external_url', 'TEXT'],
     ['sonarr_url', 'TEXT'],
     ['sonarr_api_key', 'TEXT'],
+    ['sonarr_external_url', 'TEXT'],
     ['lidarr_url', 'TEXT'],
     ['lidarr_api_key', 'TEXT'],
+    ['lidarr_external_url', 'TEXT'],
     ['radarr_quality_profile_id', 'INTEGER'],
     ['radarr_root_folder', 'TEXT'],
     ['sonarr_quality_profile_id', 'INTEGER'],
