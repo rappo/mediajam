@@ -24,6 +24,11 @@
     /** @type {any} */
     let rebuildResult = $state(null);
 
+    // Jellyfin history sync state
+    let jellyfinSyncing = $state(false);
+    /** @type {any} */
+    let jellyfinSyncResult = $state(null);
+
     // Phase toggles — all enabled by default
     let enabledPhases = $state({
         snapshot: true,
@@ -215,6 +220,19 @@
             rebuildResult = { error: e.message || String(e) };
         }
         rebuilding = false;
+    }
+
+    // ─── Sync Jellyfin Watch History ─────────────────────────────────────────────
+    async function syncJellyfinHistory() {
+        jellyfinSyncing = true;
+        jellyfinSyncResult = null;
+        try {
+            const res = await fetch("/api/backfill/jellyfin", { method: "POST" });
+            jellyfinSyncResult = await res.json();
+        } catch (/** @type {any} */ e) {
+            jellyfinSyncResult = { error: e.message || String(e) };
+        }
+        jellyfinSyncing = false;
     }
 
     // ─── Start Reconciliation ────────────────────────────────────────────────────
@@ -434,6 +452,35 @@
                             {#if rebuildResult.results?.lastfm}
                                 <p>🎵 <strong>Last.fm:</strong> {rebuildResult.results.lastfm.imported} imported, {rebuildResult.results.lastfm.external} external, {rebuildResult.results.lastfm.skipped} skipped</p>
                             {/if}
+                        {/if}
+                    </div>
+                {/if}
+            </div>
+
+            <!-- Sync Jellyfin Watch History -->
+            <div class="mt-3 pt-3 border-t border-base-300/50">
+                <div class="flex items-center gap-3">
+                    <button
+                        class="btn btn-info btn-sm btn-outline gap-2"
+                        onclick={syncJellyfinHistory}
+                        disabled={jellyfinSyncing || running}
+                    >
+                        {#if jellyfinSyncing}
+                            <span class="loading loading-spinner loading-xs"></span> Syncing...
+                        {:else}
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            Sync Jellyfin History
+                        {/if}
+                    </button>
+                    <span class="text-xs text-base-content/50">Pull played status from Jellyfin and create missing history entries</span>
+                </div>
+                {#if jellyfinSyncResult}
+                    <div class="mt-2 text-xs bg-base-300/30 rounded-lg p-3 space-y-1">
+                        {#if jellyfinSyncResult.error}
+                            <p class="text-error">❌ {jellyfinSyncResult.error}</p>
+                        {:else}
+                            <p>✅ <strong>{jellyfinSyncResult.synced}</strong> new entries synced from <strong>{jellyfinSyncResult.total}</strong> played items</p>
+                            <p class="text-base-content/50">{jellyfinSyncResult.skipped} already existed, {jellyfinSyncResult.notFound} not in library</p>
                         {/if}
                     </div>
                 {/if}
