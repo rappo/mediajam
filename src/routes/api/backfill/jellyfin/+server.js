@@ -7,6 +7,9 @@ import { logInfo, logWarn } from '$lib/server/logger.js';
  * POST /api/backfill/jellyfin — Sync watch history from Jellyfin.
  * Queries all played items (movies, episodes) and creates playback_history
  * entries for any that don't already exist with source='jellyfin'.
+ *
+ * First run cleans up any previous bad imports (source='jellyfin'), then
+ * re-imports only items that have a valid LastPlayedDate from Jellyfin.
  */
 export async function POST({ locals }) {
     if (!locals.user) return json({ error: 'Unauthorized' }, { status: 401 });
@@ -24,6 +27,12 @@ export async function POST({ locals }) {
     const itemsApi = getItemsApi(api);
     const jellyfinUserId = user.jellyfin_user_id;
 
+    // Clean up previous jellyfin-sourced history (in case of bad imports)
+    const cleaned = db.prepare(
+        "DELETE FROM playback_history WHERE source = 'jellyfin' AND user_id = ?"
+    ).run(userId);
+    logInfo('jellyfin-sync', `Cleaned ${cleaned.changes} previous jellyfin history entries`);
+
     const insertHistory = db.prepare(`
         INSERT OR IGNORE INTO playback_history (user_id, media_id, source, timestamp, completion_pct, external_event_id)
         VALUES (@userId, @mediaId, 'jellyfin', @timestamp, 100, @externalEventId)
@@ -35,11 +44,12 @@ export async function POST({ locals }) {
 
     let synced = 0;
     let skipped = 0;
+    let noDate = 0;
     let notFound = 0;
     let errors = 0;
 
     try {
-        // Fetch all played movies
+        // ── Movies ──────────────────────────────────────────────────────────
         const moviesRes = await itemsApi.getItems({
             userId: jellyfinUserId,
             includeItemTypes: ['Movie'],
@@ -54,31 +64,22 @@ export async function POST({ locals }) {
         logInfo('jellyfin-sync', `Found ${movies.length} played movies in Jellyfin`);
 
         for (const movie of movies) {
+            const playedDate = movie.UserData?.LastPlayedDate;
+            if (!playedDate) { noDate++; continue; }
+
             const childJellyfinId = movie.Id + '_child';
             const child = /** @type {any} */ (findChildByJellyfinId.get(childJellyfinId));
-            if (!child) {
-                notFound++;
-                continue;
-            }
+            if (!child) { notFound++; continue; }
 
-            const playedDate = movie.UserData?.LastPlayedDate || new Date().toISOString();
-            const eventId = `jellyfin:movie:${movie.Id}:${playedDate}`;
-
+            const eventId = `jellyfin:movie:${movie.Id}`;
             try {
-                const result = insertHistory.run({
-                    userId,
-                    mediaId: child.id,
-                    timestamp: playedDate,
-                    externalEventId: eventId,
-                });
+                const result = insertHistory.run({ userId, mediaId: child.id, timestamp: playedDate, externalEventId: eventId });
                 if (result.changes > 0) synced++;
                 else skipped++;
-            } catch {
-                errors++;
-            }
+            } catch { errors++; }
         }
 
-        // Fetch all played episodes
+        // ── Episodes ────────────────────────────────────────────────────────
         const episodesRes = await itemsApi.getItems({
             userId: jellyfinUserId,
             includeItemTypes: ['Episode'],
@@ -93,30 +94,21 @@ export async function POST({ locals }) {
         logInfo('jellyfin-sync', `Found ${episodes.length} played episodes in Jellyfin`);
 
         for (const ep of episodes) {
+            const playedDate = ep.UserData?.LastPlayedDate;
+            if (!playedDate) { noDate++; continue; }
+
             const child = /** @type {any} */ (findChildByJellyfinId.get(ep.Id));
-            if (!child) {
-                notFound++;
-                continue;
-            }
+            if (!child) { notFound++; continue; }
 
-            const playedDate = ep.UserData?.LastPlayedDate || new Date().toISOString();
-            const eventId = `jellyfin:episode:${ep.Id}:${playedDate}`;
-
+            const eventId = `jellyfin:episode:${ep.Id}`;
             try {
-                const result = insertHistory.run({
-                    userId,
-                    mediaId: child.id,
-                    timestamp: playedDate,
-                    externalEventId: eventId,
-                });
+                const result = insertHistory.run({ userId, mediaId: child.id, timestamp: playedDate, externalEventId: eventId });
                 if (result.changes > 0) synced++;
                 else skipped++;
-            } catch {
-                errors++;
-            }
+            } catch { errors++; }
         }
 
-        // Fetch all played audio tracks
+        // ── Audio ───────────────────────────────────────────────────────────
         const audioRes = await itemsApi.getItems({
             userId: jellyfinUserId,
             includeItemTypes: ['Audio'],
@@ -130,53 +122,43 @@ export async function POST({ locals }) {
         const tracks = audioRes.data.Items || [];
         logInfo('jellyfin-sync', `Found ${tracks.length} played audio tracks in Jellyfin`);
 
-        // For audio, try to find via tracks table first, then media_children
         const findTrackByJellyfinId = db.prepare(
             'SELECT mc.id as media_child_id FROM tracks t JOIN media_children mc ON mc.id = t.album_id WHERE t.jellyfin_id = ?'
         );
 
         for (const track of tracks) {
-            // Try tracks table first
+            const playedDate = track.UserData?.LastPlayedDate;
+            if (!playedDate) { noDate++; continue; }
+
             let mediaId = null;
             const trackRow = /** @type {any} */ (findTrackByJellyfinId.get(track.Id));
             if (trackRow) {
                 mediaId = trackRow.media_child_id;
             } else {
-                // Fall back to media_children directly
                 const child = /** @type {any} */ (findChildByJellyfinId.get(track.Id));
                 if (child) mediaId = child.id;
             }
 
-            if (!mediaId) {
-                notFound++;
-                continue;
-            }
+            if (!mediaId) { notFound++; continue; }
 
-            const playedDate = track.UserData?.LastPlayedDate || new Date().toISOString();
-            const eventId = `jellyfin:audio:${track.Id}:${playedDate}`;
-
+            const eventId = `jellyfin:audio:${track.Id}`;
             try {
-                const result = insertHistory.run({
-                    userId,
-                    mediaId,
-                    timestamp: playedDate,
-                    externalEventId: eventId,
-                });
+                const result = insertHistory.run({ userId, mediaId, timestamp: playedDate, externalEventId: eventId });
                 if (result.changes > 0) synced++;
                 else skipped++;
-            } catch {
-                errors++;
-            }
+            } catch { errors++; }
         }
 
-        logInfo('jellyfin-sync', `Jellyfin history sync complete: ${synced} new, ${skipped} already existed, ${notFound} not in library, ${errors} errors`);
+        logInfo('jellyfin-sync', `Jellyfin history sync complete: ${synced} new, ${skipped} dupes, ${noDate} no date, ${notFound} not in library, ${errors} errors, ${cleaned.changes} cleaned`);
 
         return json({
             success: true,
             synced,
             skipped,
+            noDate,
             notFound,
             errors,
+            cleaned: cleaned.changes,
             total: movies.length + episodes.length + tracks.length,
         });
     } catch (e) {

@@ -479,8 +479,11 @@
                         {#if jellyfinSyncResult.error}
                             <p class="text-error">❌ {jellyfinSyncResult.error}</p>
                         {:else}
+                            {#if jellyfinSyncResult.cleaned > 0}
+                                <p>🗑️ Cleaned <strong>{jellyfinSyncResult.cleaned}</strong> previous entries</p>
+                            {/if}
                             <p>✅ <strong>{jellyfinSyncResult.synced}</strong> new entries synced from <strong>{jellyfinSyncResult.total}</strong> played items</p>
-                            <p class="text-base-content/50">{jellyfinSyncResult.skipped} already existed, {jellyfinSyncResult.notFound} not in library</p>
+                            <p class="text-base-content/50">{jellyfinSyncResult.skipped} duplicates, {jellyfinSyncResult.noDate || 0} without date, {jellyfinSyncResult.notFound} not in library</p>
                         {/if}
                     </div>
                 {/if}
