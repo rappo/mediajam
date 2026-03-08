@@ -225,7 +225,7 @@ export async function backfillWikipedia() {
                             if (wiki) {
                                 updateMediaParent.run(wiki.url, wiki.summary, movie.id);
                                 status.found++;
-                                if ((i + 1) % 25 === 0) broadcast({ type: 'progress', log: `✓ ${movie.title} — found`, logType: 'success', phase: 'movies', done: i + 1, total: movies.length, found: status.found });
+                                if ((i + 1) % 25 === 0) broadcast({ type: 'progress', log: `✓ [${i + 1}/${movies.length}] ${movie.title} — found`, logType: 'success', phase: 'movies', done: i + 1, total: movies.length, found: status.found });
                             } else {
                                 markMediaParentFetched.run(movie.id);
                             }
@@ -268,7 +268,7 @@ export async function backfillWikipedia() {
                             if (wiki) {
                                 updateMediaParent.run(wiki.url, wiki.summary, show.id);
                                 status.found++;
-                                if ((i + 1) % 25 === 0) broadcast({ type: 'progress', log: `✓ ${show.title} — found`, logType: 'success', phase: 'tv', done: i + 1, total: shows.length, found: status.found });
+                                if ((i + 1) % 25 === 0) broadcast({ type: 'progress', log: `✓ [${i + 1}/${shows.length}] ${show.title} — found`, logType: 'success', phase: 'tv', done: i + 1, total: shows.length, found: status.found });
                             } else {
                                 markMediaParentFetched.run(show.id);
                             }
@@ -310,7 +310,7 @@ export async function backfillWikipedia() {
                         if (wiki) {
                             updateMediaParent.run(wiki.url, wiki.summary, artist.id);
                             status.found++;
-                            if ((i + 1) % 25 === 0) broadcast({ type: 'progress', log: `✓ ${artist.title} — found`, logType: 'success', phase: 'music', done: i + 1, total: artists.length, found: status.found });
+                            if ((i + 1) % 25 === 0) broadcast({ type: 'progress', log: `✓ [${i + 1}/${artists.length}] ${artist.title} — found`, logType: 'success', phase: 'music', done: i + 1, total: artists.length, found: status.found });
                         } else {
                             markMediaParentFetched.run(artist.id);
                         }
@@ -352,7 +352,7 @@ export async function backfillWikipedia() {
                             if (wiki) {
                                 updatePerson.run(wiki.url, wiki.summary, person.id);
                                 status.found++;
-                                if ((i + 1) % 25 === 0) broadcast({ type: 'progress', log: `✓ ${person.name} — found`, logType: 'success', phase: 'people', done: i + 1, total: people.length, found: status.found });
+                                if ((i + 1) % 25 === 0) broadcast({ type: 'progress', log: `✓ [${i + 1}/${people.length}] ${person.name} — found`, logType: 'success', phase: 'people', done: i + 1, total: people.length, found: status.found });
                             } else {
                                 markPersonFetched.run(person.id);
                             }
