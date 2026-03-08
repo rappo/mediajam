@@ -11,11 +11,14 @@
 
     let favorite = $state(isFavorite);
     let loading = $state(false);
+    let prevIsFavorite = isFavorite;
 
-    // Only sync from prop when NOT in-flight (avoids reverting optimistic updates)
+    // Sync from prop ONLY when the prop itself changes (not when loading changes)
     $effect(() => {
-        if (!loading) {
-            favorite = isFavorite;
+        const current = isFavorite; // track only this
+        if (current !== prevIsFavorite) {
+            prevIsFavorite = current;
+            favorite = current;
         }
     });
 
