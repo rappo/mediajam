@@ -21,6 +21,46 @@
     let jellyfinPrDbPath = $state(data.settings.jellyfinPrDbPath || "");
     let jellyfinSyncCheck = $state(!!data.settings.jellyfinSyncCheck);
 
+    // Jellyfin PR DB Validation
+    /** @type {'idle' | 'checking' | 'valid' | 'error'} */
+    let prDbStatus = $state('idle');
+    let prDbMessage = $state('');
+    let prDbRows = $state(0);
+
+    async function validatePrDb() {
+        if (!jellyfinPrDbPath.trim()) {
+            prDbStatus = 'idle';
+            prDbMessage = '';
+            return;
+        }
+        prDbStatus = 'checking';
+        prDbMessage = '';
+        try {
+            const res = await fetch('/api/settings/validate-pr-db', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dbPath: jellyfinPrDbPath.trim() })
+            });
+            const result = await res.json();
+            if (result.valid) {
+                prDbStatus = 'valid';
+                prDbMessage = result.message;
+                prDbRows = result.rows;
+            } else {
+                prDbStatus = 'error';
+                prDbMessage = result.error;
+            }
+        } catch (e) {
+            prDbStatus = 'error';
+            prDbMessage = 'Failed to validate path';
+        }
+    }
+
+    // Auto-validate on mount if path is set
+    $effect(() => {
+        if (jellyfinPrDbPath) validatePrDb();
+    });
+
     // External Ratings
     let omdbApiKey = $state("");
     let discogsToken = $state("");
@@ -1922,6 +1962,53 @@
                     </div>
                 </label>
             </div>
+
+            <!-- Jellyfin Playback Reporting DB -->
+            <div class="divider my-2"></div>
+            <div class="form-control">
+                <label class="label" for="settings-pr-db-path">
+                    <span class="label-text font-medium">Playback Reporting Database</span>
+                </label>
+                <p class="text-xs text-base-content/50 mb-2">
+                    Path to the <a href="https://github.com/jellyfin/jellyfin-plugin-playback-reporting" target="_blank" rel="noopener" class="link link-info">Playback Reporting plugin</a>'s database file (playback_reporting.db). Mount it read-only via Docker to import historical watch data.
+                </p>
+                <div class="flex gap-2">
+                    <input
+                        id="settings-pr-db-path"
+                        type="text"
+                        class="input input-bordered input-sm flex-1 {prDbStatus === 'valid' ? 'input-success' : prDbStatus === 'error' ? 'input-error' : ''}"
+                        bind:value={jellyfinPrDbPath}
+                        placeholder="/app/data/playback_reporting.db"
+                    />
+                    <button
+                        class="btn btn-sm btn-ghost gap-1"
+                        onclick={validatePrDb}
+                        disabled={prDbStatus === 'checking' || !jellyfinPrDbPath.trim()}
+                    >
+                        {#if prDbStatus === 'checking'}
+                            <span class="loading loading-spinner loading-xs"></span>
+                        {:else}
+                            🔍 Test
+                        {/if}
+                    </button>
+                </div>
+                {#if prDbStatus === 'valid'}
+                    <div class="flex items-center gap-2 mt-2">
+                        <span class="badge badge-success badge-sm gap-1">✓ Connected</span>
+                        <span class="text-xs text-success">{prDbMessage}</span>
+                    </div>
+                {:else if prDbStatus === 'error'}
+                    <div class="mt-2 text-xs text-error flex items-start gap-1.5">
+                        <span>⚠️</span>
+                        <div>
+                            <p>{prDbMessage}</p>
+                            <p class="text-base-content/40 mt-1">
+                                Ensure the file is mounted in Docker: <code class="text-xs">-v /path/to/playback_reporting.db:/app/jellyfin/playback_reporting.db:ro</code>
+                            </p>
+                        </div>
+                    </div>
+                {/if}
+            </div>
         </div>
     </div>
 
@@ -2860,35 +2947,11 @@
 
     {/if}
 
+
     <!-- ═══════════════════════ TAB: DATA SYNC ═══════════════════════ -->
     {#if activeTab === 'sync'}
-    <!-- Jellyfin Playback Reporting -->
-    <div
-        id="playback-reporting"
-        class="card bg-base-200/50 border border-base-300 scroll-mt-20"
-    >
-        <div class="card-body">
-            <h2 class="card-title text-lg">
-                <ServiceIcon service="jellyfin" class="text-[#00A4DC]" />
-                Jellyfin Playback Reporting
-            </h2>
-            <p class="text-sm text-base-content/60">
-                Path to the Playback Reporting plugin database
-                (playback_reporting.db). Mount it read-only via Docker to import
-                historical data.
-            </p>
-            <div class="form-control">
-                <input
-                    type="text"
-                    class="input input-bordered input-sm"
-                    bind:value={jellyfinPrDbPath}
-                    placeholder="/app/data/playback_reporting.db"
-                />
-            </div>
-        </div>
-    </div>
 
-    <!-- Data Sync -->
+    
     <div
         id="data-sync"
         class="card bg-base-200/50 border border-base-300 scroll-mt-20"
@@ -3598,56 +3661,78 @@
                     {/if}
                 </div>
 
+                <!-- Wikipedia Summaries Row -->
+                <div
+                    class="rounded-lg border border-base-content/10 overflow-hidden"
+                >
+                    <button
+                        class="w-full flex items-center gap-3 px-4 py-3 hover:bg-base-300/50 transition-colors text-left"
+                        onclick={() =>
+                            (expandedSync =
+                                expandedSync === "wikipedia"
+                                    ? null
+                                    : "wikipedia")}
+                    >
+                        <span class="text-lg">📚</span>
+                        <span class="font-medium text-sm flex-1"
+                            >Wikipedia Summaries</span
+                        >
+                        <span class="text-xs text-base-content/40 hidden sm:inline">TMDb → Wikidata → Wikipedia summaries</span>
+                        {#if wikiStatus === "syncing"}
+                            <span
+                                class="loading loading-spinner loading-xs text-secondary"
+                            ></span>
+                            <span class="badge badge-secondary badge-sm gap-1"
+                                >syncing</span
+                            >
+                        {:else if wikiStatus === "complete"}
+                            <span class="text-success text-xs">✓ {wikiFound} found</span>
+                        {/if}
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="h-4 w-4 text-base-content/30 transition-transform"
+                            class:rotate-180={expandedSync === "wikipedia"}
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            ><polyline points="6 9 12 15 18 9"></polyline></svg
+                        >
+                    </button>
+
+                    {#if expandedSync === "wikipedia"}
+                        <p class="text-xs text-base-content/50 px-4 pt-2 pb-1">Fetches Wikipedia summaries for movies, TV shows, music artists, and people via <strong>TMDb → Wikidata → Wikipedia</strong>. Stores alongside existing overviews.</p>
+                        <div
+                            class="px-4 pb-4 space-y-3 border-t border-base-content/5 pt-3"
+                        >
+                            {#if wikiStatus === "idle" || wikiStatus === "complete" || wikiStatus === "error"}
+                                <div class="flex flex-wrap gap-2">
+                                    <button class="btn btn-secondary btn-sm" onclick={triggerWikipedia} disabled={wikiStatus === 'syncing'}>Start Backfill</button>
+                                </div>
+                            {:else}
+                                <div class="flex items-center gap-3">
+                                    <progress class="progress progress-secondary w-full" value={wikiDone} max={wikiTotal || 1}></progress>
+                                    <span class="text-xs text-base-content/60 whitespace-nowrap">{wikiDone}/{wikiTotal} ({wikiFound} found)</span>
+                                    <button class="btn btn-ghost btn-xs" onclick={stopWikipedia}>Stop</button>
+                                </div>
+                            {/if}
+                            {#if wikiLogs.length > 0}
+                                <div class="bg-base-300/50 rounded-lg p-3 max-h-48 overflow-y-auto text-xs font-mono space-y-0.5">
+                                    {#each wikiLogs as log}
+                                        <div class="{log.type === 'success' ? 'text-success' : log.type === 'error' ? 'text-error' : log.type === 'warning' ? 'text-warning' : 'text-base-content/70'}">
+                                            <span class="text-base-content/30">[{log.time}]</span> {log.message}
+                                        </div>
+                                    {/each}
+                                </div>
+                            {/if}
+                        </div>
+                    {/if}
+                </div>
+
             </div>
         </div>
     </div>
 
-    <!-- Wikipedia Backfill -->
-    <div class="card bg-base-200/50 border border-base-300 mt-4">
-        <div class="card-body p-0">
-            <button
-                class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-base-300/30 transition-colors rounded-xl"
-                onclick={() => expandedSync = expandedSync === 'wikipedia' ? '' : 'wikipedia'}
-            >
-                <div class="flex items-center gap-2">
-                    <span class="text-lg">📚</span>
-                    <span class="font-medium">Wikipedia Summaries</span>
-                    {#if wikiStatus === "syncing"}
-                        <span class="loading loading-spinner loading-xs"></span>
-                    {:else if wikiStatus === "complete"}
-                        <span class="text-success text-xs">✓ {wikiFound} found</span>
-                    {/if}
-                </div>
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-base-content/30 transition-transform" class:rotate-180={expandedSync === 'wikipedia'} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
-            </button>
-
-            {#if expandedSync === 'wikipedia'}
-                <p class="text-xs text-base-content/50 px-4 pt-2 pb-1">Fetches Wikipedia summaries for movies, TV shows, music artists, and people via <strong>TMDb → Wikidata → Wikipedia</strong>. Stores alongside existing overviews.</p>
-                <div class="px-4 pb-4 space-y-3 border-t border-base-content/5 pt-3">
-                    {#if wikiStatus === "idle" || wikiStatus === "complete" || wikiStatus === "error"}
-                        <div class="flex flex-wrap gap-2">
-                            <button class="btn btn-secondary btn-sm" onclick={triggerWikipedia} disabled={wikiStatus === 'syncing'}>Start Backfill</button>
-                        </div>
-                    {:else}
-                        <div class="flex items-center gap-3">
-                            <progress class="progress progress-secondary w-full" value={wikiDone} max={wikiTotal || 1}></progress>
-                            <span class="text-xs text-base-content/60 whitespace-nowrap">{wikiDone}/{wikiTotal} ({wikiFound} found)</span>
-                            <button class="btn btn-ghost btn-xs" onclick={stopWikipedia}>Stop</button>
-                        </div>
-                    {/if}
-                    {#if wikiLogs.length > 0}
-                        <div class="bg-base-300/50 rounded-lg p-3 max-h-48 overflow-y-auto text-xs font-mono space-y-0.5">
-                            {#each wikiLogs as log}
-                                <div class="{log.type === 'success' ? 'text-success' : log.type === 'error' ? 'text-error' : log.type === 'warning' ? 'text-warning' : 'text-base-content/70'}">
-                                    <span class="text-base-content/30">[{log.time}]</span> {log.message}
-                                </div>
-                            {/each}
-                        </div>
-                    {/if}
-                </div>
-            {/if}
-        </div>
-    </div>
 
     {/if}
 
