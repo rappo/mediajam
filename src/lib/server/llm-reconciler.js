@@ -220,6 +220,123 @@ export async function buildEmbeddingIndex(onProgress) {
     return { embedded, failed };
 }
 
+// ─── Person Embedding Cache ─────────────────────────────────────────────────
+
+/** @type {Map<number, number[]>} personId → embedding vector */
+const personEmbeddingCache = new Map();
+
+/**
+ * Build rich embedding text for a person.
+ * Includes name, bio, wikipedia summary, and filmography (credited works).
+ * @param {any} person - row from persons
+ * @returns {string}
+ */
+function buildPersonEmbeddingText(person) {
+    const parts = [];
+
+    parts.push(`person: ${person.name}`);
+
+    // Bio
+    if (person.bio) {
+        parts.push(person.bio.slice(0, 200));
+    }
+
+    // Filmography — top credited works grouped by role
+    try {
+        const credits = /** @type {any[]} */ (db.prepare(`
+            SELECT mp.title, pc.role_type FROM person_credits pc
+            JOIN media_parents mp ON mp.id = pc.media_parent_id
+            WHERE pc.person_id = ?
+            ORDER BY pc.sort_order ASC
+            LIMIT 10
+        `).all(person.id));
+
+        if (credits.length > 0) {
+            // Group by role type
+            /** @type {Record<string, string[]>} */
+            const byRole = {};
+            for (const c of credits) {
+                const role = c.role_type || 'Actor';
+                if (!byRole[role]) byRole[role] = [];
+                byRole[role].push(c.title);
+            }
+            for (const [role, titles] of Object.entries(byRole)) {
+                parts.push(`${role}: ${titles.join(', ')}`);
+            }
+        }
+    } catch { /* credits may not exist yet */ }
+
+    // Wikipedia summary
+    if (person.wikipedia_summary) {
+        parts.push(person.wikipedia_summary.slice(0, 200));
+    }
+
+    return parts.join('. ').slice(0, 600);
+}
+
+/**
+ * Embed all persons with rich metadata (bio, filmography, wikipedia).
+ * @param {(progress: {done: number, total: number, log: string}) => void} [onProgress]
+ * @returns {Promise<{embedded: number, failed: number}>}
+ */
+export async function buildPersonEmbeddingIndex(onProgress) {
+    const persons = /** @type {any[]} */ (db.prepare(
+        `SELECT id, name, bio, wikipedia_summary FROM persons ORDER BY id`
+    ).all());
+
+    let embedded = 0, failed = 0;
+    const batchSize = 50;
+
+    for (let i = 0; i < persons.length; i += batchSize) {
+        const batch = persons.slice(i, i + batchSize);
+        for (const p of batch) {
+            try {
+                const text = buildPersonEmbeddingText(p);
+                const vec = await embed(text);
+                if (vec) {
+                    personEmbeddingCache.set(p.id, vec);
+                    embedded++;
+                } else {
+                    failed++;
+                }
+            } catch {
+                failed++;
+            }
+        }
+        if (onProgress) {
+            onProgress({
+                done: Math.min(i + batchSize, persons.length),
+                total: persons.length,
+                log: `🧠 Embedded ${Math.min(i + batchSize, persons.length)}/${persons.length} persons...`
+            });
+        }
+    }
+
+    return { embedded, failed };
+}
+
+/**
+ * Find nearest person embedding matches for a query string.
+ * @param {string} query
+ * @param {number} [topK=3]
+ * @returns {Promise<Array<{id: number, name: string, distance: number}>>}
+ */
+export async function findNearestPerson(query, topK = 3) {
+    const queryVec = await embed(query);
+    if (!queryVec) return [];
+
+    const results = [];
+    for (const [id, vec] of personEmbeddingCache) {
+        const person = /** @type {any} */ (db.prepare('SELECT name FROM persons WHERE id = ?').get(id));
+        if (!person) continue;
+        const dist = cosineDistance(queryVec, vec);
+        results.push({ id, name: person.name, distance: dist });
+    }
+
+    results.sort((a, b) => a.distance - b.distance);
+    return results.slice(0, topK);
+}
+
 /**
  * Find nearest embedding matches for a query string.
  * @param {string} query - e.g. "artist: Wu-Tang Clan"
@@ -881,7 +998,16 @@ export async function runFullReconciliation(userId, options = {}) {
                 stats.embedding = embResult;
                 broadcast({
                     type: 'reconcile_progress', phase: 'embedding',
-                    log: `🧠 Embedded ${embResult.embedded} titles (${embResult.failed} failed)`, logType: 'info'
+                    log: `🧠 Embedded ${embResult.embedded} media items (${embResult.failed} failed)`, logType: 'info'
+                });
+
+                // Person embeddings (filmography, bio, wikipedia)
+                const personEmbResult = await buildPersonEmbeddingIndex((progress) => {
+                    broadcast({ type: 'reconcile_progress', phase: 'embedding', ...progress, logType: 'info' });
+                });
+                broadcast({
+                    type: 'reconcile_progress', phase: 'embedding',
+                    log: `🧠 Embedded ${personEmbResult.embedded} persons (${personEmbResult.failed} failed)`, logType: 'info'
                 });
             } else {
                 broadcast({ type: 'reconcile_progress', phase: 'embedding', log: `⚠️ Ollama not available (${ollamaHealth.error}) — skipping Tier 3 (embedding) matching`, logType: 'warn' });
