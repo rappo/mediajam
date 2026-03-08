@@ -63,6 +63,7 @@
         });
         unreadCount = 0;
         activities = activities.map((a) => ({ ...a, read: 1 }));
+        close();
     }
 
     /** @param {any} activity */
