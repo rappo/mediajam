@@ -171,17 +171,27 @@ export async function syncArrService(service, url, apiKey) {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'wanted', ?, ?, ?, ?, ?, ?)
     `);
 
-    // Prepare match queries
+    // Prepare match queries — always filter by media_type to avoid cross-type collisions
     const findByPrimary = db.prepare(
-        `SELECT id FROM media_parents WHERE ${config.dbMatchColumn} = ? LIMIT 1`
+        `SELECT id FROM media_parents WHERE ${config.dbMatchColumn} = ? AND media_type = ? LIMIT 1`
     );
     const findByFallback = config.dbFallbackColumn
-        ? db.prepare(`SELECT id FROM media_parents WHERE ${config.dbFallbackColumn} = ? LIMIT 1`)
+        ? db.prepare(`SELECT id FROM media_parents WHERE ${config.dbFallbackColumn} = ? AND media_type = ? LIMIT 1`)
         : null;
 
     // Also check by *arr ID (for stubs we created in a previous sync)
     const findByArrId = db.prepare(
         `SELECT id FROM media_parents WHERE ${config.idColumn} = ? LIMIT 1`
+    );
+
+    // Broad fallback: find any item matching ANY external ID (catches items missed by primary/fallback)
+    const findByAnyExternalId = db.prepare(
+        `SELECT id FROM media_parents WHERE media_type = ? AND (
+            (tmdb_id IS NOT NULL AND tmdb_id = ?) OR
+            (imdb_id IS NOT NULL AND imdb_id = ?) OR
+            (tvdb_id IS NOT NULL AND tvdb_id = ?) OR
+            (musicbrainz_id IS NOT NULL AND musicbrainz_id = ?)
+        ) LIMIT 1`
     );
 
     let matched = 0;
@@ -235,20 +245,29 @@ export async function syncArrService(service, url, apiKey) {
             const qualityProfileName = qualityProfiles[item.qualityProfileId] || null;
             const arrStatus = meta.extractStatus(item);
 
-            // Try primary match
-            let match = /** @type {any} */ (findByPrimary.get(externalId));
+            // Try primary match (filtered by media_type)
+            let match = /** @type {any} */ (findByPrimary.get(externalId, meta.mediaType));
 
-            // Try fallback match
+            // Try fallback match (filtered by media_type)
             if (!match && findByFallback && config.fallbackField) {
                 const fallbackId = String(item[config.fallbackField] || '');
                 if (fallbackId) {
-                    match = /** @type {any} */ (findByFallback.get(fallbackId));
+                    match = /** @type {any} */ (findByFallback.get(fallbackId, meta.mediaType));
                 }
             }
 
             // Try matching by *arr ID (stubs from previous sync)
             if (!match) {
                 match = /** @type {any} */ (findByArrId.get(item.id));
+            }
+
+            // Broad external ID fallback — catches items missed by primary/fallback
+            if (!match) {
+                const ids = meta.extractExternalIds(item);
+                match = /** @type {any} */ (findByAnyExternalId.get(
+                    meta.mediaType,
+                    ids.tmdb_id || '', ids.imdb_id || '', ids.tvdb_id || '', ids.musicbrainz_id || ''
+                ));
             }
 
             if (match) {
@@ -303,17 +322,19 @@ export async function syncArrService(service, url, apiKey) {
                         created++;
                     } catch (insertErr) {
                         // UNIQUE constraint — an existing entry shares an external ID
+                        // This is a normal case (item exists from Jellyfin), not a real error
                         let existing = null;
-                        if (ids.musicbrainz_id) existing = /** @type {any} */ (db.prepare('SELECT id FROM media_parents WHERE musicbrainz_id = ? AND media_type = ? LIMIT 1').get(ids.musicbrainz_id, meta.mediaType));
-                        if (!existing && ids.tmdb_id) existing = /** @type {any} */ (db.prepare('SELECT id FROM media_parents WHERE tmdb_id = ? AND media_type = ? LIMIT 1').get(ids.tmdb_id, meta.mediaType));
+                        if (ids.tmdb_id) existing = /** @type {any} */ (db.prepare('SELECT id FROM media_parents WHERE tmdb_id = ? AND media_type = ? LIMIT 1').get(ids.tmdb_id, meta.mediaType));
                         if (!existing && ids.imdb_id) existing = /** @type {any} */ (db.prepare('SELECT id FROM media_parents WHERE imdb_id = ? AND media_type = ? LIMIT 1').get(ids.imdb_id, meta.mediaType));
                         if (!existing && ids.tvdb_id) existing = /** @type {any} */ (db.prepare('SELECT id FROM media_parents WHERE tvdb_id = ? AND media_type = ? LIMIT 1').get(ids.tvdb_id, meta.mediaType));
+                        if (!existing && ids.musicbrainz_id) existing = /** @type {any} */ (db.prepare('SELECT id FROM media_parents WHERE musicbrainz_id = ? AND media_type = ? LIMIT 1').get(ids.musicbrainz_id, meta.mediaType));
 
                         if (existing) {
                             updateStmt.run(item.id, item.monitored ? 1 : 0, hasFile, qualityProfileName, arrStatus, slug, existing.id);
                             if (existingWantedIds.has(existing.id)) seenWantedIds.add(existing.id);
                             matched++;
                         } else {
+                            // Genuine error — can't find the conflicting row
                             errors.push(`${title}: ${insertErr instanceof Error ? insertErr.message : String(insertErr)}`);
                         }
                     }
