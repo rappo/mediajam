@@ -62,6 +62,23 @@
     let syncStatus = $state("");
     let syncError = $state("");
 
+    // Runtime lazy-fetch
+    let lazyRuntime = $state(/** @type {number|null} */ (null));
+    let runtimeLoading = $state(false);
+
+    $effect(() => {
+        if (data.movie.needsRuntimeFetch && !lazyRuntime && !runtimeLoading) {
+            runtimeLoading = true;
+            fetch(`/api/movies/${data.movie.id}/runtime`)
+                .then(r => r.json())
+                .then(d => {
+                    if (d.runtime) lazyRuntime = d.runtime;
+                })
+                .catch(() => {})
+                .finally(() => { runtimeLoading = false; });
+        }
+    });
+
     let showDeleteConfirm = $state(false);
     let deleting = $state(false);
 
@@ -297,10 +314,10 @@
                         {#if data.movie.release_year}
                             <span>{data.movie.release_year}</span>
                         {/if}
-                        {#if data.movie.runtime_minutes}
+                        {#if data.movie.runtime_minutes || lazyRuntime}
                             <span
                                 >· {formatRuntime(
-                                    data.movie.runtime_minutes,
+                                    data.movie.runtime_minutes || lazyRuntime,
                                 )}</span
                             >
                         {/if}
@@ -363,10 +380,10 @@
                         {#if data.movie.release_year}
                             <span>{data.movie.release_year}</span>
                         {/if}
-                        {#if data.movie.runtime_minutes}
+                        {#if data.movie.runtime_minutes || lazyRuntime}
                             <span
                                 >· {formatRuntime(
-                                    data.movie.runtime_minutes,
+                                    data.movie.runtime_minutes || lazyRuntime,
                                 )}</span
                             >
                         {/if}
@@ -413,7 +430,7 @@
                     Runtime
                 </p>
                 <p class="text-2xl font-bold">
-                    {formatRuntime(data.movie.runtime_minutes)}
+                    {formatRuntime(data.movie.runtime_minutes || lazyRuntime)}
                 </p>
             </div>
         </div>

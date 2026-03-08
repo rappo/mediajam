@@ -36,7 +36,8 @@ export async function load({ params, locals }) {
             mc.watch_status,
             mc.play_count,
             mc.runtime_ticks,
-            ROUND(mc.runtime_ticks / 10000000.0 / 60, 0) as runtime_minutes
+            ROUND(mc.runtime_ticks / 10000000.0 / 60, 0) as local_runtime_minutes,
+            mp.runtime_minutes as external_runtime_minutes
         FROM media_parents mp
         LEFT JOIN media_children mc ON mc.parent_id = mp.id
         WHERE mp.id = ? AND mp.media_type = 'movie'
@@ -94,9 +95,15 @@ export async function load({ params, locals }) {
     // Live Jellyfin favorite check
     const liveFavorite = await checkJellyfinFavorite(movie.jellyfin_id, 'media_parents', movie.id);
 
+    // Runtime: prefer local (from file) over external (from TMDB)
+    const runtime_minutes = movie.local_runtime_minutes || movie.external_runtime_minutes || null;
+    const needsRuntimeFetch = !runtime_minutes && !!movie.tmdb_id;
+
     return {
         movie: {
             ...movie,
+            runtime_minutes,
+            needsRuntimeFetch,
             is_favorite: liveFavorite ?? movie.is_favorite,
             // Effective watch status: if we have play history, it's watched regardless of Jellyfin
             watch_status: totalPlays > 0 ? 'watched' : movie.watch_status,

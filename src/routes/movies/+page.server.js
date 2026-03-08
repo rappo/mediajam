@@ -45,7 +45,7 @@ export function load({ locals }) {
                 ELSE mc.watch_status
             END as watch_status,
             COALESCE(ps.watch_count, 0) as play_count,
-            ROUND(mc.runtime_ticks / 10000000.0 / 60, 0) as runtime_minutes,
+            COALESCE(ROUND(mc.runtime_ticks / 10000000.0 / 60, 0), mp.runtime_minutes) as runtime_minutes,
             COALESCE(ps.watch_count, 0) as watch_count,
             ps.last_watched
         FROM media_parents mp

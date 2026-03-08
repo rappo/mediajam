@@ -642,6 +642,12 @@ if (!pCols2.has('bio_tmdb')) {
     db.exec("UPDATE persons SET bio_tmdb = bio WHERE bio IS NOT NULL AND bio_tmdb IS NULL");
     console.log('[db] Added per-source bio columns to persons, migrated existing bio → bio_tmdb');
 }
+// -- External runtime for media parents (TMDB runtime in minutes) --
+const mpCols3 = new Set(db.prepare("PRAGMA table_info(media_parents)").all().map((/** @type {any} */ c) => c.name));
+if (!mpCols3.has('runtime_minutes')) {
+    db.exec("ALTER TABLE media_parents ADD COLUMN runtime_minutes INTEGER");
+    console.log('[db] Added runtime_minutes column to media_parents');
+}
 
 // -- LLM Embedding & Tagging Tables --
 try {
