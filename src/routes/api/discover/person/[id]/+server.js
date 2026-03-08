@@ -1,7 +1,7 @@
 import db from '$lib/server/db.js';
 import { json } from '@sveltejs/kit';
+import { tmdbFetch, getTmdbKey } from '$lib/server/tmdb.js';
 
-const TMDB_BASE = 'https://api.themoviedb.org/3';
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w185';
 
 /**
@@ -13,76 +13,35 @@ export async function GET({ params, locals }) {
 
     try {
         const personId = parseInt(params.id);
-        console.log(`[discover/person] Looking up person id=${personId}`);
-
         const person = /** @type {any} */ (db.prepare('SELECT * FROM persons WHERE id = ?').get(personId));
         if (!person) return json({ error: 'Person not found' }, { status: 404 });
-        console.log(`[discover/person] Found: "${person.name}", tmdb_person_id=${person.tmdb_person_id || 'none'}`);
 
-        const settings = /** @type {any} */ (db.prepare('SELECT tmdb_api_key FROM app_settings WHERE id = 1').get());
-        if (!settings?.tmdb_api_key) {
-            console.error(`[discover/person] No TMDb API key configured`);
+        if (!getTmdbKey()) {
             return json({ error: 'TMDb API key not configured. Add it in Settings → System.' }, { status: 400 });
         }
-        const apiKey = settings.tmdb_api_key.trim();
-        console.log(`[discover/person] TMDb API key: ${apiKey.length} chars, starts with "${apiKey.substring(0, 4)}"`);
 
         // Step 1: Get or find TMDb person ID
         let tmdbPersonId = person.tmdb_person_id || null;
         if (!tmdbPersonId) {
-            const searchUrl = `${TMDB_BASE}/search/person?api_key=${apiKey}&query=${encodeURIComponent(person.name)}&page=1`;
-            console.log(`[discover/person] Searching TMDb for "${person.name}"...`);
-            let searchRes;
-            try {
-                searchRes = await fetch(searchUrl);
-            } catch (/** @type {any} */ fetchErr) {
-                console.error(`[discover/person] TMDb search NETWORK ERROR:`, fetchErr.message || fetchErr);
-                return json({
-                    error: `TMDb search network error: ${fetchErr.message}`,
-                    debug: { person: person.name, personId, step: 'search', apiKeyLen: apiKey.length }
-                }, { status: 502 });
-            }
+            const searchRes = await tmdbFetch('/search/person', { query: person.name, page: '1' });
             if (!searchRes.ok) {
                 const errBody = await searchRes.text().catch(() => '');
-                console.error(`[discover/person] TMDb search HTTP ${searchRes.status}: ${errBody}`);
-                return json({
-                    error: `TMDb search failed (HTTP ${searchRes.status})`,
-                    tmdb_response: errBody,
-                    debug: { person: person.name, personId, step: 'search', apiKeyLen: apiKey.length, url: searchUrl.replace(apiKey, '***') }
-                }, { status: 502 });
+                return json({ error: `TMDb search failed (HTTP ${searchRes.status})`, tmdb_response: errBody }, { status: 502 });
             }
             const searchData = await searchRes.json();
             const match = searchData.results?.[0];
             if (!match) return json({ error: `No TMDb match found for "${person.name}"` }, { status: 404 });
 
             tmdbPersonId = String(match.id);
-            console.log(`[discover/person] TMDb search matched: tmdb_id=${tmdbPersonId}`);
             db.prepare('UPDATE persons SET tmdb_person_id = ? WHERE id = ?').run(tmdbPersonId, personId);
         }
 
         // Step 2: Fetch combined credits from TMDb
-        const creditsUrl = `${TMDB_BASE}/person/${tmdbPersonId}/combined_credits?api_key=${apiKey}`;
-        console.log(`[discover/person] Fetching credits for tmdb_person_id=${tmdbPersonId}...`);
-        let creditsRes;
-        try {
-            creditsRes = await fetch(creditsUrl);
-        } catch (/** @type {any} */ fetchErr) {
-            console.error(`[discover/person] TMDb credits NETWORK ERROR:`, fetchErr.message || fetchErr);
-            return json({
-                error: `TMDb credits network error: ${fetchErr.message}`,
-                debug: { person: person.name, personId, tmdbPersonId, step: 'credits', apiKeyLen: apiKey.length }
-            }, { status: 502 });
-        }
+        const creditsRes = await tmdbFetch(`/person/${tmdbPersonId}/combined_credits`);
         if (!creditsRes.ok) {
             const errBody = await creditsRes.text().catch(() => '');
-            console.error(`[discover/person] TMDb credits HTTP ${creditsRes.status}: ${errBody}`);
-            return json({
-                error: `TMDb credits failed (HTTP ${creditsRes.status})`,
-                tmdb_response: errBody,
-                debug: { person: person.name, personId, tmdbPersonId, step: 'credits', apiKeyLen: apiKey.length }
-            }, { status: 502 });
+            return json({ error: `TMDb credits failed (HTTP ${creditsRes.status})`, tmdb_response: errBody }, { status: 502 });
         }
-        console.log(`[discover/person] Credits fetched OK`);
         const creditsData = await creditsRes.json();
 
         // Combine cast + crew, deduplicate by TMDb ID

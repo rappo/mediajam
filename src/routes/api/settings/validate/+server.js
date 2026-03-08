@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { tmdbRequest } from '$lib/server/tmdb.js';
 
 /**
  * POST /api/settings/validate — Test API keys against external services.
@@ -25,8 +26,10 @@ export async function POST({ request }) {
             }
 
             case 'tmdb': {
-                // TMDB v3 — test with configuration endpoint
-                const res = await fetch(`https://api.themoviedb.org/3/configuration?api_key=${encodeURIComponent(credentials.tmdb_api_key)}`);
+                // TMDb — test with configuration endpoint (supports v3 key and v4 token)
+                const req = tmdbRequest('/configuration', {}, credentials.tmdb_api_key);
+                if (!req) return json({ valid: false, message: 'No API key provided' });
+                const res = await fetch(req.url, { headers: req.headers });
                 if (res.ok) {
                     return json({ valid: true, message: 'TMDB API key is valid' });
                 }

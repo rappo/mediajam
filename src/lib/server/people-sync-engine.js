@@ -411,10 +411,9 @@ export async function startPeopleEnrichSync() {
     recentLogs = [];
     lastResult = null;
 
-    const settings = /** @type {any} */ (db.prepare('SELECT tmdb_api_key FROM app_settings WHERE id = 1').get());
-    const tmdbKey = settings?.tmdb_api_key;
+    const { tmdbFetch, getTmdbKey } = await import('$lib/server/tmdb.js');
 
-    if (!tmdbKey) {
+    if (!getTmdbKey()) {
         broadcast({ type: 'error', log: '❌ No TMDB API key configured', logType: 'error' });
         engineState.running = false;
         return;
@@ -462,8 +461,8 @@ export async function startPeopleEnrichSync() {
 
             const person = persons[i];
             try {
-                const tmdbRes = await fetch(
-                    `https://api.themoviedb.org/3/person/${person.tmdb_person_id}?api_key=${tmdbKey}&append_to_response=external_ids`
+                const tmdbRes = await tmdbFetch(
+                    `/person/${person.tmdb_person_id}`, { append_to_response: 'external_ids' }
                 );
                 if (tmdbRes.ok) {
                     const d = await tmdbRes.json();

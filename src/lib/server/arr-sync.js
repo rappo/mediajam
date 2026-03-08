@@ -361,10 +361,9 @@ export async function syncArrService(service, url, apiKey) {
  * @returns {Promise<number>} - number of items enriched
  */
 async function enrichWithTmdbCast(service) {
-    const settings = /** @type {any} */ (db.prepare('SELECT tmdb_api_key FROM app_settings WHERE id = 1').get());
-    if (!settings?.tmdb_api_key) return 0;
+    const { tmdbFetch, getTmdbKey } = await import('$lib/server/tmdb.js');
+    if (!getTmdbKey()) return 0;
 
-    const apiKey = settings.tmdb_api_key;
     const mediaType = service === 'radarr' ? 'movie' : 'show';
     const tmdbType = service === 'radarr' ? 'movie' : 'tv';
 
@@ -401,8 +400,7 @@ async function enrichWithTmdbCast(service) {
 
     for (const item of batch) {
         try {
-            const creditsUrl = `https://api.themoviedb.org/3/${tmdbType}/${item.tmdb_id}/credits?api_key=${apiKey}`;
-            const res = await fetch(creditsUrl);
+            const res = await tmdbFetch(`/${tmdbType}/${item.tmdb_id}/credits`);
             if (!res.ok) continue;
 
             const data = await res.json();

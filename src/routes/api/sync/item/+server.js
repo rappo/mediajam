@@ -342,19 +342,17 @@ async function tmdbEnrich(mediaParentId, tmdbId) {
     ).get(mediaParentId));
     if (!parent) return json({ error: 'Item not found in database' }, { status: 404 });
 
-    const settings = /** @type {any} */ (db.prepare('SELECT tmdb_api_key FROM app_settings WHERE id = 1').get());
-    if (!settings?.tmdb_api_key) {
+    const { getTmdbKey, tmdbFetch } = await import('$lib/server/tmdb.js');
+    if (!getTmdbKey()) {
         return json({ error: 'TMDb API key not configured' }, { status: 400 });
     }
-
-    const apiKey = settings.tmdb_api_key;
     const tmdbType = parent.media_type === 'movie' ? 'movie' : 'tv';
 
     try {
         console.log(`[item-sync] TMDb enrichment for ${parent.title} (tmdb:${tmdbId})...`);
 
         // Fetch full details
-        const detailRes = await fetch(`https://api.themoviedb.org/3/${tmdbType}/${tmdbId}?api_key=${apiKey}&append_to_response=external_ids`);
+        const detailRes = await tmdbFetch(`/${tmdbType}/${tmdbId}`, { append_to_response: 'external_ids' });
         if (!detailRes.ok) return json({ error: `TMDb details fetch failed: ${detailRes.status}` }, { status: 502 });
         const detail = await detailRes.json();
 
@@ -381,7 +379,7 @@ async function tmdbEnrich(mediaParentId, tmdbId) {
         );
 
         // Fetch credits
-        const creditsRes = await fetch(`https://api.themoviedb.org/3/${tmdbType}/${tmdbId}/credits?api_key=${apiKey}`);
+        const creditsRes = await tmdbFetch(`/${tmdbType}/${tmdbId}/credits`);
         let peopleCount = 0;
         if (creditsRes.ok) {
             const creditsData = await creditsRes.json();

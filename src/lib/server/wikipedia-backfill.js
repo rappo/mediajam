@@ -25,12 +25,12 @@ function broadcast(data) {
  * Resolve TMDb external IDs → Wikidata ID
  * @param {'movie'|'tv'|'person'} tmdbType
  * @param {string} tmdbId
- * @param {string} apiKey
+ * @param {string} _apiKey
  * @returns {Promise<string|null>}
  */
-async function getWikidataIdFromTMDb(tmdbType, tmdbId, apiKey) {
-    const url = `https://api.themoviedb.org/3/${tmdbType}/${tmdbId}/external_ids?api_key=${apiKey}`;
-    const res = await fetch(url);
+async function getWikidataIdFromTMDb(tmdbType, tmdbId, _apiKey) {
+    const { tmdbFetch } = await import('$lib/server/tmdb.js');
+    const res = await tmdbFetch(`/${tmdbType}/${tmdbId}/external_ids`);
     if (!res.ok) return null;
     const data = await res.json();
     return data.wikidata_id || null;

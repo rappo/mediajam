@@ -1,5 +1,6 @@
 import db from '$lib/server/db.js';
 import { json } from '@sveltejs/kit';
+import { tmdbFetch, getTmdbKey } from '$lib/server/tmdb.js';
 
 /**
  * POST /api/discover/add — Create a media_parents stub from discovered TMDb data.
@@ -27,12 +28,9 @@ export async function POST({ request, locals }) {
     // For Sonarr, we need a tvdb_id. Try to look it up from TMDb.
     let tvdbId = null;
     if (media_type === 'show') {
-        const settings = /** @type {any} */ (db.prepare('SELECT tmdb_api_key FROM app_settings WHERE id = 1').get());
-        if (settings?.tmdb_api_key) {
+        if (getTmdbKey()) {
             try {
-                const res = await fetch(
-                    `https://api.themoviedb.org/3/tv/${tmdb_id}/external_ids?api_key=${settings.tmdb_api_key}`
-                );
+                const res = await tmdbFetch(`/tv/${tmdb_id}/external_ids`);
                 if (res.ok) {
                     const ids = await res.json();
                     tvdbId = ids.tvdb_id ? String(ids.tvdb_id) : null;
@@ -58,13 +56,10 @@ export async function POST({ request, locals }) {
     }
 
     // ── Enrich with TMDb cast/crew ──
-    const settings = /** @type {any} */ (db.prepare('SELECT tmdb_api_key FROM app_settings WHERE id = 1').get());
-    if (settings?.tmdb_api_key) {
+    if (getTmdbKey()) {
         const tmdbType = media_type === 'movie' ? 'movie' : 'tv';
         try {
-            const creditsRes = await fetch(
-                `https://api.themoviedb.org/3/${tmdbType}/${tmdb_id}/credits?api_key=${settings.tmdb_api_key}`
-            );
+            const creditsRes = await tmdbFetch(`/${tmdbType}/${tmdb_id}/credits`);
             if (creditsRes.ok) {
                 const creditsData = await creditsRes.json();
                 const cast = (creditsData.cast || []).slice(0, 20);

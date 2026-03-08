@@ -11,6 +11,7 @@
  * Raw values are preserved in the `raw_value` column.
  */
 import db from '$lib/server/db.js';
+import { tmdbFetch } from '$lib/server/tmdb.js';
 
 const DISCOGS_API = 'https://api.discogs.com';
 const DISCOGS_USER_AGENT = 'MediaJam/1.0';
@@ -231,11 +232,10 @@ async function fetchOmdbRatings(imdbId, apiKey) {
  * @param {string} apiKey 
  * @returns {Promise<{rating: number, voteCount: number, rawValue: string} | null>}
  */
-async function fetchTmdbRating(tmdbId, mediaType, apiKey) {
+async function fetchTmdbRating(tmdbId, mediaType, _apiKey) {
     try {
         const type = mediaType === 'show' ? 'tv' : 'movie';
-        const url = `${TMDB_API}/${type}/${tmdbId}?api_key=${apiKey}`;
-        const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+        const res = await tmdbFetch(`/${type}/${tmdbId}`);
         if (!res.ok) return null;
         const data = await res.json();
 

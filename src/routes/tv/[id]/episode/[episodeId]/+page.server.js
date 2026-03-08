@@ -138,8 +138,11 @@ export async function load({ params, locals }) {
     // If no Jellyfin data and we have TMDb, try TMDb for synopsis + guest stars
     if (!jellyfinData && show.tmdb_id && settings?.tmdb_api_key && episode.season_number > 0) {
         try {
-            const url = `https://api.themoviedb.org/3/tv/${show.tmdb_id}/season/${episode.season_number}/episode/${episode.item_number}?api_key=${settings.tmdb_api_key}&append_to_response=credits`;
-            const res = await fetch(url);
+            const { tmdbFetch } = await import('$lib/server/tmdb.js');
+            const res = await tmdbFetch(
+                `/tv/${show.tmdb_id}/season/${episode.season_number}/episode/${episode.item_number}`,
+                { append_to_response: 'credits' }
+            );
             if (res.ok) {
                 const tmdbEp = await res.json();
                 const guestStars = (tmdbEp.guest_stars || []).slice(0, 10).map((/** @type {any} */ g) => {

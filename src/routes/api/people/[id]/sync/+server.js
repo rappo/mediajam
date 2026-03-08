@@ -70,53 +70,48 @@ export async function POST({ params, locals }) {
     const updatedPerson = /** @type {any} */ (db.prepare('SELECT * FROM persons WHERE id = ?').get(personId));
     if (updatedPerson.tmdb_person_id) {
         try {
-            const tmdbSettings = /** @type {any} */ (db.prepare('SELECT tmdb_api_key FROM app_settings WHERE id = 1').get());
-            const tmdbKey = tmdbSettings?.tmdb_api_key;
-            if (tmdbKey) {
-                const tmdbRes = await fetch(
-                    `https://api.themoviedb.org/3/person/${updatedPerson.tmdb_person_id}?api_key=${tmdbKey}&append_to_response=external_ids`
-                );
-                if (tmdbRes.ok) {
-                    const tmdbData = await tmdbRes.json();
-                    const tmdbUpdates = [];
+            const { tmdbFetch } = await import('$lib/server/tmdb.js');
+            const tmdbRes = await tmdbFetch(
+                `/person/${updatedPerson.tmdb_person_id}`, { append_to_response: 'external_ids' }
+            );
+            if (tmdbRes.ok) {
+                const tmdbData = await tmdbRes.json();
+                const tmdbUpdates = [];
 
-                    const imdbId = tmdbData.imdb_id || tmdbData.external_ids?.imdb_id || null;
-                    const bio = tmdbData.biography || null;
-                    const birthDate = tmdbData.birthday || null;
-                    const deathDate = tmdbData.deathday || null;
-                    const photoUrl = tmdbData.profile_path
-                        ? `https://image.tmdb.org/t/p/w300${tmdbData.profile_path}`
-                        : null;
-                    const birthPlace = tmdbData.place_of_birth || null;
+                const imdbId = tmdbData.imdb_id || tmdbData.external_ids?.imdb_id || null;
+                const bio = tmdbData.biography || null;
+                const birthDate = tmdbData.birthday || null;
+                const deathDate = tmdbData.deathday || null;
+                const photoUrl = tmdbData.profile_path
+                    ? `https://image.tmdb.org/t/p/w300${tmdbData.profile_path}`
+                    : null;
+                const birthPlace = tmdbData.place_of_birth || null;
 
-                    if (imdbId && !updatedPerson.imdb_person_id) tmdbUpdates.push('imdb_person_id');
-                    if (bio && !updatedPerson.bio) tmdbUpdates.push('bio');
-                    if (birthDate && !updatedPerson.birth_date) tmdbUpdates.push('birth_date');
-                    if (deathDate && !updatedPerson.death_date) tmdbUpdates.push('death_date');
-                    if (photoUrl && !updatedPerson.photo_url) tmdbUpdates.push('photo_url (TMDB)');
-                    if (birthPlace && !updatedPerson.birth_place) tmdbUpdates.push('birth_place');
+                if (imdbId && !updatedPerson.imdb_person_id) tmdbUpdates.push('imdb_person_id');
+                if (bio && !updatedPerson.bio) tmdbUpdates.push('bio');
+                if (birthDate && !updatedPerson.birth_date) tmdbUpdates.push('birth_date');
+                if (deathDate && !updatedPerson.death_date) tmdbUpdates.push('death_date');
+                if (photoUrl && !updatedPerson.photo_url) tmdbUpdates.push('photo_url (TMDB)');
+                if (birthPlace && !updatedPerson.birth_place) tmdbUpdates.push('birth_place');
 
-                    db.prepare(`
-                        UPDATE persons SET
-                            imdb_person_id = COALESCE(?, imdb_person_id),
-                            bio = COALESCE(?, bio),
-                            birth_date = COALESCE(?, birth_date),
-                            death_date = COALESCE(?, death_date),
-                            photo_url = COALESCE(?, photo_url),
-                            birth_place = COALESCE(?, birth_place)
-                        WHERE id = ?
-                    `).run(imdbId, bio, birthDate, deathDate, photoUrl, birthPlace, personId);
+                db.prepare(`
+                    UPDATE persons SET
+                        imdb_person_id = COALESCE(?, imdb_person_id),
+                        bio = COALESCE(?, bio),
+                        birth_date = COALESCE(?, birth_date),
+                        death_date = COALESCE(?, death_date),
+                        photo_url = COALESCE(?, photo_url),
+                        birth_place = COALESCE(?, birth_place)
+                    WHERE id = ?
+                `).run(imdbId, bio, birthDate, deathDate, photoUrl, birthPlace, personId);
 
-                    if (tmdbUpdates.length > 0) {
-                        results.updated.push(`TMDB: updated ${tmdbUpdates.join(', ')}`);
-                    } else {
-                        results.updated.push('TMDB: no new data');
-                    }
+                if (tmdbUpdates.length > 0) {
+                    results.updated.push(`TMDB: updated ${tmdbUpdates.join(', ')}`);
                 } else {
-                    results.errors.push(`TMDB: HTTP ${tmdbRes.status}`);
+                    results.updated.push('TMDB: no new data');
                 }
             } else {
-                results.updated.push('TMDB: no API key configured');
+                results.errors.push(`TMDB: HTTP ${tmdbRes.status}`);
             }
         } catch (/** @type {any} */ e) {
             results.errors.push(`TMDB: ${e?.message || String(e)}`);
