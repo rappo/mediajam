@@ -114,7 +114,7 @@ export async function load({ params, locals }) {
         crew,
         externalRatings,
         jellyfinUrl,
-        arrUrl: settings?.radarr_external_url || settings?.radarr_url || '',
+        arrUrl: (settings?.radarr_external_url || settings?.radarr_url || '').replace(/\/+$/, ''),
         arrService: 'radarr'
     };
 }

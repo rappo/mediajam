@@ -122,7 +122,7 @@
             if (cfg) {
                 result.push({
                     label: cfg.label,
-                    url: `${arr_url}/${cfg.path}/${arr_slug}`,
+                    url: `${String(arr_url).replace(/\/+$/, '')}/${cfg.path}/${arr_slug}`,
                     icon: cfg.icon,
                 });
             }

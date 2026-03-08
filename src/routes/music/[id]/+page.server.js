@@ -129,7 +129,7 @@ export async function load({ params, locals }) {
         artist: { ...artist, is_favorite: liveFavorite ?? artist.is_favorite, total_plays: totalPlays, imageUrl: artistImageUrl },
         albums: albumsWithRatings,
         jellyfinUrl,
-        arrUrl: settings?.lidarr_external_url || settings?.lidarr_url || '',
+        arrUrl: (settings?.lidarr_external_url || settings?.lidarr_url || '').replace(/\/+$/, ''),
         arrService: 'lidarr',
         totalPlayed,
         totalRuntimeMinutes: Math.round(totalRuntime / 600000000)

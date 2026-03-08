@@ -172,7 +172,7 @@ export async function load({ params }) {
         maxEpisodes,
         includeSpecials,
         jellyfinUrl,
-        arrUrl: settings?.sonarr_external_url || settings?.sonarr_url || '',
+        arrUrl: (settings?.sonarr_external_url || settings?.sonarr_url || '').replace(/\/+$/, ''),
         arrService: 'sonarr',
         totalEpisodes: totalCollected,
         totalMissing,
