@@ -53,7 +53,8 @@ export async function POST({ locals, url }) {
 
             send({ log: `[${time()}] 📥 Starting ${label} sync...`, type: 'info' });
             logInfo('arr-sync', `On-demand sync started: ${services.map(s => s.service).join(', ')}`);
-            logActivity({ category: 'sync', action: 'arr_sync_started', title: `*arr sync started (${label})`, icon: '📡', status: 'info' });
+
+
 
             for (const { service, url: svcUrl, apiKey } of services) {
                 send({ log: `[${time()}] 📡 Syncing ${service}...`, type: 'info', service });

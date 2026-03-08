@@ -266,7 +266,7 @@ export async function startSync(libraryId = null, force = false) {
         `INSERT INTO sync_history (sync_type, status, started_at) VALUES ('jellyfin', 'running', ?)`
     ).run(new Date().toISOString());
     syncHistoryId = Number(histResult.lastInsertRowid);
-    logActivity({ category: 'sync', action: 'jellyfin_sync_started', title: 'Jellyfin sync started', icon: '📚', status: 'info' });
+
 
     const settings = db.prepare('SELECT * FROM app_settings WHERE id = 1').get();
     const user = db.prepare('SELECT * FROM users LIMIT 1').get();
@@ -1025,11 +1025,10 @@ export async function startSync(libraryId = null, force = false) {
         }
         logActivity({
             category: 'sync', action: 'jellyfin_sync_completed',
-            title: allFailed ? 'Jellyfin sync failed' : `Jellyfin sync completed`,
+            title: allFailed ? 'Jellyfin sync failed' : hasErrors ? `Jellyfin sync — ${totalSynced} items, ${totalErrors} errors` : `Jellyfin sync — ${totalSynced} items synced`,
             detail: { totalSynced, totalErrors },
             icon: allFailed ? '❌' : hasErrors ? '⚠️' : '✅',
-            status: allFailed ? 'error' : hasErrors ? 'warning' : 'success',
-            actionable: true, actionType: 'goto_settings'
+            status: allFailed ? 'error' : hasErrors ? 'warning' : 'success'
         });
 
     } catch (e) {
@@ -1041,7 +1040,7 @@ export async function startSync(libraryId = null, force = false) {
             db.prepare('UPDATE sync_history SET status = ?, finished_at = ?, summary = ? WHERE id = ?')
                 .run('failed', new Date().toISOString(), errMsg, syncHistoryId);
         }
-        logActivity({ category: 'sync', action: 'jellyfin_sync_failed', title: 'Jellyfin sync failed', detail: { error: errMsg }, icon: '❌', status: 'error', actionable: true, actionType: 'goto_settings' });
+        logActivity({ category: 'sync', action: 'jellyfin_sync_failed', title: 'Jellyfin sync failed', detail: { error: errMsg }, icon: '❌', status: 'error' });
     } finally {
         engineState.running = false;
     }

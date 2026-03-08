@@ -6,7 +6,7 @@
      *
      * @component
      */
-    import { goto, invalidateAll } from "$app/navigation";
+    import { invalidateAll } from "$app/navigation";
 
     /** @type {{ initialUnread?: number, conflictDialog?: any }} */
     let { initialUnread = 0, conflictDialog } = $props();
@@ -84,10 +84,6 @@
                 case "open_conflict":
                     close();
                     conflictDialog?.show();
-                    break;
-                case "goto_settings":
-                    close();
-                    goto("/settings/admin?tab=sync");
                     break;
                 default:
                     break;
@@ -252,17 +248,6 @@
                         </div>
                     {/each}
                 {/if}
-            </div>
-
-            <!-- Footer -->
-            <div
-                class="border-t border-base-300 px-4 py-2 text-center"
-            >
-                <a
-                    href="/settings/admin?tab=sync"
-                    class="text-xs text-base-content/40 hover:text-base-content/70 transition-colors"
-                    onclick={close}>View all in Settings →</a
-                >
             </div>
         </div>
     {/if}
