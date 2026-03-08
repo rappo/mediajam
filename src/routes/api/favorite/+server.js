@@ -49,22 +49,30 @@ export async function POST({ request, locals }) {
     if (type === 'person') {
         // Update local DB
         db.prepare('UPDATE persons SET is_favorite = ? WHERE id = ?').run(favoriteVal, id);
+        console.log(`[favorite] DB updated: persons.id=${id} is_favorite=${favoriteVal}`);
 
         // Push to Jellyfin if we have the jellyfin_id
         const person = /** @type {any} */ (db.prepare('SELECT jellyfin_id FROM persons WHERE id = ?').get(id));
+        console.log(`[favorite] person jellyfin_id=${person?.jellyfin_id}, has_token=${!!identity?.access_token}, has_url=${!!settings?.jellyfin_url}, provider_uid=${identity?.provider_uid}`);
         if (person?.jellyfin_id && identity?.access_token && settings?.jellyfin_url) {
             try {
                 const method = isFavorite ? 'POST' : 'DELETE';
-                await fetch(
-                    `${settings.jellyfin_url}/Users/${identity.provider_uid}/FavoriteItems/${person.jellyfin_id}`,
-                    {
-                        method,
-                        headers: { 'X-Emby-Token': identity.access_token }
-                    }
-                );
+                const url = `${settings.jellyfin_url}/Users/${identity.provider_uid}/FavoriteItems/${person.jellyfin_id}`;
+                console.log(`[favorite] Jellyfin push: ${method} ${url}`);
+                const jfRes = await fetch(url, {
+                    method,
+                    headers: { 'X-Emby-Token': identity.access_token }
+                });
+                console.log(`[favorite] Jellyfin response: ${jfRes.status} ${jfRes.statusText}`);
+                if (!jfRes.ok) {
+                    const body = await jfRes.text().catch(() => '');
+                    console.error(`[favorite] Jellyfin push failed: ${jfRes.status}`, body);
+                }
             } catch (e) {
                 console.error('[favorite] Jellyfin API error:', e);
             }
+        } else {
+            console.warn('[favorite] Skipping Jellyfin push — missing credentials or jellyfin_id');
         }
 
         return json({ success: true, type: 'person', id, isFavorite });
