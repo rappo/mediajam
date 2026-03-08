@@ -80,7 +80,17 @@
                 body: JSON.stringify({ question }),
             });
 
-            const data = await res.json();
+            let data;
+            try {
+                data = await res.json();
+            } catch {
+                // Response wasn't valid JSON
+                messages = messages.filter(m => !m.loading);
+                messages = [...messages, { role: 'assistant', text: `⚠️ Server returned ${res.status} ${res.statusText}`, error: 'Invalid response' }];
+                sending = false;
+                scrollToBottom();
+                return;
+            }
 
             // Remove loading placeholder
             messages = messages.filter(m => !m.loading);

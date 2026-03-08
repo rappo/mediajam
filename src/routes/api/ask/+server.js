@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import db from '$lib/server/db.js';
 import { generate } from '$lib/server/ollama.js';
+import { logInfo, logWarn } from '$lib/server/logger.js';
 
 /** Tables that are safe to query */
 const ALLOWED_TABLES = [
@@ -111,11 +112,24 @@ Question: ${question}`;
         return json({ error: 'LLM not available' }, { status: 503 });
     }
 
-    // Clean the response — remove code fences if the LLM adds them
-    const cleanSql = sql
+    // Clean the response — remove code fences, preamble, and trailing text
+    let cleanSql = sql
         .replace(/```sql\n?/gi, '')
         .replace(/```\n?/g, '')
         .trim();
+
+    // If the LLM added preamble text, try to extract just the SELECT
+    if (!cleanSql.toUpperCase().startsWith('SELECT')) {
+        const selectIdx = cleanSql.toUpperCase().indexOf('SELECT');
+        if (selectIdx >= 0) {
+            cleanSql = cleanSql.slice(selectIdx).trim();
+        }
+    }
+
+    // Remove trailing semicolons
+    cleanSql = cleanSql.replace(/;\s*$/, '').trim();
+
+    logInfo('ask', `Question: "${question}" → SQL: ${cleanSql}`);
 
     // Validate
     const validation = validateQuery(cleanSql);
