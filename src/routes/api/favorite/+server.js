@@ -16,65 +16,60 @@ export async function POST({ request, locals }) {
 
     const favoriteVal = isFavorite ? 1 : 0;
 
-    // Get Jellyfin credentials
-    const identity = /** @type {any} */ (db.prepare(
-        "SELECT provider_uid, access_token FROM user_identities WHERE user_id = ? AND provider = 'jellyfin'"
-    ).get(locals.user.id));
+    // Get Jellyfin credentials — use the same source as checkJellyfinFavorite (users table)
     const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_url FROM app_settings WHERE id = 1').get());
+    const user = /** @type {any} */ (db.prepare('SELECT jellyfin_access_token, jellyfin_user_id FROM users WHERE id = ?').get(locals.user.id));
+    const jellyfinUrl = settings?.jellyfin_url;
+    const accessToken = user?.jellyfin_access_token;
+    const jellyfinUserId = user?.jellyfin_user_id;
+
+    /**
+     * Push favorite status to Jellyfin.
+     * @param {string} jellyfinItemId
+     * @returns {Promise<{ok: boolean, status?: number}>}
+     */
+    async function pushToJellyfin(jellyfinItemId) {
+        if (!jellyfinItemId || !accessToken || !jellyfinUrl || !jellyfinUserId) {
+            return { ok: true }; // No Jellyfin credentials — local-only is fine
+        }
+        try {
+            const method = isFavorite ? 'POST' : 'DELETE';
+            const url = `${jellyfinUrl}/Users/${jellyfinUserId}/FavoriteItems/${jellyfinItemId}`;
+            const jfRes = await fetch(url, {
+                method,
+                headers: { 'X-Emby-Token': accessToken }
+            });
+            if (!jfRes.ok) {
+                console.error(`[favorite] Jellyfin push failed: ${jfRes.status} ${jfRes.statusText}`);
+                return { ok: false, status: jfRes.status };
+            }
+            return { ok: true };
+        } catch (e) {
+            console.error('[favorite] Jellyfin API error:', e instanceof Error ? e.message : String(e));
+            return { ok: false };
+        }
+    }
 
     if (type === 'media') {
-        // Update local DB
         db.prepare('UPDATE media_parents SET is_favorite = ? WHERE id = ?').run(favoriteVal, id);
-
-        // Push to Jellyfin if we have the jellyfin_id
         const parent = /** @type {any} */ (db.prepare('SELECT jellyfin_id FROM media_parents WHERE id = ?').get(id));
-        if (parent?.jellyfin_id && identity?.access_token && settings?.jellyfin_url) {
-            try {
-                const method = isFavorite ? 'POST' : 'DELETE';
-                await fetch(
-                    `${settings.jellyfin_url}/Users/${identity.provider_uid}/FavoriteItems/${parent.jellyfin_id}`,
-                    {
-                        method,
-                        headers: { 'X-Emby-Token': identity.access_token }
-                    }
-                );
-            } catch (e) {
-                console.error('[favorite] Jellyfin API error:', e);
-            }
+        const jf = await pushToJellyfin(parent?.jellyfin_id);
+        if (!jf.ok) {
+            // Revert DB on Jellyfin failure
+            db.prepare('UPDATE media_parents SET is_favorite = ? WHERE id = ?').run(isFavorite ? 0 : 1, id);
+            return json({ error: 'Jellyfin sync failed', status: jf.status }, { status: 502 });
         }
-
         return json({ success: true, type: 'media', id, isFavorite });
     }
 
     if (type === 'person') {
-        // Update local DB
         db.prepare('UPDATE persons SET is_favorite = ? WHERE id = ?').run(favoriteVal, id);
-        console.log(`[favorite] DB updated: persons.id=${id} is_favorite=${favoriteVal}`);
-
-        // Push to Jellyfin if we have the jellyfin_id
         const person = /** @type {any} */ (db.prepare('SELECT jellyfin_id FROM persons WHERE id = ?').get(id));
-        console.log(`[favorite] person jellyfin_id=${person?.jellyfin_id}, has_token=${!!identity?.access_token}, has_url=${!!settings?.jellyfin_url}, provider_uid=${identity?.provider_uid}`);
-        if (person?.jellyfin_id && identity?.access_token && settings?.jellyfin_url) {
-            try {
-                const method = isFavorite ? 'POST' : 'DELETE';
-                const url = `${settings.jellyfin_url}/Users/${identity.provider_uid}/FavoriteItems/${person.jellyfin_id}`;
-                console.log(`[favorite] Jellyfin push: ${method} ${url}`);
-                const jfRes = await fetch(url, {
-                    method,
-                    headers: { 'X-Emby-Token': identity.access_token }
-                });
-                console.log(`[favorite] Jellyfin response: ${jfRes.status} ${jfRes.statusText}`);
-                if (!jfRes.ok) {
-                    const body = await jfRes.text().catch(() => '');
-                    console.error(`[favorite] Jellyfin push failed: ${jfRes.status}`, body);
-                }
-            } catch (e) {
-                console.error('[favorite] Jellyfin API error:', e);
-            }
-        } else {
-            console.warn('[favorite] Skipping Jellyfin push — missing credentials or jellyfin_id');
+        const jf = await pushToJellyfin(person?.jellyfin_id);
+        if (!jf.ok) {
+            db.prepare('UPDATE persons SET is_favorite = ? WHERE id = ?').run(isFavorite ? 0 : 1, id);
+            return json({ error: 'Jellyfin sync failed', status: jf.status }, { status: 502 });
         }
-
         return json({ success: true, type: 'person', id, isFavorite });
     }
 

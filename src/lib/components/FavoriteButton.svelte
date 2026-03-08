@@ -26,15 +26,10 @@
     async function toggle(event) {
         event.stopPropagation();
         event.preventDefault();
-        console.log('[FavoriteButton] toggle called', { type, id, favorite, loading });
-        if (loading) {
-            console.log('[FavoriteButton] blocked by loading');
-            return;
-        }
+        if (loading) return;
         loading = true;
         const newVal = !favorite;
         favorite = newVal; // Optimistic update
-        console.log('[FavoriteButton] optimistic →', newVal);
 
         try {
             const res = await fetch("/api/favorite", {
@@ -42,10 +37,8 @@
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ type, id, isFavorite: newVal }),
             });
-            console.log('[FavoriteButton] response', res.status, res.ok, 'redirected:', res.redirected);
             if (!res.ok) {
                 const errBody = await res.text();
-                console.log('[FavoriteButton] error body:', errBody);
                 favorite = !newVal; // Revert on error
                 addToast({
                     type: "error",
@@ -53,8 +46,6 @@
                     detail: errBody,
                 });
             } else if (res.redirected) {
-                // Auth redirect — the fetch "succeeded" but actually hit the login page
-                console.log('[FavoriteButton] redirected to:', res.url);
                 favorite = !newVal;
                 addToast({
                     type: "error",
@@ -62,7 +53,6 @@
                 });
             }
         } catch (/** @type {any} */ err) {
-            console.log('[FavoriteButton] catch:', err);
             favorite = !newVal; // Revert on error
             addToast({
                 type: "error",
@@ -71,7 +61,6 @@
             });
         } finally {
             loading = false;
-            console.log('[FavoriteButton] done, favorite =', favorite);
         }
     }
 </script>
