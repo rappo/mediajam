@@ -2,13 +2,13 @@
     /** @type {{ ollamaConfigured?: boolean }} */
     let { ollamaConfigured = false } = $props();
 
-    /** @typedef {{ role: 'user' | 'assistant', text: string, sql?: string, results?: any[], error?: string, loading?: boolean }} ChatMessage */
+    /** @typedef {{ role: 'user' | 'assistant', text: string, sql?: string, results?: any[], error?: string, loading?: boolean, type?: string }} ChatMessage */
 
     /** @type {ChatMessage[]} */
     let messages = $state([]);
     let input = $state('');
-    let isOpen = $state(false);
-    let isMinimized = $state(false);
+    /** @type {'closed' | 'bubble' | 'floating' | 'docked'} */
+    let mode = $state('closed');
     let sending = $state(false);
     /** @type {Record<string, boolean>} */
     let showSql = $state({});
@@ -26,28 +26,27 @@
         }
     }
 
-    function toggleOpen() {
-        if (isOpen) {
-            isOpen = false;
-            isMinimized = false;
-        } else {
-            isOpen = true;
-            isMinimized = false;
-            requestAnimationFrame(() => {
-                inputEl?.focus();
-                scrollToBottom();
-            });
-        }
+    function open() {
+        mode = 'floating';
+        requestAnimationFrame(() => { inputEl?.focus(); scrollToBottom(); });
     }
 
-    function toggleMinimize() {
-        isMinimized = !isMinimized;
-        if (!isMinimized) {
-            requestAnimationFrame(() => {
-                inputEl?.focus();
-                scrollToBottom();
-            });
-        }
+    function minimize() {
+        mode = 'bubble';
+    }
+
+    function dock() {
+        mode = 'docked';
+        requestAnimationFrame(() => { inputEl?.focus(); scrollToBottom(); });
+    }
+
+    function undock() {
+        mode = 'floating';
+        requestAnimationFrame(() => { inputEl?.focus(); scrollToBottom(); });
+    }
+
+    function close() {
+        mode = 'closed';
     }
 
     function clearChat() {
@@ -69,7 +68,6 @@
         sending = true;
         scrollToBottom();
 
-        // Add loading placeholder
         messages = [...messages, { role: 'assistant', text: '', loading: true }];
         scrollToBottom();
 
@@ -84,18 +82,16 @@
             try {
                 data = await res.json();
             } catch {
-                // Response wasn't valid JSON
                 messages = messages.filter(m => !m.loading);
-                messages = [...messages, { role: 'assistant', text: `⚠️ Server returned ${res.status} ${res.statusText}`, error: 'Invalid response' }];
+                messages = [...messages, { role: 'assistant', text: `⚠️ Server returned ${res.status}`, error: 'Invalid response' }];
                 sending = false;
                 scrollToBottom();
                 return;
             }
 
-            // Remove loading placeholder
             messages = messages.filter(m => !m.loading);
 
-            if (data.error && !data.results) {
+            if (data.error && !data.summary) {
                 messages = [...messages, { role: 'assistant', text: `⚠️ ${data.error}`, error: data.error, sql: data.sql }];
             } else {
                 const summary = data.summary || formatResults(data.results, data.count);
@@ -103,10 +99,11 @@
                     role: 'assistant',
                     text: summary,
                     sql: data.sql,
-                    results: data.results?.slice(0, 10),
+                    results: data.type === 'data' ? data.results?.slice(0, 10) : undefined,
+                    type: data.type,
                 }];
             }
-        } catch (e) {
+        } catch {
             messages = messages.filter(m => !m.loading);
             messages = [...messages, { role: 'assistant', text: '❌ Could not reach the server.', error: 'Network error' }];
         }
@@ -116,7 +113,6 @@
     }
 
     /**
-     * Format query results into a readable summary.
      * @param {any[]} results
      * @param {number} count
      * @returns {string}
@@ -126,22 +122,16 @@
         if (results.length === 1) {
             const row = results[0];
             const keys = Object.keys(row);
-            if (keys.length === 1) {
-                return `**${keys[0]}**: ${row[keys[0]]}`;
-            }
+            if (keys.length === 1) return `${keys[0]}: ${row[keys[0]]}`;
             return keys.map(k => `**${k}**: ${row[k]}`).join('\n');
         }
         const keys = Object.keys(results[0]);
-        const header = `Found ${count} result${count !== 1 ? 's' : ''}:`;
         const rows = results.slice(0, 8).map(r => {
             const main = r.title || r.name || r[keys[0]];
-            const extra = keys.filter(k => k !== 'title' && k !== 'name' && k !== keys[0])
-                .map(k => `${k}: ${r[k]}`)
-                .join(', ');
-            return `• ${main}${extra ? ` (${extra})` : ''}`;
+            return `• ${main}`;
         }).join('\n');
         const more = count > 8 ? `\n...and ${count - 8} more` : '';
-        return `${header}\n${rows}${more}`;
+        return `Found ${count} result${count !== 1 ? 's' : ''}:\n${rows}${more}`;
     }
 
     /** @param {KeyboardEvent} e */
@@ -153,11 +143,11 @@
     }
 </script>
 
-<!-- Toggle Button (rendered inline in navbar) -->
-{#if !isOpen}
+<!-- Navbar button (shown when closed) -->
+{#if mode === 'closed'}
     <button
         class="btn btn-ghost btn-sm btn-circle"
-        onclick={toggleOpen}
+        onclick={open}
         title="Chat with your library"
     >
         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -166,129 +156,188 @@
     </button>
 {/if}
 
-<!-- Floating Chat Panel -->
-{#if isOpen}
-    <div
-        class="fixed bottom-4 right-4 z-[200] flex flex-col shadow-2xl rounded-2xl border border-base-300 bg-base-100 overflow-hidden transition-all duration-200"
-        style="width: 400px; {isMinimized ? 'height: 48px;' : 'height: 520px;'}"
+<!-- Minimized Bubble -->
+{#if mode === 'bubble'}
+    <button
+        class="fixed bottom-6 right-6 z-[200] w-14 h-14 rounded-full bg-primary text-primary-content shadow-xl flex items-center justify-center hover:scale-110 transition-transform duration-150 active:scale-95"
+        onclick={open}
+        title="Open chat"
     >
-        <!-- Title Bar -->
-        <div class="flex items-center justify-between px-4 py-2.5 bg-base-200 border-b border-base-300 shrink-0 cursor-pointer select-none" role="button" tabindex="0" onclick={toggleMinimize} onkeydown={(e) => e.key === 'Enter' && toggleMinimize()}>
-            <div class="flex items-center gap-2">
-                <span class="text-base">💬</span>
-                <span class="font-semibold text-sm">Ask Mediajam</span>
-                {#if !ollamaConfigured}
-                    <span class="badge badge-warning badge-xs">No LLM</span>
-                {/if}
-            </div>
-            <div class="flex items-center gap-1">
-                {#if messages.length > 0 && !isMinimized}
-                    <button class="btn btn-ghost btn-xs btn-circle" onclick={(e) => { e.stopPropagation(); clearChat(); }} title="Clear chat">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-                    </button>
-                {/if}
-                <button class="btn btn-ghost btn-xs btn-circle" onclick={(e) => { e.stopPropagation(); toggleMinimize(); }} title={isMinimized ? 'Expand' : 'Minimize'}>
-                    {#if isMinimized}
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 11 12 6 7 11"/><polyline points="17 18 12 13 7 18"/></svg>
-                    {:else}
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                    {/if}
-                </button>
-                <button class="btn btn-ghost btn-xs btn-circle" onclick={(e) => { e.stopPropagation(); toggleOpen(); }} title="Close">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                </button>
-            </div>
-        </div>
-
-        <!-- Messages -->
-        {#if !isMinimized}
-            <div class="flex-1 overflow-y-auto p-3 space-y-3" bind:this={messagesContainer}>
-                {#if messages.length === 0}
-                    <div class="flex flex-col items-center justify-center h-full text-center text-base-content/40 gap-3 py-8">
-                        <span class="text-4xl">💬</span>
-                        <div>
-                            <p class="font-medium text-sm">Ask about your library</p>
-                            <p class="text-xs mt-1 max-w-[250px]">Try "What movies did I watch this month?" or "How many albums do I have?"</p>
-                        </div>
-                    </div>
-                {:else}
-                    {#each messages as msg, i}
-                        {#if msg.loading}
-                            <div class="chat chat-start">
-                                <div class="chat-bubble chat-bubble-primary bg-base-200 text-base-content">
-                                    <span class="loading loading-dots loading-sm"></span>
-                                </div>
-                            </div>
-                        {:else if msg.role === 'user'}
-                            <div class="chat chat-end">
-                                <div class="chat-bubble chat-bubble-primary text-sm">{msg.text}</div>
-                            </div>
-                        {:else}
-                            <div class="chat chat-start">
-                                <div class="chat-bubble bg-base-200 text-base-content text-sm whitespace-pre-wrap" style="max-width: 95%;">
-                                    {msg.text}
-                                    {#if msg.sql}
-                                        <button class="text-xs text-primary/60 hover:text-primary mt-1 block" onclick={() => toggleSql(String(i))}>
-                                            {showSql[String(i)] ? '▾ Hide SQL' : '▸ Show SQL'}
-                                        </button>
-                                        {#if showSql[String(i)]}
-                                            <pre class="text-xs bg-base-300/50 rounded p-2 mt-1 overflow-x-auto font-mono">{msg.sql}</pre>
-                                        {/if}
-                                    {/if}
-                                    {#if msg.results && msg.results.length > 0}
-                                        <div class="mt-2 overflow-x-auto">
-                                            <table class="table table-xs">
-                                                <thead>
-                                                    <tr>
-                                                        {#each Object.keys(msg.results[0]) as col}
-                                                            <th class="text-xs">{col}</th>
-                                                        {/each}
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {#each msg.results as row}
-                                                        <tr>
-                                                            {#each Object.values(row) as val}
-                                                                <td class="text-xs max-w-[120px] truncate">{val}</td>
-                                                            {/each}
-                                                        </tr>
-                                                    {/each}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    {/if}
-                                </div>
-                            </div>
-                        {/if}
-                    {/each}
-                {/if}
-            </div>
-
-            <!-- Input -->
-            <div class="border-t border-base-300 p-3 shrink-0 bg-base-100">
-                <form class="flex gap-2" onsubmit={(e) => { e.preventDefault(); sendMessage(); }}>
-                    <input
-                        bind:this={inputEl}
-                        bind:value={input}
-                        type="text"
-                        class="input input-sm input-bordered flex-1 text-sm"
-                        placeholder={ollamaConfigured ? 'Ask about your library...' : 'Ollama not configured'}
-                        disabled={!ollamaConfigured || sending}
-                        onkeydown={handleKeydown}
-                    />
-                    <button
-                        type="submit"
-                        class="btn btn-sm btn-primary"
-                        disabled={!input.trim() || sending || !ollamaConfigured}
-                    >
-                        {#if sending}
-                            <span class="loading loading-spinner loading-xs"></span>
-                        {:else}
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                        {/if}
-                    </button>
-                </form>
-            </div>
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+        </svg>
+        {#if messages.length > 0}
+            <span class="absolute -top-1 -right-1 bg-accent text-accent-content text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">{messages.filter(m => m.role === 'assistant' && !m.loading).length}</span>
         {/if}
+    </button>
+{/if}
+
+<!-- Floating Chat Panel -->
+{#if mode === 'floating'}
+    <div
+        class="fixed bottom-4 right-4 z-[200] flex flex-col shadow-2xl rounded-2xl border border-base-300 bg-base-100 overflow-hidden"
+        style="width: 380px; height: 500px;"
+    >
+        {@render chatContent()}
     </div>
 {/if}
+
+<!-- Docked Sidebar -->
+{#if mode === 'docked'}
+    <div class="fixed top-0 right-0 z-[200] flex flex-col h-full border-l border-base-300 bg-base-100 shadow-2xl" style="width: 380px;">
+        {@render chatContent()}
+    </div>
+{/if}
+
+{#snippet chatContent()}
+    <!-- Title Bar -->
+    <div class="flex items-center justify-between px-3 py-2 bg-gradient-to-r from-primary/10 to-secondary/10 border-b border-base-300 shrink-0 select-none">
+        <div class="flex items-center gap-2">
+            <div class="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+                </svg>
+            </div>
+            <div>
+                <span class="font-semibold text-sm">Ask Mediajam</span>
+                {#if !ollamaConfigured}
+                    <span class="badge badge-warning badge-xs ml-1">No LLM</span>
+                {/if}
+            </div>
+        </div>
+        <div class="flex items-center gap-0.5">
+            {#if messages.length > 0}
+                <button class="btn btn-ghost btn-xs btn-square opacity-50 hover:opacity-100" onclick={clearChat} title="Clear chat">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                </button>
+            {/if}
+            <!-- Minimize -->
+            <button class="btn btn-ghost btn-xs btn-square opacity-50 hover:opacity-100" onclick={minimize} title="Minimize">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+            <!-- Dock / Undock -->
+            {#if mode === 'floating'}
+                <button class="btn btn-ghost btn-xs btn-square opacity-50 hover:opacity-100" onclick={dock} title="Dock to sidebar">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+                </button>
+            {:else}
+                <button class="btn btn-ghost btn-xs btn-square opacity-50 hover:opacity-100" onclick={undock} title="Float">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="13" height="13" rx="2"/><path d="M9 3h10a2 2 0 012 2v10"/></svg>
+                </button>
+            {/if}
+            <!-- Close -->
+            <button class="btn btn-ghost btn-xs btn-square opacity-50 hover:opacity-100" onclick={close} title="Close">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Messages -->
+    <div class="flex-1 overflow-y-auto p-3 space-y-3" bind:this={messagesContainer}>
+        {#if messages.length === 0}
+            <div class="flex flex-col items-center justify-center h-full text-center text-base-content/40 gap-4 py-8">
+                <div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-primary/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+                    </svg>
+                </div>
+                <div>
+                    <p class="font-medium text-sm text-base-content/60">Ask about your library</p>
+                    <div class="text-xs mt-2 space-y-1 max-w-[260px]">
+                        <button class="block w-full text-left px-2 py-1 rounded hover:bg-base-200 transition-colors" onclick={() => { input = "What movies did I watch this month?"; sendMessage(); }}>
+                            💬 "What movies did I watch this month?"
+                        </button>
+                        <button class="block w-full text-left px-2 py-1 rounded hover:bg-base-200 transition-colors" onclick={() => { input = "How many albums do I have?"; sendMessage(); }}>
+                            💬 "How many albums do I have?"
+                        </button>
+                        <button class="block w-full text-left px-2 py-1 rounded hover:bg-base-200 transition-colors" onclick={() => { input = "Who are my favorite actors?"; sendMessage(); }}>
+                            💬 "Who are my favorite actors?"
+                        </button>
+                    </div>
+                </div>
+            </div>
+        {:else}
+            {#each messages as msg, i}
+                {#if msg.loading}
+                    <div class="flex gap-2 items-start">
+                        <div class="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center shrink-0 mt-0.5">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                        </div>
+                        <div class="bg-base-200 rounded-2xl rounded-tl-sm px-3 py-2">
+                            <span class="loading loading-dots loading-sm"></span>
+                        </div>
+                    </div>
+                {:else if msg.role === 'user'}
+                    <div class="flex justify-end">
+                        <div class="bg-primary text-primary-content rounded-2xl rounded-tr-sm px-3 py-2 text-sm max-w-[85%]">{msg.text}</div>
+                    </div>
+                {:else}
+                    <div class="flex gap-2 items-start">
+                        <div class="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center shrink-0 mt-0.5">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                        </div>
+                        <div class="bg-base-200 rounded-2xl rounded-tl-sm px-3 py-2 text-sm max-w-[90%] whitespace-pre-wrap">
+                            {msg.text}
+                            {#if msg.sql}
+                                <button class="text-[11px] text-primary/50 hover:text-primary mt-1 block" onclick={() => toggleSql(String(i))}>
+                                    {showSql[String(i)] ? '▾ Hide query' : '▸ Show query'}
+                                </button>
+                                {#if showSql[String(i)]}
+                                    <pre class="text-[11px] bg-base-300/50 rounded-lg p-2 mt-1 overflow-x-auto font-mono leading-relaxed">{msg.sql}</pre>
+                                {/if}
+                            {/if}
+                            {#if msg.results && msg.results.length > 0}
+                                <div class="mt-2 overflow-x-auto -mx-1">
+                                    <table class="table table-xs">
+                                        <thead>
+                                            <tr>
+                                                {#each Object.keys(msg.results[0]) as col}
+                                                    <th class="text-[11px] font-semibold">{col}</th>
+                                                {/each}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {#each msg.results as row}
+                                                <tr>
+                                                    {#each Object.values(row) as val}
+                                                        <td class="text-[11px] max-w-[120px] truncate">{val}</td>
+                                                    {/each}
+                                                </tr>
+                                            {/each}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            {/if}
+                        </div>
+                    </div>
+                {/if}
+            {/each}
+        {/if}
+    </div>
+
+    <!-- Input -->
+    <div class="border-t border-base-300 p-3 shrink-0 bg-base-100/80 backdrop-blur-sm">
+        <form class="flex gap-2" onsubmit={(e) => { e.preventDefault(); sendMessage(); }}>
+            <input
+                bind:this={inputEl}
+                bind:value={input}
+                type="text"
+                class="input input-sm input-bordered flex-1 text-sm rounded-full"
+                placeholder={ollamaConfigured ? 'Ask anything...' : 'Ollama not configured'}
+                disabled={!ollamaConfigured || sending}
+                onkeydown={handleKeydown}
+            />
+            <button
+                type="submit"
+                class="btn btn-sm btn-primary btn-circle"
+                disabled={!input.trim() || sending || !ollamaConfigured}
+            >
+                {#if sending}
+                    <span class="loading loading-spinner loading-xs"></span>
+                {:else}
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                {/if}
+            </button>
+        </form>
+    </div>
+{/snippet}

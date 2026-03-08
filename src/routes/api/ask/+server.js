@@ -57,7 +57,6 @@ function validateQuery(sql) {
     const dangerous = ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'ALTER', 'CREATE', 'EXEC', 'ATTACH', 'DETACH'];
     const upper = trimmed.toUpperCase();
     for (const word of dangerous) {
-        // Check for the word as a standalone token (not part of a column name)
         const regex = new RegExp(`\\b${word}\\b`, 'i');
         if (regex.test(upper) && word !== 'SELECT') {
             return { valid: false, error: `Forbidden keyword: ${word}` };
@@ -65,7 +64,6 @@ function validateQuery(sql) {
     }
 
     // Check that only allowed tables are referenced
-    // Simple heuristic — check FROM and JOIN clauses
     const tablePattern = /(?:FROM|JOIN)\s+(\w+)/gi;
     let match;
     while ((match = tablePattern.exec(trimmed)) !== null) {
@@ -79,7 +77,24 @@ function validateQuery(sql) {
 }
 
 /**
- * POST /api/ask — Natural language query (text-to-SQL via LLM)
+ * Quick library stats for the LLM context.
+ * @returns {string}
+ */
+function getLibraryStats() {
+    try {
+        const movies = /** @type {any} */ (db.prepare("SELECT COUNT(*) as c FROM media_parents WHERE media_type='movie'").get())?.c || 0;
+        const shows = /** @type {any} */ (db.prepare("SELECT COUNT(*) as c FROM media_parents WHERE media_type='show'").get())?.c || 0;
+        const artists = /** @type {any} */ (db.prepare("SELECT COUNT(*) as c FROM media_parents WHERE media_type='artist'").get())?.c || 0;
+        const plays = /** @type {any} */ (db.prepare("SELECT COUNT(*) as c FROM playback_history").get())?.c || 0;
+        return `Library: ${movies} movies, ${shows} TV shows, ${artists} music artists, ${plays} play history entries.`;
+    } catch {
+        return '';
+    }
+}
+
+/**
+ * POST /api/ask — Chat with your media library
+ * Handles both conversational questions and data queries (text-to-SQL).
  * @type {import('./$types').RequestHandler}
  */
 export async function POST({ request, locals }) {
@@ -89,6 +104,51 @@ export async function POST({ request, locals }) {
     const question = body.question?.trim();
     if (!question) return json({ error: 'No question provided' }, { status: 400 });
 
+    // Step 1: Ask the LLM to classify the question
+    const classifyPrompt = `Classify this user message as either "data" (requires querying a media library database) or "chat" (general conversation, greeting, opinion, recommendation, or non-data question).
+
+Examples:
+- "hello" → chat
+- "what movies do I have?" → data
+- "how many shows did I watch?" → data
+- "recommend a good movie" → chat
+- "what's the weather?" → chat
+- "who directed the most movies in my library?" → data
+- "thanks!" → chat
+- "what did I listen to today?" → data
+
+Reply with ONLY the word "data" or "chat".
+
+Message: ${question}`;
+
+    const classification = await generate(classifyPrompt, {
+        temperature: 0,
+        system: 'You classify messages. Reply with exactly one word: "data" or "chat".',
+    });
+
+    const isDataQuery = classification?.trim().toLowerCase().startsWith('data');
+
+    logInfo('ask', `Question: "${question}" → classified as ${isDataQuery ? 'data' : 'chat'}`);
+
+    // Step 2a: For chat/conversational questions, just answer directly
+    if (!isDataQuery) {
+        const stats = getLibraryStats();
+        const chatResponse = await generate(
+            `${stats ? `Context: ${stats}\n\n` : ''}User says: "${question}"`,
+            {
+                temperature: 0.7,
+                system: `You are Mediajam, a friendly media library assistant. You help users with their movie, TV, and music collection. Be concise and helpful. If the user asks something you can't answer without database access, suggest they ask a specific data question like "how many movies do I have?" or "what did I watch this week?"`,
+            }
+        );
+
+        return json({
+            question,
+            type: 'chat',
+            summary: chatResponse || "I'm here to help with your media library! Try asking something like \"What movies did I watch this month?\" or \"How many albums do I have?\"",
+        });
+    }
+
+    // Step 2b: For data questions, generate SQL
     const schema = getSchemaContext();
     const prompt = `Given this SQLite schema:
 ${schema}
@@ -109,16 +169,16 @@ Question: ${question}`;
     });
 
     if (!sql) {
-        return json({ error: 'LLM not available' }, { status: 503 });
+        return json({ error: 'LLM not available', type: 'error' }, { status: 503 });
     }
 
-    // Clean the response — remove code fences, preamble, and trailing text
+    // Clean the response
     let cleanSql = sql
         .replace(/```sql\n?/gi, '')
         .replace(/```\n?/g, '')
         .trim();
 
-    // If the LLM added preamble text, try to extract just the SELECT
+    // Extract SELECT if there's preamble
     if (!cleanSql.toUpperCase().startsWith('SELECT')) {
         const selectIdx = cleanSql.toUpperCase().indexOf('SELECT');
         if (selectIdx >= 0) {
@@ -129,20 +189,30 @@ Question: ${question}`;
     // Remove trailing semicolons
     cleanSql = cleanSql.replace(/;\s*$/, '').trim();
 
-    logInfo('ask', `Question: "${question}" → SQL: ${cleanSql}`);
+    logInfo('ask', `SQL: ${cleanSql}`);
 
     // Validate
     const validation = validateQuery(cleanSql);
     if (!validation.valid) {
-        return json({ error: validation.error, sql: cleanSql }, { status: 400 });
+        logWarn('ask', `Validation failed: ${validation.error} for SQL: ${cleanSql}`);
+        // Fall back to a chat response instead of a hard error
+        const fallbackResponse = await generate(
+            `The user asked about their media library: "${question}". I couldn't query the database for this. Please give a helpful response explaining you couldn't find the data, and suggest how they might rephrase their question.`,
+            { temperature: 0.5, system: 'You are Mediajam, a friendly media library assistant. Be concise.' }
+        );
+        return json({
+            question,
+            type: 'chat',
+            summary: fallbackResponse || `I couldn't process that query. Try rephrasing your question, e.g. "How many movies do I have?" or "What did I watch this week?"`,
+        });
     }
 
-    // Execute with timeout
+    // Execute
     try {
         const results = db.prepare(cleanSql).all();
         const sliced = results.slice(0, 50);
 
-        // Generate natural language summary of results
+        // Generate natural language summary
         let summary = null;
         if (sliced.length > 0) {
             try {
@@ -155,23 +225,30 @@ Provide a brief, friendly, conversational answer to the user's question based on
 
                 summary = await generate(summaryPrompt, {
                     temperature: 0.3,
-                    system: 'You are a helpful media library assistant. Answer the user\'s question naturally and conversationally based on the query results provided. Be concise and specific.',
+                    system: 'You are a helpful media library assistant. Answer naturally and conversationally. Be concise and specific.',
                 });
-            } catch { /* summary generation failed, that's ok */ }
+            } catch { /* ok */ }
+        } else {
+            summary = 'No results found for that query.';
         }
 
         return json({
             question,
+            type: 'data',
             sql: cleanSql,
             results: sliced,
             count: results.length,
             summary,
         });
     } catch (e) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        logWarn('ask', `SQL execution failed: ${errMsg}`);
+        // Fall back to chat instead of hard error
         return json({
             question,
+            type: 'chat',
+            summary: `I tried to look that up but ran into an issue. Try rephrasing — for example, "What movies did I watch recently?" or "How many TV shows do I have?"`,
             sql: cleanSql,
-            error: e instanceof Error ? e.message : String(e),
-        }, { status: 400 });
+        });
     }
 }
