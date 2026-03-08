@@ -137,13 +137,7 @@
 
             <!-- Go to settings link -->
             <a
-                href={syncType.toLowerCase().includes("jellyfin") &&
-                !syncType.toLowerCase().includes("import")
-                    ? "/settings/admin"
-                    : syncType.toLowerCase().includes("people") ||
-                        syncType.toLowerCase().includes("musicbrainz")
-                      ? "/settings/admin"
-                      : "/settings/account"}
+                href="/settings/admin"
                 class="btn btn-xs btn-ghost text-primary shrink-0"
             >
                 View

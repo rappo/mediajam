@@ -1023,12 +1023,16 @@ export async function startSync(libraryId = null, force = false) {
             db.prepare('UPDATE sync_history SET status = ?, finished_at = ?, summary = ? WHERE id = ?')
                 .run(status, new Date().toISOString(), summary, syncHistoryId);
         }
+        const detailParts = [`${totalSynced.toLocaleString()} items synced`];
+        if (totalErrors > 0) detailParts.push(`${totalErrors} errors`);
+        if (totalErrorMessages.length > 0) detailParts.push(totalErrorMessages.slice(0, 3).join(', '));
         logActivity({
             category: 'sync', action: 'jellyfin_sync_completed',
-            title: allFailed ? 'Jellyfin sync failed' : hasErrors ? `Jellyfin sync — ${totalSynced} items, ${totalErrors} errors` : `Jellyfin sync — ${totalSynced} items synced`,
-            detail: { totalSynced, totalErrors },
+            title: allFailed ? 'Jellyfin sync failed' : hasErrors ? `Jellyfin sync — ${totalSynced.toLocaleString()} items, ${totalErrors} errors` : `Jellyfin sync — ${totalSynced.toLocaleString()} items synced`,
+            detail: detailParts.join(' · '),
             icon: allFailed ? '❌' : hasErrors ? '⚠️' : '✅',
-            status: allFailed ? 'error' : hasErrors ? 'warning' : 'success'
+            status: allFailed ? 'error' : hasErrors ? 'warning' : 'success',
+            actionable: true, actionType: 'navigate', actionData: { href: '/settings/admin' }
         });
 
     } catch (e) {
@@ -1040,7 +1044,7 @@ export async function startSync(libraryId = null, force = false) {
             db.prepare('UPDATE sync_history SET status = ?, finished_at = ?, summary = ? WHERE id = ?')
                 .run('failed', new Date().toISOString(), errMsg, syncHistoryId);
         }
-        logActivity({ category: 'sync', action: 'jellyfin_sync_failed', title: 'Jellyfin sync failed', detail: { error: errMsg }, icon: '❌', status: 'error' });
+        logActivity({ category: 'sync', action: 'jellyfin_sync_failed', title: 'Jellyfin sync failed', detail: errMsg, icon: '❌', status: 'error', actionable: true, actionType: 'navigate', actionData: { href: '/settings/admin' } });
     } finally {
         engineState.running = false;
     }

@@ -86,10 +86,46 @@
                     close();
                     conflictDialog?.show();
                     break;
+                case "navigate": {
+                    let actionData = activity.action_data;
+                    if (typeof actionData === "string") {
+                        try { actionData = JSON.parse(actionData); } catch { /* ignore */ }
+                    }
+                    if (actionData?.href) {
+                        close();
+                        window.location.href = actionData.href;
+                    }
+                    break;
+                }
                 default:
                     break;
             }
         }
+    }
+
+    /**
+     * Format a detail string for display.
+     * If it's JSON, extract a human-readable summary.
+     * @param {string} detail
+     * @returns {string}
+     */
+    function formatDetail(detail) {
+        if (!detail) return "";
+        if (typeof detail === "string" && detail.startsWith("{")) {
+            try {
+                const d = JSON.parse(detail);
+                // Known keys — produce readable text
+                if (d.summary) return d.summary;
+                if (d.error) return d.error;
+                // Generic: join key-value pairs as readable text
+                return Object.entries(d)
+                    .map(([k, v]) => `${k.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').trim()}: ${v}`)
+                    .join(' · ');
+            } catch {
+                return detail;
+            }
+        }
+        return detail;
     }
 
     /**
@@ -198,23 +234,12 @@
                                     <div
                                         class="text-xs text-base-content/50 mt-0.5 truncate"
                                     >
-                                        {typeof activity.detail === "string" &&
-                                        activity.detail.startsWith("{")
-                                            ? (() => {
-                                                  try {
-                                                      const d = JSON.parse(
-                                                          activity.detail,
-                                                      );
-                                                      return (
-                                                          d.summary ||
-                                                          d.error ||
-                                                          activity.detail
-                                                      );
-                                                  } catch {
-                                                      return activity.detail;
-                                                  }
-                                              })()
-                                            : activity.detail}
+                                        {formatDetail(activity.detail)}
+                                    </div>
+                                {/if}
+                                {#if activity.actionable}
+                                    <div class="text-xs text-primary/60 mt-0.5">
+                                        Click to view →
                                     </div>
                                 {/if}
                             </div>
