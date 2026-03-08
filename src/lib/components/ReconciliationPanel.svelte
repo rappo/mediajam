@@ -18,7 +18,6 @@
     /** @type {any} */
     let latestRun = $state(null);
     let error = $state("");
-    let useT3 = $state(false);
 
     // Rebuild (recovery) state
     let rebuilding = $state(false);
@@ -29,7 +28,6 @@
     let enabledPhases = $state({
         snapshot: true,
         clearing: true,
-        embedding: true,
         matching_lastfm: true,
         matching_trakt: true,
         reclassifying: true,
@@ -233,7 +231,7 @@
             const res = await fetch("/api/reconcile/run", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ useT3, skipPhases }),
+                body: JSON.stringify({ skipPhases }),
             });
             if (!res.ok) {
                 const errData = await res.json();
@@ -313,7 +311,6 @@
             init: "🔄 Initializing...",
             snapshot: "📸 Snapshotting...",
             clearing: "🗑️ Clearing old data...",
-            embedding: "🧠 Building embeddings...",
             matching_lastfm: "🎵 Matching Last.fm...",
             matching_trakt: "🎬 Matching Trakt...",
             reclassifying: "🏷️ Reclassifying...",
@@ -407,16 +404,6 @@
                     >
                         🔄 Run Full Reconciliation
                     </button>
-                    <label class="label cursor-pointer gap-2">
-                        <input
-                            type="checkbox"
-                            class="toggle toggle-xs toggle-primary"
-                            bind:checked={useT3}
-                        />
-                        <span class="label-text text-xs"
-                            >T3 Embedding (experimental, uses Ollama)</span
-                        >
-                    </label>
                 {/if}
             </div>
 
@@ -480,11 +467,6 @@
                 {@const phases = [
                     { id: "snapshot", icon: "📸", label: "Snapshot" },
                     { id: "clearing", icon: "🗑️", label: "Clear" },
-                    {
-                        id: "embedding",
-                        icon: useT3 ? "🧠" : "🔗",
-                        label: useT3 ? "Embed" : "Match",
-                    },
                     { id: "matching_lastfm", icon: "lastfm", label: "Last.fm" },
                     { id: "matching_trakt", icon: "trakt", label: "Trakt" },
                     { id: "reclassifying", icon: "🏷️", label: "Reclassify" },
@@ -562,7 +544,7 @@
                     Toggle off any phases you don't want to run.
                 </p>
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {#each [{ id: "snapshot", icon: "📸", label: "Snapshot" }, { id: "clearing", icon: "🗑️", label: "Clear" }, { id: "embedding", icon: useT3 ? "🧠" : "🔗", label: useT3 ? "Embed" : "Match" }, { id: "matching_lastfm", icon: "lastfm", label: "Last.fm" }, { id: "matching_trakt", icon: "trakt", label: "Trakt" }, { id: "reclassifying", icon: "🏷️", label: "Reclassify" }, { id: "arr_sync", icon: "📥", label: "*arr" }, { id: "diffing", icon: "📊", label: "Diff" }] as phase}
+                    {#each [{ id: "snapshot", icon: "📸", label: "Snapshot" }, { id: "clearing", icon: "🗑️", label: "Clear" }, { id: "matching_lastfm", icon: "lastfm", label: "Last.fm" }, { id: "matching_trakt", icon: "trakt", label: "Trakt" }, { id: "reclassifying", icon: "🏷️", label: "Reclassify" }, { id: "arr_sync", icon: "📥", label: "*arr" }, { id: "diffing", icon: "📊", label: "Diff" }] as phase}
                         <label
                             class="flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors
                                 {requiredPhases.includes(phase.id)
@@ -639,17 +621,6 @@
                 </div>
                 <div class="stat-desc text-xs">watched, not owned</div>
             </div>
-            <div
-                class="stat bg-base-200/50 border border-base-300 rounded-lg p-3"
-            >
-                <div class="stat-title text-xs">AI Confirmed</div>
-                <div class="stat-value text-lg text-accent">
-                    {(
-                        (stats.lastfm?.tier3 || 0) + (stats.trakt?.tier3 || 0)
-                    ).toLocaleString()}
-                </div>
-                <div class="stat-desc text-xs">Tier 3 matches</div>
-            </div>
         </div>
 
         <!-- Tier Breakdown -->
@@ -682,12 +653,6 @@
                                     >{stats.lastfm?.tier2 || 0}</span
                                 >
                             </div>
-                            <div class="flex justify-between">
-                                <span>T3 AI/Embedding</span><span
-                                    class="font-mono"
-                                    >{stats.lastfm?.tier3 || 0}</span
-                                >
-                            </div>
                         </div>
                     </div>
                     <div>
@@ -713,12 +678,6 @@
                                 <span>T2 Normalized</span><span
                                     class="font-mono"
                                     >{stats.trakt?.tier2 || 0}</span
-                                >
-                            </div>
-                            <div class="flex justify-between">
-                                <span>T3 AI/Embedding</span><span
-                                    class="font-mono"
-                                    >{stats.trakt?.tier3 || 0}</span
                                 >
                             </div>
                             <div

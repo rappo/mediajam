@@ -1,5 +1,4 @@
 import db from '$lib/server/db.js';
-import { embed, generate, healthCheck } from '$lib/server/ollama.js';
 import { normalizeTitle } from '$lib/server/album-matcher.js';
 import { logInfo, logWarn, logError } from '$lib/server/logger.js';
 import fs from 'node:fs';
@@ -97,317 +96,18 @@ function aggressiveNormalize(title) {
         .trim();
 }
 
-// ─── Cosine Similarity ──────────────────────────────────────────────────────
 
-/**
- * @param {number[]} a
- * @param {number[]} b
- * @returns {number} cosine distance (0 = identical, 2 = opposite)
- */
-function cosineDistance(a, b) {
-    let dot = 0, magA = 0, magB = 0;
-    for (let i = 0; i < a.length; i++) {
-        dot += a[i] * b[i];
-        magA += a[i] * a[i];
-        magB += b[i] * b[i];
-    }
-    const sim = dot / (Math.sqrt(magA) * Math.sqrt(magB) || 1);
-    return 1 - sim; // distance
-}
-
-// ─── Embedding Cache ────────────────────────────────────────────────────────
-
-/** @type {Map<number, number[]>} parentId → embedding vector */
-const embeddingCache = new Map();
-
-/**
- * Build rich embedding text for a media_parent.
- * Includes title, overview, wikipedia summary, and top cast/crew names.
- * Truncates to ~500 chars to stay within embedding model context limits.
- * @param {any} parent - row from media_parents
- * @returns {string}
- */
-function buildEmbeddingText(parent) {
-    const parts = [];
-
-    // Title + year
-    const yearSuffix = parent.release_year ? ` (${parent.release_year})` : '';
-    parts.push(`${parent.media_type}: ${parent.title}${yearSuffix}`);
-
-    // Overview (first ~200 chars)
-    if (parent.overview) {
-        parts.push(parent.overview.slice(0, 200));
-    }
-
-    // Cast & crew (directors, writers, producers, top actors)
-    if (parent.media_type === 'movie' || parent.media_type === 'show' || parent.media_type === 'artist') {
-        try {
-            const credits = /** @type {any[]} */ (db.prepare(`
-                SELECT p.name, pc.role_type FROM person_credits pc
-                JOIN persons p ON p.id = pc.person_id
-                WHERE pc.media_parent_id = ?
-                ORDER BY
-                    CASE pc.role_type
-                        WHEN 'Director' THEN 1
-                        WHEN 'Writer' THEN 2
-                        WHEN 'Producer' THEN 3
-                        ELSE 4
-                    END,
-                    pc.sort_order ASC
-                LIMIT 12
-            `).all(parent.id));
-
-            const directors = credits.filter(c => c.role_type === 'Director').map(c => c.name);
-            const writers = credits.filter(c => c.role_type === 'Writer').map(c => c.name);
-            const producers = credits.filter(c => c.role_type === 'Producer').map(c => c.name);
-            const actors = credits.filter(c => !['Director', 'Writer', 'Producer'].includes(c.role_type)).map(c => c.name);
-
-            if (directors.length > 0) parts.push(`Director: ${directors.join(', ')}`);
-            if (writers.length > 0) parts.push(`Writer: ${writers.join(', ')}`);
-            if (producers.length > 0) parts.push(`Producer: ${producers.join(', ')}`);
-            if (actors.length > 0) parts.push(`Starring: ${actors.join(', ')}`);
-        } catch { /* credits table may not exist yet */ }
-    }
-
-    // Wikipedia summary (first ~200 chars)
-    if (parent.wikipedia_summary) {
-        parts.push(parent.wikipedia_summary.slice(0, 200));
-    }
-
-    // Join and truncate to ~600 chars for embedding model efficiency
-    return parts.join('. ').slice(0, 600);
-}
-
-/**
- * Pre-embed all local media_parents with rich metadata for similarity search.
- * @param {(progress: {done: number, total: number, log: string}) => void} [onProgress]
- * @returns {Promise<{embedded: number, failed: number}>}
- */
-export async function buildEmbeddingIndex(onProgress) {
-    const parents = /** @type {any[]} */ (db.prepare(
-        `SELECT id, title, media_type, release_year, overview, wikipedia_summary
-         FROM media_parents ORDER BY id`
-    ).all());
-
-    let embedded = 0, failed = 0;
-    const batchSize = 50;
-
-    for (let i = 0; i < parents.length; i += batchSize) {
-        const batch = parents.slice(i, i + batchSize);
-        for (const p of batch) {
-            try {
-                const text = buildEmbeddingText(p);
-                const vec = await embed(text);
-                if (vec) {
-                    embeddingCache.set(p.id, vec);
-                    embedded++;
-                } else {
-                    failed++;
-                }
-            } catch {
-                failed++;
-            }
-        }
-        if (onProgress) {
-            onProgress({
-                done: Math.min(i + batchSize, parents.length),
-                total: parents.length,
-                log: `🧠 Embedded ${Math.min(i + batchSize, parents.length)}/${parents.length} items...`
-            });
-        }
-    }
-
-    return { embedded, failed };
-}
-
-// ─── Person Embedding Cache ─────────────────────────────────────────────────
-
-/** @type {Map<number, number[]>} personId → embedding vector */
-const personEmbeddingCache = new Map();
-
-/**
- * Build rich embedding text for a person.
- * Includes name, bio, wikipedia summary, and filmography (credited works).
- * @param {any} person - row from persons
- * @returns {string}
- */
-function buildPersonEmbeddingText(person) {
-    const parts = [];
-
-    parts.push(`person: ${person.name}`);
-
-    // Bio
-    if (person.bio) {
-        parts.push(person.bio.slice(0, 200));
-    }
-
-    // Filmography — top credited works grouped by role
-    try {
-        const credits = /** @type {any[]} */ (db.prepare(`
-            SELECT mp.title, pc.role_type FROM person_credits pc
-            JOIN media_parents mp ON mp.id = pc.media_parent_id
-            WHERE pc.person_id = ?
-            ORDER BY pc.sort_order ASC
-            LIMIT 10
-        `).all(person.id));
-
-        if (credits.length > 0) {
-            // Group by role type
-            /** @type {Record<string, string[]>} */
-            const byRole = {};
-            for (const c of credits) {
-                const role = c.role_type || 'Actor';
-                if (!byRole[role]) byRole[role] = [];
-                byRole[role].push(c.title);
-            }
-            for (const [role, titles] of Object.entries(byRole)) {
-                parts.push(`${role}: ${titles.join(', ')}`);
-            }
-        }
-    } catch { /* credits may not exist yet */ }
-
-    // Wikipedia summary
-    if (person.wikipedia_summary) {
-        parts.push(person.wikipedia_summary.slice(0, 200));
-    }
-
-    return parts.join('. ').slice(0, 600);
-}
-
-/**
- * Embed all persons with rich metadata (bio, filmography, wikipedia).
- * @param {(progress: {done: number, total: number, log: string}) => void} [onProgress]
- * @returns {Promise<{embedded: number, failed: number}>}
- */
-export async function buildPersonEmbeddingIndex(onProgress) {
-    const persons = /** @type {any[]} */ (db.prepare(
-        `SELECT id, name, bio, wikipedia_summary FROM persons ORDER BY id`
-    ).all());
-
-    let embedded = 0, failed = 0;
-    const batchSize = 50;
-
-    for (let i = 0; i < persons.length; i += batchSize) {
-        const batch = persons.slice(i, i + batchSize);
-        for (const p of batch) {
-            try {
-                const text = buildPersonEmbeddingText(p);
-                const vec = await embed(text);
-                if (vec) {
-                    personEmbeddingCache.set(p.id, vec);
-                    embedded++;
-                } else {
-                    failed++;
-                }
-            } catch {
-                failed++;
-            }
-        }
-        if (onProgress) {
-            onProgress({
-                done: Math.min(i + batchSize, persons.length),
-                total: persons.length,
-                log: `🧠 Embedded ${Math.min(i + batchSize, persons.length)}/${persons.length} persons...`
-            });
-        }
-    }
-
-    return { embedded, failed };
-}
-
-/**
- * Find nearest person embedding matches for a query string.
- * @param {string} query
- * @param {number} [topK=3]
- * @returns {Promise<Array<{id: number, name: string, distance: number}>>}
- */
-export async function findNearestPerson(query, topK = 3) {
-    const queryVec = await embed(query);
-    if (!queryVec) return [];
-
-    const results = [];
-    for (const [id, vec] of personEmbeddingCache) {
-        const person = /** @type {any} */ (db.prepare('SELECT name FROM persons WHERE id = ?').get(id));
-        if (!person) continue;
-        const dist = cosineDistance(queryVec, vec);
-        results.push({ id, name: person.name, distance: dist });
-    }
-
-    results.sort((a, b) => a.distance - b.distance);
-    return results.slice(0, topK);
-}
-
-/**
- * Find nearest embedding matches for a query string.
- * @param {string} query - e.g. "artist: Wu-Tang Clan"
- * @param {string} mediaType - filter by type
- * @param {number} [topK=3]
- * @returns {Promise<Array<{id: number, title: string, distance: number}>>}
- */
-async function findNearestByEmbedding(query, mediaType, topK = 3) {
-    const queryVec = await embed(query);
-    if (!queryVec) return [];
-
-    const results = [];
-    for (const [id, vec] of embeddingCache) {
-        // Check media type
-        const parent = /** @type {any} */ (db.prepare('SELECT title, media_type FROM media_parents WHERE id = ?').get(id));
-        if (!parent || parent.media_type !== mediaType) continue;
-        const dist = cosineDistance(queryVec, vec);
-        results.push({ id, title: parent.title, distance: dist });
-    }
-
-    results.sort((a, b) => a.distance - b.distance);
-    return results.slice(0, topK);
-}
-
-// ─── LLM Confirmation ───────────────────────────────────────────────────────
-
-/**
- * Ask LLM to confirm if two titles refer to the same entity.
- * @param {string} titleA
- * @param {string} titleB
- * @param {string} entityType - "artist", "movie", "show"
- * @returns {Promise<{match: boolean, confidence: string, reasoning: string} | null>}
- */
-async function llmConfirmMatch(titleA, titleB, entityType) {
-    const prompt = `Are these the same ${entityType}?
-A: "${titleA}"
-B: "${titleB}"
-
-Respond in JSON format:
-{"match": true/false, "confidence": "high"/"medium"/"low", "reasoning": "brief explanation"}`;
-
-    const result = await generate(prompt, {
-        system: `You are a media matching assistant. Compare two titles and determine if they refer to the same ${entityType}. Consider spelling variants, unicode differences, abbreviations, articles ("The"), and regional naming differences. Respond ONLY with valid JSON.`,
-        format: 'json',
-        temperature: 0.1
-    });
-
-    if (!result) return null;
-
-    try {
-        return JSON.parse(result);
-    } catch {
-        // Try to extract JSON from response
-        const jsonMatch = result.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            try { return JSON.parse(jsonMatch[0]); } catch { /* */ }
-        }
-        return null;
-    }
-}
 
 // ─── Tiered Matchers ────────────────────────────────────────────────────────
 
 /**
  * Match an artist from Last.fm to a local media_parent.
+ * Uses T0 (MusicBrainz ID), T1 (exact title), T2 (normalized title).
  * @param {string} artistName
  * @param {string} [mbid] - MusicBrainz ID
- * @param {boolean} [useLlm=true] - whether to use LLM for Tier 3
  * @returns {Promise<{matchedId: number, confidence: string, tier: number, matchedTitle: string} | null>}
  */
-export async function matchArtist(artistName, mbid, useLlm = true) {
+export async function matchArtist(artistName, mbid) {
     // Tier 0: MusicBrainz ID
     if (mbid) {
         const match = /** @type {any} */ (db.prepare(
@@ -437,39 +137,19 @@ export async function matchArtist(artistName, mbid, useLlm = true) {
         }
     }
 
-    // Tier 3: Embedding similarity + LLM confirmation (always require LLM)
-    if (useLlm && embeddingCache.size > 0) {
-        const nearest = await findNearestByEmbedding(`artist: ${artistName}`, 'artist');
-        if (nearest.length > 0 && nearest[0].distance < 0.30) {
-            const best = nearest[0];
-            const llmResult = await llmConfirmMatch(artistName, best.title, 'artist');
-            if (llmResult?.match && llmResult.confidence !== 'low') {
-                broadcast({ type: 'reconcile_progress', phase: 'matching_lastfm', log: `🧠 T3: "${artistName}" ≈ "${best.title}" → confirmed (${llmResult.confidence}, dist=${best.distance.toFixed(3)})`, logType: 'info' });
-                return {
-                    matchedId: best.id,
-                    confidence: llmResult.confidence || 'medium',
-                    tier: 3,
-                    matchedTitle: best.title
-                };
-            } else {
-                broadcast({ type: 'reconcile_progress', phase: 'matching_lastfm', log: `🧠 T3: "${artistName}" ≈ "${best.title}" → rejected (${llmResult?.confidence || 'n/a'}, dist=${best.distance.toFixed(3)})`, logType: 'warning' });
-            }
-        }
-    }
-
     return null;
 }
 
 /**
  * Match a movie from Trakt to a local media_parent.
+ * Uses T0 (external IDs), T1 (exact title+year), T2 (normalized title+year±1).
  * @param {string} title
  * @param {number} [year]
  * @param {string} [tmdbId]
  * @param {string} [imdbId]
- * @param {boolean} [useLlm=true]
  * @returns {Promise<{matchedId: number, confidence: string, tier: number, matchedTitle: string} | null>}
  */
-export async function matchMovie(title, year, tmdbId, imdbId, useLlm = true) {
+export async function matchMovie(title, year, tmdbId, imdbId) {
     // Tier 0: External IDs
     if (tmdbId) {
         const match = /** @type {any} */ (db.prepare(
@@ -507,34 +187,18 @@ export async function matchMovie(title, year, tmdbId, imdbId, useLlm = true) {
         }
     }
 
-    // Tier 3: Embedding + LLM (always require LLM)
-    if (useLlm && embeddingCache.size > 0) {
-        const queryStr = year ? `movie: ${title} (${year})` : `movie: ${title}`;
-        const nearest = await findNearestByEmbedding(queryStr, 'movie');
-        if (nearest.length > 0 && nearest[0].distance < 0.30) {
-            const best = nearest[0];
-            const llmResult = await llmConfirmMatch(title, best.title, 'movie');
-            if (llmResult?.match && llmResult.confidence !== 'low') {
-                broadcast({ type: 'reconcile_progress', phase: 'matching_trakt', log: `🧠 T3: "${title}" ≈ "${best.title}" → confirmed (${llmResult.confidence}, dist=${best.distance.toFixed(3)})`, logType: 'info' });
-                return { matchedId: best.id, confidence: llmResult.confidence || 'medium', tier: 3, matchedTitle: best.title };
-            } else {
-                broadcast({ type: 'reconcile_progress', phase: 'matching_trakt', log: `🧠 T3: "${title}" ≈ "${best.title}" → rejected (${llmResult?.confidence || 'n/a'}, dist=${best.distance.toFixed(3)})`, logType: 'warning' });
-            }
-        }
-    }
-
     return null;
 }
 
 /**
  * Match a show from Trakt to a local media_parent.
+ * Uses T0 (external IDs), T1 (exact title), T2 (normalized title).
  * @param {string} showTitle
  * @param {string} [tmdbId]
  * @param {string} [imdbId]
- * @param {boolean} [useLlm=true]
  * @returns {Promise<{matchedId: number, confidence: string, tier: number, matchedTitle: string} | null>}
  */
-export async function matchShow(showTitle, tmdbId, imdbId, useLlm = true) {
+export async function matchShow(showTitle, tmdbId, imdbId) {
     // Tier 0: External IDs
     if (tmdbId) {
         const match = /** @type {any} */ (db.prepare(
@@ -566,21 +230,6 @@ export async function matchShow(showTitle, tmdbId, imdbId, useLlm = true) {
         for (const c of candidates) {
             if (aggressiveNormalize(c.title) === normalizedQuery) {
                 return { matchedId: c.id, confidence: 'high', tier: 2, matchedTitle: c.title };
-            }
-        }
-    }
-
-    // Tier 3: Embedding + LLM (always require LLM)
-    if (useLlm && embeddingCache.size > 0) {
-        const nearest = await findNearestByEmbedding(`show: ${showTitle}`, 'show');
-        if (nearest.length > 0 && nearest[0].distance < 0.30) {
-            const best = nearest[0];
-            const llmResult = await llmConfirmMatch(showTitle, best.title, 'show');
-            if (llmResult?.match && llmResult.confidence !== 'low') {
-                broadcast({ type: 'reconcile_progress', phase: 'matching_trakt', log: `🧠 T3: "${showTitle}" ≈ "${best.title}" → confirmed (${llmResult.confidence}, dist=${best.distance.toFixed(3)})`, logType: 'info' });
-                return { matchedId: best.id, confidence: llmResult.confidence || 'medium', tier: 3, matchedTitle: best.title };
-            } else {
-                broadcast({ type: 'reconcile_progress', phase: 'matching_trakt', log: `🧠 T3: "${showTitle}" ≈ "${best.title}" → rejected (${llmResult?.confidence || 'n/a'}, dist=${best.distance.toFixed(3)})`, logType: 'warning' });
             }
         }
     }
@@ -897,11 +546,11 @@ const insertHistory = db.prepare(`
  * 6. Generate diff report
  *
  * @param {number} userId
- * @param {{useT3?: boolean, skipPhases?: string[]}} [options]
+ * @param {{skipPhases?: string[]}} [options]
  * @returns {Promise<{success: boolean, stats: any, diff: any}>}
  */
 export async function runFullReconciliation(userId, options = {}) {
-    const { useT3 = false, skipPhases = [] } = options;
+    const { skipPhases = [] } = options;
     const shouldSkip = (/** @type {string} */ phase) => skipPhases.includes(phase);
     if (reconcileState.running) {
         throw new Error('Reconciliation already running');
@@ -921,9 +570,8 @@ export async function runFullReconciliation(userId, options = {}) {
     openLogFile(runId);
 
     const stats = {
-        lastfm: { total: 0, matched: 0, external: 0, skipped: 0, consolidated: 0, tier0: 0, tier1: 0, tier2: 0, tier3: 0 },
-        trakt: { total: 0, matched: 0, external: 0, skipped: 0, consolidated: 0, tier0: 0, tier1: 0, tier2: 0, tier3: 0 },
-        embedding: { embedded: 0, failed: 0 },
+        lastfm: { total: 0, matched: 0, external: 0, skipped: 0, consolidated: 0, tier0: 0, tier1: 0, tier2: 0 },
+        trakt: { total: 0, matched: 0, external: 0, skipped: 0, consolidated: 0, tier0: 0, tier1: 0, tier2: 0 },
         diff: { changed: 0, improved: 0, degraded: 0, newMatches: 0 }
     };
 
@@ -992,40 +640,6 @@ export async function runFullReconciliation(userId, options = {}) {
 
         updateRun(runId, 'running', 'clearing', stats);
 
-        let hasOllama = false;
-        if (shouldSkip('embedding')) {
-            broadcast({ type: 'reconcile_progress', phase: 'embedding', log: `⏭️ Embedding/Match skipped by user`, logType: 'info' });
-        } else if (useT3) {
-            reconcileState.phase = 'embedding';
-            const ollamaHealth = await healthCheck();
-            hasOllama = ollamaHealth.ok;
-            if (hasOllama) {
-                broadcast({ type: 'reconcile_progress', phase: 'embedding', log: `🧠 Ollama connected (${ollamaHealth.models?.length || 0} models). Building embedding index...`, logType: 'info' });
-                const embResult = await buildEmbeddingIndex((progress) => {
-                    broadcast({ type: 'reconcile_progress', phase: 'embedding', ...progress, logType: 'info' });
-                });
-                stats.embedding = embResult;
-                broadcast({
-                    type: 'reconcile_progress', phase: 'embedding',
-                    log: `🧠 Embedded ${embResult.embedded} media items (${embResult.failed} failed)`, logType: 'info'
-                });
-
-                // Person embeddings (filmography, bio, wikipedia)
-                const personEmbResult = await buildPersonEmbeddingIndex((progress) => {
-                    broadcast({ type: 'reconcile_progress', phase: 'embedding', ...progress, logType: 'info' });
-                });
-                broadcast({
-                    type: 'reconcile_progress', phase: 'embedding',
-                    log: `🧠 Embedded ${personEmbResult.embedded} persons (${personEmbResult.failed} failed)`, logType: 'info'
-                });
-            } else {
-                broadcast({ type: 'reconcile_progress', phase: 'embedding', log: `⚠️ Ollama not available (${ollamaHealth.error}) — skipping Tier 3 (embedding) matching`, logType: 'warn' });
-            }
-        } else {
-            broadcast({ type: 'reconcile_progress', phase: 'embedding', log: `⏭️ T3 embedding matching disabled — using T0–T2 + fuzzy album matching`, logType: 'info' });
-        }
-        updateRun(runId, 'running', 'embedding', stats);
-
         // ── Phase 4: Re-match Last.fm ───────────────────────────────────
         if (shouldSkip('matching_lastfm')) {
             broadcast({ type: 'reconcile_progress', phase: 'matching_lastfm', log: `⏭️ Last.fm matching skipped by user`, logType: 'info' });
@@ -1051,7 +665,7 @@ export async function runFullReconciliation(userId, options = {}) {
                 let artistMatch = artistCache.get(cacheKey);
 
                 if (artistMatch === undefined) {
-                    artistMatch = await matchArtist(s.artist_name, s.artist_mbid, hasOllama);
+                    artistMatch = await matchArtist(s.artist_name, s.artist_mbid);
                     artistCache.set(cacheKey, artistMatch);
                 }
 
@@ -1128,7 +742,7 @@ export async function runFullReconciliation(userId, options = {}) {
             await new Promise(r => setTimeout(r, 0)); // flush final Last.fm progress
             broadcast({
                 type: 'reconcile_progress', phase: 'matching_lastfm',
-                log: `✅ Last.fm: ${stats.lastfm.matched} matched (T0:${stats.lastfm.tier0} T1:${stats.lastfm.tier1} T2:${stats.lastfm.tier2} T3:${stats.lastfm.tier3}), ${stats.lastfm.external} external, ${stats.lastfm.consolidated} consolidated`,
+                log: `✅ Last.fm: ${stats.lastfm.matched} matched (T0:${stats.lastfm.tier0} T1:${stats.lastfm.tier1} T2:${stats.lastfm.tier2}), ${stats.lastfm.external} external, ${stats.lastfm.consolidated} consolidated`,
                 logType: 'success'
             });
         } // end if !shouldSkip('matching_lastfm')
@@ -1154,7 +768,7 @@ export async function runFullReconciliation(userId, options = {}) {
                 let mediaId = null;
 
                 if (row.type === 'movie') {
-                    const movieMatch = await matchMovie(row.title, row.year, row.tmdb_id, row.imdb_id, hasOllama);
+                    const movieMatch = await matchMovie(row.title, row.year, row.tmdb_id, row.imdb_id);
                     if (movieMatch) {
                         mediaId = matchChild(movieMatch.matchedId, row.title);
                         if (mediaId) {
@@ -1172,7 +786,7 @@ export async function runFullReconciliation(userId, options = {}) {
                         } catch { /* */ }
                     }
                 } else if (row.type === 'episode') {
-                    const showMatch = await matchShow(row.show_title, row.tmdb_id, row.imdb_id, hasOllama);
+                    const showMatch = await matchShow(row.show_title, row.tmdb_id, row.imdb_id);
                     if (showMatch) {
                         mediaId = matchEpisode(showMatch.matchedId, row.season_number, row.episode_number, row.title);
                         if (mediaId) {
@@ -1241,7 +855,7 @@ export async function runFullReconciliation(userId, options = {}) {
             await new Promise(r => setTimeout(r, 0)); // flush final Trakt progress
             broadcast({
                 type: 'reconcile_progress', phase: 'matching_trakt',
-                log: `✅ Trakt: ${stats.trakt.matched} matched (T0:${stats.trakt.tier0} T1:${stats.trakt.tier1} T2:${stats.trakt.tier2} T3:${stats.trakt.tier3}), ${stats.trakt.external} external, ${stats.trakt.consolidated} consolidated`,
+                log: `✅ Trakt: ${stats.trakt.matched} matched (T0:${stats.trakt.tier0} T1:${stats.trakt.tier1} T2:${stats.trakt.tier2}), ${stats.trakt.external} external, ${stats.trakt.consolidated} consolidated`,
                 logType: 'success'
             });
 

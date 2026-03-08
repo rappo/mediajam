@@ -10,12 +10,10 @@ export async function POST({ request, locals }) {
     if (!locals.user) return json({ error: 'Unauthorized' }, { status: 401 });
     if (isReconcileRunning()) return json({ error: 'Reconciliation already running' }, { status: 409 });
 
-    let useT3 = false;
     /** @type {string[]} */
     let skipPhases = [];
     try {
         const body = await request.json();
-        useT3 = !!body.useT3;
         if (Array.isArray(body.skipPhases)) skipPhases = body.skipPhases;
     } catch { /* no body or invalid JSON — defaults apply */ }
 
@@ -34,7 +32,7 @@ export async function POST({ request, locals }) {
             const removeListener = addReconcileListener(send);
 
             // Run in background — don't await in the stream start
-            runFullReconciliation(userId, { useT3, skipPhases })
+            runFullReconciliation(userId, { skipPhases })
                 .then((result) => {
                     send({ type: 'reconcile_complete', ...result });
                     try { controller.close(); } catch { /* */ }
@@ -54,7 +52,6 @@ export async function POST({ request, locals }) {
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache, no-transform',
             'Connection': 'keep-alive',
-            'X-Accel-Buffering': 'no',
             'X-Accel-Buffering': 'no'
         }
     });
