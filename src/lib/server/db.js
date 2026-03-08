@@ -759,6 +759,25 @@ db.exec(`
 db.exec('CREATE INDEX IF NOT EXISTS idx_external_ratings_parent ON external_ratings(media_parent_id)');
 db.exec('CREATE INDEX IF NOT EXISTS idx_external_ratings_child ON external_ratings(media_child_id)');
 
+// -- Activity Log (global event feed) --
+db.exec(`
+    CREATE TABLE IF NOT EXISTS activity_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        category TEXT NOT NULL,
+        action TEXT NOT NULL,
+        title TEXT NOT NULL,
+        detail TEXT,
+        icon TEXT,
+        status TEXT DEFAULT 'info',
+        read INTEGER DEFAULT 0,
+        actionable INTEGER DEFAULT 0,
+        action_type TEXT,
+        action_data TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+    )
+`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_activity_log_read ON activity_log(read)');
+
 // Initialize logger from DB settings
 import { initLogging } from './logger.js';
 initLogging(db);

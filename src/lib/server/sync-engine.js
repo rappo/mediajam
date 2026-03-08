@@ -1,6 +1,7 @@
 import db from '$lib/server/db.js';
 import { getJellyfinApis, getItemsApi, getSystemApi, getTvShowsApi } from '$lib/server/jellyfin.js';
 import { logError, logInfo, logWarn } from '$lib/server/logger.js';
+import { logActivity } from '$lib/server/activity-log.js';
 
 /** @type {Set<(data: any) => void>} */
 const listeners = new Set();
@@ -265,6 +266,7 @@ export async function startSync(libraryId = null, force = false) {
         `INSERT INTO sync_history (sync_type, status, started_at) VALUES ('jellyfin', 'running', ?)`
     ).run(new Date().toISOString());
     syncHistoryId = Number(histResult.lastInsertRowid);
+    logActivity({ category: 'sync', action: 'jellyfin_sync_started', title: 'Jellyfin sync started', icon: '📚', status: 'info' });
 
     const settings = db.prepare('SELECT * FROM app_settings WHERE id = 1').get();
     const user = db.prepare('SELECT * FROM users LIMIT 1').get();
@@ -622,6 +624,7 @@ export async function startSync(libraryId = null, force = false) {
                                             ).run(existing.id, secondaryId, parentParams.musicbrainzId);
                                         } catch { /* ignore duplicate */ }
                                         broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: shared MusicBrainz ID with ${existing.title} — resolve in Settings`, logType: 'warning' });
+                                        logActivity({ category: 'conflict', action: 'conflict_detected', title: `Merge conflict: ${item.Name} ↔ ${existing.title}`, detail: { externalId: parentParams.musicbrainzId, type: 'shared_musicbrainz_id' }, icon: '⚠️', status: 'warning', actionable: true, actionType: 'open_conflict' });
                                     }
                                 } else {
                                     broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: shared MusicBrainz ID, syncing without it`, logType: 'warning' });
@@ -1020,6 +1023,14 @@ export async function startSync(libraryId = null, force = false) {
             db.prepare('UPDATE sync_history SET status = ?, finished_at = ?, summary = ? WHERE id = ?')
                 .run(status, new Date().toISOString(), summary, syncHistoryId);
         }
+        logActivity({
+            category: 'sync', action: 'jellyfin_sync_completed',
+            title: allFailed ? 'Jellyfin sync failed' : `Jellyfin sync completed`,
+            detail: { totalSynced, totalErrors },
+            icon: allFailed ? '❌' : hasErrors ? '⚠️' : '✅',
+            status: allFailed ? 'error' : hasErrors ? 'warning' : 'success',
+            actionable: true, actionType: 'goto_settings'
+        });
 
     } catch (e) {
         console.error('Sync engine error:', e);
@@ -1030,6 +1041,7 @@ export async function startSync(libraryId = null, force = false) {
             db.prepare('UPDATE sync_history SET status = ?, finished_at = ?, summary = ? WHERE id = ?')
                 .run('failed', new Date().toISOString(), errMsg, syncHistoryId);
         }
+        logActivity({ category: 'sync', action: 'jellyfin_sync_failed', title: 'Jellyfin sync failed', detail: { error: errMsg }, icon: '❌', status: 'error', actionable: true, actionType: 'goto_settings' });
     } finally {
         engineState.running = false;
     }

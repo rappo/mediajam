@@ -1,4 +1,5 @@
 import db, { getBootWarnings } from '$lib/server/db.js';
+import { getUnreadCount } from '$lib/server/activity-log.js';
 
 /** @type {import('./$types').LayoutServerLoad} */
 export function load({ locals }) {
@@ -43,6 +44,7 @@ export function load({ locals }) {
         bootWarnings: getBootWarnings(),
         pendingConflicts: /** @type {any} */ (db.prepare('SELECT COUNT(*) as count FROM sync_conflicts WHERE status = ?').get('pending'))?.count || 0,
         showWelcome: (settings?.setup_complete === 1 && !settings?.welcome_complete),
-        jellyfinAuthInvalid: settings?.jellyfin_auth_status === 'invalid'
+        jellyfinAuthInvalid: settings?.jellyfin_auth_status === 'invalid',
+        activityUnread: getUnreadCount()
     };
 }

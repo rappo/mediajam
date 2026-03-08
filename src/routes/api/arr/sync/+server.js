@@ -2,6 +2,7 @@ import { syncArrService } from '$lib/server/arr-sync.js';
 import db from '$lib/server/db.js';
 import { json } from '@sveltejs/kit';
 import { logError, logInfo } from '$lib/server/logger.js';
+import { logActivity } from '$lib/server/activity-log.js';
 
 /**
  * POST /api/arr/sync — trigger *arr sync on demand (SSE streaming).
@@ -52,6 +53,7 @@ export async function POST({ locals, url }) {
 
             send({ log: `[${time()}] 📥 Starting ${label} sync...`, type: 'info' });
             logInfo('arr-sync', `On-demand sync started: ${services.map(s => s.service).join(', ')}`);
+            logActivity({ category: 'sync', action: 'arr_sync_started', title: `*arr sync started (${label})`, icon: '📡', status: 'info' });
 
             for (const { service, url: svcUrl, apiKey } of services) {
                 send({ log: `[${time()}] 📡 Syncing ${service}...`, type: 'info', service });
@@ -86,6 +88,7 @@ export async function POST({ locals, url }) {
 
             send({ log: `[${time()}] ✅ Sync complete`, type: 'complete' });
             logInfo('arr-sync', 'On-demand sync complete');
+            logActivity({ category: 'sync', action: 'arr_sync_completed', title: `*arr sync completed`, icon: '✅', status: 'success' });
 
             try { controller.close(); } catch { /* */ }
         }
