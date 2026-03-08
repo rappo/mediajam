@@ -10,10 +10,14 @@
     let { type, id, isFavorite = false, size = "1.4rem" } = $props();
 
     let favorite = $state(isFavorite);
-    $effect(() => {
-        favorite = isFavorite;
-    });
     let loading = $state(false);
+
+    // Only sync from prop when NOT in-flight (avoids reverting optimistic updates)
+    $effect(() => {
+        if (!loading) {
+            favorite = isFavorite;
+        }
+    });
 
     /** @param {Event} event */
     async function toggle(event) {
