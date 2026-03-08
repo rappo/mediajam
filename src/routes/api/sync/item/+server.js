@@ -1,6 +1,7 @@
 import db from '$lib/server/db.js';
 import { getJellyfinApis, getItemsApi, getTvShowsApi } from '$lib/server/jellyfin.js';
 import { reconcileExternalMedia } from '$lib/server/reconcile.js';
+import { fetchWikipediaForMediaParent } from '$lib/server/wikipedia-backfill.js';
 import { json } from '@sveltejs/kit';
 
 /**
@@ -300,6 +301,26 @@ export async function POST({ request, locals }) {
         // Reconcile any orphaned external media_children
         const reconciled = reconcileExternalMedia();
         if (reconciled.merged > 0) results.reconciled = reconciled;
+
+        // Fetch Wikipedia data if not already fetched
+        const freshParent = /** @type {any} */ (db.prepare(
+            'SELECT id, media_type, tmdb_id, musicbrainz_id, wikipedia_fetched_at FROM media_parents WHERE id = ?'
+        ).get(parent.id));
+        if (freshParent && !freshParent.wikipedia_fetched_at) {
+            try {
+                const wiki = await fetchWikipediaForMediaParent(
+                    freshParent.id, freshParent.media_type,
+                    { tmdb_id: freshParent.tmdb_id, musicbrainz_id: freshParent.musicbrainz_id },
+                    settings.tmdb_api_key || null
+                );
+                if (wiki) {
+                    results.wikipedia = wiki.url;
+                    console.log(`[item-sync] 📚 Wikipedia found: ${wiki.url}`);
+                }
+            } catch (e) {
+                console.warn(`[item-sync] Wikipedia fetch failed:`, e instanceof Error ? e.message : String(e));
+            }
+        }
 
         console.log(`[item-sync] ✅ ${parent.title}: ${childCount} children synced`, results);
         return json({ success: true, childCount, ...results });

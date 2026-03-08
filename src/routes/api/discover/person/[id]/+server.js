@@ -28,7 +28,11 @@ export async function GET({ params, locals }) {
             // Search TMDb by name
             const searchUrl = `${TMDB_BASE}/search/person?api_key=${apiKey}&query=${encodeURIComponent(person.name)}&page=1`;
             const searchRes = await fetch(searchUrl);
-            if (!searchRes.ok) return json({ error: `TMDb search failed: ${searchRes.status}` }, { status: 502 });
+            if (!searchRes.ok) {
+                const errBody = await searchRes.text().catch(() => '');
+                console.error(`[discover/person] TMDb search failed: ${searchRes.status}`, errBody);
+                return json({ error: `TMDb search failed: ${searchRes.status} — ${errBody}` }, { status: 502 });
+            }
             const searchData = await searchRes.json();
             const match = searchData.results?.[0];
             if (!match) return json({ error: `No TMDb match found for "${person.name}"` }, { status: 404 });
@@ -41,7 +45,11 @@ export async function GET({ params, locals }) {
         // Step 2: Fetch combined credits from TMDb
         const creditsUrl = `${TMDB_BASE}/person/${tmdbPersonId}/combined_credits?api_key=${apiKey}`;
         const creditsRes = await fetch(creditsUrl);
-        if (!creditsRes.ok) return json({ error: `TMDb credits failed: ${creditsRes.status}` }, { status: 502 });
+        if (!creditsRes.ok) {
+            const errBody = await creditsRes.text().catch(() => '');
+            console.error(`[discover/person] TMDb credits failed: ${creditsRes.status}`, errBody);
+            return json({ error: `TMDb credits failed: ${creditsRes.status} — ${errBody}` }, { status: 502 });
+        }
         const creditsData = await creditsRes.json();
 
         // Combine cast + crew, deduplicate by TMDb ID

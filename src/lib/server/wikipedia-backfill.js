@@ -119,6 +119,77 @@ const markPersonFetched = db.prepare(`
     UPDATE persons SET wikipedia_fetched_at = datetime('now') WHERE id = ?
 `);
 
+/**
+ * Fetch Wikipedia data for a single media_parent (movie, show, or artist).
+ * Called from individual sync endpoints.
+ * @param {number} mediaParentId
+ * @param {'movie'|'show'|'artist'} mediaType
+ * @param {{tmdb_id?: string|null, musicbrainz_id?: string|null}} ids
+ * @param {string|null} tmdbApiKey
+ * @returns {Promise<{url: string, summary: string}|null>}
+ */
+export async function fetchWikipediaForMediaParent(mediaParentId, mediaType, ids, tmdbApiKey) {
+    try {
+        let wiki = null;
+        if (mediaType === 'artist' && ids.musicbrainz_id) {
+            // MusicBrainz → Wikipedia
+            const wikiUrl = await getWikipediaFromMusicBrainz(ids.musicbrainz_id);
+            if (wikiUrl) {
+                const title = extractTitleFromUrl(wikiUrl);
+                if (title) wiki = await getWikipediaSummary(title);
+            }
+        } else if (tmdbApiKey && ids.tmdb_id) {
+            // TMDb → Wikidata → Wikipedia
+            const tmdbType = mediaType === 'movie' ? 'movie' : 'tv';
+            const wikidataId = await getWikidataIdFromTMDb(tmdbType, ids.tmdb_id, tmdbApiKey);
+            if (wikidataId) {
+                const title = await getWikipediaTitleFromWikidata(wikidataId);
+                if (title) wiki = await getWikipediaSummary(title);
+            }
+        }
+        if (wiki) {
+            updateMediaParent.run(wiki.url, wiki.summary, mediaParentId);
+            return wiki;
+        } else {
+            markMediaParentFetched.run(mediaParentId);
+            return null;
+        }
+    } catch (e) {
+        console.error(`[wikipedia] Error fetching for media_parent ${mediaParentId}:`, e instanceof Error ? e.message : String(e));
+        markMediaParentFetched.run(mediaParentId);
+        return null;
+    }
+}
+
+/**
+ * Fetch Wikipedia data for a single person.
+ * Called from person sync endpoints.
+ * @param {number} personId
+ * @param {string|null} tmdbPersonId
+ * @param {string|null} tmdbApiKey
+ * @returns {Promise<{url: string, summary: string}|null>}
+ */
+export async function fetchWikipediaForPerson(personId, tmdbPersonId, tmdbApiKey) {
+    try {
+        if (!tmdbApiKey || !tmdbPersonId) return null;
+        const wikidataId = await getWikidataIdFromTMDb('person', tmdbPersonId, tmdbApiKey);
+        if (!wikidataId) { markPersonFetched.run(personId); return null; }
+        const title = await getWikipediaTitleFromWikidata(wikidataId);
+        if (!title) { markPersonFetched.run(personId); return null; }
+        const wiki = await getWikipediaSummary(title);
+        if (wiki) {
+            updatePerson.run(wiki.url, wiki.summary, personId);
+            return wiki;
+        }
+        markPersonFetched.run(personId);
+        return null;
+    } catch (e) {
+        console.error(`[wikipedia] Error fetching for person ${personId}:`, e instanceof Error ? e.message : String(e));
+        markPersonFetched.run(personId);
+        return null;
+    }
+}
+
 export async function backfillWikipedia() {
     if (running) return;
     running = true;

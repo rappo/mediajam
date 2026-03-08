@@ -1,5 +1,6 @@
 import db from '$lib/server/db.js';
 import { json, error } from '@sveltejs/kit';
+import { fetchWikipediaForPerson } from '$lib/server/wikipedia-backfill.js';
 
 /** @type {import('./$types').RequestHandler} */
 export async function POST({ params, locals }) {
@@ -169,6 +170,22 @@ export async function POST({ params, locals }) {
         }
     }
 
+    // Fetch Wikipedia data if not already fetched
+    const preWikiPerson = /** @type {any} */ (db.prepare('SELECT tmdb_person_id, wikipedia_fetched_at FROM persons WHERE id = ?').get(personId));
+    if (preWikiPerson && !preWikiPerson.wikipedia_fetched_at) {
+        try {
+            const tmdbSettings2 = /** @type {any} */ (db.prepare('SELECT tmdb_api_key FROM app_settings WHERE id = 1').get());
+            const wiki = await fetchWikipediaForPerson(personId, preWikiPerson.tmdb_person_id, tmdbSettings2?.tmdb_api_key || null);
+            if (wiki) {
+                results.updated.push(`Wikipedia: found ${wiki.url}`);
+            } else {
+                results.updated.push('Wikipedia: no article found');
+            }
+        } catch (e) {
+            results.errors.push(`Wikipedia: ${e instanceof Error ? e.message : String(e)}`);
+        }
+    }
+
     // Return final person data
     const finalPerson = /** @type {any} */ (db.prepare('SELECT * FROM persons WHERE id = ?').get(personId));
     return json({
@@ -183,6 +200,7 @@ export async function POST({ params, locals }) {
             death_date: finalPerson.death_date,
             birth_place: finalPerson.birth_place,
             musicbrainz_artist_id: finalPerson.musicbrainz_artist_id,
+            wikipedia_url: finalPerson.wikipedia_url,
         }
     });
 }
