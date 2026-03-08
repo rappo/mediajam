@@ -1,4 +1,5 @@
 import { reconcileExternalMedia, deduplicateParents, deduplicateChildren, deduplicateParentsByTitle, deduplicatePlaybackHistory } from '$lib/server/reconcile.js';
+import { smartMergeCompilations } from '$lib/server/album-matcher.js';
 import { syncAllArr } from '$lib/server/arr-sync.js';
 import db from '$lib/server/db.js';
 import { json } from '@sveltejs/kit';
@@ -20,6 +21,10 @@ export async function POST({ locals }) {
         const titleDedup = deduplicateParentsByTitle();
         const historyDedup = deduplicatePlaybackHistory();
 
+        // Smart-merge compilations: route individual plays from best-of/compilation
+        // albums to the correct studio albums based on track name matching
+        const compilationMerge = smartMergeCompilations();
+
         // Sync *arr services
         let arrSummary = '';
         try {
@@ -33,11 +38,12 @@ export async function POST({ locals }) {
             console.error('[reconcile] arr-sync error:', e);
         }
 
-        const summary = `${result.merged} merged, ${result.deleted} orphans, ${dedupResult.deduped + titleDedup.deduped} deduped parents, ${childDedup.deduped} deduped children, ${historyDedup.removed} duplicate plays removed${arrSummary}`;
+        const compilationSummary = compilationMerge.merged > 0 ? `, ${compilationMerge.merged} compilations merged (${compilationMerge.playsRouted} plays routed)` : '';
+        const summary = `${result.merged} merged, ${result.deleted} orphans, ${dedupResult.deduped + titleDedup.deduped} deduped parents, ${childDedup.deduped} deduped children, ${historyDedup.removed} duplicate plays removed${compilationSummary}${arrSummary}`;
         console.log(`[reconcile] Manual: ${summary}`);
         db.prepare('UPDATE sync_history SET status = ?, finished_at = ?, summary = ? WHERE id = ?')
             .run('success', new Date().toISOString(), summary, histId);
-        return json({ success: true, ...result, ...dedupResult, titleDeduped: titleDedup.deduped, childrenDeduped: childDedup.deduped, childHistoryMoved: childDedup.historyMoved, historyDupsRemoved: historyDedup.removed });
+        return json({ success: true, ...result, ...dedupResult, titleDeduped: titleDedup.deduped, childrenDeduped: childDedup.deduped, childHistoryMoved: childDedup.historyMoved, historyDupsRemoved: historyDedup.removed, compilationsMerged: compilationMerge.merged, playsRouted: compilationMerge.playsRouted });
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         db.prepare('UPDATE sync_history SET status = ?, finished_at = ?, summary = ? WHERE id = ?')

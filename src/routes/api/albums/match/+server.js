@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { generateMatches, mergeAlbum, autoMergeExact, autoMergeMediumPlus } from '$lib/server/album-matcher.js';
+import { generateMatches, mergeAlbum, autoMergeExact, autoMergeMediumPlus, smartMergeCompilations, enrichUnmatchedAlbums } from '$lib/server/album-matcher.js';
 
 /** @type {import('./$types').RequestHandler} */
 export async function GET({ url }) {
@@ -44,6 +44,24 @@ export async function POST({ request }) {
                 console.log(`[album-match] Auto-merging medium+ matches${artistId2 ? ` for artist ${artistId2}` : ''}`);
                 const result = autoMergeMediumPlus({ artistId: artistId2 });
                 console.log(`[album-match] Auto-merge medium+ done:`, result);
+                return json({ success: true, ...result });
+            }
+
+            case 'smart-merge-compilations': {
+                const artistId3 = body.artistId || undefined;
+                const dryRun = body.dryRun || false;
+                console.log(`[album-match] Smart-merging compilations${artistId3 ? ` for artist ${artistId3}` : ''}${dryRun ? ' (dry run)' : ''}`);
+                const result = smartMergeCompilations({ artistId: artistId3, dryRun });
+                console.log(`[album-match] Smart-merge done:`, result.merged, 'merged,', result.playsRouted, 'plays routed,', result.skipped, 'skipped');
+                return json({ success: true, ...result });
+            }
+
+            case 'enrich-unmatched': {
+                const artistId4 = body.artistId || undefined;
+                const dryRun2 = body.dryRun || false;
+                console.log(`[album-match] Enriching unmatched albums${artistId4 ? ` for artist ${artistId4}` : ''}${dryRun2 ? ' (dry run)' : ''}`);
+                const result = await enrichUnmatchedAlbums({ artistId: artistId4, dryRun: dryRun2 });
+                console.log(`[album-match] Enrich done:`, result.enriched, 'enriched,', result.notFound, 'not found');
                 return json({ success: true, ...result });
             }
 

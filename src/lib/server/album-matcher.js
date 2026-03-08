@@ -466,3 +466,336 @@ export function autoMergeMediumPlus({ artistId } = {}) {
 
     return { merged, totalPlays };
 }
+
+/**
+ * Smart-merge compilation/best-of albums by routing each play to the correct
+ * studio album based on track name matching against Jellyfin tracks.
+ *
+ * For each unmatched album:
+ *   1. Get all its playback_history entries with track names
+ *   2. For each track, fuzzy-match against Jellyfin tracks on the same artist's matched albums
+ *   3. If ALL tracks match existing albums → route each play to the correct album, delete unmatched
+ *   4. If not all match → skip (needs manual review or is unique content)
+ *
+ * @param {{ artistId?: number, dryRun?: boolean }} options
+ * @returns {{ merged: number, playsRouted: number, skipped: number, details: any[] }}
+ */
+export function smartMergeCompilations({ artistId, dryRun = false } = {}) {
+    // Get all unmatched albums with playback history
+    let query = `
+        SELECT mc.id, mc.title, mc.parent_id, mp.title as artist_name
+        FROM media_children mc
+        JOIN media_parents mp ON mc.parent_id = mp.id
+        WHERE mp.media_type = 'artist' AND mc.jellyfin_id IS NULL
+        AND COALESCE(mc.is_special, 0) = 0
+    `;
+    /** @type {any[]} */
+    const params = [];
+    if (artistId) {
+        query += ' AND mc.parent_id = ?';
+        params.push(artistId);
+    }
+    const unmatchedAlbums = /** @type {any[]} */ (db.prepare(query).all(...params));
+
+    // Pre-load all Jellyfin tracks indexed by artist name → album_id → track titles
+    /** @type {Map<string, Map<number, {albumTitle: string, tracks: string[]}>>} */
+    const tracksByArtist = new Map();
+    const allTracks = /** @type {any[]} */ (db.prepare(`
+        SELECT t.album_id, t.title as track_title, mc.title as album_title,
+               mc.parent_id, mp.title as artist_name
+        FROM tracks t
+        JOIN media_children mc ON t.album_id = mc.id
+        JOIN media_parents mp ON mc.parent_id = mp.id
+        WHERE mc.jellyfin_id IS NOT NULL AND mp.media_type = 'artist'
+    `).all());
+    for (const t of allTracks) {
+        const normArtist = normalizeTitle(t.artist_name);
+        if (!tracksByArtist.has(normArtist)) tracksByArtist.set(normArtist, new Map());
+        const artistMap = tracksByArtist.get(normArtist);
+        if (artistMap) {
+            if (!artistMap.has(t.album_id)) artistMap.set(t.album_id, { albumTitle: t.album_title, tracks: [] });
+            artistMap.get(t.album_id)?.tracks.push(t.track_title);
+        }
+    }
+
+    let merged = 0;
+    let playsRouted = 0;
+    let skipped = 0;
+    /** @type {any[]} */
+    const details = [];
+
+    for (const album of unmatchedAlbums) {
+        const normArtist = normalizeTitle(album.artist_name);
+        const artistTracks = tracksByArtist.get(normArtist);
+        if (!artistTracks) {
+            skipped++;
+            continue;
+        }
+
+        // Get all playback_history entries for this unmatched album
+        const plays = /** @type {any[]} */ (db.prepare(`
+            SELECT id, track_name FROM playback_history
+            WHERE media_id = ? AND track_name IS NOT NULL AND track_name != ''
+        `).all(album.id));
+
+        if (plays.length === 0) {
+            skipped++;
+            continue;
+        }
+
+        // For each play, find which matched album it belongs to
+        /** @type {Map<number, {albumTitle: string, playIds: number[]}>} */
+        const routeMap = new Map();
+        let unmatchedPlays = 0;
+
+        for (const play of plays) {
+            let bestAlbumId = null;
+            let bestAlbumTitle = '';
+
+            for (const [albumId, albumData] of artistTracks) {
+                const hasMatch = albumData.tracks.some(jt => fuzzyMatch(play.track_name, jt));
+                if (hasMatch) {
+                    bestAlbumId = albumId;
+                    bestAlbumTitle = albumData.albumTitle;
+                    break;
+                }
+            }
+
+            if (bestAlbumId !== null) {
+                if (!routeMap.has(bestAlbumId)) routeMap.set(bestAlbumId, { albumTitle: bestAlbumTitle, playIds: [] });
+                routeMap.get(bestAlbumId)?.playIds.push(play.id);
+            } else {
+                unmatchedPlays++;
+            }
+        }
+
+        // Only auto-merge if ALL tracks matched (it's a pure compilation)
+        if (unmatchedPlays > 0) {
+            skipped++;
+            details.push({
+                action: 'skipped',
+                albumTitle: album.title,
+                artistName: album.artist_name,
+                reason: `${unmatchedPlays}/${plays.length} tracks unmatched — likely unique content`,
+                totalPlays: plays.length
+            });
+            continue;
+        }
+
+        // Route plays and delete the unmatched album
+        if (!dryRun) {
+            db.transaction(() => {
+                for (const [targetAlbumId, routeData] of routeMap) {
+                    for (const playId of routeData.playIds) {
+                        db.prepare('UPDATE playback_history SET media_id = ? WHERE id = ?').run(targetAlbumId, playId);
+                    }
+
+                    // Link track_id by matching track_name to tracks.title on the target album
+                    db.prepare(`
+                        UPDATE playback_history SET track_id = (
+                            SELECT t.id FROM tracks t
+                            WHERE t.album_id = ?
+                            AND LOWER(TRIM(t.title)) = LOWER(TRIM(playback_history.track_name))
+                            LIMIT 1
+                        )
+                        WHERE media_id = ? AND track_id IS NULL AND track_name IS NOT NULL
+                    `).run(targetAlbumId, targetAlbumId);
+
+                    // Update play_count on target album
+                    db.prepare(`
+                        UPDATE media_children SET play_count = (
+                            SELECT COUNT(DISTINCT CAST(strftime('%s', timestamp) / 300 AS INTEGER) || '::' || COALESCE(track_name, ''))
+                            FROM playback_history WHERE media_id = ?
+                        ) WHERE id = ?
+                    `).run(targetAlbumId, targetAlbumId);
+                }
+
+                // Delete the unmatched album
+                db.prepare('DELETE FROM media_children WHERE id = ?').run(album.id);
+            })();
+        }
+
+        const routeDetails = [...routeMap.entries()].map(([id, d]) => `${d.playIds.length} plays → ${d.albumTitle}`);
+        merged++;
+        playsRouted += plays.length;
+        details.push({
+            action: dryRun ? 'would_merge' : 'merged',
+            albumTitle: album.title,
+            artistName: album.artist_name,
+            totalPlays: plays.length,
+            routing: routeDetails
+        });
+
+        if (!dryRun) {
+            console.log(`[smart-merge] Merged "${album.title}" (${album.artist_name}): ${routeDetails.join(', ')}`);
+        }
+    }
+
+    return { merged, playsRouted, skipped, details };
+}
+
+const MB_API = 'https://musicbrainz.org/ws/2';
+const MB_USER_AGENT = 'MediaJam/1.0 (https://github.com/mediajam)';
+const MB_RATE_MS = 1100; // slightly over 1s to stay safe
+
+/**
+ * Enrich remaining unmatched albums with MusicBrainz metadata + cover art.
+ * For each unmatched album without a musicbrainz_id, searches MusicBrainz
+ * by artist MBID + album title, and if found, fills in:
+ *   - musicbrainz_id (release group ID)
+ *   - item_number (release year)
+ *   - poster_url (from Cover Art Archive)
+ *   - title correction if MusicBrainz has a different canonical title
+ *
+ * @param {{ artistId?: number, dryRun?: boolean }} options
+ * @returns {Promise<{ enriched: number, notFound: number, details: any[] }>}
+ */
+export async function enrichUnmatchedAlbums({ artistId, dryRun = false } = {}) {
+    // Get unmatched albums without musicbrainz_id, for artists that HAVE a musicbrainz_id
+    let query = `
+        SELECT mc.id, mc.title, mc.parent_id, mc.musicbrainz_id as album_mb_id,
+               mp.title as artist_name, mp.musicbrainz_id as artist_mb_id
+        FROM media_children mc
+        JOIN media_parents mp ON mc.parent_id = mp.id
+        WHERE mp.media_type = 'artist' AND mc.jellyfin_id IS NULL
+        AND mc.musicbrainz_id IS NULL
+        AND mp.musicbrainz_id IS NOT NULL AND mp.musicbrainz_id != ''
+        AND COALESCE(mc.is_special, 0) = 0
+    `;
+    /** @type {any[]} */
+    const params = [];
+    if (artistId) {
+        query += ' AND mc.parent_id = ?';
+        params.push(artistId);
+    }
+    const albums = /** @type {any[]} */ (db.prepare(query).all(...params));
+
+    let enriched = 0;
+    let notFound = 0;
+    /** @type {any[]} */
+    const details = [];
+
+    for (const album of albums) {
+        // Search MusicBrainz release-groups by artist MBID
+        const searchTitle = encodeURIComponent(album.title.replace(/[()[\]{}]/g, ''));
+        const url = `${MB_API}/release-group?query=releasegroup:"${searchTitle}" AND arid:${album.artist_mb_id}&fmt=json&limit=5`;
+
+        try {
+            const res = await fetch(url, {
+                headers: { 'User-Agent': MB_USER_AGENT, 'Accept': 'application/json' },
+                signal: AbortSignal.timeout(15000)
+            });
+
+            if (res.status === 503 || res.status === 429) {
+                console.log(`[enrich] Rate limited, waiting 3s...`);
+                await new Promise(r => setTimeout(r, 3000));
+                // Skip this one, will catch on next run
+                continue;
+            }
+
+            if (!res.ok) {
+                notFound++;
+                continue;
+            }
+
+            const data = await res.json();
+            await new Promise(r => setTimeout(r, MB_RATE_MS)); // Rate limit
+
+            if (!data['release-groups'] || data['release-groups'].length === 0) {
+                notFound++;
+                details.push({ action: 'not_found', albumTitle: album.title, artistName: album.artist_name });
+                continue;
+            }
+
+            // Find the best match — prefer exact title match, then highest score
+            const normalizedAlbumTitle = album.title.toLowerCase().replace(/[^a-z0-9]/g, '');
+            let bestMatch = null;
+            for (const rg of data['release-groups']) {
+                const normalizedRgTitle = (rg.title || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                if (normalizedRgTitle === normalizedAlbumTitle) {
+                    bestMatch = rg;
+                    break;
+                }
+            }
+            // Fallback: pick highest score if no exact match
+            if (!bestMatch && data['release-groups'][0].score >= 80) {
+                bestMatch = data['release-groups'][0];
+            }
+
+            if (!bestMatch) {
+                notFound++;
+                details.push({ action: 'not_found', albumTitle: album.title, artistName: album.artist_name });
+                continue;
+            }
+
+            // Extract metadata
+            const mbId = bestMatch.id;
+            const year = bestMatch['first-release-date'] ? parseInt(bestMatch['first-release-date'].substring(0, 4)) : null;
+            const canonicalTitle = bestMatch.title;
+            const rgType = bestMatch['primary-type'] || null;
+            const secondaryTypes = (bestMatch['secondary-types'] || []).join(', ');
+
+            // Try to get cover art from Cover Art Archive
+            let coverUrl = null;
+            try {
+                const coverRes = await fetch(`https://coverartarchive.org/release-group/${mbId}/front-250`, {
+                    redirect: 'follow',
+                    signal: AbortSignal.timeout(10000)
+                });
+                if (coverRes.ok) {
+                    coverUrl = coverRes.url; // follows redirect to actual image URL
+                }
+            } catch {
+                // No cover art available, not a problem
+            }
+
+            if (!dryRun) {
+                const updates = [];
+                const updateParams = [];
+
+                updates.push('musicbrainz_id = ?');
+                updateParams.push(mbId);
+
+                if (year) {
+                    updates.push('item_number = ?');
+                    updateParams.push(year);
+                }
+
+                if (coverUrl) {
+                    updates.push('poster_url = ?');
+                    updateParams.push(coverUrl);
+                }
+
+                // Update title if MusicBrainz has a meaningfully different canonical form
+                if (canonicalTitle && canonicalTitle !== album.title) {
+                    updates.push('title = ?');
+                    updateParams.push(canonicalTitle);
+                }
+
+                updateParams.push(album.id);
+                db.prepare(`UPDATE media_children SET ${updates.join(', ')} WHERE id = ?`).run(...updateParams);
+            }
+
+            enriched++;
+            details.push({
+                action: dryRun ? 'would_enrich' : 'enriched',
+                albumTitle: album.title,
+                canonicalTitle,
+                artistName: album.artist_name,
+                mbId,
+                year,
+                type: secondaryTypes ? `${rgType} (${secondaryTypes})` : rgType,
+                hasCover: !!coverUrl
+            });
+
+            console.log(`[enrich] ${album.title} → MB: ${mbId}, year: ${year}, type: ${rgType}${secondaryTypes ? ` (${secondaryTypes})` : ''}, cover: ${coverUrl ? 'yes' : 'no'}`);
+
+        } catch (err) {
+            console.error(`[enrich] Error processing "${album.title}":`, err instanceof Error ? err.message : err);
+            notFound++;
+        }
+    }
+
+    return { enriched, notFound, details };
+}
+
