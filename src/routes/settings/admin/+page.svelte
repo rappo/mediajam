@@ -1217,11 +1217,27 @@
                     if (d.found !== undefined) wikiFound = d.found;
                     if (d.type === "complete") {
                         wikiStatus = "complete";
+                        syncHistoryLocal = {
+                            ...syncHistoryLocal,
+                            wikipedia: {
+                                status: "success",
+                                finishedAt: new Date().toISOString(),
+                                summary: `${wikiFound} summaries found`,
+                            },
+                        };
                         reader.cancel();
                         return;
                     }
                     if (d.type === "error" && !d.phase) {
                         wikiStatus = "error";
+                        syncHistoryLocal = {
+                            ...syncHistoryLocal,
+                            wikipedia: {
+                                status: "failed",
+                                finishedAt: new Date().toISOString(),
+                                summary: "Backfill failed",
+                            },
+                        };
                         reader.cancel();
                         return;
                     }
@@ -1496,6 +1512,17 @@
                 },
             ];
         }
+        // Record history for badge display
+        const hasErrors = arrSyncLogs.some((l) => l.type === "error");
+        const synced = arrSyncLogs.filter((l) => l.message?.includes("synced")).length;
+        syncHistoryLocal = {
+            ...syncHistoryLocal,
+            arr: {
+                status: hasErrors ? "failed" : "success",
+                finishedAt: new Date().toISOString(),
+                summary: hasErrors ? `Completed with errors` : `${synced} services synced`,
+            },
+        };
         arrSyncRunning = false;
     }
 
@@ -3038,10 +3065,10 @@
                                     : "jellyfin")}
                     >
                         <span class="text-lg">📚</span>
-                        <span class="font-medium text-sm flex-1"
-                            >Jellyfin Sync</span
-                        >
-                        <span class="text-xs text-base-content/40 hidden sm:inline">Jellyfin → catalog, play counts, people</span>
+                        <div class="flex-1 min-w-0">
+                            <span class="font-medium text-sm">Jellyfin Sync</span>
+                            <span class="text-xs text-base-content/40 block">Jellyfin → catalog, play counts, people</span>
+                        </div>
                         {#if syncStatus === "syncing" || syncStatus === "paused"}
                             <span
                                 class="loading loading-spinner loading-xs text-info"
@@ -3249,10 +3276,10 @@
                                 expandedSync === "people" ? null : "people")}
                     >
                         <span class="text-lg">👥</span>
-                        <span class="font-medium text-sm flex-1"
-                            >Sync People</span
-                        >
-                        <span class="text-xs text-base-content/40 hidden sm:inline">TMDB → cast, crew, photos</span>
+                        <div class="flex-1 min-w-0">
+                            <span class="font-medium text-sm">Sync People</span>
+                            <span class="text-xs text-base-content/40 block">TMDB → cast, crew, photos</span>
+                        </div>
                         {#if peopleSyncStatus === "syncing" || peopleSyncStatus === "paused"}
                             <span
                                 class="loading loading-spinner loading-xs text-info"
@@ -3425,10 +3452,10 @@
                                     : "musicbrainz")}
                     >
                         <span class="text-lg">🎵</span>
-                        <span class="font-medium text-sm flex-1"
-                            >Enrich Music</span
-                        >
-                        <span class="text-xs text-base-content/40 hidden sm:inline">MusicBrainz → metadata, links</span>
+                        <div class="flex-1 min-w-0">
+                            <span class="font-medium text-sm">Enrich Music</span>
+                            <span class="text-xs text-base-content/40 block">MusicBrainz → metadata, links</span>
+                        </div>
                         {#if mbStatus === "syncing" || mbStatus === "paused"}
                             <span
                                 class="loading loading-spinner loading-xs text-secondary"
@@ -3583,16 +3610,30 @@
                                     : "arr")}
                     >
                         <span class="text-lg">📡</span>
-                        <span class="font-medium text-sm flex-1"
-                            >*arr Sync</span
-                        >
-                        <span class="text-xs text-base-content/40 hidden sm:inline">Radarr, Sonarr, Lidarr → wanted items, download status</span>
+                        <div class="flex-1 min-w-0">
+                            <span class="font-medium text-sm">*arr Sync</span>
+                            <span class="text-xs text-base-content/40 block">Radarr, Sonarr, Lidarr → wanted items, download status</span>
+                        </div>
                         {#if arrSyncRunning}
                             <span
                                 class="loading loading-spinner loading-xs text-info"
                             ></span>
                             <span class="badge badge-info badge-sm gap-1"
                                 >syncing</span
+                            >
+                        {:else if syncHistoryLocal?.arr}
+                            {@const h = syncHistoryLocal.arr}
+                            <span
+                                class="badge badge-sm gap-1"
+                                class:badge-success={h.status === "success"}
+                                class:badge-error={h.status === "failed"}
+                            >
+                                {h.status}
+                            </span>
+                            <span class="text-xs text-base-content/40"
+                                >{h.finishedAt
+                                    ? new Date(h.finishedAt).toLocaleString()
+                                    : ""}</span
                             >
                         {/if}
                         <svg
@@ -3674,10 +3715,10 @@
                                     : "wikipedia")}
                     >
                         <span class="text-lg">📚</span>
-                        <span class="font-medium text-sm flex-1"
-                            >Wikipedia Summaries</span
-                        >
-                        <span class="text-xs text-base-content/40 hidden sm:inline">TMDb → Wikidata → Wikipedia summaries</span>
+                        <div class="flex-1 min-w-0">
+                            <span class="font-medium text-sm">Wikipedia Summaries</span>
+                            <span class="text-xs text-base-content/40 block">TMDb → Wikidata → Wikipedia summaries</span>
+                        </div>
                         {#if wikiStatus === "syncing"}
                             <span
                                 class="loading loading-spinner loading-xs text-secondary"
@@ -3685,8 +3726,20 @@
                             <span class="badge badge-secondary badge-sm gap-1"
                                 >syncing</span
                             >
-                        {:else if wikiStatus === "complete"}
-                            <span class="text-success text-xs">✓ {wikiFound} found</span>
+                        {:else if syncHistoryLocal?.wikipedia}
+                            {@const h = syncHistoryLocal.wikipedia}
+                            <span
+                                class="badge badge-sm gap-1"
+                                class:badge-success={h.status === "success"}
+                                class:badge-error={h.status === "failed"}
+                            >
+                                {h.status}
+                            </span>
+                            <span class="text-xs text-base-content/40"
+                                >{h.finishedAt
+                                    ? new Date(h.finishedAt).toLocaleString()
+                                    : ""}</span
+                            >
                         {/if}
                         <svg
                             xmlns="http://www.w3.org/2000/svg"
