@@ -6,6 +6,24 @@
     import { goto } from "$app/navigation";
     import { jellyfinAuthInvalid } from "$lib/stores/auth.js";
 
+    /** Format a date string as relative time, e.g. "2 hours ago" */
+    function timeAgo(dateStr) {
+        if (!dateStr) return '';
+        const d = new Date(dateStr);
+        const now = new Date();
+        const diffMs = now.getTime() - d.getTime();
+        const diffSec = Math.floor(diffMs / 1000);
+        if (diffSec < 60) return 'just now';
+        const diffMin = Math.floor(diffSec / 60);
+        if (diffMin < 60) return `${diffMin}m ago`;
+        const diffHr = Math.floor(diffMin / 60);
+        if (diffHr < 24) return `${diffHr}h ago`;
+        const diffDay = Math.floor(diffHr / 24);
+        if (diffDay < 7) return `${diffDay}d ago`;
+        if (diffDay < 30) return `${Math.floor(diffDay / 7)}w ago`;
+        return `${Math.floor(diffDay / 30)}mo ago`;
+    }
+
     /** @type {{ data: import('./$types').PageData }} */
     let { data } = $props();
 
@@ -3087,15 +3105,16 @@
                             >
                                 {h.status}
                             </span>
-                            <span class="text-xs text-base-content/40"
-                                >{h.finishedAt
-                                    ? new Date(h.finishedAt).toLocaleString()
-                                    : ""}</span
+                            <span class="text-xs text-base-content/40" title={h.finishedAt ? new Date(h.finishedAt).toLocaleString() : ''}
+                                >{h.finishedAt ? timeAgo(h.finishedAt) : ''}</span
                             >
                         {:else}
                             <span class="text-xs text-base-content/40"
                                 >Never synced</span
                             >
+                        {/if}
+                        {#if data.syncPending?.jellyfin > 0}
+                            <span class="badge badge-warning badge-xs">{data.syncPending.jellyfin} new</span>
                         {/if}
                         <svg
                             xmlns="http://www.w3.org/2000/svg"
@@ -3298,15 +3317,16 @@
                             >
                                 {h.status}
                             </span>
-                            <span class="text-xs text-base-content/40"
-                                >{h.finishedAt
-                                    ? new Date(h.finishedAt).toLocaleString()
-                                    : ""}</span
+                            <span class="text-xs text-base-content/40" title={h.finishedAt ? new Date(h.finishedAt).toLocaleString() : ''}
+                                >{h.finishedAt ? timeAgo(h.finishedAt) : ''}</span
                             >
                         {:else}
                             <span class="text-xs text-base-content/40"
                                 >Never synced</span
                             >
+                        {/if}
+                        {#if data.syncPending?.people > 0}
+                            <span class="badge badge-warning badge-xs">{data.syncPending.people} pending</span>
                         {/if}
                         <svg
                             xmlns="http://www.w3.org/2000/svg"
@@ -3476,15 +3496,16 @@
                             >
                                 {h.status}
                             </span>
-                            <span class="text-xs text-base-content/40"
-                                >{h.finishedAt
-                                    ? new Date(h.finishedAt).toLocaleString()
-                                    : ""}</span
+                            <span class="text-xs text-base-content/40" title={h.finishedAt ? new Date(h.finishedAt).toLocaleString() : ''}
+                                >{h.finishedAt ? timeAgo(h.finishedAt) : ''}</span
                             >
                         {:else}
                             <span class="text-xs text-base-content/40"
                                 >Never run</span
                             >
+                        {/if}
+                        {#if data.syncPending?.musicbrainz > 0}
+                            <span class="badge badge-warning badge-xs">{data.syncPending.musicbrainz} pending</span>
                         {/if}
                         <svg
                             xmlns="http://www.w3.org/2000/svg"
@@ -3631,10 +3652,8 @@
                             >
                                 {h.status}
                             </span>
-                            <span class="text-xs text-base-content/40"
-                                >{h.finishedAt
-                                    ? new Date(h.finishedAt).toLocaleString()
-                                    : ""}</span
+                            <span class="text-xs text-base-content/40" title={h.finishedAt ? new Date(h.finishedAt).toLocaleString() : ''}
+                                >{h.finishedAt ? timeAgo(h.finishedAt) : ''}</span
                             >
                         {/if}
                         <svg
@@ -3736,11 +3755,12 @@
                             >
                                 {h.status}
                             </span>
-                            <span class="text-xs text-base-content/40"
-                                >{h.finishedAt
-                                    ? new Date(h.finishedAt).toLocaleString()
-                                    : ""}</span
+                            <span class="text-xs text-base-content/40" title={h.finishedAt ? new Date(h.finishedAt).toLocaleString() : ''}
+                                >{h.finishedAt ? timeAgo(h.finishedAt) : ''}</span
                             >
+                        {/if}
+                        {#if data.syncPending?.wikipedia > 0}
+                            <span class="badge badge-warning badge-xs">{data.syncPending.wikipedia} pending</span>
                         {/if}
                         <svg
                             xmlns="http://www.w3.org/2000/svg"

@@ -25,7 +25,33 @@ export function load() {
         };
     }
 
+    // Compute pending/unsynced counts per sync type
+    const lastJellyfinSync = historyByType.jellyfin?.finishedAt || syncState?.last_sync_timestamp || null;
+    const jellyfinPending = lastJellyfinSync
+        ? /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM media_parents WHERE created_at > ?`).get(lastJellyfinSync))?.cnt || 0
+        : /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM media_parents WHERE jellyfin_id IS NULL`).get())?.cnt || 0;
+
+    const peopleTotal = /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM persons`).get())?.cnt || 0;
+    const peopleWithTmdb = /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM persons WHERE tmdb_person_id IS NOT NULL AND photo_url IS NOT NULL`).get())?.cnt || 0;
+    const peoplePending = peopleTotal - peopleWithTmdb;
+
+    const mbTotal = /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM media_parents WHERE media_type = 'artist'`).get())?.cnt || 0;
+    const mbWithData = /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM media_parents WHERE media_type = 'artist' AND musicbrainz_id IS NOT NULL`).get())?.cnt || 0;
+    const mbPending = mbTotal - mbWithData;
+
+    const wikiTotal = /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM media_parents WHERE tmdb_id IS NOT NULL AND media_type IN ('movie','show','artist')`).get())?.cnt || 0;
+    const wikiWithSummary = /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM media_parents WHERE wikipedia_summary IS NOT NULL AND wikipedia_summary != ''`).get())?.cnt || 0;
+    const wikiPersonTotal = /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM persons WHERE tmdb_person_id IS NOT NULL`).get())?.cnt || 0;
+    const wikiPersonWithSummary = /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM persons WHERE wikipedia_summary IS NOT NULL AND wikipedia_summary != ''`).get())?.cnt || 0;
+    const wikiPending = (wikiTotal - wikiWithSummary) + (wikiPersonTotal - wikiPersonWithSummary);
+
     return {
+        syncPending: {
+            jellyfin: jellyfinPending,
+            people: peoplePending,
+            musicbrainz: mbPending,
+            wikipedia: wikiPending
+        },
         settings: {
             jellyfinUrl: settings?.jellyfin_url || '',
             hasTvdbKey: !!settings?.tvdb_api_key,
