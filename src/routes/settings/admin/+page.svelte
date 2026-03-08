@@ -4163,7 +4163,7 @@
 
     <!-- ═══════════════════════ TAB: DATA CLEAN-UP ═══════════════════════ -->
     {#if activeTab === 'cleanup'}
-    <ReconciliationPanel settings={{ radarrUrl: data.settings.radarrUrl, sonarrUrl: data.settings.sonarrUrl, lidarrUrl: data.settings.lidarrUrl }} />
+    <ReconciliationPanel settings={{ radarrUrl: data.settings.radarrExternalUrl || data.settings.radarrUrl, sonarrUrl: data.settings.sonarrExternalUrl || data.settings.sonarrUrl, lidarrUrl: data.settings.lidarrExternalUrl || data.settings.lidarrUrl }} />
     {/if}
 </div>
 
