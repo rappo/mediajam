@@ -121,13 +121,72 @@ function cosineDistance(a, b) {
 const embeddingCache = new Map();
 
 /**
- * Pre-embed all local media_parents titles for similarity search.
+ * Build rich embedding text for a media_parent.
+ * Includes title, overview, wikipedia summary, and top cast/crew names.
+ * Truncates to ~500 chars to stay within embedding model context limits.
+ * @param {any} parent - row from media_parents
+ * @returns {string}
+ */
+function buildEmbeddingText(parent) {
+    const parts = [];
+
+    // Title + year
+    const yearSuffix = parent.release_year ? ` (${parent.release_year})` : '';
+    parts.push(`${parent.media_type}: ${parent.title}${yearSuffix}`);
+
+    // Overview (first ~200 chars)
+    if (parent.overview) {
+        parts.push(parent.overview.slice(0, 200));
+    }
+
+    // Cast & crew (directors, writers, producers, top actors)
+    if (parent.media_type === 'movie' || parent.media_type === 'show' || parent.media_type === 'artist') {
+        try {
+            const credits = /** @type {any[]} */ (db.prepare(`
+                SELECT p.name, pc.role_type FROM person_credits pc
+                JOIN persons p ON p.id = pc.person_id
+                WHERE pc.media_parent_id = ?
+                ORDER BY
+                    CASE pc.role_type
+                        WHEN 'Director' THEN 1
+                        WHEN 'Writer' THEN 2
+                        WHEN 'Producer' THEN 3
+                        ELSE 4
+                    END,
+                    pc.sort_order ASC
+                LIMIT 12
+            `).all(parent.id));
+
+            const directors = credits.filter(c => c.role_type === 'Director').map(c => c.name);
+            const writers = credits.filter(c => c.role_type === 'Writer').map(c => c.name);
+            const producers = credits.filter(c => c.role_type === 'Producer').map(c => c.name);
+            const actors = credits.filter(c => !['Director', 'Writer', 'Producer'].includes(c.role_type)).map(c => c.name);
+
+            if (directors.length > 0) parts.push(`Director: ${directors.join(', ')}`);
+            if (writers.length > 0) parts.push(`Writer: ${writers.join(', ')}`);
+            if (producers.length > 0) parts.push(`Producer: ${producers.join(', ')}`);
+            if (actors.length > 0) parts.push(`Starring: ${actors.join(', ')}`);
+        } catch { /* credits table may not exist yet */ }
+    }
+
+    // Wikipedia summary (first ~200 chars)
+    if (parent.wikipedia_summary) {
+        parts.push(parent.wikipedia_summary.slice(0, 200));
+    }
+
+    // Join and truncate to ~600 chars for embedding model efficiency
+    return parts.join('. ').slice(0, 600);
+}
+
+/**
+ * Pre-embed all local media_parents with rich metadata for similarity search.
  * @param {(progress: {done: number, total: number, log: string}) => void} [onProgress]
  * @returns {Promise<{embedded: number, failed: number}>}
  */
 export async function buildEmbeddingIndex(onProgress) {
     const parents = /** @type {any[]} */ (db.prepare(
-        `SELECT id, title, media_type FROM media_parents ORDER BY id`
+        `SELECT id, title, media_type, release_year, overview, wikipedia_summary
+         FROM media_parents ORDER BY id`
     ).all());
 
     let embedded = 0, failed = 0;
@@ -137,7 +196,8 @@ export async function buildEmbeddingIndex(onProgress) {
         const batch = parents.slice(i, i + batchSize);
         for (const p of batch) {
             try {
-                const vec = await embed(`${p.media_type}: ${p.title}`);
+                const text = buildEmbeddingText(p);
+                const vec = await embed(text);
                 if (vec) {
                     embeddingCache.set(p.id, vec);
                     embedded++;
@@ -152,7 +212,7 @@ export async function buildEmbeddingIndex(onProgress) {
             onProgress({
                 done: Math.min(i + batchSize, parents.length),
                 total: parents.length,
-                log: `🧠 Embedded ${Math.min(i + batchSize, parents.length)}/${parents.length} titles...`
+                log: `🧠 Embedded ${Math.min(i + batchSize, parents.length)}/${parents.length} items...`
             });
         }
     }
