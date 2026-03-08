@@ -109,8 +109,18 @@ export async function load({ params, locals }) {
     // Live Jellyfin favorite check
     const liveFavorite = await checkJellyfinFavorite(person.jellyfin_id, 'persons', person.id);
 
+    // Tiered bio: Wikipedia → TMDB → Jellyfin → legacy
+    const displayBio = person.wikipedia_summary || person.bio_tmdb || person.bio_jellyfin || person.bio || null;
+    const bioSource = person.wikipedia_summary ? 'wikipedia'
+        : person.bio_tmdb ? 'tmdb'
+        : person.bio_jellyfin ? 'jellyfin'
+        : person.bio ? 'legacy'
+        : null;
+    // If we have a TMDB ID but no bio from any source, UI should lazy-fetch
+    const needsBioFetch = !displayBio && !!person.tmdb_person_id;
+
     return {
-        person: { ...person, photoUrl, is_favorite: liveFavorite ?? person.is_favorite },
+        person: { ...person, photoUrl, is_favorite: liveFavorite ?? person.is_favorite, displayBio, bioSource, needsBioFetch },
         movies,
         shows,
         artists,

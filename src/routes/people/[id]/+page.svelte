@@ -372,6 +372,27 @@
     let personSyncing = $state(false);
     let personSyncResult = $state(/** @type {any} */ (null));
 
+    // Bio lazy-fetch
+    let lazyBio = $state(/** @type {string|null} */ (null));
+    let lazyBioSource = $state(/** @type {string|null} */ (null));
+    let bioLoading = $state(false);
+
+    $effect(() => {
+        if (data.person.needsBioFetch && !lazyBio && !bioLoading) {
+            bioLoading = true;
+            fetch(`/api/people/${data.person.id}/bio`)
+                .then(r => r.json())
+                .then(d => {
+                    if (d.bio) {
+                        lazyBio = d.bio;
+                        lazyBioSource = d.source;
+                    }
+                })
+                .catch(() => {})
+                .finally(() => { bioLoading = false; });
+        }
+    });
+
     async function syncPerson() {
         if (personSyncing) return;
         personSyncing = true;
@@ -475,10 +496,16 @@
                 </div>
             </div>
 
-            {#if data.person.bio}
+            {#if data.person.displayBio || lazyBio}
                 <p class="text-sm text-base-content/70 line-clamp-4">
-                    {data.person.bio}
+                    {data.person.displayBio || lazyBio}
                 </p>
+                {#if data.person.bioSource || lazyBioSource}
+                    {@const src = data.person.bioSource || lazyBioSource}
+                    <span class="text-xs text-base-content/40 italic">via {src === 'tmdb' ? 'TMDB' : src === 'wikipedia' ? 'Wikipedia' : src === 'jellyfin' ? 'Jellyfin' : src}</span>
+                {/if}
+            {:else if bioLoading}
+                <p class="text-sm text-base-content/40 italic">Loading bio…</p>
             {/if}
 
             <!-- External links -->
