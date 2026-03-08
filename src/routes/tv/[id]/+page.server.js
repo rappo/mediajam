@@ -1,5 +1,6 @@
 import db from '$lib/server/db.js';
 import { error } from '@sveltejs/kit';
+import { checkJellyfinFavorite } from '$lib/server/jellyfin-favorites.js';
 
 export async function load({ params }) {
     const showId = parseInt(params.id);
@@ -162,8 +163,11 @@ export async function load({ params }) {
         FROM external_ratings WHERE media_parent_id = ? ORDER BY source
     `).all(showId));
 
+    // Live Jellyfin favorite check
+    const liveFavorite = await checkJellyfinFavorite(show.jellyfin_id, 'media_parents', show.id);
+
     return {
-        show,
+        show: { ...show, is_favorite: liveFavorite ?? show.is_favorite },
         seasons: sortedSeasons,
         maxEpisodes,
         includeSpecials,

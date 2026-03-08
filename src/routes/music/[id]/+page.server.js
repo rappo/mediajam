@@ -1,7 +1,8 @@
 import db from '$lib/server/db.js';
 import { error } from '@sveltejs/kit';
+import { checkJellyfinFavorite } from '$lib/server/jellyfin-favorites.js';
 
-export function load({ params, locals }) {
+export async function load({ params, locals }) {
     const artistId = parseInt(params.id);
     const userId = locals.user?.id || 0;
     const settings = db.prepare('SELECT jellyfin_url, lidarr_url FROM app_settings WHERE id = 1').get();
@@ -121,8 +122,11 @@ export function load({ params, locals }) {
         ratings: ratingsByAlbum[a.id] || []
     }));
 
+    // Live Jellyfin favorite check
+    const liveFavorite = await checkJellyfinFavorite(artist.jellyfin_id, 'media_parents', artist.id);
+
     return {
-        artist: { ...artist, total_plays: totalPlays, imageUrl: artistImageUrl },
+        artist: { ...artist, is_favorite: liveFavorite ?? artist.is_favorite, total_plays: totalPlays, imageUrl: artistImageUrl },
         albums: albumsWithRatings,
         jellyfinUrl,
         arrUrl: settings?.lidarr_url || '',

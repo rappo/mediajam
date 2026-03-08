@@ -1,8 +1,9 @@
 import db from '$lib/server/db.js';
 import { error } from '@sveltejs/kit';
+import { checkJellyfinFavorite } from '$lib/server/jellyfin-favorites.js';
 
 /** @type {import('./$types').PageServerLoad} */
-export function load({ params, locals }) {
+export async function load({ params, locals }) {
     const movieId = parseInt(params.id);
     const userId = locals.user?.id || 0;
     const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_url, radarr_url FROM app_settings WHERE id = 1').get());
@@ -89,9 +90,13 @@ export function load({ params, locals }) {
         FROM external_ratings WHERE media_parent_id = ? ORDER BY source
     `).all(movieId));
 
+    // Live Jellyfin favorite check
+    const liveFavorite = await checkJellyfinFavorite(movie.jellyfin_id, 'media_parents', movie.id);
+
     return {
         movie: {
             ...movie,
+            is_favorite: liveFavorite ?? movie.is_favorite,
             // Effective watch status: if we have play history, it's watched regardless of Jellyfin
             watch_status: totalPlays > 0 ? 'watched' : movie.watch_status,
             play_count: Math.max(movie.play_count || 0, totalPlays),

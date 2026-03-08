@@ -1,8 +1,9 @@
 import db from '$lib/server/db.js';
 import { error } from '@sveltejs/kit';
+import { checkJellyfinFavorite } from '$lib/server/jellyfin-favorites.js';
 
 /** @type {import('./$types').PageServerLoad} */
-export function load({ params, locals }) {
+export async function load({ params, locals }) {
     const personId = parseInt(params.id);
     const userId = locals.user?.id || 0;
     const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_url FROM app_settings WHERE id = 1').get());
@@ -105,8 +106,11 @@ export function load({ params, locals }) {
         SELECT source, external_id FROM external_ids WHERE person_id = ? ORDER BY source
     `).all(personId));
 
+    // Live Jellyfin favorite check
+    const liveFavorite = await checkJellyfinFavorite(person.jellyfin_id, 'persons', person.id);
+
     return {
-        person: { ...person, photoUrl },
+        person: { ...person, photoUrl, is_favorite: liveFavorite ?? person.is_favorite },
         movies,
         shows,
         artists,
