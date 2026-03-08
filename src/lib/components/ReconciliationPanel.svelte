@@ -55,6 +55,30 @@
     let loadingUnmatched = $state(false);
     let unmatchedSort = $state("plays");
     let unmatchedDir = $state("desc");
+    /** @type {Map<number, any[]>} */
+    let expandedChildren = $state(new Map());
+    /** @type {Set<number>} */
+    let loadingChildren = $state(new Set());
+
+    async function toggleExpand(parentId) {
+        if (expandedChildren.has(parentId)) {
+            expandedChildren.delete(parentId);
+            expandedChildren = new Map(expandedChildren);
+            return;
+        }
+        loadingChildren.add(parentId);
+        loadingChildren = new Set(loadingChildren);
+        try {
+            const res = await fetch(`/api/reconcile/unmatched/children?parentId=${parentId}`);
+            if (res.ok) {
+                const data = await res.json();
+                expandedChildren.set(parentId, data.children || []);
+                expandedChildren = new Map(expandedChildren);
+            }
+        } catch { /* */ }
+        loadingChildren.delete(parentId);
+        loadingChildren = new Set(loadingChildren);
+    }
 
     async function loadUnmatched(
         type = unmatchedType,
@@ -760,11 +784,17 @@
                             </thead>
                             <tbody>
                                 {#each unmatched.items as item}
-                                    <tr>
+                                    <tr
+                                        class="cursor-pointer hover:bg-base-300/50 transition-colors"
+                                        onclick={() => toggleExpand(item.id)}
+                                    >
                                         <td
                                             class="font-medium max-w-[200px] truncate"
                                             title={item.title}
                                         >
+                                            <span class="inline-block w-4 text-base-content/40 mr-1 transition-transform {expandedChildren.has(item.id) ? 'rotate-90' : ''}">
+                                                ▶
+                                            </span>
                                             {item.title}
                                             {#if item.release_year}
                                                 <span
@@ -779,7 +809,7 @@
                                         <td class="text-right font-mono text-xs"
                                             >{item.play_count}</td
                                         >
-                                        <td class="text-xs space-x-1">
+                                        <td class="text-xs space-x-1" onclick={(e) => e.stopPropagation()}>
                                             {#if item.musicbrainz_id}
                                                 <a
                                                     href="https://musicbrainz.org/artist/{item.musicbrainz_id}"
@@ -829,7 +859,7 @@
                                                 >
                                             {/if}
                                         </td>
-                                        <td class="text-xs space-x-1">
+                                        <td class="text-xs space-x-1" onclick={(e) => e.stopPropagation()}>
                                             <!-- Mediajam stub link -->
                                             <a
                                                 href="/{unmatchedType === 'artist' ? 'music' : unmatchedType === 'show' ? 'tv' : 'movies'}/{item.id}"
@@ -872,6 +902,55 @@
                                             {/if}
                                         </td>
                                     </tr>
+                                    <!-- Expanded children sub-rows -->
+                                    {#if loadingChildren.has(item.id)}
+                                        <tr>
+                                            <td colspan="5" class="py-2 px-8">
+                                                <span class="loading loading-spinner loading-xs"></span>
+                                                <span class="text-xs text-base-content/50 ml-1">Loading...</span>
+                                            </td>
+                                        </tr>
+                                    {/if}
+                                    {#if expandedChildren.has(item.id)}
+                                        {@const children = expandedChildren.get(item.id) || []}
+                                        {#if children.length === 0}
+                                            <tr>
+                                                <td colspan="5" class="py-1 px-8 text-xs text-base-content/40 italic">
+                                                    No children found
+                                                </td>
+                                            </tr>
+                                        {:else}
+                                            {#each children as child}
+                                                <tr class="bg-base-300/20">
+                                                    <td class="pl-10 text-xs text-base-content/70">
+                                                        {#if child.item_number}
+                                                            <span class="font-mono text-base-content/40 mr-1">
+                                                                {#if child.season_number != null}S{String(child.season_number).padStart(2, '0')}{/if}#{String(child.item_number).padStart(2, '0')}
+                                                            </span>
+                                                        {/if}
+                                                        {child.title || 'Untitled'}
+                                                    </td>
+                                                    <td class="text-right text-xs">
+                                                        {#if child.collection_status === 'collected'}
+                                                            <span class="badge badge-xs badge-success">✓</span>
+                                                        {:else}
+                                                            <span class="badge badge-xs badge-ghost">—</span>
+                                                        {/if}
+                                                    </td>
+                                                    <td class="text-right font-mono text-xs text-base-content/50">
+                                                        {child.history_count || 0}
+                                                    </td>
+                                                    <td colspan="2" class="text-xs text-base-content/40">
+                                                        {#if child.watch_status === 'watched'}
+                                                            ✅ watched
+                                                        {:else if child.watch_status}
+                                                            {child.watch_status}
+                                                        {/if}
+                                                    </td>
+                                                </tr>
+                                            {/each}
+                                        {/if}
+                                    {/if}
                                 {/each}
                             </tbody>
                         </table>
