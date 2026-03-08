@@ -58,7 +58,8 @@ body {
 /* Heart border for favorited items */
 .heart-border-wrap {
 	position: relative;
-	display: inline-block;
+	display: inline-flex;
+	line-height: 0;
 }
 .heart-border-wrap::before {
 	content: '';

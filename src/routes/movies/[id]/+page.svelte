@@ -288,12 +288,12 @@
                     <HeartBorder
                         show={!!data.movie.is_favorite &&
                             data.settings?.heartBorderMovies}
-                        class="rounded-xl"
+                        class="rounded-xl -mt-20"
                     >
                         <img
                             src={imgUrl(data.movie.posterUrl)}
                             alt={data.movie.title}
-                            class="w-32 md:w-40 rounded-xl shadow-2xl shrink-0 -mt-20"
+                            class="w-32 md:w-40 rounded-xl shadow-2xl shrink-0"
                         />
                     </HeartBorder>
                 {/if}
