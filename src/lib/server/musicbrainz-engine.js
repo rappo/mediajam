@@ -527,9 +527,11 @@ async function runEnrichment() {
         const mergeTransaction = db.transaction(() => {
             for (const dup of duplicates) {
                 // Get all persons with this IMDb ID, prefer the one with more data
-                const persons = /** @type {Array<{id: number, name: string, photo_url: string|null, bio: string|null, musicbrainz_artist_id: string|null, jellyfin_id: string|null}>} */ (
+                const persons = /** @type {any[]} */ (
                     db.prepare(`
-                        SELECT id, name, photo_url, bio, musicbrainz_artist_id, jellyfin_id
+                        SELECT id, name, photo_url, bio, musicbrainz_artist_id, jellyfin_id,
+                               birth_date, death_date, birth_place, tmdb_person_id,
+                               wikipedia_url, wikipedia_summary
                         FROM persons WHERE imdb_person_id = ?
                         ORDER BY
                             (CASE WHEN photo_url IS NOT NULL THEN 1 ELSE 0 END) +
@@ -545,16 +547,25 @@ async function runEnrichment() {
                 const others = persons.slice(1);
 
                 for (const other of others) {
-                    // Merge musicbrainz_artist_id if survivor doesn't have one
-                    if (!survivor.musicbrainz_artist_id && other.musicbrainz_artist_id) {
-                        db.prepare('UPDATE persons SET musicbrainz_artist_id = ? WHERE id = ?')
-                            .run(other.musicbrainz_artist_id, survivor.id);
-                    }
-                    // Merge photo if survivor doesn't have one
-                    if (!survivor.photo_url && other.photo_url) {
-                        db.prepare('UPDATE persons SET photo_url = ? WHERE id = ?')
-                            .run(other.photo_url, survivor.id);
-                    }
+                    // Merge all enrichment fields the survivor is missing from the deleted row
+                    db.prepare(`
+                        UPDATE persons SET
+                            musicbrainz_artist_id = COALESCE(musicbrainz_artist_id, ?),
+                            photo_url = COALESCE(photo_url, ?),
+                            bio = COALESCE(bio, ?),
+                            birth_date = COALESCE(birth_date, ?),
+                            death_date = COALESCE(death_date, ?),
+                            birth_place = COALESCE(birth_place, ?),
+                            tmdb_person_id = COALESCE(tmdb_person_id, ?),
+                            wikipedia_url = COALESCE(wikipedia_url, ?),
+                            wikipedia_summary = COALESCE(wikipedia_summary, ?)
+                        WHERE id = ?
+                    `).run(
+                        other.musicbrainz_artist_id, other.photo_url,
+                        other.bio, other.birth_date, other.death_date, other.birth_place,
+                        other.tmdb_person_id, other.wikipedia_url, other.wikipedia_summary,
+                        survivor.id
+                    );
 
                     // Re-point all credits from other → survivor
                     db.prepare(`
