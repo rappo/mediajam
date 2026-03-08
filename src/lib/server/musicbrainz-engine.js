@@ -529,13 +529,14 @@ async function runEnrichment() {
                 // Get all persons with this IMDb ID, prefer the one with more data
                 const persons = /** @type {any[]} */ (
                     db.prepare(`
-                        SELECT id, name, photo_url, bio, musicbrainz_artist_id, jellyfin_id,
+                        SELECT id, name, photo_url, bio, bio_jellyfin, bio_tmdb,
+                               musicbrainz_artist_id, jellyfin_id,
                                birth_date, death_date, birth_place, tmdb_person_id,
                                wikipedia_url, wikipedia_summary
                         FROM persons WHERE imdb_person_id = ?
                         ORDER BY
                             (CASE WHEN photo_url IS NOT NULL THEN 1 ELSE 0 END) +
-                            (CASE WHEN bio IS NOT NULL THEN 1 ELSE 0 END) +
+                            (CASE WHEN bio IS NOT NULL OR bio_tmdb IS NOT NULL THEN 1 ELSE 0 END) +
                             (CASE WHEN jellyfin_id IS NOT NULL THEN 1 ELSE 0 END)
                             DESC
                     `).all(dup.imdb_person_id)
@@ -553,6 +554,8 @@ async function runEnrichment() {
                             musicbrainz_artist_id = COALESCE(musicbrainz_artist_id, ?),
                             photo_url = COALESCE(photo_url, ?),
                             bio = COALESCE(bio, ?),
+                            bio_jellyfin = COALESCE(bio_jellyfin, ?),
+                            bio_tmdb = COALESCE(bio_tmdb, ?),
                             birth_date = COALESCE(birth_date, ?),
                             death_date = COALESCE(death_date, ?),
                             birth_place = COALESCE(birth_place, ?),
@@ -562,7 +565,8 @@ async function runEnrichment() {
                         WHERE id = ?
                     `).run(
                         other.musicbrainz_artist_id, other.photo_url,
-                        other.bio, other.birth_date, other.death_date, other.birth_place,
+                        other.bio, other.bio_jellyfin, other.bio_tmdb,
+                        other.birth_date, other.death_date, other.birth_place,
                         other.tmdb_person_id, other.wikipedia_url, other.wikipedia_summary,
                         survivor.id
                     );

@@ -634,6 +634,14 @@ if (!pCols2.has('wikipedia_url')) {
     db.exec("ALTER TABLE persons ADD COLUMN wikipedia_fetched_at TEXT");
     console.log('[db] Added Wikipedia columns to persons');
 }
+// -- Per-source bio columns --
+if (!pCols2.has('bio_tmdb')) {
+    db.exec("ALTER TABLE persons ADD COLUMN bio_jellyfin TEXT");
+    db.exec("ALTER TABLE persons ADD COLUMN bio_tmdb TEXT");
+    // Migrate existing bio → bio_tmdb (most were populated from TMDB enrichment)
+    db.exec("UPDATE persons SET bio_tmdb = bio WHERE bio IS NOT NULL AND bio_tmdb IS NULL");
+    console.log('[db] Added per-source bio columns to persons, migrated existing bio → bio_tmdb');
+}
 
 // -- LLM Embedding & Tagging Tables --
 try {

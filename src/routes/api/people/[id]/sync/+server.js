@@ -40,7 +40,7 @@ export async function POST({ params, locals }) {
                 if (tmdbId && !person.tmdb_person_id) updates.push('tmdb_person_id');
                 if (imdbId && !person.imdb_person_id) updates.push('imdb_person_id');
                 if (photoUrl && !person.photo_url) updates.push('photo_url');
-                if (bio && !person.bio) updates.push('bio');
+                if (bio && !person.bio_jellyfin) updates.push('bio_jellyfin');
                 if (birthDate && !person.birth_date) updates.push('birth_date');
 
                 db.prepare(`
@@ -48,7 +48,7 @@ export async function POST({ params, locals }) {
                         tmdb_person_id = COALESCE(?, tmdb_person_id),
                         imdb_person_id = COALESCE(?, imdb_person_id),
                         photo_url = COALESCE(?, photo_url),
-                        bio = COALESCE(?, bio),
+                        bio_jellyfin = COALESCE(?, bio_jellyfin),
                         birth_date = COALESCE(?, birth_date)
                     WHERE id = ?
                 `).run(tmdbId, imdbId, photoUrl, bio, birthDate, personId);
@@ -88,7 +88,7 @@ export async function POST({ params, locals }) {
                 const birthPlace = tmdbData.place_of_birth || null;
 
                 if (imdbId && !updatedPerson.imdb_person_id) tmdbUpdates.push('imdb_person_id');
-                if (bio && !updatedPerson.bio) tmdbUpdates.push('bio');
+                if (bio && !updatedPerson.bio_tmdb) tmdbUpdates.push('bio_tmdb');
                 if (birthDate && !updatedPerson.birth_date) tmdbUpdates.push('birth_date');
                 if (deathDate && !updatedPerson.death_date) tmdbUpdates.push('death_date');
                 if (photoUrl && !updatedPerson.photo_url) tmdbUpdates.push('photo_url (TMDB)');
@@ -97,7 +97,7 @@ export async function POST({ params, locals }) {
                 db.prepare(`
                     UPDATE persons SET
                         imdb_person_id = COALESCE(?, imdb_person_id),
-                        bio = COALESCE(?, bio),
+                        bio_tmdb = COALESCE(?, bio_tmdb),
                         birth_date = COALESCE(?, birth_date),
                         death_date = COALESCE(?, death_date),
                         photo_url = COALESCE(?, photo_url),

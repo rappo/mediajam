@@ -421,7 +421,7 @@ export async function startPeopleEnrichSync() {
 
     try {
         const persons = /** @type {any[]} */ (db.prepare(`
-            SELECT id, name, tmdb_person_id, bio, birth_date, death_date, photo_url, imdb_person_id, birth_place
+            SELECT id, name, tmdb_person_id, bio, bio_tmdb, birth_date, death_date, photo_url, imdb_person_id, birth_place
             FROM persons
             WHERE tmdb_person_id IS NOT NULL AND tmdb_person_id != ''
         `).all());
@@ -443,7 +443,7 @@ export async function startPeopleEnrichSync() {
         const updatePerson = db.prepare(`
             UPDATE persons SET
                 imdb_person_id = COALESCE(@imdbId, imdb_person_id),
-                bio = COALESCE(@bio, bio),
+                bio_tmdb = COALESCE(@bio, bio_tmdb),
                 birth_date = COALESCE(@birthDate, birth_date),
                 death_date = COALESCE(@deathDate, death_date),
                 photo_url = COALESCE(@photoUrl, photo_url),
@@ -475,7 +475,7 @@ export async function startPeopleEnrichSync() {
 
                     // Check if there's actually new data
                     const hasNew = (imdbId && !person.imdb_person_id) ||
-                        (bio && !person.bio) ||
+                        (bio && !person.bio_tmdb) ||
                         (birthDate && !person.birth_date) ||
                         (deathDate && !person.death_date) ||
                         (photoUrl && !person.photo_url) ||
