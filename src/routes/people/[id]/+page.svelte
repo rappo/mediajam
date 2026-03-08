@@ -166,7 +166,12 @@
         if (hiddenStates.size === 0) return true;
         const cls = mediaBorderClass(credit);
         for (const h of hiddenStates) {
-            if (cls.includes(`poster-${h}`)) return false;
+            // 'collected' is a virtual filter — items WITHOUT poster-missing
+            if (h === 'collected') {
+                if (!cls.includes('poster-missing')) return false;
+            } else {
+                if (cls.includes(`poster-${h}`)) return false;
+            }
         }
         return true;
     }
@@ -181,6 +186,7 @@
             if (cls.includes('poster-stub')) states.add('stub');
             if (cls.includes('poster-airing')) states.add('airing');
             if (cls.includes('poster-missing')) states.add('missing');
+            if (!cls.includes('poster-missing')) states.add('collected');
         }
         return states;
     })());
@@ -589,7 +595,7 @@
                 class:line-through={hiddenStates.has('unwatched')}
                 onclick={() => toggleFilter('unwatched')}
                 title="Click to toggle unwatched">
-                <span class="inline-block w-3 h-3 rounded-full border-2 border-solid" style="border-color: rgba(100, 116, 139, 0.4);"></span>Unwatched
+                <span class="inline-block w-3 h-3 rounded-full border-2 border-solid" style="border-color: oklch(0.65 0.2 25);"></span>Unwatched
             </button>
         {/if}
         {#if activeStates.has('stub')}
@@ -602,25 +608,29 @@
                 <span class="inline-block w-3 h-3 rounded-full border-2 border-solid" style="border-color: oklch(0.72 0.11 220 / 0.5);"></span>Stub
             </button>
         {/if}
-        {#if activeStates.has('missing') || activeStates.has('airing')}
+        {#if activeStates.has('missing') || activeStates.has('airing') || activeStates.has('collected')}
             <span class="text-base-content/30 mx-1">|</span>
-            <button
-                class="flex items-center gap-1 cursor-pointer hover:text-base-content/80 transition-opacity"
-                class:opacity-30={hiddenStates.has('missing')}
-                class:line-through={hiddenStates.has('missing')}
-                onclick={() => toggleFilter('missing')}
-                title="Click to toggle missing">
-                {#if activeStates.has('watched')}
-                    <span class="inline-block w-3 h-3 rounded-full border-2 border-dashed" style="border-color: oklch(0.75 0.18 140);"></span>
-                {/if}
-                {#if activeStates.has('progress')}
-                    <span class="inline-block w-3 h-3 rounded-full border-2 border-dashed" style="border-color: oklch(0.8 0.15 75);"></span>
-                {/if}
-                {#if activeStates.has('unwatched')}
-                    <span class="inline-block w-3 h-3 rounded-full border-2 border-dashed" style="border-color: rgba(100, 116, 139, 0.4);"></span>
-                {/if}
-                {activeStates.has('missing') ? 'Missing Files' : 'Still Airing'}
-            </button>
+            {#if activeStates.has('collected')}
+                <button
+                    class="flex items-center gap-1 cursor-pointer hover:text-base-content/80 transition-opacity"
+                    class:opacity-30={hiddenStates.has('collected')}
+                    class:line-through={hiddenStates.has('collected')}
+                    onclick={() => toggleFilter('collected')}
+                    title="Click to hide collected and show only missing">
+                    <span class="inline-block w-3 h-3 rounded-full border-2 border-solid" style="border-color: oklch(0.75 0.18 140);"></span>Collected
+                </button>
+            {/if}
+            {#if activeStates.has('missing')}
+                <button
+                    class="flex items-center gap-1 cursor-pointer hover:text-base-content/80 transition-opacity"
+                    class:opacity-30={hiddenStates.has('missing')}
+                    class:line-through={hiddenStates.has('missing')}
+                    onclick={() => toggleFilter('missing')}
+                    title="Click to toggle missing">
+                    <span class="inline-block w-3 h-3 rounded-full border-2 border-dashed" style="border-color: oklch(0.65 0.2 25 / 0.6);"></span>
+                    {activeStates.has('missing') ? 'Missing Files' : 'Still Airing'}
+                </button>
+            {/if}
         {/if}
         <button
             class="btn btn-ghost btn-xs text-base-content/30 hover:text-base-content/60 min-h-0 h-5 w-5 p-0"
@@ -1312,7 +1322,7 @@
                                 <td class="text-base-content/60 text-xs">Some watched, some remaining</td>
                             </tr>
                             <tr>
-                                <td><span class="inline-block w-5 h-5 rounded border-2" style="border-color: rgba(100, 116, 139, 0.3);"></span></td>
+                                <td><span class="inline-block w-5 h-5 rounded border-2" style="border-color: oklch(0.65 0.2 25 / 0.5);"></span></td>
                                 <td class="font-medium">Unwatched</td>
                                 <td class="text-base-content/60 text-xs">In collection, nothing watched</td>
                             </tr>
@@ -1367,7 +1377,7 @@
                                 <td class="text-base-content/60 text-xs">In progress, some files missing</td>
                             </tr>
                             <tr>
-                                <td><span class="inline-block w-5 h-5 rounded border-2 border-dashed" style="border-color: rgba(100, 116, 139, 0.3);"></span></td>
+                                <td><span class="inline-block w-5 h-5 rounded border-2 border-dashed" style="border-color: oklch(0.65 0.2 25 / 0.5);"></span></td>
                                 <td class="text-base-content/60 text-xs">Unwatched, some files missing</td>
                             </tr>
                         </tbody>
@@ -1396,10 +1406,10 @@
         border: 2px solid oklch(var(--wa, 0.8 0.15 75));
     }
     :global(.poster-unwatched) {
-        border: 2px solid rgba(100, 116, 139, 0.3);
+        border: 2px solid oklch(0.65 0.2 25 / 0.5);
     }
     :global(.poster-unwatched:hover) {
-        border-color: oklch(var(--p, 0.65 0.24 270) / 0.4);
+        border-color: oklch(0.65 0.2 25 / 0.8);
     }
     :global(.poster-stub) {
         border: 2px solid oklch(var(--in, 0.72 0.11 220) / 0.5);
@@ -1427,7 +1437,7 @@
 
     /* Legend swatches */
     :global(.poster-unwatched-legend) {
-        background: rgba(100, 116, 139, 0.5);
+        background: oklch(0.65 0.2 25 / 0.5);
     }
     :global(.poster-stub-legend) {
         background: oklch(var(--in, 0.72 0.11 220) / 0.3);
