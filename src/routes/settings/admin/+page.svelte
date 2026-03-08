@@ -2452,6 +2452,202 @@
 
     <!-- ═══════════════════════ TAB: SERVER (continued) ═══════════════════════ -->
     {#if activeTab === 'server'}
+    <!-- *arr Media Management -->
+    <div
+        id="arr"
+        class="card bg-base-200/50 border border-base-300 scroll-mt-20"
+    >
+        <div class="card-body">
+            <h2 class="card-title text-lg">
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="h-5 w-5 text-info"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                >
+                    <path
+                        d="M4 3a2 2 0 100 4h12a2 2 0 100-4H4zM3 8h14v7a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"
+                    />
+                </svg>
+                Media Management
+            </h2>
+            <p class="text-sm text-base-content/60">
+                Connect Radarr, Sonarr, and Lidarr to see download status,
+                request missing media, and track upcoming releases.
+            </p>
+
+            <!-- Scan all button -->
+            <div class="flex items-center gap-2 mt-2">
+                <button
+                    class="btn btn-xs btn-outline gap-1"
+                    disabled={arrScanStatus === "scanning"}
+                    onclick={scanForArr}
+                >
+                    {#if arrScanStatus === "scanning"}
+                        <span class="loading loading-spinner loading-xs"></span>
+                        Scanning...
+                    {:else}
+                        🔍 Scan Network
+                    {/if}
+                </button>
+                <span class="text-xs text-base-content/50"
+                    >Scan local network for *arr instances</span
+                >
+            </div>
+
+
+            <!-- Service cards -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {#each ARR_SERVICES as svc}
+                    {@const url =
+                        svc.service === "radarr"
+                            ? radarrUrl
+                            : svc.service === "sonarr"
+                              ? sonarrUrl
+                              : lidarrUrl}
+                    {@const apiKey =
+                        svc.service === "radarr"
+                            ? radarrApiKey
+                            : svc.service === "sonarr"
+                              ? sonarrApiKey
+                              : lidarrApiKey}
+                    {@const testStatus = arrTestStatus[svc.service]}
+                    {@const testInfo = arrTestInfo[svc.service]}
+                    <div
+                        class="card bg-base-300/50 border border-base-300 p-4 space-y-3"
+                    >
+                        <div class="flex items-center gap-2">
+                            <ServiceIcon service={svc.service} size="w-5 h-5" />
+                            <span class="font-semibold text-sm"
+                                >{svc.label}</span
+                            >
+                            {#if testStatus === "ok"}
+                                <span class="badge badge-xs badge-success"
+                                    >Connected</span
+                                >
+                            {:else if testStatus === "error"}
+                                <span class="badge badge-xs badge-error"
+                                    >Failed</span
+                                >
+                            {/if}
+                        </div>
+
+                        <!-- URL -->
+                        <label class="form-control">
+                            <span class="label-text text-xs">URL</span>
+                            <input
+                                type="text"
+                                class="input input-xs input-bordered w-full font-mono"
+                                placeholder="http://localhost:{svc.defaultPort}"
+                                value={url}
+                                oninput={(e) => {
+                                    if (svc.service === "radarr")
+                                        radarrUrl = e.target.value;
+                                    else if (svc.service === "sonarr")
+                                        sonarrUrl = e.target.value;
+                                    else lidarrUrl = e.target.value;
+                                }}
+                            />
+                        </label>
+
+                        <!-- API Key -->
+                        <label class="form-control">
+                            <span class="label-text text-xs">API Key</span>
+                            <input
+                                type="password"
+                                class="input input-xs input-bordered w-full font-mono"
+                                placeholder={data.settings[
+                                    `${svc.service}ApiKey`
+                                ]
+                                    ? "••••••••"
+                                    : "Paste API key"}
+                                value={apiKey}
+                                oninput={(e) => {
+                                    if (svc.service === "radarr")
+                                        radarrApiKey = e.target.value;
+                                    else if (svc.service === "sonarr")
+                                        sonarrApiKey = e.target.value;
+                                    else lidarrApiKey = e.target.value;
+                                }}
+                            />
+                            <div class="label py-0.5">
+                                <span
+                                    class="label-text-alt text-[10px] text-base-content/40"
+                                >
+                                    {#if url}
+                                        <a
+                                            href="{url}/settings/general"
+                                            target="_blank"
+                                            rel="noopener"
+                                            class="link link-hover link-primary"
+                                            >{url}/settings/general</a
+                                        >
+                                        <br />
+                                    {/if}
+                                    Settings → General → Security
+                                </span>
+                            </div>
+                        </label>
+
+                        <!-- External URL (browser-facing) -->
+                        <label class="form-control">
+                            <span class="label-text text-xs">External URL <span class="text-base-content/40">(for links)</span></span>
+                            <input
+                                type="text"
+                                class="input input-xs input-bordered w-full font-mono"
+                                placeholder="http://192.168.1.50:{svc.defaultPort}"
+                                value={svc.service === 'radarr' ? radarrExternalUrl : svc.service === 'sonarr' ? sonarrExternalUrl : lidarrExternalUrl}
+                                oninput={(e) => {
+                                    if (svc.service === 'radarr') radarrExternalUrl = e.target.value;
+                                    else if (svc.service === 'sonarr') sonarrExternalUrl = e.target.value;
+                                    else lidarrExternalUrl = e.target.value;
+                                }}
+                            />
+                            <div class="label py-0.5">
+                                <span class="label-text-alt text-[10px] text-base-content/40">
+                                    Browser-reachable address (if different from API URL)
+                                </span>
+                            </div>
+                        </label>
+
+                        <!-- Actions -->
+                        <div class="flex gap-2">
+                            <button
+                                class="btn btn-xs btn-primary flex-1"
+                                disabled={!url || testStatus === "testing"}
+                                onclick={() => testArrConnection(svc.service)}
+                            >
+                                {#if testStatus === "testing"}
+                                    <span
+                                        class="loading loading-spinner loading-xs"
+                                    ></span>
+                                {:else}
+                                    🔌 Test
+                                {/if}
+                            </button>
+                            <button
+                                class="btn btn-xs btn-outline flex-1"
+                                disabled={!url ||
+                                    (!apiKey &&
+                                        !data.settings[`${svc.service}ApiKey`])}
+                                onclick={() => saveArrSettings(svc.service)}
+                            >
+                                💾 Save
+                            </button>
+                        </div>
+
+                        <!-- Status info -->
+                        {#if testInfo}
+                            <p class="text-xs text-base-content/60">
+                                {testInfo}
+                            </p>
+                        {/if}
+                    </div>
+                {/each}
+            </div>
+        </div>
+    </div>
+
     <!-- LLM Integration -->
     <div
         id="llm"
@@ -2776,201 +2972,6 @@
         </div>
     </div>
 
-    <!-- *arr Media Management -->
-    <div
-        id="arr"
-        class="card bg-base-200/50 border border-base-300 scroll-mt-20"
-    >
-        <div class="card-body">
-            <h2 class="card-title text-lg">
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5 text-info"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                >
-                    <path
-                        d="M4 3a2 2 0 100 4h12a2 2 0 100-4H4zM3 8h14v7a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"
-                    />
-                </svg>
-                Media Management
-            </h2>
-            <p class="text-sm text-base-content/60">
-                Connect Radarr, Sonarr, and Lidarr to see download status,
-                request missing media, and track upcoming releases.
-            </p>
-
-            <!-- Scan all button -->
-            <div class="flex items-center gap-2 mt-2">
-                <button
-                    class="btn btn-xs btn-outline gap-1"
-                    disabled={arrScanStatus === "scanning"}
-                    onclick={scanForArr}
-                >
-                    {#if arrScanStatus === "scanning"}
-                        <span class="loading loading-spinner loading-xs"></span>
-                        Scanning...
-                    {:else}
-                        🔍 Scan Network
-                    {/if}
-                </button>
-                <span class="text-xs text-base-content/50"
-                    >Scan local network for *arr instances</span
-                >
-            </div>
-
-
-            <!-- Service cards -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {#each ARR_SERVICES as svc}
-                    {@const url =
-                        svc.service === "radarr"
-                            ? radarrUrl
-                            : svc.service === "sonarr"
-                              ? sonarrUrl
-                              : lidarrUrl}
-                    {@const apiKey =
-                        svc.service === "radarr"
-                            ? radarrApiKey
-                            : svc.service === "sonarr"
-                              ? sonarrApiKey
-                              : lidarrApiKey}
-                    {@const testStatus = arrTestStatus[svc.service]}
-                    {@const testInfo = arrTestInfo[svc.service]}
-                    <div
-                        class="card bg-base-300/50 border border-base-300 p-4 space-y-3"
-                    >
-                        <div class="flex items-center gap-2">
-                            <ServiceIcon service={svc.service} size="w-5 h-5" />
-                            <span class="font-semibold text-sm"
-                                >{svc.label}</span
-                            >
-                            {#if testStatus === "ok"}
-                                <span class="badge badge-xs badge-success"
-                                    >Connected</span
-                                >
-                            {:else if testStatus === "error"}
-                                <span class="badge badge-xs badge-error"
-                                    >Failed</span
-                                >
-                            {/if}
-                        </div>
-
-                        <!-- URL -->
-                        <label class="form-control">
-                            <span class="label-text text-xs">URL</span>
-                            <input
-                                type="text"
-                                class="input input-xs input-bordered w-full font-mono"
-                                placeholder="http://localhost:{svc.defaultPort}"
-                                value={url}
-                                oninput={(e) => {
-                                    if (svc.service === "radarr")
-                                        radarrUrl = e.target.value;
-                                    else if (svc.service === "sonarr")
-                                        sonarrUrl = e.target.value;
-                                    else lidarrUrl = e.target.value;
-                                }}
-                            />
-                        </label>
-
-                        <!-- API Key -->
-                        <label class="form-control">
-                            <span class="label-text text-xs">API Key</span>
-                            <input
-                                type="password"
-                                class="input input-xs input-bordered w-full font-mono"
-                                placeholder={data.settings[
-                                    `${svc.service}ApiKey`
-                                ]
-                                    ? "••••••••"
-                                    : "Paste API key"}
-                                value={apiKey}
-                                oninput={(e) => {
-                                    if (svc.service === "radarr")
-                                        radarrApiKey = e.target.value;
-                                    else if (svc.service === "sonarr")
-                                        sonarrApiKey = e.target.value;
-                                    else lidarrApiKey = e.target.value;
-                                }}
-                            />
-                            <div class="label py-0.5">
-                                <span
-                                    class="label-text-alt text-[10px] text-base-content/40"
-                                >
-                                    {#if url}
-                                        <a
-                                            href="{url}/settings/general"
-                                            target="_blank"
-                                            rel="noopener"
-                                            class="link link-hover link-primary"
-                                            >{url}/settings/general</a
-                                        >
-                                        <br />
-                                    {/if}
-                                    Settings → General → Security
-                                </span>
-                            </div>
-                        </label>
-
-                        <!-- External URL (browser-facing) -->
-                        <label class="form-control">
-                            <span class="label-text text-xs">External URL <span class="text-base-content/40">(for links)</span></span>
-                            <input
-                                type="text"
-                                class="input input-xs input-bordered w-full font-mono"
-                                placeholder="http://192.168.1.50:{svc.defaultPort}"
-                                value={svc.service === 'radarr' ? radarrExternalUrl : svc.service === 'sonarr' ? sonarrExternalUrl : lidarrExternalUrl}
-                                oninput={(e) => {
-                                    if (svc.service === 'radarr') radarrExternalUrl = e.target.value;
-                                    else if (svc.service === 'sonarr') sonarrExternalUrl = e.target.value;
-                                    else lidarrExternalUrl = e.target.value;
-                                }}
-                            />
-                            <div class="label py-0.5">
-                                <span class="label-text-alt text-[10px] text-base-content/40">
-                                    Browser-reachable address (if different from API URL)
-                                </span>
-                            </div>
-                        </label>
-
-                        <!-- Actions -->
-                        <div class="flex gap-2">
-                            <button
-                                class="btn btn-xs btn-primary flex-1"
-                                disabled={!url || testStatus === "testing"}
-                                onclick={() => testArrConnection(svc.service)}
-                            >
-                                {#if testStatus === "testing"}
-                                    <span
-                                        class="loading loading-spinner loading-xs"
-                                    ></span>
-                                {:else}
-                                    🔌 Test
-                                {/if}
-                            </button>
-                            <button
-                                class="btn btn-xs btn-outline flex-1"
-                                disabled={!url ||
-                                    (!apiKey &&
-                                        !data.settings[`${svc.service}ApiKey`])}
-                                onclick={() => saveArrSettings(svc.service)}
-                            >
-                                💾 Save
-                            </button>
-                        </div>
-
-                        <!-- Status info -->
-                        {#if testInfo}
-                            <p class="text-xs text-base-content/60">
-                                {testInfo}
-                            </p>
-                        {/if}
-                    </div>
-                {/each}
-            </div>
-        </div>
-    </div>
 
     {/if}
 
