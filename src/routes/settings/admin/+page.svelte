@@ -4,6 +4,7 @@
     import ReconciliationPanel from "$lib/components/ReconciliationPanel.svelte";
     import { page } from "$app/stores";
     import { goto } from "$app/navigation";
+    import { jellyfinAuthInvalid } from "$lib/stores/auth.js";
 
     /** @type {{ data: import('./$types').PageData }} */
     let { data } = $props();
@@ -678,6 +679,10 @@
             };
         } else if (d.type === "error") {
             syncErrors++;
+        } else if (d.type === "auth_error") {
+            syncStatus = "error";
+            syncAbortController?.abort();
+            jellyfinAuthInvalid.set(true);
         }
         if (d.log) addSyncLog(d.log, d.logType || "info");
     }

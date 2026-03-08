@@ -7,6 +7,7 @@
 	import ToastContainer from "$lib/components/ToastContainer.svelte";
 	import ConflictDialog from "$lib/components/ConflictDialog.svelte";
 	import { addToast } from "$lib/stores/toast.js";
+	import { jellyfinAuthInvalid } from "$lib/stores/auth.js";
 	import { page } from "$app/stores";
 
 	/** @type {{ data: import('./$types').LayoutData, children: import('svelte').Snippet }} */
@@ -25,6 +26,13 @@
 					duration: 0,
 				});
 			}
+		}
+	});
+
+	// Init auth store from server data
+	$effect(() => {
+		if (data.jellyfinAuthInvalid) {
+			jellyfinAuthInvalid.set(true);
 		}
 	});
 
@@ -98,6 +106,7 @@
 			if (res.ok) {
 				reauthDismissed = true;
 				reauthPassword = '';
+				jellyfinAuthInvalid.set(false);
 				addToast({ type: 'success', message: 'Jellyfin connection restored!', duration: 3000 });
 				setTimeout(() => window.location.reload(), 1000);
 			} else {
@@ -475,7 +484,7 @@
 		</nav>
 
 		<!-- Jellyfin Re-auth Banner -->
-		{#if data.jellyfinAuthInvalid && !reauthDismissed}
+		{#if $jellyfinAuthInvalid && !reauthDismissed}
 			<div class="bg-warning/10 border-b border-warning/30 px-6 py-3">
 				<div class="flex items-center gap-3 max-w-4xl mx-auto">
 					<span class="text-warning text-lg">🔑</span>
