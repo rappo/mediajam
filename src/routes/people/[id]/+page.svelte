@@ -265,7 +265,10 @@
             const res = await fetch(`/api/discover/person/${data.person.id}`);
             if (!res.ok) {
                 const r = await res.json();
-                throw new Error(r.error || "Failed");
+                const parts = [r.error || "Failed"];
+                if (r.tmdb_response) parts.push(`TMDb: ${r.tmdb_response}`);
+                if (r.debug) parts.push(`(${r.debug.step}, key:${r.debug.apiKeyLen}ch)`);
+                throw new Error(parts.join(" | "));
             }
             const result = await res.json();
             discoveryItems = result.filmography || [];
