@@ -2,16 +2,18 @@
  * Image Cache
  * 
  * Local filesystem cache for all served images.
- * SHA-256 hash of URL → flat file in /app/cache/images/ab/abcdef...
+ * SHA-256 hash of URL → flat file in DATA_DIR/cache/images/ab/abcdef...
  * 6-month TTL with stale-while-revalidate.
  */
 
 import { createHash } from 'crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, statSync, readdirSync, rmSync } from 'fs';
-import { join } from 'path';
+import { join, dirname, resolve } from 'path';
 import { logInfo, logError, logWarn } from '$lib/server/logger.js';
 
-const CACHE_DIR = process.env.IMAGE_CACHE_DIR || '/app/cache/images';
+// Put cache alongside the database in the persistent data directory (same as logs)
+const DATA_DIR = dirname(process.env.DATABASE_PATH || resolve(process.cwd(), 'mediajam.sqlite'));
+const CACHE_DIR = process.env.IMAGE_CACHE_DIR || join(DATA_DIR, 'cache', 'images');
 const MAX_AGE_MS = 6 * 30 * 24 * 60 * 60 * 1000; // ~6 months
 
 // Ensure cache root exists
