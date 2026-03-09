@@ -677,22 +677,66 @@ export async function startSync(libraryId = null, force = false) {
                             } else if (errStr.includes('tmdb_id') && parentParams.tmdbId) {
                                 conflictField = 'TMDB ID';
                                 const existing = /** @type {any} */ (db.prepare(
-                                    'SELECT id, title, jellyfin_id FROM media_parents WHERE tmdb_id = ? AND media_type = ? LIMIT 1'
-                                ).get(parentParams.tmdbId, parentParams.mediaType));
-                                retryParams.tmdbId = null;
-                                upsertParent.run(retryParams);
-                                const secondaryRow = /** @type {any} */ (db.prepare(
-                                    'SELECT id FROM media_parents WHERE jellyfin_id = ?'
-                                ).get(item.Id));
-                                if (existing && secondaryRow) {
-                                    try {
-                                        db.prepare(
-                                            `INSERT OR IGNORE INTO sync_conflicts (conflict_type, primary_id, secondary_id, external_id, status)
-                                             VALUES ('shared_tmdb_id', ?, ?, ?, 'pending')`
-                                        ).run(existing.id, secondaryRow.id, parentParams.tmdbId);
-                                    } catch { /* ignore duplicate */ }
+                                    'SELECT id, title, jellyfin_id FROM media_parents WHERE tmdb_id = ? AND media_type = ? AND jellyfin_id != ? LIMIT 1'
+                                ).get(parentParams.tmdbId, parentParams.mediaType, item.Id));
+
+                                if (existing) {
+                                    // Auto-merge: the existing entry is a stale duplicate.
+                                    // Update it to use the current jellyfin_id and all new metadata.
+                                    // First, migrate children and history from the current jellyfin entry (if any) to the existing one
+                                    const currentRow = /** @type {any} */ (db.prepare(
+                                        'SELECT id FROM media_parents WHERE jellyfin_id = ?'
+                                    ).get(item.Id));
+
+                                    if (currentRow && currentRow.id !== existing.id) {
+                                        // Migrate children from current to existing
+                                        const keepChild = /** @type {any} */ (db.prepare(
+                                            'SELECT id FROM media_children WHERE parent_id = ? LIMIT 1'
+                                        ).get(existing.id));
+                                        const staleChildren = /** @type {any[]} */ (db.prepare(
+                                            'SELECT id FROM media_children WHERE parent_id = ?'
+                                        ).all(currentRow.id));
+                                        if (keepChild) {
+                                            for (const sc of staleChildren) {
+                                                db.prepare('UPDATE playback_history SET media_id = ? WHERE media_id = ?').run(keepChild.id, sc.id);
+                                            }
+                                        }
+                                        db.prepare('DELETE FROM media_children WHERE parent_id = ?').run(currentRow.id);
+                                        db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?').run(currentRow.id);
+                                        db.prepare('DELETE FROM media_parents WHERE id = ?').run(currentRow.id);
+                                    }
+
+                                    // Update the existing entry with new jellyfin_id and metadata
+                                    db.prepare(`UPDATE media_parents SET
+                                        jellyfin_id = ?, title = ?, poster_url = ?, overview = ?,
+                                        release_year = ?, jellyfin_user_rating = ?,
+                                        date_last_modified = ?, jellyfin_child_count = ?,
+                                        unplayed_count = ?, is_favorite = ?,
+                                        imdb_id = COALESCE(?, imdb_id),
+                                        tvdb_id = COALESCE(?, tvdb_id)
+                                    WHERE id = ?`).run(
+                                        item.Id, parentParams.title, parentParams.posterUrl, parentParams.overview,
+                                        parentParams.releaseYear, parentParams.userRating,
+                                        parentParams.dateLastModified, parentParams.jellyfinChildCount,
+                                        parentParams.unplayedCount, parentParams.isFavorite,
+                                        parentParams.imdbId, parentParams.tvdbId,
+                                        existing.id
+                                    );
+
+                                    // Update movie child jellyfin_id if needed
+                                    if (parentParams.mediaType === 'movie' && existing.jellyfin_id) {
+                                        db.prepare('UPDATE media_children SET jellyfin_id = ? WHERE jellyfin_id = ?')
+                                            .run(item.Id + '_child', existing.jellyfin_id + '_child');
+                                    }
+
+                                    broadcast({ type: 'progress', log: `  🔀 ${item.Name}: auto-merged TMDB duplicate with "${existing.title}"`, logType: 'info' });
+                                    logInfo('sync', `Auto-merged TMDB duplicate: ${item.Name} (${parentParams.tmdbId})`);
+                                } else {
+                                    // No existing entry found — just retry without tmdb_id
+                                    retryParams.tmdbId = null;
+                                    upsertParent.run(retryParams);
+                                    broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: TMDB ID conflict, synced without it`, logType: 'warning' });
                                 }
-                                broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: shares TMDB ID ${parentParams.tmdbId} with "${existing?.title || 'unknown'}" — synced without TMDB ID`, logType: 'warning' });
                             } else if (errStr.includes('imdb_id') && parentParams.imdbId) {
                                 conflictField = 'IMDb ID';
                                 const existing = /** @type {any} */ (db.prepare(
