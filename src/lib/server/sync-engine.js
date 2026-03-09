@@ -1135,8 +1135,8 @@ export async function startSync(libraryId = null, force = false) {
 
                     const txn = db.transaction(() => {
                         for (const item of playedWithoutHistory) {
-                            // Use premiere_date as a rough timestamp, or fallback to now
-                            const timestamp = item.premiere_date || new Date().toISOString();
+                            // Use premiere_date as a rough timestamp, or fallback to unknown-date sentinel
+                            const timestamp = item.premiere_date || '1900-01-01T00:00:00.000Z';
                             const eventId = `jellyfin_sync:${item.id}`;
                             try {
                                 insertHistory.run(dbUser.id, item.id, timestamp, eventId);

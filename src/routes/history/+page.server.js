@@ -1,11 +1,41 @@
 import db from '$lib/server/db.js';
 
-export function load({ locals }) {
+export function load({ locals, url }) {
     const userId = locals.user?.id;
     const settings = db.prepare('SELECT jellyfin_url FROM app_settings WHERE id = 1').get();
     const jellyfinUrl = /** @type {any} */ (settings)?.jellyfin_url || '';
 
-    // Get recent playback history (last 200 entries)
+    // URL query params for filtering
+    const fromDate = url.searchParams.get('from') || '';
+    const toDate = url.searchParams.get('to') || '';
+    const search = url.searchParams.get('q') || '';
+    const mediaType = url.searchParams.get('type') || '';
+
+    // Build WHERE clause dynamically
+    const conditions = ['ph.user_id = ?'];
+    const params = [userId];
+
+    if (fromDate) {
+        conditions.push("ph.timestamp >= ?");
+        params.push(fromDate + 'T00:00:00.000Z');
+    }
+    if (toDate) {
+        conditions.push("ph.timestamp <= ?");
+        params.push(toDate + 'T23:59:59.999Z');
+    }
+    if (search) {
+        conditions.push("(mc.title LIKE ? OR mp.title LIKE ? OR ph.track_name LIKE ?)");
+        const likePattern = `%${search}%`;
+        params.push(likePattern, likePattern, likePattern);
+    }
+    if (mediaType && mediaType !== 'all') {
+        conditions.push("mp.media_type = ?");
+        params.push(mediaType);
+    }
+
+    const whereClause = conditions.join(' AND ');
+
+    // Get playback history with filters applied
     const history = userId ? /** @type {any[]} */ (db.prepare(`
         SELECT
             ph.id,
@@ -28,10 +58,10 @@ export function load({ locals }) {
         FROM playback_history ph
         JOIN media_children mc ON ph.media_id = mc.id
         JOIN media_parents mp ON mc.parent_id = mp.id
-        WHERE ph.user_id = ?
+        WHERE ${whereClause}
         ORDER BY ph.timestamp DESC
-        LIMIT 200
-    `).all(userId)) : [];
+        LIMIT 500
+    `).all(...params)) : [];
 
     // Build album art URLs for music entries
     for (const entry of history) {
@@ -44,7 +74,7 @@ export function load({ locals }) {
     db.prepare("DELETE FROM active_sessions WHERE last_update < datetime('now', '-30 minutes')").run();
     const activeSessions = db.prepare('SELECT * FROM active_sessions ORDER BY last_update DESC').all();
 
-    // Summary stats
+    // Summary stats (unfiltered — always show totals)
     const stats = userId ? /** @type {any} */ (db.prepare(`
         SELECT
             COUNT(*) as total_plays,
@@ -55,7 +85,7 @@ export function load({ locals }) {
         WHERE user_id = ?
     `).get(userId)) : {};
 
-    // Longest streak: longest run of consecutive days with at least one play
+    // Longest streak
     let longestStreak = 0;
     if (userId) {
         const playDates = /** @type {any[]} */ (db.prepare(`
@@ -87,13 +117,28 @@ export function load({ locals }) {
         WHERE user_id = ? AND DATE(timestamp) = DATE('now')
     `).get(userId))?.count || 0 : 0;
 
-    // Group history by date (flat, no album grouping)
+    // Year map for scrubber (year → count)
+    const yearMap = userId ? /** @type {any[]} */ (db.prepare(`
+        SELECT strftime('%Y', timestamp) as year, COUNT(*) as count
+        FROM playback_history
+        WHERE user_id = ? AND timestamp > '1900-01-02'
+        GROUP BY year
+        ORDER BY year DESC
+    `).all(userId)) : [];
+
+    // Group history by date
     /** @type {Record<string, any[]>} */
     const grouped = {};
     for (const entry of history) {
-        const date = entry.timestamp ? new Date(entry.timestamp).toLocaleDateString('en-US', {
-            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-        }) : 'Unknown Date';
+        const ts = entry.timestamp;
+        let date;
+        if (!ts || ts.startsWith('1900-01-01')) {
+            date = 'Unknown Date';
+        } else {
+            date = new Date(ts).toLocaleDateString('en-US', {
+                weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+            });
+        }
         if (!grouped[date]) grouped[date] = [];
         grouped[date].push(entry);
     }
@@ -105,6 +150,8 @@ export function load({ locals }) {
         activeSessions,
         timeline,
         jellyfinUrl,
+        yearMap,
+        filters: { from: fromDate, to: toDate, search, mediaType },
         stats: {
             totalPlays: stats?.total_plays || 0,
             uniqueItems: stats?.unique_items || 0,
