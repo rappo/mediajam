@@ -351,8 +351,6 @@
                     >
                         {#if arrLoading === 'monitor'}
                             <span class="loading loading-spinner loading-xs"></span>
-                        {:else}
-                            {arrMonitored ? '📡' : '📴'}
                         {/if}
                         {arrMonitored ? 'Unmonitor' : 'Monitor'}
                     </button>

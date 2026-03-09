@@ -419,7 +419,7 @@
                         onclick={toggleMonitorLidarr}
                         disabled={arrLoading === 'monitor'}
                     >
-                        {#if arrLoading === 'monitor'}<span class="loading loading-spinner loading-xs"></span>{:else if arrMonitored}📡{:else}📴{/if}
+                        {#if arrLoading === 'monitor'}<span class="loading loading-spinner loading-xs"></span>{/if}
                         {arrMonitored ? 'Unmonitor' : 'Monitor'}
                     </button>
                 {:else if data.artist.musicbrainz_id}

@@ -255,12 +255,15 @@
             favoriteType="media"
             favoriteId={data.show.id}
             heartBorderEnabled={!!data.settings?.heartBorderShows}
+            heroBadges={[
+                { label: `${data.seasons.length} seasons` },
+                { label: `${data.totalWatched}/${data.totalEpisodes} watched` },
+                ...(data.show.collection_pct !== null ? [{ label: `${data.show.collection_pct}% collected` }] : []),
+            ]}
             stats={[
-                { label: 'seasons', value: data.seasons.length },
-                { label: 'watched', value: `${data.totalWatched}/${data.totalEpisodes}` },
+                { label: 'total plays', value: data.show.total_plays ?? 0 },
                 ...(data.totalMissing > 0 ? [{ label: 'missing', value: data.totalMissing }] : []),
                 ...(data.totalUpcoming > 0 ? [{ label: 'upcoming', value: data.totalUpcoming }] : []),
-                ...(data.show.collection_pct !== null ? [{ label: 'collected', value: `${data.show.collection_pct}%` }] : []),
             ]}
             externalLinks={{
                 tmdb_id: data.show.tmdb_id,
@@ -306,7 +309,7 @@
                         onclick={toggleMonitorSonarr}
                         disabled={arrLoading === 'monitor'}
                     >
-                        {#if arrLoading === 'monitor'}<span class="loading loading-spinner loading-xs"></span>{:else if arrMonitored}📡{:else}📴{/if}
+                        {#if arrLoading === 'monitor'}<span class="loading loading-spinner loading-xs"></span>{/if}
                         {arrMonitored ? 'Unmonitor' : 'Monitor'}
                     </button>
                 {:else if data.show.tvdb_id}

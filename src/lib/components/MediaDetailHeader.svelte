@@ -13,6 +13,7 @@
      *   overviewSource?: string | null,
      *   subtitle?: string | null,
      *   watchStatusBadge?: { label: string, cls: string } | null,
+     *   heroBadges?: { label: string, cls?: string }[],
      *   isFavorite?: boolean,
      *   favoriteType?: 'media' | 'person',
      *   favoriteId?: number,
@@ -36,6 +37,7 @@
         overviewSource = null,
         subtitle = null,
         watchStatusBadge = null,
+        heroBadges = [],
         isFavorite = false,
         favoriteType = 'media',
         favoriteId = 0,
@@ -136,8 +138,20 @@
                 {#if year}<span class="meta-year">{year}</span>{/if}
                 {#if subtitle}<span>{subtitle}</span>{/if}
                 {#if runtime}<span>· {runtime}</span>{/if}
+                {#each heroBadges as hb}
+                    <span class="badge badge-sm {hb.cls || 'badge-outline'}">{hb.label}</span>
+                {/each}
                 {#if watchStatusBadge}<span class="badge {watchStatusBadge.cls} badge-sm">{watchStatusBadge.label}</span>{/if}
             </div>
+            {#if overview}
+                <p class="hero-overview">{overview}
+                    {#if overviewSource}
+                        <span class="overview-source">
+                            — via {overviewSource === 'tmdb' ? 'TMDB' : overviewSource === 'wikipedia' ? 'Wikipedia' : overviewSource === 'jellyfin' ? 'Jellyfin' : overviewSource}
+                        </span>
+                    {/if}
+                </p>
+            {/if}
         </div>
     </div>
 </div>
@@ -226,25 +240,17 @@
     {/if}
 </div>
 
-<!-- Overview / Bio -->
-{#if overview}
-    <div class="overview-card">
-        <p class="overview-text">{overview}</p>
-        {#if overviewSource}
-            <span class="overview-source">
-                via {overviewSource === 'tmdb' ? 'TMDB' : overviewSource === 'wikipedia' ? 'Wikipedia' : overviewSource === 'jellyfin' ? 'Jellyfin' : overviewSource}
-            </span>
-        {/if}
-    </div>
-{/if}
-
 {#if children}{@render children()}{/if}
 
 <style>
     /* ══════════════ HEADER ══════════════ */
     .detail-header { position: relative; border-radius: 1rem; overflow: hidden; }
     .detail-header.has-backdrop { border: 1px solid oklch(var(--bc) / 0.1); }
-    .detail-header.no-backdrop { padding: 1.5rem 0; }
+    .detail-header.no-backdrop {
+        padding: 1.5rem 2rem;
+        background: linear-gradient(135deg, oklch(var(--b2) / 0.6) 0%, oklch(var(--b2) / 0.3) 100%);
+        border: 1px solid oklch(var(--bc) / 0.08);
+    }
 
     .backdrop-container { position: relative; width: 100%; height: 18rem; }
     @media (min-width: 768px) { .backdrop-container { height: 22rem; } }
@@ -264,12 +270,31 @@
     .poster-placeholder { width: 160px; height: 240px; border-radius: 0.75rem; background: oklch(var(--b3)); display: flex; align-items: center; justify-content: center; font-size: 3rem; }
     .poster-placeholder.poster-round { width: 150px; height: 150px; border-radius: 50%; }
 
-    .title-area { min-width: 0; display: flex; flex-direction: column; gap: 0.25rem; z-index: 2; padding-bottom: 0.25rem; }
+    .title-area { min-width: 0; display: flex; flex-direction: column; gap: 0.25rem; z-index: 2; padding-bottom: 0.25rem; flex: 1; }
     .detail-title { font-size: 2rem; font-weight: 800; line-height: 1.15; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; text-shadow: 0 2px 8px rgba(0,0,0,0.3); }
     @media (min-width: 768px) { .detail-title { font-size: 2.5rem; } }
 
     .meta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; font-size: 0.875rem; color: oklch(var(--bc) / 0.6); }
     .meta-year { font-weight: 600; color: oklch(var(--bc) / 0.7); }
+
+    /* Overview inside hero */
+    .hero-overview {
+        font-size: 0.8rem;
+        color: oklch(var(--bc) / 0.6);
+        line-height: 1.5;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        margin-top: 0.25rem;
+        max-width: 40rem;
+    }
+    .overview-source {
+        font-size: 0.7rem;
+        color: oklch(var(--bc) / 0.35);
+        font-style: italic;
+    }
 
     /* ══════════════ TOOLBAR RIBBON ══════════════ */
     .toolbar-ribbon {
@@ -362,7 +387,7 @@
         color: oklch(var(--bc) / 0.45);
     }
 
-    /* Actions row */
+    /* Actions row — consistent filled button look */
     .ribbon-actions {
         display: flex;
         align-items: center;
@@ -370,16 +395,33 @@
         flex-wrap: wrap;
     }
 
-    .ribbon-badges { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-left: auto; align-self: center; }
-
-    /* ══════════════ OVERVIEW ══════════════ */
-    .overview-card {
-        padding: 1.25rem 1.5rem;
-        border-radius: 0.75rem;
-        background: oklch(var(--b2) / 0.45);
-        border: 1px solid oklch(var(--bc) / 0.08);
-        margin-top: 0.75rem;
+    .ribbon-actions :global(.btn) {
+        background: oklch(var(--b3));
+        border: 1px solid oklch(var(--bc) / 0.15);
+        color: oklch(var(--bc) / 0.8);
+        font-size: 0.75rem;
+        font-weight: 500;
+        padding: 0.25rem 0.75rem;
+        height: auto;
+        min-height: 0;
+        border-radius: 0.375rem;
+        transition: all 0.15s ease;
     }
-    .overview-text { font-size: 0.875rem; color: oklch(var(--bc) / 0.75); line-height: 1.7; display: -webkit-box; -webkit-line-clamp: 5; line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
-    .overview-source { display: inline-block; margin-top: 0.5rem; font-size: 0.75rem; color: oklch(var(--bc) / 0.4); font-style: italic; }
+    .ribbon-actions :global(.btn:hover) {
+        background: oklch(var(--bc) / 0.15);
+        color: oklch(var(--bc));
+        border-color: oklch(var(--bc) / 0.25);
+    }
+    .ribbon-actions :global(.btn-success) {
+        background: oklch(0.65 0.2 145 / 0.2);
+        border-color: oklch(0.65 0.2 145 / 0.3);
+        color: oklch(0.8 0.15 145);
+    }
+    .ribbon-actions :global(.btn-error) {
+        background: oklch(0.65 0.2 25 / 0.2);
+        border-color: oklch(0.65 0.2 25 / 0.3);
+        color: oklch(0.8 0.15 25);
+    }
+
+    .ribbon-badges { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-left: auto; align-self: center; }
 </style>
