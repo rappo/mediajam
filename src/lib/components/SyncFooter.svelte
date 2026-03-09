@@ -20,6 +20,7 @@
     let progress = $state(0);
     let syncType = $state("");
     let expanded = $state(false);
+    let syncViewUrl = $state("/settings/admin?tab=sync");
 
     function isOnSyncPage() {
         const path =
@@ -38,11 +39,13 @@
                 syncType = data.jellyfin.libraryName || "Jellyfin Sync";
                 progress = data.jellyfin.progress || 0;
                 if (data.jellyfin.lastLog) lastLog = data.jellyfin.lastLog;
+                syncViewUrl = "/settings/admin?tab=sync";
                 visible = !isOnSyncPage();
             } else if (data.people) {
                 syncType = "People Sync";
                 progress = data.people.progress || 0;
                 if (data.people.lastLog) lastLog = data.people.lastLog;
+                syncViewUrl = "/settings/admin?tab=sync";
                 visible = !isOnSyncPage();
             } else if (data.backfill) {
                 syncType = data.backfill.tier
@@ -50,12 +53,14 @@
                     : "Import";
                 progress = data.backfill.progress || 0;
                 if (data.backfill.lastLog) lastLog = data.backfill.lastLog;
+                syncViewUrl = "/settings/account";
                 visible = !isOnSyncPage();
             } else if (data.musicbrainz) {
                 syncType = "MusicBrainz Enrich";
                 progress = data.musicbrainz.progress || 0;
                 if (data.musicbrainz.lastLog)
                     lastLog = data.musicbrainz.lastLog;
+                syncViewUrl = "/settings/admin?tab=sync";
                 visible = !isOnSyncPage();
             } else {
                 // Nothing running — hide if we were showing
@@ -137,7 +142,7 @@
 
             <!-- Go to settings link -->
             <a
-                href="/settings/admin"
+                href={syncViewUrl}
                 class="btn btn-xs btn-ghost text-primary shrink-0"
             >
                 View

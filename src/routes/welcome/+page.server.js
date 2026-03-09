@@ -1,7 +1,7 @@
 import db from '$lib/server/db.js';
 
 /** @type {import('./$types').PageServerLoad} */
-export function load() {
+export function load({ locals }) {
     const settings = /** @type {any} */ (db.prepare('SELECT * FROM app_settings WHERE id = 1').get());
 
     // Check sync_history to see if people/musicbrainz enrichment has ever run
@@ -11,6 +11,42 @@ export function load() {
     const mbHistory = /** @type {any} */ (
         db.prepare("SELECT id FROM sync_history WHERE sync_type = 'musicbrainz' LIMIT 1").get()
     );
+
+    // Connected services (Trakt/Last.fm OAuth)
+    const userId = locals.user?.id;
+    let connectedServices = { trakt: null, lastfm: null };
+    if (userId) {
+        const traktConn = /** @type {any} */ (
+            db.prepare("SELECT * FROM connected_services WHERE user_id = ? AND provider = 'trakt'").get(userId)
+        );
+        const lastfmConn = /** @type {any} */ (
+            db.prepare("SELECT * FROM connected_services WHERE user_id = ? AND provider = 'lastfm'").get(userId)
+        );
+        connectedServices = { trakt: traktConn || null, lastfm: lastfmConn || null };
+    }
+
+    // Import stats
+    let importStats = { trakt: null, lastfm: null };
+    if (userId) {
+        const traktStats = /** @type {any} */ (db.prepare(`
+            SELECT COUNT(*) as playCount,
+                   MIN(watched_at) as earliest,
+                   MAX(watched_at) as latest
+            FROM play_history WHERE source = 'trakt' AND user_id = ?
+        `).get(userId));
+        if (traktStats?.playCount > 0) {
+            importStats.trakt = traktStats;
+        }
+        const lastfmStats = /** @type {any} */ (db.prepare(`
+            SELECT COUNT(*) as playCount,
+                   MIN(watched_at) as earliest,
+                   MAX(watched_at) as latest
+            FROM play_history WHERE source = 'lastfm' AND user_id = ?
+        `).get(userId));
+        if (lastfmStats?.playCount > 0) {
+            importStats.lastfm = lastfmStats;
+        }
+    }
 
     return {
         settings: {
@@ -28,12 +64,21 @@ export function load() {
             ollamaChatModel: settings?.ollama_chat_model || 'llama3.2:3b',
             radarrUrl: settings?.radarr_url || '',
             radarrApiKey: settings?.radarr_api_key || '',
+            radarrExternalUrl: settings?.radarr_external_url || '',
             sonarrUrl: settings?.sonarr_url || '',
             sonarrApiKey: settings?.sonarr_api_key || '',
+            sonarrExternalUrl: settings?.sonarr_external_url || '',
             lidarrUrl: settings?.lidarr_url || '',
             lidarrApiKey: settings?.lidarr_api_key || '',
+            lidarrExternalUrl: settings?.lidarr_external_url || '',
         },
         hasPeopleSync: !!peopleHistory,
         hasMusicBrainzSync: !!mbHistory,
+        connectedServices,
+        appCredentials: {
+            hasTraktCreds: !!(settings?.trakt_client_id && settings?.trakt_client_secret),
+            hasLastfmCreds: !!(settings?.lastfm_api_key && settings?.lastfm_shared_secret),
+        },
+        importStats,
     };
 }

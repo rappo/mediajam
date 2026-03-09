@@ -119,6 +119,17 @@
             d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm0 4c-3.314 0-6 2.686-6 6s2.686 6 6 6 6-2.686 6-6-2.686-6-6-6zm0 2c2.21 0 4 1.79 4 4s-1.79 4-4 4-4-1.79-4-4 1.79-4 4-4zm0 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"
         />
     </svg>
+{:else if service === "omdb"}
+    <svg
+        class="{size} {className}"
+        viewBox="0 0 24 24"
+        fill="currentColor"
+        xmlns="http://www.w3.org/2000/svg"
+    >
+        <path
+            d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V6h16v12zM6 10h2v4H6zm3 0h1v4H9zm2 0h3v1h-2v.5H14v1h-2V14h3v-1h-2v-.5H11V10zm5 0h2v1h-1v.5h1v1h-1V14h-1V10z"
+        />
+    </svg>
 {:else if service === "discogs"}
     <svg
         class="{size} {className}"

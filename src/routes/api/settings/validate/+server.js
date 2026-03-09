@@ -3,7 +3,7 @@ import { tmdbRequest } from '$lib/server/tmdb.js';
 
 /**
  * POST /api/settings/validate — Test API keys against external services.
- * Body: { service: 'tvdb' | 'tmdb' | 'trakt' | 'lastfm', credentials: { ... } }
+ * Body: { service: 'tvdb' | 'tmdb' | 'trakt' | 'lastfm' | 'omdb' | 'discogs', credentials: { ... } }
  * @type {import('./$types').RequestHandler}
  */
 export async function POST({ request }) {
@@ -65,10 +65,37 @@ export async function POST({ request }) {
                 return json({ valid: false, message: `Last.fm returned ${res.status}` });
             }
 
+            case 'omdb': {
+                // OMDb — test with a simple query
+                const res = await fetch(`https://www.omdbapi.com/?apikey=${encodeURIComponent(credentials.omdb_api_key)}&t=test`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.Response === 'False' && data.Error?.includes('Invalid API key')) {
+                        return json({ valid: false, message: 'Invalid OMDb API key' });
+                    }
+                    return json({ valid: true, message: 'OMDb API key is valid' });
+                }
+                return json({ valid: false, message: `OMDb returned ${res.status}` });
+            }
+
+            case 'discogs': {
+                // Discogs — test with identity endpoint
+                const res = await fetch('https://api.discogs.com/oauth/identity', {
+                    headers: {
+                        'Authorization': `Discogs token=${credentials.discogs_token}`,
+                        'User-Agent': 'Mediajam/1.0'
+                    }
+                });
+                if (res.ok) {
+                    return json({ valid: true, message: 'Discogs token is valid' });
+                }
+                return json({ valid: false, message: `Discogs returned ${res.status} — check your token` });
+            }
+
             default:
                 return json({ valid: false, message: `Unknown service: ${service}` }, { status: 400 });
         }
-    } catch (e) {
+    } catch (/** @type {any} */ e) {
         return json({ valid: false, message: `Connection error: ${e.message}` });
     }
 }
