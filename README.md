@@ -1,6 +1,6 @@
 # 🎬 Mediajam
 
-Beautiful analytics dashboard and **media telemetry hub** for your [Jellyfin](https://jellyfin.org/) media server. Track your TV shows, movies, and music collection with rich visualizations, real-time playback tracking, and historical imports from Trakt & Last.fm.
+Self-hosted media telemetry hub for [Jellyfin](https://jellyfin.org/). Track your TV shows, movies, and music with rich dashboards, real-time playback monitoring, and historical imports from Trakt & Last.fm.
 
 ![SvelteKit](https://img.shields.io/badge/SvelteKit-FF3E00?style=flat&logo=svelte&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-003B57?style=flat&logo=sqlite&logoColor=white)
@@ -9,91 +9,77 @@ Beautiful analytics dashboard and **media telemetry hub** for your [Jellyfin](ht
 
 ## Features
 
-### Collection Dashboards
-- 📺 **TV Shows** — Episode watch status, show completion rates, collection gaps, top shows by episode count
-- 🎬 **Movies** — Watch status breakdown, movies by decade/year, most rewatched films, runtime stats
-- 🎵 **Music** — Artist & album counts, play counts, collection completeness per artist
-- 📦 **Collection Tracking** — See what % of each show/artist you have vs. what's available on Jellyfin
-
-### Media Telemetry Hub (`feature/tracker-pivot`)
-- ⏱ **Playback History Timeline** — Event-based tracking with timestamps, duration, and completion percentage
-- 🔴 **Now Playing** — Real-time glassmorphic card powered by SSE, showing active playback sessions
-- 🔗 **Trakt & Last.fm Integration** — Full OAuth flows for linking accounts and importing history
-- 📊 **Three-Tiered Backfill Engine** — Import from cloud services (Trakt/Last.fm), Jellyfin Playback Reporting DB, or binary watched state
-- 🌐 **Per-User Public API** — Unauthenticated endpoints for external widgets (`/api/users/:id/now-playing`, `/history`, `/stats`, `/favorites`)
+### Playback Tracking
+- ⏱ **History Timeline** — Full playback history with date grouping, text search, date range filtering, and a year scrub bar
+- 🔴 **Now Playing** — Real-time glassmorphic card showing active sessions via SSE
+- 🔗 **Trakt & Last.fm Integration** — OAuth flows for linking accounts and importing watch/listen history
+- 📊 **Three-Tiered Backfill Engine** — Import from cloud services, Jellyfin Playback Reporting DB, or binary watched state
 - 🔄 **Webhook Ingestion** — Receives Jellyfin webhook events with 2-second debounce and smart scrobble thresholds
-- 🎯 **Cross-Source Deduplication** — `external_event_id` ensures the same event is never imported twice
+- 🎯 **Cross-Source Deduplication** — `external_event_id` ensures events are never imported twice
 
-### General
-- 🧙 **Onboarding Wizard** — Auto-discover your Jellyfin server, select libraries, configure API keys
-- 🎨 **30+ Themes** — All daisyUI themes with live preview, persisted per user
-- 🔄 **Real-time Sync** — SSE-powered progress with per-library tracking, pause/resume controls
-- 📊 **Interactive Charts** — CanvasJS-powered bar charts, pie charts, and distribution graphs
-- 🔍 **DataTable** — Sortable, searchable tables with "Show All" and "Hide Collected" filters
+### Collection Dashboards
+- 📺 **TV Shows** — Episode watch status, show completion rates, poster carousels, collection gaps
+- 🎬 **Movies** — Watch status breakdown, movies by decade/year, most rewatched films, poster carousels
+- 🎵 **Music** — Artist & album counts, play counts, collection completeness, poster carousels
+- 📦 **Collection Tracking** — See what % of each show/artist you have vs. what's available
+
+### People & Credits
+- 👤 **Person Database** — Cast & crew synced from Jellyfin with external IDs (TMDB, IMDb)
+- 🎭 **Credit Browsing** — Browse by actor/director/writer, see filmography across your library
+- 🔍 **Person Detail Pages** — Photo, biography, filmography with poster grids
+
+### Smart Features
+- 🧠 **LLM Reconciliation** — Ollama-powered matching for orphaned/external media (Last.fm artists, etc.)
+- 🏷 **Auto-Tagging** — LLM-generated genre, mood, and theme tags for your library
+- 🎨 **MusicBrainz Enrichment** — Album art, release dates, and metadata backfill
+- ⭐ **External Ratings** — TMDB ratings integration
+- 🔎 **Global Search** — Unified search across all media types with poster previews
+
+### *arr Integration (Radarr · Sonarr · Lidarr)
+- 📡 **Network Discovery** — Auto-scan your network for *arr instances
+- ✅ **Collection Status** — See monitored/downloaded status alongside watch history
+- ➕ **Add to *arr** — Request missing media directly from Mediajam
+- 🔍 **Interactive Search** — Search *arr indexers from within the app
+
+### Infrastructure
+- 🧙 **Onboarding Wizard** — Auto-discover Jellyfin, select libraries, configure API keys
+- 🎨 **30+ Themes** — All daisyUI themes with live preview
+- 🔄 **Real-time Sync** — SSE-powered progress with per-library tracking, pause/resume
+- 💾 **Backup & Restore** — Full JSON export/import of all data
+- 📊 **Activity Log** — Searchable history of all system events
+- 🖼 **Image Caching** — Local proxy cache for Jellyfin images with stale-while-revalidate
+- 🌐 **Per-User Public API** — Unauthenticated endpoints for external widgets
+- ⏰ **Auto-Sync Scheduler** — Configurable automatic sync intervals
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Framework | [SvelteKit](https://kit.svelte.dev/) with `@sveltejs/adapter-node` |
-| Database | [SQLite](https://sqlite.org/) via `better-sqlite3` |
-| Styling | [Tailwind CSS v4](https://tailwindcss.com/) + [daisyUI](https://daisyui.com/) |
+| Framework | [SvelteKit](https://kit.svelte.dev/) v2 with Svelte 5 runes |
+| Adapter | `@sveltejs/adapter-node` |
+| Database | [SQLite](https://sqlite.org/) via `better-sqlite3` (WAL mode) |
+| Styling | [Tailwind CSS v4](https://tailwindcss.com/) + [daisyUI v5](https://daisyui.com/) |
 | Charts | [CanvasJS](https://canvasjs.com/) |
-| API | [Jellyfin API](https://api.jellyfin.org/), [Trakt API](https://trakt.docs.apiary.io/), [Last.fm API](https://www.last.fm/api/) |
+| APIs | Jellyfin SDK, Trakt OAuth, Last.fm, TMDB, MusicBrainz, Radarr/Sonarr/Lidarr |
+| LLM | [Ollama](https://ollama.com/) (optional, for reconciliation & tagging) |
+| Runtime | Node.js 20 |
 
 ## Quick Start
 
 ```bash
-# Clone the repository
 git clone http://192.168.1.50:3210/rappo/mediajam.git
 cd mediajam
-
-# Install dependencies
 npm install
-
-# Start development server
 npm run dev
 ```
 
 Open [http://localhost:5173](http://localhost:5173) — the setup wizard will guide you through connecting to your Jellyfin server.
 
-### Tracker Pivot Branch
-
-The `feature/tracker-pivot` branch adds the media telemetry hub features (playback history, backfill engine, OAuth flows, per-user API, Now Playing):
-
-```bash
-# Switch to the tracker pivot branch
-git checkout feature/tracker-pivot
-
-# Install dependencies (if not already done)
-npm install
-
-# Start development server
-npm run dev
-```
-
-After starting the server, `/` redirects to the new `/history` timeline view. To set up real-time tracking:
-
-1. Install the [Jellyfin Webhook Plugin](https://github.com/jellyfin/jellyfin-plugin-webhook)
-2. Configure it to send `PlaybackStart`, `PlaybackProgress`, and `PlaybackStop` events to `http://<mediajam-host>:5173/api/ingest`
-3. Playback events will appear in the History timeline automatically
-
-To import historical data from Trakt or Last.fm, configure API keys in Settings and use the backfill endpoints.
-
-## Production Build
-
-```bash
-npm run build
-node build/index.js
-```
-
 ## Docker
 
 ```bash
-# Build the image
 docker build -t mediajam .
 
-# Run with persistent data
 docker run -d \
   -p 3000:3000 \
   -v mediajam_data:/app/data \
@@ -101,7 +87,7 @@ docker run -d \
   mediajam
 ```
 
-### Docker Compose (with Jellyfin Playback Reporting)
+### Docker Compose
 
 ```yaml
 services:
@@ -111,7 +97,7 @@ services:
       - "3000:3000"
     volumes:
       - mediajam_data:/app/data
-      # Mount Jellyfin's Playback Reporting DB (read-only)
+      # Optional: mount Jellyfin's Playback Reporting DB (read-only)
       - /path/to/jellyfin/data/playback_reporting.db:/app/jellyfin/playback_reporting.db:ro
     environment:
       - ORIGIN=http://localhost:3000
@@ -124,6 +110,7 @@ services:
 | `PORT` | `3000` | Server port |
 | `HOST` | `0.0.0.0` | Bind address |
 | `ORIGIN` | — | Public URL (required for CSRF in production) |
+| `DATABASE_PATH` | `/app/data/mediajam.sqlite` | Database file path |
 
 ## Project Structure
 
@@ -131,34 +118,56 @@ services:
 src/
 ├── lib/
 │   ├── components/
-│   │   ├── Chart.svelte           # CanvasJS chart wrapper
-│   │   ├── DataTable.svelte       # Sortable/searchable table
-│   │   ├── StatCard.svelte        # Glassmorphic stat card
-│   │   ├── NowPlaying.svelte      # Live SSE now-playing card
-│   │   ├── TimelineEntry.svelte   # Playback history entry
-│   │   └── setup/                 # Onboarding wizard steps
+│   │   ├── Chart.svelte              # CanvasJS chart wrapper
+│   │   ├── DataTable.svelte          # Sortable/searchable table
+│   │   ├── StatCard.svelte           # Glassmorphic stat card
+│   │   ├── NowPlaying.svelte         # Live now-playing card (SSE)
+│   │   ├── NowPlayingBar.svelte      # Persistent bottom bar
+│   │   ├── TimelineEntry.svelte      # Playback history entry
+│   │   ├── YearScrubber.svelte       # History timeline year scrub bar
+│   │   ├── SearchBar.svelte          # Global unified search
+│   │   ├── PosterRow.svelte          # Horizontal poster carousel
+│   │   ├── LogConsole.svelte         # SSE log output viewer
+│   │   ├── SyncFooter.svelte         # Persistent sync status bar
+│   │   ├── ReconciliationPanel.svelte # LLM reconciliation UI
+│   │   ├── ArrAddDialog.svelte       # Add-to-*arr dialog
+│   │   └── setup/                    # Onboarding wizard steps
 │   └── server/
-│       ├── db.js                  # SQLite schema & connection
-│       ├── sync-engine.js         # Jellyfin collection sync
-│       ├── ingest-engine.js       # Webhook ingestion & scrobble logic
-│       └── backfill-engine.js     # Three-tiered history import
+│       ├── db.js                     # SQLite schema & connection
+│       ├── sync-engine.js            # Jellyfin collection sync
+│       ├── ingest-engine.js          # Webhook ingestion & scrobble logic
+│       ├── backfill-engine.js        # Three-tiered history import
+│       ├── people-sync-engine.js     # Cast & crew sync
+│       ├── musicbrainz-engine.js     # MusicBrainz album enrichment
+│       ├── ratings-engine.js         # External ratings (TMDB)
+│       ├── arr-client.js             # *arr API client
+│       ├── arr-sync.js               # *arr sync engine
+│       ├── llm-reconciler.js         # Ollama LLM reconciliation
+│       ├── album-matcher.js          # Album fuzzy matching pipeline
+│       ├── image-cache.js            # Local image proxy cache
+│       ├── session.js                # Session management
+│       ├── logger.js                 # Structured logging
+│       └── jellyfin.js               # Jellyfin SDK wrapper
 ├── routes/
-│   ├── +layout.svelte             # App shell with navbar
-│   ├── history/                   # Playback history timeline (default)
-│   ├── tv/                        # TV Shows dashboard
-│   ├── movies/                    # Movies dashboard
-│   ├── music/                     # Music dashboard
-│   ├── settings/                  # Settings & re-sync
+│   ├── history/                      # Playback history timeline
+│   ├── tv/                           # TV Shows dashboard + detail
+│   ├── movies/                       # Movies dashboard + detail
+│   ├── music/                        # Music dashboard + detail
+│   ├── people/                       # Person directory + detail
+│   ├── settings/                     # Settings & admin panel
+│   ├── welcome/                      # Post-setup welcome page
 │   └── api/
-│       ├── sync/                  # Collection sync + SSE
-│       ├── ingest/                # Webhook ingestion + Now Playing SSE
-│       ├── history/               # Paginated playback timeline
-│       ├── backfill/history/      # Backfill trigger + progress SSE
-│       ├── spokes/trakt/          # Trakt OAuth + scrobble
-│       ├── spokes/lastfm/         # Last.fm auth + scrobble
-│       ├── users/[userId]/        # Per-user public API
-│       └── settings/              # Settings CRUD
-└── app.css                        # Global styles & Tailwind config
+│       ├── sync/                     # Collection sync + SSE
+│       ├── ingest/                   # Webhook ingestion + Now Playing SSE
+│       ├── history/                  # Paginated playback timeline
+│       ├── backfill/                 # Backfill triggers + progress
+│       ├── spokes/trakt/             # Trakt OAuth + history sync
+│       ├── spokes/lastfm/            # Last.fm auth + scrobble sync
+│       ├── arr/                      # *arr integration endpoints
+│       ├── users/[userId]/           # Per-user public API
+│       ├── backup/                   # Export & import
+│       └── settings/                 # Settings CRUD
+└── app.css                           # Global styles & Tailwind config
 ```
 
 ## API Endpoints
@@ -177,16 +186,19 @@ src/
 | Endpoint | Description |
 |----------|-------------|
 | `POST /api/ingest` | Receive Jellyfin webhook events |
-| `GET /api/ingest` | SSE stream for Now Playing updates |
+| `GET /api/ingest` | SSE stream for Now Playing |
 | `GET /api/history` | Paginated playback timeline |
-| `POST /api/backfill/history` | Trigger backfill tier (`trakt`, `lastfm`, `jellyfin`, `legacy`) |
-| `GET /api/backfill/history` | SSE stream for backfill progress |
-| `GET /api/spokes/trakt` | Trakt OAuth redirect |
-| `GET /api/spokes/lastfm` | Last.fm auth redirect |
+| `POST /api/backfill/history` | Trigger backfill (`trakt`, `lastfm`, `jellyfin`, `legacy`) |
+| `POST /api/sync` | Start/pause/resume/stop collection sync |
+| `GET /api/sync` | SSE stream for sync progress |
+| `POST /api/arr/scan` | Scan network for *arr instances |
+| `POST /api/arr/[service]/test` | Test *arr connection |
+| `POST /api/backup` | Export full backup |
+| `POST /api/backup/import` | Import backup |
 
 ## Data Storage
 
-SQLite database is stored at:
+SQLite database location:
 
 - **Development:** `./mediajam.sqlite`
 - **Docker:** `/app/data/mediajam.sqlite` (mount a volume for persistence)
