@@ -63,14 +63,31 @@ export async function GET({ params, locals }) {
                     popularity: item.popularity || 0,
                     vote_average: item.vote_average || 0,
                     roles: [],
+                    departments: new Set(),
                     in_library: false,
                     library_id: null
                 });
             }
 
             const entry = seen.get(key);
-            const role = item.character || item.job || item.department || 'Unknown';
-            if (!entry.roles.includes(role)) entry.roles.push(role);
+            // Track the department for filtering (Acting, Directing, Writing, Production, etc.)
+            if (item.character !== undefined) {
+                // Cast credit
+                entry.departments.add('Acting');
+                const role = item.character || 'Unknown';
+                if (!entry.roles.includes(role)) entry.roles.push(role);
+            } else {
+                // Crew credit
+                const dept = item.department || 'Other';
+                entry.departments.add(dept);
+                const role = item.job || dept;
+                if (!entry.roles.includes(role)) entry.roles.push(role);
+            }
+        }
+
+        // Convert department Sets to arrays for JSON serialization
+        for (const item of seen.values()) {
+            item.departments = [...item.departments];
         }
 
         // Step 3: Cross-reference with existing library

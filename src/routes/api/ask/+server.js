@@ -11,33 +11,47 @@ const ALLOWED_TABLES = [
 ];
 
 /**
- * Get a simplified schema description for the LLM prompt.
+ * Get a detailed schema description for the LLM prompt.
  * @returns {string}
  */
 function getSchemaContext() {
-    return `SQLite database schema (only these tables may be queried):
+    return `SQLite database schema. IMPORTANT relationship notes:
+- media_parents is the shared catalog (NO user_id column). It has movies, TV shows, and music artists.
+- Each media_parent has one or more media_children (movie→1 child, show→many episode children, artist→album children).
+- playback_history.media_id references media_children.id (NOT media_parents.id). Always JOIN through media_children to reach media_parents.
+- For watch counts on movies: use media_children.play_count or COUNT from playback_history.
+- "recently" means within the last 30 days unless specified otherwise.
 
-media_parents: id, title, media_type ('show'|'movie'|'artist'), poster_url, overview, release_year, runtime_ticks, collected_children, watched_children, library_id, is_favorite, jellyfin_id, tmdb_id, imdb_id, tvdb_id, musicbrainz_id
+Tables:
 
-media_children: id, parent_id (FK media_parents.id), jellyfin_id, title, season_number, item_number, is_special, overview, premiere_date
+media_parents: id, title, media_type ('show'|'movie'|'artist'), release_year, poster_url, overview,
+  collected_children, watched_children, total_released_children, library_id, is_favorite,
+  jellyfin_id, tmdb_id, imdb_id, tvdb_id, musicbrainz_id, collection_status
 
-tracks: id, album_id (FK media_children.id), title, track_number, duration_ticks, musicbrainz_id
+media_children: id, parent_id (FK→media_parents.id), jellyfin_id, title, season_number, item_number,
+  is_special, is_collected, watch_status ('watched'|'unwatched'|'in_progress'), play_count,
+  runtime_ticks, premiere_date, poster_url, community_rating
 
-playback_history: id, user_id, media_id (FK media_children.id), source, timestamp, duration_consumed_seconds, completion_pct, external_event_id, track_name, track_id
+playback_history: id, user_id, media_id (FK→media_children.id), source, timestamp (ISO format),
+  duration_consumed_seconds, completion_pct, external_event_id, track_name
 
-persons: id, name, jellyfin_id, tmdb_id, imdb_id, photo_url, overview, is_favorite
+tracks: id, album_id (FK→media_children.id), jellyfin_id, title, track_number, disc_number, runtime_ticks
 
-person_credits: id, person_id (FK persons.id), media_parent_id (FK media_parents.id), role_type ('actor'|'director'|'writer'|'producer'), character_name, sort_order
+persons: id, name, photo_url, bio, tmdb_person_id, is_favorite
 
-media_tags: id, media_parent_id (FK media_parents.id), tag_type ('genre'|'mood'|'theme'), tag_value, source
+person_credits: id, person_id (FK→persons.id), media_parent_id (FK→media_parents.id),
+  role_type ('actor'|'director'|'writer'|'producer'|'composer'), character_name, sort_order
 
-lastfm_scrobbles: id, user_id, artist_name, track_name, album_name, timestamp_uts
-
-trakt_history: id, user_id, trakt_id, type, watched_at, title, show_title, season, episode, year, tmdb_id, imdb_id
+media_tags: id, media_parent_id (FK→media_parents.id), tag_type ('genre'|'mood'|'tag'), tag_value
 
 favorites: id, user_id, media_parent_id, person_id, created_at
 
-libraries: jellyfin_id, name, type, total_items`;
+libraries: jellyfin_id, name, type, total_items
+
+EXAMPLE QUERIES:
+-- Count movies: SELECT COUNT(*) as count FROM media_parents WHERE media_type = 'movie'
+-- Recently watched movies: SELECT DISTINCT mp.title, mp.release_year, ph.timestamp FROM playback_history ph JOIN media_children mc ON ph.media_id = mc.id JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.media_type = 'movie' AND ph.timestamp > datetime('now', '-30 days') ORDER BY ph.timestamp DESC LIMIT 20
+-- Movies by director: SELECT mp.title, mp.release_year FROM person_credits pc JOIN persons p ON pc.person_id = p.id JOIN media_parents mp ON pc.media_parent_id = mp.id WHERE p.name LIKE '%Spielberg%' AND pc.role_type = 'director'`;
 }
 
 /**
@@ -150,16 +164,22 @@ Message: ${question}`;
 
     // Step 2b: For data questions, generate SQL
     const schema = getSchemaContext();
+    const today = new Date().toISOString().split('T')[0];
     const prompt = `Given this SQLite schema:
 ${schema}
 
 The current user_id is ${locals.user.id}.
-Today's date is ${new Date().toISOString().split('T')[0]}.
+Today's date is ${today}.
 
-Convert this question to a SQL query. Return ONLY the raw SQL, no explanation, no markdown, no code fences.
-The query must be a SELECT statement. Use appropriate JOINs, aggregations, and WHERE clauses.
-For time-based queries, the timestamp column in playback_history is in ISO format.
-Limit results to 50 rows maximum.
+RULES:
+1. Output ONLY the raw SQL query. No explanation, no markdown, no code fences.
+2. Must be a SELECT statement.
+3. media_parents has NO user_id column — do not filter it by user.
+4. To get watched items: JOIN playback_history → media_children → media_parents.
+5. "recently" means last 30 days. Use: timestamp > datetime('now', '-30 days')
+6. For counting movies: SELECT COUNT(*) FROM media_parents WHERE media_type = 'movie'
+7. Limit results to 50 rows.
+8. Always use table aliases for JOINs.
 
 Question: ${question}`;
 

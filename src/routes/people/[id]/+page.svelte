@@ -204,7 +204,8 @@
               : "all",
     );
     let discoveryLimit = $state(24);
-    let discoverySearch = $state("");
+    let discoverySearch = $state('');
+    let discoveryRoleFilter = $state('all');
     let addingToArr = $state(/** @type {string|null} */ (null));
     let navigatingItem = $state(/** @type {string|null} */ (null));
 
@@ -251,11 +252,34 @@
     let selectedRootFolder = $state(/** @type {string|null} */ (null));
     let profilesLoading = $state(false);
 
+    // Compute available departments from discovery items
+    let availableDepartments = $derived(
+        (() => {
+            /** @type {Set<string>} */
+            const depts = new Set();
+            for (const item of discoveryItems) {
+                for (const d of (item.departments || [])) depts.add(d);
+            }
+            // Sort with common ones first
+            const order = ['Directing', 'Acting', 'Writing', 'Production', 'Sound', 'Art', 'Camera', 'Editing', 'Visual Effects', 'Costume & Make-Up', 'Crew', 'Lighting'];
+            return [...depts].sort((a, b) => {
+                const ai = order.indexOf(a), bi = order.indexOf(b);
+                if (ai >= 0 && bi >= 0) return ai - bi;
+                if (ai >= 0) return -1;
+                if (bi >= 0) return 1;
+                return a.localeCompare(b);
+            });
+        })()
+    );
+
     let filteredDiscovery = $derived(
         (() => {
-            let items = discoveryFilter === "all"
+            let items = discoveryFilter === 'all'
                 ? discoveryItems
                 : discoveryItems.filter((i) => i.media_type === discoveryFilter);
+            if (discoveryRoleFilter !== 'all') {
+                items = items.filter((i) => (i.departments || []).includes(discoveryRoleFilter));
+            }
             if (discoverySearch.trim()) {
                 const q = discoverySearch.trim().toLowerCase();
                 items = items.filter((i) => i.title?.toLowerCase().includes(q));
@@ -1056,13 +1080,25 @@
                         >{filteredDiscovery.length}</span
                     >
                 </h2>
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
                     <input
                         type="text"
                         placeholder="Search titles…"
                         class="input input-bordered input-xs w-40"
                         bind:value={discoverySearch}
                     />
+                    {#if availableDepartments.length > 1}
+                        <select
+                            class="select select-bordered select-xs"
+                            bind:value={discoveryRoleFilter}
+                            onchange={() => { discoveryLimit = 24; }}
+                        >
+                            <option value="all">All Roles</option>
+                            {#each availableDepartments as dept}
+                                <option value={dept}>{dept}</option>
+                            {/each}
+                        </select>
+                    {/if}
                     <div class="join">
                         <button
                             class="join-item btn btn-xs"
