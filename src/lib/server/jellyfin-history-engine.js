@@ -126,6 +126,13 @@ export async function syncJellyfinHistory(userId) {
         'SELECT id FROM media_children WHERE jellyfin_id = ?'
     );
 
+    const findChildByTmdbId = db.prepare(
+        `SELECT mc.id FROM media_children mc
+         JOIN media_parents mp ON mc.parent_id = mp.id
+         WHERE mp.tmdb_id = ? AND mp.media_type = 'movie'
+         LIMIT 1`
+    );
+
     const findParentByChildId = db.prepare(
         'SELECT mp.tmdb_id FROM media_parents mp JOIN media_children mc ON mc.parent_id = mp.id WHERE mc.id = ?'
     );
@@ -157,8 +164,23 @@ export async function syncJellyfinHistory(userId) {
         for (let idx = 0; idx < movies.length; idx++) {
             const movie = movies[idx];
             const childJellyfinId = movie.Id + '_child';
-            const child = /** @type {any} */ (findChildByJellyfinId.get(childJellyfinId));
-            if (!child) { notFound++; continue; }
+            let child = /** @type {any} */ (findChildByJellyfinId.get(childJellyfinId));
+
+            // Fallback: lookup by TMDB ID if child not found by jellyfin_id
+            if (!child && movie.ProviderIds?.Tmdb) {
+                child = /** @type {any} */ (findChildByTmdbId.get(movie.ProviderIds.Tmdb));
+                if (child) {
+                    broadcast({ log: `  🔗 ${movie.Name}: found via TMDB fallback`, logType: 'info' });
+                }
+            }
+
+            if (!child) {
+                notFound++;
+                if (notFound <= 20) {
+                    broadcast({ log: `  ⚠️ ${movie.Name}: not found in library (ID: ${movie.Id?.slice(0, 8)}…)`, logType: 'warning' });
+                }
+                continue;
+            }
 
             let playedDate = movie.UserData?.LastPlayedDate;
             let dateSource = 'jellyfin';

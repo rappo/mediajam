@@ -335,15 +335,19 @@ export function deduplicateParentsByTitle() {
 }
 
 /**
- * Deduplicate playback_history entries caused by pause/resume re-scrobbles.
- * When the same track (same media_id + track_name) is played back-to-back
- * within `windowMinutes`, keeps the earliest entry and removes the rest.
- * @param {number} [windowMinutes=30] - max gap (in minutes) between plays to consider a duplicate
+ * Deduplicate playback_history entries.
+ * 1) Music: pause/resume re-scrobbles — same media_id + track_name within windowMinutes.
+ * 2) Movies/Episodes: same media_id on the same calendar day from different sources
+ *    (e.g., Trakt + Jellyfin both record the same watch).
+ * @param {number} [windowMinutes=30] - max gap for music dedup
  * @returns {{ removed: number }}
  */
 export function deduplicatePlaybackHistory(windowMinutes = 30) {
-    // Find consecutive plays of the same track within the window
-    const dupes = /** @type {any[]} */ (db.prepare(`
+    let removed = 0;
+    const deleteStmt = db.prepare('DELETE FROM playback_history WHERE id = ?');
+
+    // ── Pass 1: Music — same track within time window ──
+    const musicDupes = /** @type {any[]} */ (db.prepare(`
         WITH ordered AS (
             SELECT
                 id,
@@ -365,20 +369,44 @@ export function deduplicatePlaybackHistory(windowMinutes = 30) {
         ORDER BY timestamp DESC
     `).all(windowMinutes));
 
-    if (dupes.length === 0) return { removed: 0 };
+    // ── Pass 2: Movies/Episodes — same media_id on same day, different sources ──
+    // Keeps the earliest entry per media_id per day, removes later duplicates.
+    const videoDupes = /** @type {any[]} */ (db.prepare(`
+        WITH ranked AS (
+            SELECT
+                id,
+                media_id,
+                source,
+                timestamp,
+                date(timestamp) as play_date,
+                ROW_NUMBER() OVER (
+                    PARTITION BY media_id, date(timestamp)
+                    ORDER BY timestamp ASC
+                ) AS rn
+            FROM playback_history
+            WHERE track_name IS NULL
+        )
+        SELECT id FROM ranked WHERE rn > 1
+    `).all());
 
-    const deleteStmt = db.prepare('DELETE FROM playback_history WHERE id = ?');
-    let removed = 0;
+    const allDupeIds = new Set([
+        ...musicDupes.map(d => d.id),
+        ...videoDupes.map(d => d.id)
+    ]);
+
+    if (allDupeIds.size === 0) return { removed: 0 };
 
     db.transaction(() => {
-        for (const dup of dupes) {
-            deleteStmt.run(dup.id);
+        for (const id of allDupeIds) {
+            deleteStmt.run(id);
             removed++;
         }
     })();
 
     if (removed > 0) {
-        console.log(`[dedupe] Removed ${removed} pause/resume duplicate plays (window: ${windowMinutes}min)`);
+        const musicCount = musicDupes.length;
+        const videoCount = videoDupes.length;
+        console.log(`[dedupe] Removed ${removed} duplicate plays (${musicCount} music re-scrobbles, ${videoCount} video same-day dupes)`);
     }
 
     return { removed };
