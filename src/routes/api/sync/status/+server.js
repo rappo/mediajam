@@ -25,21 +25,8 @@ export async function GET({ locals }) {
             errors: s.errors,
             logs: s.logs || []
         };
-    } else {
-        // Even when not running, return last logs so polling can pick up final state
-        const s = getSyncStatus();
-        if (s.logs && s.logs.length > 0) {
-            result.jellyfin = {
-                running: false,
-                paused: false,
-                progress: s.progress,
-                libraryName: s.libraryName || '',
-                itemsSynced: s.itemsSynced,
-                errors: s.errors,
-                logs: s.logs
-            };
-        }
     }
+    // Don't return stale finished sync data — SyncFooter only cares about active syncs
 
     if (isPeopleRunning()) {
         const ps = getPeopleStatus();

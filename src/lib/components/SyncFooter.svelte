@@ -35,19 +35,19 @@
             const data = await res.json();
 
             // Find the first running sync to display
-            if (data.jellyfin) {
+            if (data.jellyfin?.running) {
                 syncType = data.jellyfin.libraryName || "Jellyfin Sync";
                 progress = data.jellyfin.progress || 0;
                 if (data.jellyfin.lastLog) lastLog = data.jellyfin.lastLog;
                 syncViewUrl = "/settings/admin?tab=sync";
                 visible = !isOnSyncPage();
-            } else if (data.people) {
+            } else if (data.people?.running) {
                 syncType = "People Sync";
                 progress = data.people.progress || 0;
                 if (data.people.lastLog) lastLog = data.people.lastLog;
                 syncViewUrl = "/settings/admin?tab=sync";
                 visible = !isOnSyncPage();
-            } else if (data.backfill) {
+            } else if (data.backfill?.running) {
                 syncType = data.backfill.tier
                     ? `${data.backfill.tier.charAt(0).toUpperCase() + data.backfill.tier.slice(1)} Import`
                     : "Import";
@@ -55,7 +55,7 @@
                 if (data.backfill.lastLog) lastLog = data.backfill.lastLog;
                 syncViewUrl = "/settings/account";
                 visible = !isOnSyncPage();
-            } else if (data.musicbrainz) {
+            } else if (data.musicbrainz?.running) {
                 syncType = "MusicBrainz Enrich";
                 progress = data.musicbrainz.progress || 0;
                 if (data.musicbrainz.lastLog)
@@ -63,12 +63,8 @@
                 syncViewUrl = "/settings/admin?tab=sync";
                 visible = !isOnSyncPage();
             } else {
-                // Nothing running — hide if we were showing
-                if (visible) {
-                    setTimeout(() => {
-                        visible = false;
-                    }, 3000);
-                }
+                // Nothing running — hide
+                visible = false;
             }
         } catch {
             /* ignore fetch errors */
