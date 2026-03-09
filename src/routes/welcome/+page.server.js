@@ -5,37 +5,40 @@ export function load({ locals }) {
     const settings = /** @type {any} */ (db.prepare('SELECT * FROM app_settings WHERE id = 1').get());
 
     // Check sync_history to see if people/musicbrainz enrichment has ever run
-    const peopleHistory = /** @type {any} */ (
-        db.prepare("SELECT id FROM sync_history WHERE sync_type = 'people' LIMIT 1").get()
-    );
-    const mbHistory = /** @type {any} */ (
-        db.prepare("SELECT id FROM sync_history WHERE sync_type = 'musicbrainz' LIMIT 1").get()
-    );
+    let peopleHistory = null;
+    let mbHistory = null;
+    try {
+        peopleHistory = db.prepare("SELECT id FROM sync_history WHERE sync_type = 'people' LIMIT 1").get();
+        mbHistory = db.prepare("SELECT id FROM sync_history WHERE sync_type = 'musicbrainz' LIMIT 1").get();
+    } catch { /* table may not exist yet */ }
 
     // Connected services (Trakt/Last.fm OAuth)
     const userId = locals.user?.id;
     let connectedServices = { trakt: null, lastfm: null };
     let autoSync = { trakt: false, lastfm: false };
     if (userId) {
-        const traktConn = /** @type {any} */ (
-            db.prepare("SELECT * FROM connected_services WHERE user_id = ? AND provider = 'trakt'").get(userId)
-        );
-        const lastfmConn = /** @type {any} */ (
-            db.prepare("SELECT * FROM connected_services WHERE user_id = ? AND provider = 'lastfm'").get(userId)
-        );
-        connectedServices = { trakt: traktConn || null, lastfm: lastfmConn || null };
+        try {
+            const traktConn = /** @type {any} */ (
+                db.prepare("SELECT * FROM connected_services WHERE user_id = ? AND provider = 'trakt'").get(userId)
+            );
+            const lastfmConn = /** @type {any} */ (
+                db.prepare("SELECT * FROM connected_services WHERE user_id = ? AND provider = 'lastfm'").get(userId)
+            );
+            connectedServices = { trakt: traktConn || null, lastfm: lastfmConn || null };
+        } catch { /* table may not exist yet */ }
 
-        // Auto-sync state from user_identities
-        const traktIdentity = /** @type {any} */ (
-            db.prepare("SELECT auto_sync FROM user_identities WHERE user_id = ? AND provider = 'trakt'").get(userId)
-        );
-        const lastfmIdentity = /** @type {any} */ (
-            db.prepare("SELECT auto_sync FROM user_identities WHERE user_id = ? AND provider = 'lastfm'").get(userId)
-        );
-        autoSync = {
-            trakt: !!(traktIdentity?.auto_sync),
-            lastfm: !!(lastfmIdentity?.auto_sync),
-        };
+        try {
+            const traktIdentity = /** @type {any} */ (
+                db.prepare("SELECT auto_sync FROM user_identities WHERE user_id = ? AND provider = 'trakt'").get(userId)
+            );
+            const lastfmIdentity = /** @type {any} */ (
+                db.prepare("SELECT auto_sync FROM user_identities WHERE user_id = ? AND provider = 'lastfm'").get(userId)
+            );
+            autoSync = {
+                trakt: !!(traktIdentity?.auto_sync),
+                lastfm: !!(lastfmIdentity?.auto_sync),
+            };
+        } catch { /* table may not exist yet */ }
     }
 
     // Import stats

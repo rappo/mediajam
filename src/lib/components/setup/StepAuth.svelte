@@ -224,8 +224,10 @@
             >
                 {#if loading}
                     <span class="loading loading-spinner loading-sm"></span>
+                    Creating Account…
+                {:else}
+                    Create Account
                 {/if}
-                Create Account
             </button>
         </div>
     </form>
