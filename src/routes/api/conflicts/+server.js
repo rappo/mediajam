@@ -1,5 +1,7 @@
 import db from '$lib/server/db.js';
 import { json } from '@sveltejs/kit';
+import { isRunning as isSyncRunning } from '$lib/server/sync-engine.js';
+import { isMBRunning } from '$lib/server/musicbrainz-engine.js';
 
 /**
  * GET /api/conflicts — list pending sync conflicts with media details.
@@ -9,6 +11,11 @@ export async function GET({ locals }) {
 
     const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_url FROM app_settings WHERE id = 1').get());
     const jellyfinUrl = settings?.jellyfin_url || '';
+
+    // Don't surface conflicts while syncs are running — data is still incomplete
+    if (isSyncRunning() || isMBRunning()) {
+        return json({ conflicts: [], syncRunning: true });
+    }
 
     const conflicts = db.prepare(`
         SELECT 
@@ -24,8 +31,8 @@ export async function GET({ locals }) {
             s.tmdb_id AS secondary_tmdb, s.imdb_id AS secondary_imdb,
             s.media_type AS secondary_media_type, s.release_year AS secondary_year,
             s.collection_status AS secondary_status, s.library_id AS secondary_library,
-            (SELECT COUNT(*) FROM media_children WHERE parent_id = p.id) AS primary_child_count,
-            (SELECT COUNT(*) FROM media_children WHERE parent_id = s.id) AS secondary_child_count
+            (SELECT COUNT(*) FROM media_children WHERE parent_id = p.id) AS primary_album_count,
+            (SELECT COUNT(*) FROM media_children WHERE parent_id = s.id) AS secondary_album_count
         FROM sync_conflicts sc
         LEFT JOIN media_parents p ON p.id = sc.primary_id
         LEFT JOIN media_parents s ON s.id = sc.secondary_id

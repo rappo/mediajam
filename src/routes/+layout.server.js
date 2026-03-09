@@ -1,5 +1,7 @@
 import db, { getBootWarnings } from '$lib/server/db.js';
 import { getUnreadCount } from '$lib/server/activity-log.js';
+import { isRunning as isSyncRunning } from '$lib/server/sync-engine.js';
+import { isMBRunning } from '$lib/server/musicbrainz-engine.js';
 
 /** @type {import('./$types').LayoutServerLoad} */
 export function load({ locals }) {
@@ -42,7 +44,7 @@ export function load({ locals }) {
         remoteControlEnabled: !!userPreferences.remoteControlEnabled,
         userPreferences,
         bootWarnings: getBootWarnings(),
-        pendingConflicts: /** @type {any} */ (db.prepare('SELECT COUNT(*) as count FROM sync_conflicts WHERE status = ?').get('pending'))?.count || 0,
+        pendingConflicts: (isSyncRunning() || isMBRunning()) ? 0 : (/** @type {any} */ (db.prepare('SELECT COUNT(*) as count FROM sync_conflicts WHERE status = ?').get('pending'))?.count || 0),
         showWelcome: (settings?.setup_complete === 1 && !settings?.welcome_complete),
         jellyfinAuthInvalid: settings?.jellyfin_auth_status === 'invalid',
         activityUnread: getUnreadCount(),

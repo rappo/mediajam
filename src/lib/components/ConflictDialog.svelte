@@ -13,6 +13,7 @@
     let conflicts = $state([]);
     let resolving = $state(/** @type {number|null} */ (null));
     let error = $state("");
+    let syncRunning = $state(false);
     /** @type {Set<number>} */
     let expandedIds = $state(new Set());
 
@@ -29,6 +30,7 @@
             if (!res.ok) throw new Error("Failed to fetch conflicts");
             const data = await res.json();
             conflicts = data.conflicts || [];
+            syncRunning = data.syncRunning || false;
         } catch (e) {
             error = e instanceof Error ? e.message : "Failed";
         }
@@ -103,6 +105,11 @@
                 <div class="flex justify-center py-8">
                     <span class="loading loading-spinner loading-md"></span>
                 </div>
+            {:else if syncRunning}
+                <div class="text-center py-8 text-base-content/50 space-y-2">
+                    <span class="loading loading-spinner loading-sm"></span>
+                    <p>A sync is in progress — conflicts will appear once it finishes.</p>
+                </div>
             {:else if conflicts.length === 0}
                 <div class="text-center py-8 text-base-content/50">
                     ✅ No conflicts to resolve
@@ -154,7 +161,7 @@
                                                 <div
                                                     class="text-xs text-base-content/50"
                                                 >
-                                                    {albumCount} albums
+                                                    {albumCount ?? 0} albums
                                                 </div>
                                                 <div
                                                     class="badge badge-xs mt-0.5"
