@@ -3,8 +3,11 @@
     import ExternalLinks from "$lib/components/ExternalLinks.svelte";
     import ArrAddDialog from "$lib/components/ArrAddDialog.svelte";
     import HeartBorder from "$lib/components/HeartBorder.svelte";
+    import MediaDetailHeader from "$lib/components/MediaDetailHeader.svelte";
     let { data } = $props();
     let expandedAlbum = $state(null);
+
+    let useNewLayout = $state(true);
     let albumTracks = $state({});
     let loadingTracks = $state(null);
     /** @type {'list' | 'grid'} */
@@ -302,8 +305,9 @@
 </svelte:head>
 
 <div class="space-y-6 max-w-6xl mx-auto">
-    <!-- Back link -->
+    <!-- Back + Sync + Layout Toggle -->
     <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
         <a href="/music" class="btn btn-ghost btn-sm gap-1">
             <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -345,9 +349,49 @@
         </button>
         {/if}
         {/if}
+        </div>
+        <button
+            class="btn btn-ghost btn-xs gap-1 text-base-content/30 hover:text-base-content/60"
+            onclick={() => useNewLayout = !useNewLayout}
+            title="Toggle layout"
+        >
+            {useNewLayout ? '🔀 Classic' : '✨ New'}
+        </button>
     </div>
 
-    <!-- Header -->
+    {#if useNewLayout}
+        <!-- ═══ NEW LAYOUT (Option B) ═══ -->
+        <MediaDetailHeader
+            mediaType="artist"
+            title={data.artist.title}
+            posterUrl={data.artist.imageUrl}
+            isFavorite={!!data.artist.is_favorite}
+            favoriteType="media"
+            favoriteId={data.artist.id}
+            heartBorderEnabled={!!data.settings?.heartBorderMusic}
+            stats={[
+                { label: 'albums', value: data.albums.length, icon: '💿' },
+                { label: 'plays', value: data.artist.total_plays, icon: '▶' },
+                { label: 'runtime', value: formatRuntime(data.totalRuntimeMinutes) },
+                ...(data.artist.collection_pct !== null ? [{ label: 'collected', value: `${data.artist.collection_pct}%`, icon: '📦' }] : []),
+            ]}
+            externalLinks={{
+                musicbrainz_id: data.artist.musicbrainz_id,
+                jellyfin_id: data.artist.jellyfin_id,
+                jellyfin_url: data.jellyfinUrl,
+                arr_slug: data.artist.arr_slug,
+                arr_url: data.arrUrl,
+                arr_service: data.arrService,
+                wikipedia_url: data.artist.wikipedia_url,
+                mediaType: 'artist'
+            }}
+            extraBadges={[
+                ...(!data.artist.jellyfin_id ? [{ label: '📡 External', cls: 'badge-warning' }] : []),
+            ]}
+            backUrl="/music"
+            backLabel="All Artists"
+        />
+    {:else}
     <div class="flex gap-6 items-start">
         {#if data.artist.imageUrl}
             <HeartBorder
@@ -400,6 +444,7 @@
             </div>
         </div>
     </div>
+    {/if}
 
     <!-- Lidarr Status -->
     <div class="card bg-base-200/50 border border-base-300">

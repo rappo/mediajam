@@ -6,7 +6,10 @@
     import ArrAddDialog from "$lib/components/ArrAddDialog.svelte";
     import HeartBorder from "$lib/components/HeartBorder.svelte";
     import FavoriteButton from "$lib/components/FavoriteButton.svelte";
+    import MediaDetailHeader from "$lib/components/MediaDetailHeader.svelte";
     import { imgUrl } from "$lib/utils.js";
+
+    let useNewLayout = $state(true);
     function statusColor(status) {
         if (status === "watched") return "var(--color-success, #22c55e)";
         if (status === "in_progress") return "var(--color-warning, #f59e0b)";
@@ -187,8 +190,9 @@
 </svelte:head>
 
 <div class="space-y-6 max-w-6xl mx-auto">
-    <!-- Back link -->
+    <!-- Back + Sync + Layout Toggle -->
     <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
         <a href="/tv" class="btn btn-ghost btn-sm gap-1">
             <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -228,9 +232,53 @@
             🗑️
         </button>
         {/if}
+        </div>
+        <button
+            class="btn btn-ghost btn-xs gap-1 text-base-content/30 hover:text-base-content/60"
+            onclick={() => useNewLayout = !useNewLayout}
+            title="Toggle layout"
+        >
+            {useNewLayout ? '🔀 Classic' : '✨ New'}
+        </button>
     </div>
 
-    <!-- Header -->
+    {#if useNewLayout}
+        <!-- ═══ NEW LAYOUT (Option B) ═══ -->
+        <MediaDetailHeader
+            mediaType="show"
+            title={data.show.title}
+            posterUrl={data.show.posterUrl || (data.show.poster_url ? imgUrl(data.show.poster_url) : null)}
+            backdropUrl={data.show.backdropUrl}
+            year={data.show.release_year}
+            overview={data.show.overview}
+            isFavorite={!!data.show.is_favorite}
+            favoriteType="media"
+            favoriteId={data.show.id}
+            heartBorderEnabled={!!data.settings?.heartBorderShows}
+            stats={[
+                { label: 'seasons', value: data.seasons.length, icon: '📺' },
+                { label: 'watched', value: `${data.totalWatched}/${data.totalEpisodes}`, icon: '✅' },
+                ...(data.totalMissing > 0 ? [{ label: 'missing', value: data.totalMissing, icon: '📭' }] : []),
+                ...(data.totalUpcoming > 0 ? [{ label: 'upcoming', value: data.totalUpcoming, icon: '🔮' }] : []),
+                ...(data.show.collection_pct !== null ? [{ label: 'collected', value: `${data.show.collection_pct}%`, icon: '📦' }] : []),
+            ]}
+            externalLinks={{
+                tmdb_id: data.show.tmdb_id,
+                imdb_id: data.show.imdb_id,
+                tvdb_id: data.show.tvdb_id,
+                jellyfin_id: data.show.jellyfin_id,
+                jellyfin_url: data.jellyfinUrl,
+                arr_slug: data.show.arr_slug,
+                arr_url: data.arrUrl,
+                arr_service: data.arrService,
+                wikipedia_url: data.show.wikipedia_url,
+                mediaType: 'show'
+            }}
+            backUrl="/tv"
+            backLabel="All Shows"
+        />
+    {:else}
+    <!-- OLD Header -->
     <div class="flex gap-6 items-start">
         <!-- Poster -->
         <div class="shrink-0" style="width: 150px; min-width: 150px;">
@@ -320,6 +368,7 @@
             </div>
         </div>
     </div>
+    {/if}
 
     <!-- Sonarr Status -->
     <div class="card bg-base-200/50 border border-base-300">

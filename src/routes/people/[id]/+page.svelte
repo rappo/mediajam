@@ -2,8 +2,11 @@
     import ExternalLinks from "$lib/components/ExternalLinks.svelte";
     import FavoriteButton from "$lib/components/FavoriteButton.svelte";
     import HeartBorder from "$lib/components/HeartBorder.svelte";
+    import MediaDetailHeader from "$lib/components/MediaDetailHeader.svelte";
     import { imgUrl } from "$lib/utils.js";
     let { data } = $props();
+
+    let useNewLayout = $state(true);
 
     function roleBadge(roleType) {
         const colors = {
@@ -441,7 +444,70 @@
 </svelte:head>
 
 <div class="space-y-6 max-w-5xl mx-auto">
-    <!-- Back -->
+    <!-- Back + Toggle -->
+    <div class="flex items-center justify-between">
+        <a href="/movies" class="btn btn-ghost btn-sm gap-1">
+            <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"><polyline points="15 18 9 12 15 6" /></svg
+            >
+            Back
+        </a>
+        <button
+            class="btn btn-ghost btn-xs gap-1 text-base-content/30 hover:text-base-content/60"
+            onclick={() => useNewLayout = !useNewLayout}
+            title="Toggle layout"
+        >
+            {useNewLayout ? '🔀 Classic' : '✨ New'}
+        </button>
+    </div>
+
+    {#if useNewLayout}
+        <!-- ═══ NEW LAYOUT (Option B) ═══ -->
+        {@const bd = data.person.birth_date ? new Date(data.person.birth_date) : null}
+        {@const endDate = data.person.death_date ? new Date(data.person.death_date) : new Date()}
+        {@const age = bd ? Math.floor((endDate.getTime() - bd.getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : null}
+        {@const yearStr = data.person.death_date
+            ? `Born: ${data.person.birth_date} · Died: ${data.person.death_date} (aged ${age})`
+            : data.person.birth_date
+                ? `Born: ${data.person.birth_date} (age ${age})`
+                : null}
+        <MediaDetailHeader
+            mediaType="person"
+            title={data.person.name}
+            posterUrl={data.person.photoUrl}
+            subtitle={yearStr}
+            overview={data.person.displayBio || lazyBio}
+            overviewSource={data.person.bioSource || lazyBioSource}
+            isFavorite={!!data.person.is_favorite}
+            favoriteType="person"
+            favoriteId={data.person.id}
+            heartBorderEnabled={!!data.settings?.heartBorderPeople}
+            stats={[
+                { label: 'titles', value: data.stats.totalCredits },
+                ...(data.stats.movieCount > 0 ? [{ label: 'movies', value: `${data.stats.watchedMovies}/${data.stats.movieCount}`, icon: '🎬' }] : []),
+                ...(data.stats.showCount > 0 ? [{ label: 'TV shows', value: data.stats.showCount, icon: '📺' }] : []),
+                ...(data.stats.artistCount > 0 ? [{ label: 'artists', value: data.stats.artistCount, icon: '🎵' }] : []),
+            ]}
+            externalLinks={{
+                tmdb_person_id: data.person.tmdb_person_id,
+                imdb_person_id: data.person.imdb_person_id,
+                musicbrainz_artist_id: data.person.musicbrainz_artist_id,
+                jellyfin_id: data.person.jellyfin_id,
+                jellyfin_url: data.jellyfinUrl,
+                wikipedia_url: data.person.wikipedia_url,
+                mediaType: 'person'
+            }}
+            backUrl="/movies"
+            backLabel="Back"
+        />
+    {:else}
+
+    <!-- OLD: Back -->
     <a href="/movies" class="btn btn-ghost btn-sm gap-1">
         <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -560,6 +626,7 @@
             </div>
         </div>
     </div>
+    {/if}
 
     <!-- Stats -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3">

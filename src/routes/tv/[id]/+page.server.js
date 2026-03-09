@@ -166,8 +166,18 @@ export async function load({ params }) {
     // Live Jellyfin favorite check
     const liveFavorite = await checkJellyfinFavorite(show.jellyfin_id, 'media_parents', show.id);
 
+    // Backdrop from Jellyfin if available
+    const backdropUrl = show.jellyfin_id
+        ? `${jellyfinUrl}/Items/${show.jellyfin_id}/Images/Backdrop?maxWidth=1200`
+        : null;
+
+    // Poster URL from Jellyfin if available
+    const posterUrl = show.jellyfin_id
+        ? `${jellyfinUrl}/Items/${show.jellyfin_id}/Images/Primary?maxHeight=400`
+        : show.poster_url;
+
     return {
-        show: { ...show, is_favorite: liveFavorite ?? show.is_favorite },
+        show: { ...show, is_favorite: liveFavorite ?? show.is_favorite, posterUrl, backdropUrl, wikipedia_url: show.wikipedia_url || null },
         seasons: sortedSeasons,
         maxEpisodes,
         includeSpecials,

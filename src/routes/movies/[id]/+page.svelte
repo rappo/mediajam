@@ -7,10 +7,13 @@
     import StatCard from "$lib/components/StatCard.svelte";
     import ServiceIcon from "$lib/components/ServiceIcon.svelte";
     import InteractiveSearchDialog from "$lib/components/InteractiveSearchDialog.svelte";
+    import MediaDetailHeader from "$lib/components/MediaDetailHeader.svelte";
     import { invalidateAll, goto } from "$app/navigation";
     import { page } from "$app/stores";
     import { imgUrl } from "$lib/utils.js";
     let { data } = $props();
+
+    let useNewLayout = $state(true);
 
     function formatRuntime(minutes) {
         if (!minutes) return "—";
@@ -224,8 +227,9 @@
 </svelte:head>
 
 <div class="space-y-6 max-w-5xl mx-auto">
-    <!-- Back link -->
+    <!-- Back + Sync + Layout Toggle -->
     <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
         <a href="/movies" class="btn btn-ghost btn-sm gap-1">
             <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -265,7 +269,55 @@
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
         </button>
         {/if}
+        </div>
+        <button
+            class="btn btn-ghost btn-xs gap-1 text-base-content/30 hover:text-base-content/60"
+            onclick={() => useNewLayout = !useNewLayout}
+            title="Toggle layout"
+        >
+            {useNewLayout ? '🔀 Classic' : '✨ New'}
+        </button>
     </div>
+
+    {#if useNewLayout}
+        <!-- ═══ NEW LAYOUT (Option B) ═══ -->
+        <MediaDetailHeader
+            mediaType="movie"
+            title={data.movie.title}
+            posterUrl={data.movie.posterUrl}
+            backdropUrl={data.movie.backdropUrl}
+            year={data.movie.release_year}
+            runtime={formatRuntime(data.movie.runtime_minutes || lazyRuntime)}
+            overview={data.movie.overview}
+            watchStatusBadge={badge}
+            isFavorite={!!data.movie.is_favorite}
+            favoriteType="media"
+            favoriteId={data.movie.id}
+            heartBorderEnabled={!!data.settings?.heartBorderMovies}
+            stats={[
+                { label: 'plays', value: data.stats.totalPlays, icon: '▶' },
+                ...(data.movie.runtime_minutes || lazyRuntime ? [{ label: 'runtime', value: formatRuntime(data.movie.runtime_minutes || lazyRuntime) }] : []),
+                ...(data.stats.lastWatched ? [{ label: timeAgo(data.stats.lastWatched), value: 'Last watched' }] : []),
+            ]}
+            externalLinks={{
+                tmdb_id: data.movie.tmdb_id,
+                imdb_id: data.movie.imdb_id,
+                tvdb_id: data.movie.tvdb_id,
+                jellyfin_id: data.movie.jellyfin_id,
+                jellyfin_url: data.jellyfinUrl,
+                arr_slug: data.movie.arr_slug,
+                arr_url: data.arrUrl,
+                arr_service: data.arrService,
+                wikipedia_url: data.movie.wikipedia_url,
+                mediaType: 'movie'
+            }}
+            extraBadges={[
+                ...(data.movie.collection_status === 'external' ? [{ label: '📡 Not in library', cls: 'badge-warning' }] : []),
+            ]}
+            backUrl="/movies"
+            backLabel="All Movies"
+        />
+    {:else}
 
     <!-- Hero Section with Backdrop -->
     {#if data.movie.backdropUrl}
@@ -396,6 +448,7 @@
                 {/if}
             </div>
         </div>
+    {/if}
     {/if}
 
     <!-- Overview (shown below backdrop layout) -->
