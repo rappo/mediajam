@@ -116,7 +116,7 @@
     </div>
 
     <!-- Stats Row -->
-    <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-8">
+    <div class="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-8">
         <StatCard
             icon="▶"
             label="Total Plays"
