@@ -161,65 +161,56 @@ export async function syncJellyfinHistory(userId) {
         broadcast({ log: `🎬 Found ${movies.length} played movies`, logType: 'info' });
         logInfo('jellyfin-history', `Found ${movies.length} played movies`);
 
-        for (let idx = 0; idx < movies.length; idx++) {
-            const movie = movies[idx];
-            const childJellyfinId = movie.Id + '_child';
-            let child = /** @type {any} */ (findChildByJellyfinId.get(childJellyfinId));
+        // Batch all movie inserts in a single transaction for performance
+        db.transaction(() => {
+            for (let idx = 0; idx < movies.length; idx++) {
+                const movie = movies[idx];
+                const childJellyfinId = movie.Id + '_child';
+                let child = /** @type {any} */ (findChildByJellyfinId.get(childJellyfinId));
 
-            // Fallback: lookup by TMDB ID if child not found by jellyfin_id
-            if (!child && movie.ProviderIds?.Tmdb) {
-                child = /** @type {any} */ (findChildByTmdbId.get(movie.ProviderIds.Tmdb));
-                if (child) {
-                    broadcast({ log: `  🔗 ${movie.Name}: found via TMDB fallback`, logType: 'info' });
+                // Fallback: lookup by TMDB ID if child not found by jellyfin_id
+                if (!child && movie.ProviderIds?.Tmdb) {
+                    child = /** @type {any} */ (findChildByTmdbId.get(movie.ProviderIds.Tmdb));
+                }
+
+                if (!child) {
+                    notFound++;
+                    continue;
+                }
+
+                let playedDate = movie.UserData?.LastPlayedDate;
+
+                if (!playedDate) {
+                    const tmdbId = movie.ProviderIds?.Tmdb || null;
+                    const traktDate = findTraktDateForMovie(userId, tmdbId);
+                    if (traktDate) {
+                        playedDate = traktDate;
+                        traktMatched++;
+                    } else {
+                        playedDate = UNKNOWN_DATE;
+                        noDate++;
+                    }
+                }
+
+                const eventId = `jellyfin:movie:${movie.Id}`;
+                try {
+                    const result = insertHistory.run({ userId, mediaId: child.id, timestamp: playedDate, externalEventId: eventId });
+                    if (result.changes > 0) synced++;
+                    else skipped++;
+                } catch (e) {
+                    errors++;
+                    logError('jellyfin-history', `Error inserting movie ${movie.Name}: ${e instanceof Error ? e.message : String(e)}`);
                 }
             }
-
-            if (!child) {
-                notFound++;
-                if (notFound <= 20) {
-                    broadcast({ log: `  ⚠️ ${movie.Name}: not found in library (ID: ${movie.Id?.slice(0, 8)}…)`, logType: 'warning' });
-                }
-                continue;
-            }
-
-            let playedDate = movie.UserData?.LastPlayedDate;
-            let dateSource = 'jellyfin';
-
-            if (!playedDate) {
-                const tmdbId = movie.ProviderIds?.Tmdb || null;
-                const traktDate = findTraktDateForMovie(userId, tmdbId);
-                if (traktDate) {
-                    playedDate = traktDate;
-                    dateSource = 'trakt';
-                    traktMatched++;
-                } else {
-                    playedDate = UNKNOWN_DATE;
-                    dateSource = 'unknown';
-                    noDate++;
-                }
-            }
-
-            const eventId = `jellyfin:movie:${movie.Id}`;
-            try {
-                const result = insertHistory.run({ userId, mediaId: child.id, timestamp: playedDate, externalEventId: eventId });
-                if (result.changes > 0) synced++;
-                else skipped++;
-            } catch (e) {
-                errors++;
-                logError('jellyfin-history', `Error inserting movie ${movie.Name}: ${e instanceof Error ? e.message : String(e)}`);
-            }
-
-            if ((idx + 1) % 50 === 0 || idx === movies.length - 1) {
-                broadcast({
-                    type: 'jellyfin_history_progress',
-                    phase: 'movies',
-                    done: idx + 1,
-                    total: movies.length,
-                    log: `🎬 Movies: ${idx + 1}/${movies.length} (${synced} synced)`,
-                    logType: 'info'
-                });
-            }
-        }
+        })();
+        broadcast({
+            type: 'jellyfin_history_progress',
+            phase: 'movies',
+            done: movies.length,
+            total: movies.length,
+            log: `🎬 Movies: ${movies.length}/${movies.length} (${synced} synced, ${notFound} not found)`,
+            logType: 'info'
+        });
 
         // ── Episodes ────────────────────────────────────────────────────────
         broadcast({ log: '📺 Fetching played episodes from Jellyfin...', logType: 'info' });
@@ -237,47 +228,47 @@ export async function syncJellyfinHistory(userId) {
         broadcast({ log: `📺 Found ${episodes.length} played episodes`, logType: 'info' });
         logInfo('jellyfin-history', `Found ${episodes.length} played episodes`);
 
-        for (let idx = 0; idx < episodes.length; idx++) {
-            const ep = episodes[idx];
-            const child = /** @type {any} */ (findChildByJellyfinId.get(ep.Id));
-            if (!child) { notFound++; continue; }
+        // Batch all episode inserts in a single transaction for performance
+        db.transaction(() => {
+            for (let idx = 0; idx < episodes.length; idx++) {
+                const ep = episodes[idx];
+                const child = /** @type {any} */ (findChildByJellyfinId.get(ep.Id));
+                if (!child) { notFound++; continue; }
 
-            let playedDate = ep.UserData?.LastPlayedDate;
+                let playedDate = ep.UserData?.LastPlayedDate;
 
-            if (!playedDate) {
-                const parent = /** @type {any} */ (findParentByChildId.get(child.id));
-                const showTmdbId = parent?.tmdb_id || ep.ProviderIds?.Tmdb || null;
-                const traktDate = findTraktDateForEpisode(userId, showTmdbId, ep.ParentIndexNumber ?? null, ep.IndexNumber ?? null);
-                if (traktDate) {
-                    playedDate = traktDate;
-                    traktMatched++;
-                } else {
-                    playedDate = UNKNOWN_DATE;
-                    noDate++;
+                if (!playedDate) {
+                    const parent = /** @type {any} */ (findParentByChildId.get(child.id));
+                    const showTmdbId = parent?.tmdb_id || ep.ProviderIds?.Tmdb || null;
+                    const traktDate = findTraktDateForEpisode(userId, showTmdbId, ep.ParentIndexNumber ?? null, ep.IndexNumber ?? null);
+                    if (traktDate) {
+                        playedDate = traktDate;
+                        traktMatched++;
+                    } else {
+                        playedDate = UNKNOWN_DATE;
+                        noDate++;
+                    }
+                }
+
+                const eventId = `jellyfin:episode:${ep.Id}`;
+                try {
+                    const result = insertHistory.run({ userId, mediaId: child.id, timestamp: playedDate, externalEventId: eventId });
+                    if (result.changes > 0) synced++;
+                    else skipped++;
+                } catch (e) {
+                    errors++;
+                    logError('jellyfin-history', `Error inserting episode ${ep.Name}: ${e instanceof Error ? e.message : String(e)}`);
                 }
             }
-
-            const eventId = `jellyfin:episode:${ep.Id}`;
-            try {
-                const result = insertHistory.run({ userId, mediaId: child.id, timestamp: playedDate, externalEventId: eventId });
-                if (result.changes > 0) synced++;
-                else skipped++;
-            } catch (e) {
-                errors++;
-                logError('jellyfin-history', `Error inserting episode ${ep.Name}: ${e instanceof Error ? e.message : String(e)}`);
-            }
-
-            if ((idx + 1) % 100 === 0 || idx === episodes.length - 1) {
-                broadcast({
-                    type: 'jellyfin_history_progress',
-                    phase: 'episodes',
-                    done: idx + 1,
-                    total: episodes.length,
-                    log: `📺 Episodes: ${idx + 1}/${episodes.length} (${synced} synced)`,
-                    logType: 'info'
-                });
-            }
-        }
+        })();
+        broadcast({
+            type: 'jellyfin_history_progress',
+            phase: 'episodes',
+            done: episodes.length,
+            total: episodes.length,
+            log: `📺 Episodes: ${episodes.length}/${episodes.length} (${synced} synced)`,
+            logType: 'info'
+        });
 
         // ── Audio ───────────────────────────────────────────────────────────
         broadcast({ log: '🎵 Fetching played audio from Jellyfin...', logType: 'info' });
@@ -299,43 +290,43 @@ export async function syncJellyfinHistory(userId) {
             'SELECT mc.id as media_child_id FROM tracks t JOIN media_children mc ON mc.id = t.album_id WHERE t.jellyfin_id = ?'
         );
 
-        for (let idx = 0; idx < tracks.length; idx++) {
-            const track = tracks[idx];
-            let mediaId = null;
-            const trackRow = /** @type {any} */ (findTrackByJellyfinId.get(track.Id));
-            if (trackRow) {
-                mediaId = trackRow.media_child_id;
-            } else {
-                const child = /** @type {any} */ (findChildByJellyfinId.get(track.Id));
-                if (child) mediaId = child.id;
+        // Batch all audio inserts in a single transaction for performance
+        db.transaction(() => {
+            for (let idx = 0; idx < tracks.length; idx++) {
+                const track = tracks[idx];
+                let mediaId = null;
+                const trackRow = /** @type {any} */ (findTrackByJellyfinId.get(track.Id));
+                if (trackRow) {
+                    mediaId = trackRow.media_child_id;
+                } else {
+                    const child = /** @type {any} */ (findChildByJellyfinId.get(track.Id));
+                    if (child) mediaId = child.id;
+                }
+
+                if (!mediaId) { notFound++; continue; }
+
+                const playedDate = track.UserData?.LastPlayedDate || UNKNOWN_DATE;
+                if (!track.UserData?.LastPlayedDate) noDate++;
+
+                const eventId = `jellyfin:audio:${track.Id}`;
+                try {
+                    const result = insertHistory.run({ userId, mediaId, timestamp: playedDate, externalEventId: eventId });
+                    if (result.changes > 0) synced++;
+                    else skipped++;
+                } catch (e) {
+                    errors++;
+                    logError('jellyfin-history', `Error inserting track ${track.Name}: ${e instanceof Error ? e.message : String(e)}`);
+                }
             }
-
-            if (!mediaId) { notFound++; continue; }
-
-            const playedDate = track.UserData?.LastPlayedDate || UNKNOWN_DATE;
-            if (!track.UserData?.LastPlayedDate) noDate++;
-
-            const eventId = `jellyfin:audio:${track.Id}`;
-            try {
-                const result = insertHistory.run({ userId, mediaId, timestamp: playedDate, externalEventId: eventId });
-                if (result.changes > 0) synced++;
-                else skipped++;
-            } catch (e) {
-                errors++;
-                logError('jellyfin-history', `Error inserting track ${track.Name}: ${e instanceof Error ? e.message : String(e)}`);
-            }
-
-            if ((idx + 1) % 200 === 0 || idx === tracks.length - 1) {
-                broadcast({
-                    type: 'jellyfin_history_progress',
-                    phase: 'audio',
-                    done: idx + 1,
-                    total: tracks.length,
-                    log: `🎵 Audio: ${idx + 1}/${tracks.length} (${synced} synced)`,
-                    logType: 'info'
-                });
-            }
-        }
+        })();
+        broadcast({
+            type: 'jellyfin_history_progress',
+            phase: 'audio',
+            done: tracks.length,
+            total: tracks.length,
+            log: `🎵 Audio: ${tracks.length}/${tracks.length} (${synced} synced)`,
+            logType: 'info'
+        });
 
         const summary = `✅ Complete: ${synced} synced, ${traktMatched} trakt-matched, ${noDate} unknown-date, ${skipped} dupes, ${notFound} not found, ${errors} errors`;
         broadcast({ log: summary, logType: 'success' });

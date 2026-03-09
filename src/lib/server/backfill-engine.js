@@ -628,40 +628,59 @@ export function processLastfmScrobbles(userId) {
 
     broadcast({ type: 'backfill_progress', tier: 'lastfm', log: `  🔗 Mapping ${scrobbles.length} scrobbles to local library...`, logType: 'info' });
 
+    // ── Pre-build in-memory lookup maps (one SQL query → 4 maps) ──────────
+    // This replaces 4-5 individual SQL JOINs per scrobble with O(1) Map lookups.
+    // For 50K scrobbles, this eliminates ~200K DB queries.
+    /** @type {Map<string, number>} */ const mbidAlbumMap = new Map(); // "mbid|album_lower" → media_child.id
+    /** @type {Map<string, number>} */ const nameAlbumMap = new Map(); // "artist_lower|album_lower" → media_child.id
+    /** @type {Map<string, number>} */ const mbidOnlyMap = new Map();  // "mbid" → first media_child.id
+    /** @type {Map<string, number>} */ const nameOnlyMap = new Map();  // "artist_lower" → first media_child.id
+
+    const allAlbums = /** @type {any[]} */ (db.prepare(`
+        SELECT mc.id, mp.musicbrainz_id, mp.title as artist, mc.title as album
+        FROM media_children mc
+        JOIN media_parents mp ON mc.parent_id = mp.id
+        WHERE mp.media_type = 'artist'
+    `).all());
+
+    for (const row of allAlbums) {
+        const albumLower = (row.album || '').toLowerCase();
+        const artistLower = (row.artist || '').toLowerCase();
+        if (row.musicbrainz_id) {
+            const mbKey = `${row.musicbrainz_id}|${albumLower}`;
+            if (!mbidAlbumMap.has(mbKey)) mbidAlbumMap.set(mbKey, row.id);
+            if (!mbidOnlyMap.has(row.musicbrainz_id)) mbidOnlyMap.set(row.musicbrainz_id, row.id);
+        }
+        const nameKey = `${artistLower}|${albumLower}`;
+        if (!nameAlbumMap.has(nameKey)) nameAlbumMap.set(nameKey, row.id);
+        if (!nameOnlyMap.has(artistLower)) nameOnlyMap.set(artistLower, row.id);
+    }
+
+    broadcast({ type: 'backfill_progress', tier: 'lastfm', log: `  📊 Built lookup maps: ${allAlbums.length} albums indexed`, logType: 'info' });
+
     for (const s of scrobbles) {
         let mediaId = null;
+        const albumLower = (s.album_name || '').toLowerCase();
+        const artistLower = (s.artist_name || '').toLowerCase();
 
-        // 1. Best: artist MBID + album name
+        // 1. Best: artist MBID + album name (O(1) map lookup)
         if (s.artist_mbid && s.album_name) {
-            const match = /** @type {any} */ (db.prepare(
-                'SELECT mc.id FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.musicbrainz_id = ? AND mc.title = ? COLLATE NOCASE LIMIT 1'
-            ).get(s.artist_mbid, s.album_name));
-            if (match) mediaId = match.id;
+            mediaId = mbidAlbumMap.get(`${s.artist_mbid}|${albumLower}`) || null;
         }
 
-        // 2. Artist name + album name
+        // 2. Artist name + album name (O(1) map lookup)
         if (!mediaId && s.artist_name && s.album_name) {
-            const match = /** @type {any} */ (db.prepare(
-                'SELECT mc.id FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.media_type = ? AND mp.title = ? COLLATE NOCASE AND mc.title = ? COLLATE NOCASE LIMIT 1'
-            ).get('artist', s.artist_name, s.album_name));
-            if (match) mediaId = match.id;
+            mediaId = nameAlbumMap.get(`${artistLower}|${albumLower}`) || null;
         }
 
         // 3. Artist MBID only — ONLY when scrobble has no album name
-        //    (if album_name existed but didn't match, we don't want to pick a random album)
         if (!mediaId && s.artist_mbid && !s.album_name) {
-            const match = /** @type {any} */ (db.prepare(
-                'SELECT mc.id FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.musicbrainz_id = ? LIMIT 1'
-            ).get(s.artist_mbid));
-            if (match) mediaId = match.id;
+            mediaId = mbidOnlyMap.get(s.artist_mbid) || null;
         }
 
         // 4. Artist name only — ONLY when scrobble has no album name
         if (!mediaId && s.artist_name && !s.album_name) {
-            const match = /** @type {any} */ (db.prepare(
-                'SELECT mc.id FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.media_type = ? AND mp.title = ? COLLATE NOCASE LIMIT 1'
-            ).get('artist', s.artist_name));
-            if (match) mediaId = match.id;
+            mediaId = nameOnlyMap.get(artistLower) || null;
         }
 
         // 5. Create external entry (album-specific when album name available)

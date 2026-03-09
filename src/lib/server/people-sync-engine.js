@@ -304,62 +304,65 @@ async function runPeopleSync(jellyfinUrl, accessToken, userId) {
 
         let idsUpdated = 0;
         let idsErrors = 0;
-        for (let i = 0; i < personsNeedingIds.length; i++) {
+        const ID_BATCH_SIZE = 50;
+        const totalBatches = Math.ceil(personsNeedingIds.length / ID_BATCH_SIZE);
+
+        for (let b = 0; b < personsNeedingIds.length; b += ID_BATCH_SIZE) {
             if (!engineState.running) break;
             while (engineState.paused) {
                 await new Promise(r => setTimeout(r, 500));
             }
 
-            const person = personsNeedingIds[i];
+            const batch = personsNeedingIds.slice(b, b + ID_BATCH_SIZE);
+            const jellyfinIds = batch.map(p => p.jellyfin_id);
+            const batchNum = Math.floor(b / ID_BATCH_SIZE) + 1;
+
             try {
-                const res = await fetch(
-                    `${jellyfinUrl}/Users/${userId}/Items/${person.jellyfin_id}`,
-                    { headers: { 'Authorization': `MediaBrowser Token="${accessToken}"` } }
-                );
-                if (res.ok) {
-                    const item = await res.json();
-                    const providerIds = item.ProviderIds || {};
-                    const tmdbId = providerIds.Tmdb || providerIds.TMDb || null;
-                    const imdbId = providerIds.Imdb || providerIds.IMDb || null;
-                    if (tmdbId || imdbId) {
-                        updatePersonIds.run({ personId: person.id, tmdbId, imdbId });
-                        idsUpdated++;
+                const res = await itemsApi.getItems({
+                    ids: jellyfinIds,
+                    fields: ['ProviderIds'],
+                    enableUserData: false
+                });
+
+                const items = res.data.Items || [];
+                const itemMap = new Map(items.map(item => [item.Id, item]));
+
+                // Batch DB updates in a transaction
+                db.transaction(() => {
+                    for (const person of batch) {
+                        const item = itemMap.get(person.jellyfin_id);
+                        if (!item) continue;
+
+                        const providerIds = item.ProviderIds || {};
+                        const tmdbId = providerIds.Tmdb || providerIds.TMDb || null;
+                        const imdbId = providerIds.Imdb || providerIds.IMDb || null;
+                        if (tmdbId || imdbId) {
+                            updatePersonIds.run({ personId: person.id, tmdbId, imdbId });
+                            idsUpdated++;
+                        }
                     }
-                } else {
-                    idsErrors++;
-                    broadcast({
-                        type: 'progress',
-                        log: `  ⚠ ${person.name}: HTTP ${res.status} fetching external IDs`,
-                        logType: 'warning',
-                        progress: 95 + Math.floor((i / personsNeedingIds.length) * 5),
-                        itemsSynced: synced,
-                        errors: errors + idsErrors
-                    });
-                }
+                })();
             } catch (/** @type {any} */ err) {
                 idsErrors++;
                 broadcast({
                     type: 'progress',
-                    log: `  ✗ ${person.name}: ${err?.message || String(err)}`,
+                    log: `  ✗ Batch ${batchNum}/${totalBatches} error: ${err?.message || String(err)}`,
                     logType: 'error',
-                    progress: 95 + Math.floor((i / personsNeedingIds.length) * 5),
+                    progress: 95 + Math.floor((b / personsNeedingIds.length) * 5),
                     itemsSynced: synced,
                     errors: errors + idsErrors
                 });
             }
 
-            // Log progress every 50 persons
-            if ((i + 1) % 50 === 0) {
-                broadcast({
-                    type: 'progress',
-                    log: `🔗 ${i + 1}/${personsNeedingIds.length} checked, ${idsUpdated} updated, ${idsErrors} errors`,
-                    logType: 'info',
-                    progress: 95 + Math.floor((i / personsNeedingIds.length) * 5),
-                    itemsSynced: synced,
-                    errors: errors + idsErrors
-                });
-            }
-            await new Promise(r => setTimeout(r, 30));
+            // Log progress every batch
+            broadcast({
+                type: 'progress',
+                log: `🔗 Batch ${batchNum}/${totalBatches}: ${idsUpdated} updated, ${idsErrors} errors`,
+                logType: 'info',
+                progress: 95 + Math.floor(((b + batch.length) / personsNeedingIds.length) * 5),
+                itemsSynced: synced,
+                errors: errors + idsErrors
+            });
         }
 
         errors += idsErrors;
