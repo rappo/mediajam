@@ -17,7 +17,8 @@
      *   favoriteType?: 'media' | 'person',
      *   favoriteId?: number,
      *   heartBorderEnabled?: boolean,
-     *   stats?: { label: string, value: string | number, icon?: string }[],
+     *   stats?: { label: string, value: string | number }[],
+     *   fileInfo?: { label: string, value: string }[],
      *   externalLinks?: Record<string, any>,
      *   extraBadges?: { label: string, cls?: string }[],
      *   actions?: any,
@@ -40,6 +41,7 @@
         favoriteId = 0,
         heartBorderEnabled = false,
         stats = [],
+        fileInfo = [],
         externalLinks = {},
         extraBadges = [],
         actions,
@@ -54,6 +56,9 @@
     const isPerson = mediaType === 'person';
     const hasBackdrop = !!backdropUrl;
 
+    // Internal services (self-hosted)
+    const INTERNAL_SERVICES = new Set(['jellyfin', 'radarr', 'sonarr', 'lidarr']);
+
     // Build links array from externalLinks prop
     const linkDefs = $derived.by(() => {
         /** @type {{ label: string, url: string, service: string }[]} */
@@ -63,6 +68,11 @@
 
         if (el.jellyfin_id && el.jellyfin_url) {
             result.push({ label: 'Jellyfin', url: `${el.jellyfin_url}/web/index.html#!/details?id=${el.jellyfin_id}`, service: 'jellyfin' });
+        }
+        if (el.arr_slug && el.arr_url && el.arr_service) {
+            const cfg = /** @type {Record<string, {label:string, path:string}>} */ ({ radarr: { label: 'Radarr', path: 'movie' }, sonarr: { label: 'Sonarr', path: 'series' }, lidarr: { label: 'Lidarr', path: 'artist' } });
+            const c = cfg[el.arr_service];
+            if (c) result.push({ label: c.label, url: `${String(el.arr_url).replace(/\/+$/, '')}/${c.path}/${el.arr_slug}`, service: el.arr_service });
         }
         const tmdb = el.tmdb_id || el.tmdb_person_id;
         if (tmdb) {
@@ -82,16 +92,15 @@
         if (mb) {
             result.push({ label: 'MusicBrainz', url: `https://musicbrainz.org/artist/${mb}`, service: 'musicbrainz' });
         }
-        if (el.arr_slug && el.arr_url && el.arr_service) {
-            const cfg = { radarr: { label: 'Radarr', path: 'movie' }, sonarr: { label: 'Sonarr', path: 'series' }, lidarr: { label: 'Lidarr', path: 'artist' } };
-            const c = cfg[el.arr_service];
-            if (c) result.push({ label: c.label, url: `${String(el.arr_url).replace(/\/+$/, '')}/${c.path}/${el.arr_slug}`, service: el.arr_service });
-        }
         if (el.wikipedia_url) {
             result.push({ label: 'Wikipedia', url: el.wikipedia_url, service: 'wikipedia' });
         }
         return result;
     });
+
+    const internalLinks = $derived(linkDefs.filter(l => INTERNAL_SERVICES.has(l.service)));
+    const externalLinksList = $derived(linkDefs.filter(l => !INTERNAL_SERVICES.has(l.service)));
+    const hasAnyLinks = $derived(linkDefs.length > 0);
 </script>
 
 <!-- Backdrop / Gradient Header -->
@@ -117,7 +126,7 @@
             </HeartBorder>
         </div>
 
-        <!-- Title & Meta -->
+        <!-- Title & Meta (always bottom-aligned) -->
         <div class="title-area">
             <h1 class="detail-title">
                 {title}
@@ -133,26 +142,40 @@
     </div>
 </div>
 
-<!-- ═══ TOOLBAR RIBBON (3-section) ═══ -->
+<!-- ═══ TOOLBAR RIBBON ═══ -->
 <div class="toolbar-ribbon">
-    <!-- Section 1: External Links -->
-    {#if linkDefs.length > 0}
+    <!-- Section 1: Links (two rows: internal + external) -->
+    {#if hasAnyLinks}
         <div class="ribbon-section">
-            <span class="ribbon-section-label">External Links</span>
-            <div class="ribbon-links">
-                {#each linkDefs as link}
-                    <a href={link.url} target="_blank" rel="noopener noreferrer" class="ribbon-link" title={link.label}>
-                        <ServiceIcon service={link.service} size="w-4 h-4" />
-                        <span class="ribbon-link-text">{link.label}</span>
-                    </a>
-                {/each}
+            <span class="ribbon-section-label">Links</span>
+            <div class="ribbon-links-container">
+                {#if internalLinks.length > 0}
+                    <div class="ribbon-links">
+                        {#each internalLinks as link}
+                            <a href={link.url} target="_blank" rel="noopener noreferrer" class="ribbon-link" title={link.label}>
+                                <ServiceIcon service={link.service} size="w-4 h-4" />
+                                <span class="ribbon-link-text">{link.label}</span>
+                            </a>
+                        {/each}
+                    </div>
+                {/if}
+                {#if externalLinksList.length > 0}
+                    <div class="ribbon-links">
+                        {#each externalLinksList as link}
+                            <a href={link.url} target="_blank" rel="noopener noreferrer" class="ribbon-link" title={link.label}>
+                                <ServiceIcon service={link.service} size="w-4 h-4" />
+                                <span class="ribbon-link-text">{link.label}</span>
+                            </a>
+                        {/each}
+                    </div>
+                {/if}
             </div>
         </div>
     {/if}
 
     <!-- Section 2: Stats -->
     {#if stats.length > 0}
-        {#if linkDefs.length > 0}<span class="ribbon-section-divider"></span>{/if}
+        {#if hasAnyLinks}<span class="ribbon-section-divider"></span>{/if}
         <div class="ribbon-section">
             <span class="ribbon-section-label">Stats</span>
             <div class="ribbon-stats-row">
@@ -166,7 +189,23 @@
         </div>
     {/if}
 
-    <!-- Section 3: Actions (slot from parent page) -->
+    <!-- Section 3: File Info -->
+    {#if fileInfo.length > 0}
+        <span class="ribbon-section-divider"></span>
+        <div class="ribbon-section">
+            <span class="ribbon-section-label">File Info</span>
+            <div class="ribbon-stats-row">
+                {#each fileInfo as info}
+                    <div class="ribbon-stat-cell">
+                        <span class="ribbon-stat-value">{info.value}</span>
+                        <span class="ribbon-stat-label">{info.label}</span>
+                    </div>
+                {/each}
+            </div>
+        </div>
+    {/if}
+
+    <!-- Section 4: Actions (slot from parent page) -->
     {#if actions}
         <span class="ribbon-section-divider"></span>
         <div class="ribbon-section">
@@ -215,8 +254,9 @@
         background: linear-gradient(to top, oklch(var(--b1)) 0%, oklch(var(--b1) / 0.9) 25%, oklch(var(--b1) / 0.4) 60%, oklch(var(--b1) / 0.15) 100%);
     }
 
-    .header-content { display: flex; gap: 1.5rem; align-items: flex-start; padding: 0; }
-    .header-content.with-backdrop { position: absolute; bottom: 0; left: 0; right: 0; padding: 1.5rem 2rem; align-items: flex-end; }
+    /* UNIFIED: always bottom-align title with poster */
+    .header-content { display: flex; gap: 1.5rem; align-items: flex-end; padding: 0; }
+    .header-content.with-backdrop { position: absolute; bottom: 0; left: 0; right: 0; padding: 1.5rem 2rem; }
 
     .poster-wrap { flex-shrink: 0; z-index: 2; }
     .poster-img { width: 160px; height: 240px; object-fit: cover; display: block; border-radius: 0.75rem; box-shadow: 0 12px 30px -5px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05); }
@@ -224,8 +264,7 @@
     .poster-placeholder { width: 160px; height: 240px; border-radius: 0.75rem; background: oklch(var(--b3)); display: flex; align-items: center; justify-content: center; font-size: 3rem; }
     .poster-placeholder.poster-round { width: 150px; height: 150px; border-radius: 50%; }
 
-    .title-area { min-width: 0; display: flex; flex-direction: column; gap: 0.25rem; z-index: 2; }
-    .header-content.with-backdrop .title-area { align-self: flex-end; padding-bottom: 0.25rem; }
+    .title-area { min-width: 0; display: flex; flex-direction: column; gap: 0.25rem; z-index: 2; padding-bottom: 0.25rem; }
     .detail-title { font-size: 2rem; font-weight: 800; line-height: 1.15; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; text-shadow: 0 2px 8px rgba(0,0,0,0.3); }
     @media (min-width: 768px) { .detail-title { font-size: 2.5rem; } }
 
@@ -270,7 +309,13 @@
         margin: 0 0.25rem;
     }
 
-    /* Links row */
+    /* Links container (two rows) */
+    .ribbon-links-container {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
     .ribbon-links {
         display: flex;
         align-items: center;
@@ -289,7 +334,6 @@
         white-space: nowrap;
     }
     .ribbon-link:hover { color: oklch(var(--bc) / 0.9); }
-    .ribbon-link-icon { font-size: 0.8rem; }
     .ribbon-link-text { font-weight: 500; }
 
     /* Stats row */

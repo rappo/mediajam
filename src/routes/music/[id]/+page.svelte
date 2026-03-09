@@ -372,7 +372,6 @@
             stats={[
                 { label: 'albums', value: data.albums.length },
                 { label: 'plays', value: data.artist.total_plays },
-                { label: 'runtime', value: formatRuntime(data.totalRuntimeMinutes) },
                 ...(data.artist.collection_pct !== null ? [{ label: 'collected', value: `${data.artist.collection_pct}%` }] : []),
             ]}
             externalLinks={{
@@ -390,6 +389,23 @@
             ]}
         >
             {#snippet actions()}
+                <button
+                    class="btn btn-xs btn-ghost gap-1"
+                    class:btn-success={syncStatus === 'success'}
+                    class:btn-error={syncStatus === 'failed'}
+                    disabled={syncing}
+                    onclick={fullSync}
+                >
+                    {#if syncing}
+                        <span class="loading loading-spinner loading-xs"></span> Syncing…
+                    {:else if syncStatus === 'success'}
+                        ✅ Synced
+                    {:else if syncStatus === 'failed'}
+                        ❌ Failed
+                    {:else}
+                        🔄 Full Sync
+                    {/if}
+                </button>
                 {#if data.artist.lidarr_id}
                     <button
                         class="btn btn-xs btn-ghost gap-1"

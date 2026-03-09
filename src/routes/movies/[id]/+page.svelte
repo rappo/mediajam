@@ -296,8 +296,12 @@
             heartBorderEnabled={!!data.settings?.heartBorderMovies}
             stats={[
                 { label: 'plays', value: data.stats.totalPlays },
-                ...(data.movie.runtime_minutes || lazyRuntime ? [{ label: 'runtime', value: formatRuntime(data.movie.runtime_minutes || lazyRuntime) }] : []),
-                ...(data.stats.lastWatched ? [{ label: timeAgo(data.stats.lastWatched), value: 'Last watched' }] : []),
+                ...(data.stats.lastWatched ? [{ label: 'watched', value: timeAgo(data.stats.lastWatched) }] : []),
+            ]}
+            fileInfo={[
+                ...(fileInfo?.qualityName ? [{ label: 'quality', value: fileInfo.qualityName }] : []),
+                ...(fileInfo?.videoCodec ? [{ label: 'video', value: `${fileInfo.videoCodec}${fileInfo.videoDynamicRangeType ? ` ${fileInfo.videoDynamicRangeType}` : ''}` }] : []),
+                ...(fileInfo?.audioCodec ? [{ label: 'audio', value: `${fileInfo.audioCodec}${fileInfo.audioChannels ? ` ${fileInfo.audioChannels}` : ''}` }] : []),
             ]}
             externalLinks={{
                 tmdb_id: data.movie.tmdb_id,
@@ -316,6 +320,23 @@
             ]}
         >
             {#snippet actions()}
+                <button
+                    class="btn btn-xs btn-ghost gap-1"
+                    class:btn-success={syncStatus === 'success'}
+                    class:btn-error={syncStatus === 'failed'}
+                    disabled={syncing}
+                    onclick={fullSync}
+                >
+                    {#if syncing}
+                        <span class="loading loading-spinner loading-xs"></span> Syncing…
+                    {:else if syncStatus === 'success'}
+                        ✅ Synced
+                    {:else if syncStatus === 'failed'}
+                        ❌ Failed
+                    {:else}
+                        🔄 Full Sync
+                    {/if}
+                </button>
                 {#if data.movie.radarr_id}
                     <InteractiveSearchDialog
                         service="radarr"
