@@ -102,7 +102,6 @@
 
     const internalLinks = $derived(linkDefs.filter(l => INTERNAL_SERVICES.has(l.service)));
     const externalLinksList = $derived(linkDefs.filter(l => !INTERNAL_SERVICES.has(l.service)));
-    const hasAnyLinks = $derived(linkDefs.length > 0);
 </script>
 
 <!-- Backdrop / Gradient Header -->
@@ -144,13 +143,15 @@
                 {#if watchStatusBadge}<span class="badge {watchStatusBadge.cls} badge-sm">{watchStatusBadge.label}</span>{/if}
             </div>
             {#if overview}
-                <p class="hero-overview">{overview}
-                    {#if overviewSource}
-                        <span class="overview-source">
-                            — via {overviewSource === 'tmdb' ? 'TMDB' : overviewSource === 'wikipedia' ? 'Wikipedia' : overviewSource === 'jellyfin' ? 'Jellyfin' : overviewSource}
-                        </span>
-                    {/if}
-                </p>
+                <div class="hero-overview-wrap">
+                    <p class="hero-overview">{overview}
+                        {#if overviewSource}
+                            <span class="overview-source">
+                                — via {overviewSource === 'tmdb' ? 'TMDB' : overviewSource === 'wikipedia' ? 'Wikipedia' : overviewSource === 'jellyfin' ? 'Jellyfin' : overviewSource}
+                            </span>
+                        {/if}
+                    </p>
+                </div>
             {/if}
         </div>
     </div>
@@ -158,38 +159,40 @@
 
 <!-- ═══ TOOLBAR RIBBON ═══ -->
 <div class="toolbar-ribbon">
-    <!-- Section 1: Links (two rows: internal + external) -->
-    {#if hasAnyLinks}
+    <!-- Section 1: Links (internal: Jellyfin, Arr) -->
+    {#if internalLinks.length > 0}
         <div class="ribbon-section">
             <span class="ribbon-section-label">Links</span>
-            <div class="ribbon-links-container">
-                {#if internalLinks.length > 0}
-                    <div class="ribbon-links">
-                        {#each internalLinks as link}
-                            <a href={link.url} target="_blank" rel="noopener noreferrer" class="ribbon-link" title={link.label}>
-                                <ServiceIcon service={link.service} size="w-4 h-4" />
-                                <span class="ribbon-link-text">{link.label}</span>
-                            </a>
-                        {/each}
-                    </div>
-                {/if}
-                {#if externalLinksList.length > 0}
-                    <div class="ribbon-links">
-                        {#each externalLinksList as link}
-                            <a href={link.url} target="_blank" rel="noopener noreferrer" class="ribbon-link" title={link.label}>
-                                <ServiceIcon service={link.service} size="w-4 h-4" />
-                                <span class="ribbon-link-text">{link.label}</span>
-                            </a>
-                        {/each}
-                    </div>
-                {/if}
+            <div class="ribbon-links">
+                {#each internalLinks as link}
+                    <a href={link.url} target="_blank" rel="noopener noreferrer" class="ribbon-link" title={link.label}>
+                        <ServiceIcon service={link.service} size="w-4 h-4" />
+                        <span class="ribbon-link-text">{link.label}</span>
+                    </a>
+                {/each}
             </div>
         </div>
     {/if}
 
-    <!-- Section 2: Stats -->
+    <!-- Section 2: Read More (external: TMDB, IMDb, TVDB, etc.) -->
+    {#if externalLinksList.length > 0}
+        {#if internalLinks.length > 0}<span class="ribbon-section-divider"></span>{/if}
+        <div class="ribbon-section">
+            <span class="ribbon-section-label">Read More</span>
+            <div class="ribbon-links">
+                {#each externalLinksList as link}
+                    <a href={link.url} target="_blank" rel="noopener noreferrer" class="ribbon-link" title={link.label}>
+                        <ServiceIcon service={link.service} size="w-4 h-4" />
+                        <span class="ribbon-link-text">{link.label}</span>
+                    </a>
+                {/each}
+            </div>
+        </div>
+    {/if}
+
+    <!-- Section 3: Stats -->
     {#if stats.length > 0}
-        {#if hasAnyLinks}<span class="ribbon-section-divider"></span>{/if}
+        {#if internalLinks.length > 0 || externalLinksList.length > 0}<span class="ribbon-section-divider"></span>{/if}
         <div class="ribbon-section">
             <span class="ribbon-section-label">Stats</span>
             <div class="ribbon-stats-row">
@@ -203,7 +206,7 @@
         </div>
     {/if}
 
-    <!-- Section 3: File Info -->
+    <!-- Section 4: File Info -->
     {#if fileInfo.length > 0}
         <span class="ribbon-section-divider"></span>
         <div class="ribbon-section">
@@ -219,7 +222,7 @@
         </div>
     {/if}
 
-    <!-- Section 4: Actions (slot from parent page) -->
+    <!-- Section 5: Actions (slot from parent page) -->
     {#if actions}
         <span class="ribbon-section-divider"></span>
         <div class="ribbon-section">
@@ -271,24 +274,42 @@
     .poster-placeholder.poster-round { width: 150px; height: 150px; border-radius: 50%; }
 
     .title-area { min-width: 0; display: flex; flex-direction: column; gap: 0.25rem; z-index: 2; padding-bottom: 0.25rem; flex: 1; }
-    .detail-title { font-size: 2rem; font-weight: 800; line-height: 1.15; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; text-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+
+    /* Title with glow for readability over backdrop */
+    .detail-title {
+        font-size: 2rem; font-weight: 800; line-height: 1.15;
+        display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+        text-shadow: 0 0 20px rgba(0,0,0,0.8), 0 0 40px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.9);
+    }
     @media (min-width: 768px) { .detail-title { font-size: 2.5rem; } }
 
-    .meta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; font-size: 0.875rem; color: oklch(var(--bc) / 0.6); }
+    .meta-row {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem;
+        font-size: 0.875rem; color: oklch(var(--bc) / 0.6);
+        text-shadow: 0 0 10px rgba(0,0,0,0.6), 0 1px 3px rgba(0,0,0,0.8);
+    }
     .meta-year { font-weight: 600; color: oklch(var(--bc) / 0.7); }
 
-    /* Overview inside hero */
+    /* Overview inside hero with faded background */
+    .hero-overview-wrap {
+        margin-top: 0.375rem;
+        padding: 0.5rem 0.75rem;
+        background: oklch(var(--b1) / 0.6);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border-radius: 0.5rem;
+        max-width: 42rem;
+    }
     .hero-overview {
         font-size: 0.8rem;
-        color: oklch(var(--bc) / 0.6);
+        color: oklch(var(--bc) / 0.7);
         line-height: 1.5;
         display: -webkit-box;
         -webkit-line-clamp: 3;
         line-clamp: 3;
         -webkit-box-orient: vertical;
         overflow: hidden;
-        margin-top: 0.25rem;
-        max-width: 40rem;
+        margin: 0;
     }
     .overview-source {
         font-size: 0.7rem;
@@ -332,13 +353,6 @@
         align-self: stretch;
         background: oklch(var(--bc) / 0.12);
         margin: 0 0.25rem;
-    }
-
-    /* Links container (two rows) */
-    .ribbon-links-container {
-        display: flex;
-        flex-direction: column;
-        gap: 0.25rem;
     }
 
     .ribbon-links {
@@ -395,32 +409,33 @@
         flex-wrap: wrap;
     }
 
-    .ribbon-actions :global(.btn) {
-        background: oklch(var(--b3));
-        border: 1px solid oklch(var(--bc) / 0.15);
-        color: oklch(var(--bc) / 0.8);
-        font-size: 0.75rem;
-        font-weight: 500;
-        padding: 0.25rem 0.75rem;
-        height: auto;
-        min-height: 0;
-        border-radius: 0.375rem;
-        transition: all 0.15s ease;
+    /* Force filled style on ALL action buttons via :global */
+    :global(.ribbon-actions .btn) {
+        background: oklch(var(--b3)) !important;
+        border: 1px solid oklch(var(--bc) / 0.15) !important;
+        color: oklch(var(--bc) / 0.8) !important;
+        font-size: 0.75rem !important;
+        font-weight: 500 !important;
+        padding: 0.25rem 0.75rem !important;
+        height: auto !important;
+        min-height: 0 !important;
+        border-radius: 0.375rem !important;
+        transition: all 0.15s ease !important;
     }
-    .ribbon-actions :global(.btn:hover) {
-        background: oklch(var(--bc) / 0.15);
-        color: oklch(var(--bc));
-        border-color: oklch(var(--bc) / 0.25);
+    :global(.ribbon-actions .btn:hover) {
+        background: oklch(var(--bc) / 0.15) !important;
+        color: oklch(var(--bc)) !important;
+        border-color: oklch(var(--bc) / 0.25) !important;
     }
-    .ribbon-actions :global(.btn-success) {
-        background: oklch(0.65 0.2 145 / 0.2);
-        border-color: oklch(0.65 0.2 145 / 0.3);
-        color: oklch(0.8 0.15 145);
+    :global(.ribbon-actions .btn-success) {
+        background: oklch(0.65 0.2 145 / 0.2) !important;
+        border-color: oklch(0.65 0.2 145 / 0.3) !important;
+        color: oklch(0.8 0.15 145) !important;
     }
-    .ribbon-actions :global(.btn-error) {
-        background: oklch(0.65 0.2 25 / 0.2);
-        border-color: oklch(0.65 0.2 25 / 0.3);
-        color: oklch(0.8 0.15 25);
+    :global(.ribbon-actions .btn-error) {
+        background: oklch(0.65 0.2 25 / 0.2) !important;
+        border-color: oklch(0.65 0.2 25 / 0.3) !important;
+        color: oklch(0.8 0.15 25) !important;
     }
 
     .ribbon-badges { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-left: auto; align-self: center; }
