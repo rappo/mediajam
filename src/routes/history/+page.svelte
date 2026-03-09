@@ -133,12 +133,13 @@
             icon="📅"
             label="Active Days"
             value={data.stats.activeDays}
+            sub={data.stats.totalDaysSince ? `/${data.stats.totalDaysSince.toLocaleString()} (${data.stats.activePct}%) since ${data.stats.firstCheckInLabel}` : ''}
             color="accent"
         />
         <StatCard
             icon="⏱"
-            label="Hours Played"
-            value={data.stats.totalHours}
+            label="Time Spent"
+            value={data.stats.friendlyTime}
             color="info"
         />
         <StatCard

@@ -80,10 +80,56 @@ export function load({ locals, url }) {
             COUNT(*) as total_plays,
             COUNT(DISTINCT media_id) as unique_items,
             COUNT(DISTINCT DATE(timestamp)) as active_days,
-            SUM(duration_consumed_seconds) as total_seconds
+            SUM(duration_consumed_seconds) as total_seconds,
+            MIN(CASE WHEN timestamp > '1900-01-02' THEN timestamp END) as first_checkin
         FROM playback_history
         WHERE user_id = ?
     `).get(userId)) : {};
+
+    // Estimate total time from runtime_ticks if duration_consumed_seconds isn't tracked
+    let totalSeconds = stats?.total_seconds || 0;
+    if (!totalSeconds && userId) {
+        // Estimate: sum runtime of each unique played item × play count
+        const estimated = /** @type {any} */ (db.prepare(`
+            SELECT SUM(mc.runtime_ticks / 10000000) as est_seconds
+            FROM playback_history ph
+            JOIN media_children mc ON ph.media_id = mc.id
+            WHERE ph.user_id = ? AND mc.runtime_ticks > 0
+        `).get(userId));
+        totalSeconds = estimated?.est_seconds || 0;
+    }
+
+    // First check-in date stats
+    const firstCheckIn = stats?.first_checkin || null;
+    let totalDaysSince = 0;
+    let activePct = 0;
+    let firstCheckInLabel = '';
+    if (firstCheckIn) {
+        const first = new Date(firstCheckIn);
+        const now = new Date();
+        totalDaysSince = Math.floor((now.getTime() - first.getTime()) / (1000 * 60 * 60 * 24));
+        activePct = totalDaysSince > 0 ? Math.round((stats.active_days / totalDaysSince) * 100) : 100;
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        firstCheckInLabel = `${months[first.getMonth()]} '${String(first.getFullYear()).slice(2)}`;
+    }
+
+    // Format total seconds into friendly relative time
+    let friendlyTime = '0';
+    if (totalSeconds > 0) {
+        const days = Math.floor(totalSeconds / 86400);
+        const hours = Math.floor((totalSeconds % 86400) / 3600);
+        const mins = Math.floor((totalSeconds % 3600) / 60);
+        const parts = [];
+        const years = Math.floor(days / 365);
+        const months = Math.floor((days % 365) / 30);
+        const remainDays = days % 30;
+        if (years > 0) parts.push(`${years} yr${years > 1 ? 's' : ''}`);
+        if (months > 0) parts.push(`${months} mo`);
+        if (remainDays > 0 && years === 0) parts.push(`${remainDays} day${remainDays > 1 ? 's' : ''}`);
+        if (hours > 0 && years === 0 && months === 0) parts.push(`${hours} hr${hours > 1 ? 's' : ''}`);
+        if (mins > 0 && days === 0 && hours < 10) parts.push(`${mins} min`);
+        friendlyTime = parts.slice(0, 2).join(' ') || '< 1 min';
+    }
 
     // Longest streak
     let longestStreak = 0;
@@ -156,7 +202,10 @@ export function load({ locals, url }) {
             totalPlays: stats?.total_plays || 0,
             uniqueItems: stats?.unique_items || 0,
             activeDays: stats?.active_days || 0,
-            totalHours: stats?.total_seconds ? Math.round(stats.total_seconds / 3600) : 0,
+            friendlyTime,
+            totalDaysSince,
+            activePct,
+            firstCheckInLabel,
             todayCount,
             longestStreak
         }

@@ -4,14 +4,9 @@ Centralized list of planned features, improvements, and ideas for Mediajam.
 
 ---
 
-## *arr Integration — Phase 2+
+## *arr Integration — Remaining Work
 
-Phase 1 (connection, read-only sync, network discovery) is complete. Remaining phases:
-
-### Phase 2: Actions & Write Operations
-- [ ] "Add to Radarr/Sonarr/Lidarr" quality profile and root folder selection UI
-- [ ] Trigger indexer search from Mediajam
-- [ ] Monitor/unmonitor toggle on media detail pages
+Phase 1 (connection, read-only sync, network discovery) and Phase 2 (add, search, monitor) are complete. Remaining:
 
 ### Phase 3: Dashboard & Calendar
 - [ ] Upcoming releases widget from *arr `/calendar`
@@ -66,7 +61,5 @@ Ollama integration infrastructure is complete. Remaining features:
 ## General Improvements
 
 - [ ] Mobile-responsive layout improvements
-- [ ] WebSocket option for real-time updates (alternative to SSE)
-- [ ] Wikipedia backfill for person bios (infrastructure exists, needs polish)
 - [ ] Collection/franchise grouping UI
 - [ ] Watch party / shared session features
