@@ -255,7 +255,6 @@
 			<!-- Search & Profile -->
 			<div class="flex-1 flex items-center justify-end gap-2">
 				<SearchBar />
-				<ChatWidget ollamaConfigured={data.ollamaConfigured} />
 				<ActivityLog initialUnread={data.activityUnread} {conflictDialog} />
 				<div class="dropdown dropdown-end">
 					<div
@@ -504,6 +503,7 @@
 		<SyncFooter />
 		<NowPlayingBar remoteControlEnabled={$page.data.remoteControlEnabled} />
 		<ToastContainer />
+		<ChatWidget ollamaConfigured={data.ollamaConfigured} />
 		<ConflictDialog bind:this={conflictDialog} />
 	</div>
 {:else}

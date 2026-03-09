@@ -28,6 +28,10 @@
     let jellyfinSyncing = $state(false);
     /** @type {any} */
     let jellyfinSyncResult = $state(null);
+    /** @type {Array<{time: string, message: string, type: string}>} */
+    let jellyfinLogs = $state([]);
+    /** @type {EventSource | null} */
+    let jellyfinEs = $state(null);
 
     // Phase toggles — all enabled by default
     let enabledPhases = $state({
@@ -226,14 +230,52 @@
     async function syncJellyfinHistory() {
         jellyfinSyncing = true;
         jellyfinSyncResult = null;
+        jellyfinLogs = [];
+
         try {
             const res = await fetch("/api/backfill/jellyfin", { method: "POST" });
-            jellyfinSyncResult = await res.json();
+            const data = await res.json();
+            if (!res.ok) {
+                jellyfinSyncResult = { error: data.error || `HTTP ${res.status}` };
+                jellyfinSyncing = false;
+                return;
+            }
         } catch (/** @type {any} */ e) {
             jellyfinSyncResult = { error: e.message || String(e) };
+            jellyfinSyncing = false;
+            return;
         }
-        jellyfinSyncing = false;
+
+        // Connect SSE for progress
+        if (jellyfinEs) jellyfinEs.close();
+        jellyfinEs = new EventSource("/api/backfill/jellyfin");
+        jellyfinEs.onmessage = (e) => {
+            try {
+                const evt = JSON.parse(e.data);
+                if (evt.log) {
+                    jellyfinLogs = [...jellyfinLogs, { time: new Date().toLocaleTimeString(), message: evt.log, type: evt.logType || 'info' }];
+                }
+                if (evt.type === 'jellyfin_history_complete') {
+                    jellyfinSyncResult = evt;
+                    jellyfinSyncing = false;
+                    jellyfinEs?.close();
+                    jellyfinEs = null;
+                }
+            } catch { /* bad JSON */ }
+        };
+        jellyfinEs.onerror = () => {
+            jellyfinSyncing = false;
+            jellyfinEs?.close();
+            jellyfinEs = null;
+        };
     }
+
+    // Cleanup on destroy
+    $effect(() => {
+        return () => {
+            if (jellyfinEs) { jellyfinEs.close(); jellyfinEs = null; }
+        };
+    });
 
     // ─── Start Reconciliation ────────────────────────────────────────────────────
     async function startReconciliation() {
@@ -474,20 +516,25 @@
                     </button>
                     <span class="text-xs text-base-content/50">Pull played status from Jellyfin and create missing history entries</span>
                 </div>
-                {#if jellyfinSyncResult}
+                {#if jellyfinLogs.length > 0}
+                    <div class="mt-2">
+                        <LogConsole logs={jellyfinLogs} running={jellyfinSyncing} title="Jellyfin History Sync" height="h-40" />
+                    </div>
+                {/if}
+                {#if jellyfinSyncResult && !jellyfinSyncResult.error}
                     <div class="mt-2 text-xs bg-base-300/30 rounded-lg p-3 space-y-1">
-                        {#if jellyfinSyncResult.error}
-                            <p class="text-error">❌ {jellyfinSyncResult.error}</p>
-                        {:else}
-                            {#if jellyfinSyncResult.cleaned > 0}
-                                <p>🗑️ Cleaned <strong>{jellyfinSyncResult.cleaned}</strong> previous entries</p>
-                            {/if}
-                            <p>✅ <strong>{jellyfinSyncResult.synced}</strong> new entries synced from <strong>{jellyfinSyncResult.total}</strong> played items</p>
-                            <p class="text-base-content/50">
-                                {#if jellyfinSyncResult.traktMatched > 0}{jellyfinSyncResult.traktMatched} dates from Trakt, {/if}
-                                {jellyfinSyncResult.noDate || 0} unknown date, {jellyfinSyncResult.skipped} duplicates, {jellyfinSyncResult.notFound} not in library
-                            </p>
+                        {#if jellyfinSyncResult.cleaned > 0}
+                            <p>🗑️ Cleaned <strong>{jellyfinSyncResult.cleaned}</strong> previous entries</p>
                         {/if}
+                        <p>✅ <strong>{jellyfinSyncResult.synced}</strong> new entries synced from <strong>{jellyfinSyncResult.total}</strong> played items</p>
+                        <p class="text-base-content/50">
+                            {#if jellyfinSyncResult.traktMatched > 0}{jellyfinSyncResult.traktMatched} dates from Trakt, {/if}
+                            {jellyfinSyncResult.noDate || 0} unknown date, {jellyfinSyncResult.skipped} duplicates, {jellyfinSyncResult.notFound} not in library
+                        </p>
+                    </div>
+                {:else if jellyfinSyncResult?.error}
+                    <div class="mt-2 text-xs bg-base-300/30 rounded-lg p-3">
+                        <p class="text-error">❌ {jellyfinSyncResult.error}</p>
                     </div>
                 {/if}
             </div>

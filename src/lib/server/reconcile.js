@@ -163,7 +163,7 @@ export function deduplicateParents() {
     })();
 
     if (deduped > 0) {
-        console.log(`[dedup] Merged ${deduped} duplicate parents (by external ID), moved ${historyMoved} history entries and ${creditsMoved} credits`);
+        console.log(`[dedupe] Merged ${deduped} duplicate parents (by external ID), moved ${historyMoved} history entries and ${creditsMoved} credits`);
     }
 
     return { deduped, historyMoved, creditsMoved };
@@ -225,7 +225,7 @@ export function deduplicateChildren() {
     })();
 
     if (deduped > 0) {
-        console.log(`[dedup] Removed ${deduped} duplicate children, moved ${historyMoved} history entries`);
+        console.log(`[dedupe] Removed ${deduped} duplicate children, moved ${historyMoved} history entries`);
     }
 
     return { deduped, historyMoved };
@@ -328,7 +328,7 @@ export function deduplicateParentsByTitle() {
     })();
 
     if (deduped > 0) {
-        console.log(`[dedup] Merged ${deduped} title-duplicate parents, moved ${historyMoved} history entries and ${creditsMoved} credits`);
+        console.log(`[dedupe] Merged ${deduped} title-duplicate parents, moved ${historyMoved} history entries and ${creditsMoved} credits`);
     }
 
     return { deduped, historyMoved, creditsMoved };
@@ -378,7 +378,7 @@ export function deduplicatePlaybackHistory(windowMinutes = 30) {
     })();
 
     if (removed > 0) {
-        console.log(`[dedup] Removed ${removed} pause/resume duplicate plays (window: ${windowMinutes}min)`);
+        console.log(`[dedupe] Removed ${removed} pause/resume duplicate plays (window: ${windowMinutes}min)`);
     }
 
     return { removed };
@@ -476,12 +476,12 @@ export function mergeOrphanArtistsIntoAlbums() {
             db.prepare('DELETE FROM media_parents WHERE id = ?').run(orphan.id);
             merged++;
 
-            console.log(`[dedup] Merged orphan artist "${orphan.title}" (${orphan.id}) → album child ${target.id} under parent ${target.parent_id}`);
+            console.log(`[dedupe] Merged orphan artist "${orphan.title}" (${orphan.id}) → album child ${target.id} under parent ${target.parent_id}`);
         }
     })();
 
     if (merged > 0) {
-        console.log(`[dedup] Merged ${merged} orphan artists into matching albums, moved ${historyMoved} history entries`);
+        console.log(`[dedupe] Merged ${merged} orphan artists into matching albums, moved ${historyMoved} history entries`);
     }
 
     return { merged, historyMoved };

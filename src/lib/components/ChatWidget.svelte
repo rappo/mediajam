@@ -143,10 +143,10 @@
     }
 </script>
 
-<!-- Navbar button (shown when closed) -->
+<!-- Closed state: Fixed bottom-right button -->
 {#if mode === 'closed'}
     <button
-        class="btn btn-ghost btn-sm btn-circle"
+        class="fixed bottom-6 right-6 z-[200] w-12 h-12 rounded-full bg-primary text-primary-content shadow-lg flex items-center justify-center hover:scale-110 transition-transform duration-150 active:scale-95"
         onclick={open}
         title="Chat with your library"
     >

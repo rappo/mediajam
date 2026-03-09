@@ -887,7 +887,7 @@ export async function runFullReconciliation(userId, options = {}) {
             const totalHistMoved = dedupResult.historyMoved + titleDedup.historyMoved + childDedup.historyMoved + orphanMerge.historyMoved;
             broadcast({
                 type: 'reconcile_progress', phase: 'reclassifying',
-                log: `🧹 Dedup: ${totalDeduped} parents merged, ${childDedup.deduped} children merged, ${orphanMerge.merged} orphan artists→albums, ${historyDedup.removed} duplicate plays removed, ${totalHistMoved} history entries migrated`,
+                log: `🧹 Dedupe: ${totalDeduped} parents merged, ${childDedup.deduped} children merged, ${orphanMerge.merged} orphan artists→albums, ${historyDedup.removed} duplicate plays removed, ${totalHistMoved} history entries migrated`,
                 logType: totalDeduped > 0 || childDedup.deduped > 0 || orphanMerge.merged > 0 ? 'success' : 'info'
             });
 
