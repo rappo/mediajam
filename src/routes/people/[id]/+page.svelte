@@ -489,9 +489,9 @@
             heartBorderEnabled={!!data.settings?.heartBorderPeople}
             stats={[
                 { label: 'titles', value: data.stats.totalCredits },
-                ...(data.stats.movieCount > 0 ? [{ label: 'movies', value: `${data.stats.watchedMovies}/${data.stats.movieCount}`, icon: '🎬' }] : []),
-                ...(data.stats.showCount > 0 ? [{ label: 'TV shows', value: data.stats.showCount, icon: '📺' }] : []),
-                ...(data.stats.artistCount > 0 ? [{ label: 'artists', value: data.stats.artistCount, icon: '🎵' }] : []),
+                ...(data.stats.movieCount > 0 ? [{ label: 'movies', value: `${data.stats.watchedMovies}/${data.stats.movieCount}` }] : []),
+                ...(data.stats.showCount > 0 ? [{ label: 'TV shows', value: data.stats.showCount }] : []),
+                ...(data.stats.artistCount > 0 ? [{ label: 'artists', value: data.stats.artistCount }] : []),
             ]}
             externalLinks={{
                 tmdb_person_id: data.person.tmdb_person_id,
@@ -502,8 +502,6 @@
                 wikipedia_url: data.person.wikipedia_url,
                 mediaType: 'person'
             }}
-            backUrl="/movies"
-            backLabel="Back"
         />
     {:else}
 

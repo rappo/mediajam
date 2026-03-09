@@ -256,11 +256,11 @@
             favoriteId={data.show.id}
             heartBorderEnabled={!!data.settings?.heartBorderShows}
             stats={[
-                { label: 'seasons', value: data.seasons.length, icon: '📺' },
-                { label: 'watched', value: `${data.totalWatched}/${data.totalEpisodes}`, icon: '✅' },
-                ...(data.totalMissing > 0 ? [{ label: 'missing', value: data.totalMissing, icon: '📭' }] : []),
-                ...(data.totalUpcoming > 0 ? [{ label: 'upcoming', value: data.totalUpcoming, icon: '🔮' }] : []),
-                ...(data.show.collection_pct !== null ? [{ label: 'collected', value: `${data.show.collection_pct}%`, icon: '📦' }] : []),
+                { label: 'seasons', value: data.seasons.length },
+                { label: 'watched', value: `${data.totalWatched}/${data.totalEpisodes}` },
+                ...(data.totalMissing > 0 ? [{ label: 'missing', value: data.totalMissing }] : []),
+                ...(data.totalUpcoming > 0 ? [{ label: 'upcoming', value: data.totalUpcoming }] : []),
+                ...(data.show.collection_pct !== null ? [{ label: 'collected', value: `${data.show.collection_pct}%` }] : []),
             ]}
             externalLinks={{
                 tmdb_id: data.show.tmdb_id,
@@ -274,9 +274,33 @@
                 wikipedia_url: data.show.wikipedia_url,
                 mediaType: 'show'
             }}
-            backUrl="/tv"
-            backLabel="All Shows"
-        />
+        >
+            {#snippet actions()}
+                {#if data.show.sonarr_id}
+                    <button
+                        class="btn btn-xs btn-ghost gap-1"
+                        onclick={searchSonarr}
+                        disabled={arrLoading === 'search'}
+                    >
+                        {#if arrLoading === 'search'}<span class="loading loading-spinner loading-xs"></span>{:else}🔍{/if} Search
+                    </button>
+                    <button
+                        class="btn btn-xs btn-ghost gap-1"
+                        onclick={toggleMonitorSonarr}
+                        disabled={arrLoading === 'monitor'}
+                    >
+                        {#if arrLoading === 'monitor'}<span class="loading loading-spinner loading-xs"></span>{:else if arrMonitored}📡{:else}📴{/if}
+                        {arrMonitored ? 'Unmonitor' : 'Monitor'}
+                    </button>
+                {:else if data.show.tvdb_id}
+                    <ArrAddDialog
+                        service="sonarr"
+                        mediaParentId={data.show.id}
+                        onComplete={onArrAdded}
+                    />
+                {/if}
+            {/snippet}
+        </MediaDetailHeader>
     {:else}
     <!-- OLD Header -->
     <div class="flex gap-6 items-start">
@@ -370,7 +394,8 @@
     </div>
     {/if}
 
-    <!-- Sonarr Status -->
+    <!-- Sonarr Status (old layout only) -->
+    {#if !useNewLayout}
     <div class="card bg-base-200/50 border border-base-300">
         <div class="card-body py-4">
             <div class="flex items-center justify-between">
@@ -452,6 +477,7 @@
             {/if}
         </div>
     </div>
+    {/if}
 
     <!-- Episode Grid / List -->
     <div class="space-y-2">

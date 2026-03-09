@@ -370,10 +370,10 @@
             favoriteId={data.artist.id}
             heartBorderEnabled={!!data.settings?.heartBorderMusic}
             stats={[
-                { label: 'albums', value: data.albums.length, icon: '💿' },
-                { label: 'plays', value: data.artist.total_plays, icon: '▶' },
+                { label: 'albums', value: data.albums.length },
+                { label: 'plays', value: data.artist.total_plays },
                 { label: 'runtime', value: formatRuntime(data.totalRuntimeMinutes) },
-                ...(data.artist.collection_pct !== null ? [{ label: 'collected', value: `${data.artist.collection_pct}%`, icon: '📦' }] : []),
+                ...(data.artist.collection_pct !== null ? [{ label: 'collected', value: `${data.artist.collection_pct}%` }] : []),
             ]}
             externalLinks={{
                 musicbrainz_id: data.artist.musicbrainz_id,
@@ -388,9 +388,33 @@
             extraBadges={[
                 ...(!data.artist.jellyfin_id ? [{ label: '📡 External', cls: 'badge-warning' }] : []),
             ]}
-            backUrl="/music"
-            backLabel="All Artists"
-        />
+        >
+            {#snippet actions()}
+                {#if data.artist.lidarr_id}
+                    <button
+                        class="btn btn-xs btn-ghost gap-1"
+                        onclick={searchLidarr}
+                        disabled={arrLoading === 'search'}
+                    >
+                        {#if arrLoading === 'search'}<span class="loading loading-spinner loading-xs"></span>{:else}🔍{/if} Search
+                    </button>
+                    <button
+                        class="btn btn-xs btn-ghost gap-1"
+                        onclick={toggleMonitorLidarr}
+                        disabled={arrLoading === 'monitor'}
+                    >
+                        {#if arrLoading === 'monitor'}<span class="loading loading-spinner loading-xs"></span>{:else if arrMonitored}📡{:else}📴{/if}
+                        {arrMonitored ? 'Unmonitor' : 'Monitor'}
+                    </button>
+                {:else if data.artist.musicbrainz_id}
+                    <ArrAddDialog
+                        service="lidarr"
+                        mediaParentId={data.artist.id}
+                        onComplete={onArrAdded}
+                    />
+                {/if}
+            {/snippet}
+        </MediaDetailHeader>
     {:else}
     <div class="flex gap-6 items-start">
         {#if data.artist.imageUrl}
@@ -446,7 +470,8 @@
     </div>
     {/if}
 
-    <!-- Lidarr Status -->
+    <!-- Lidarr Status (old layout only) -->
+    {#if !useNewLayout}
     <div class="card bg-base-200/50 border border-base-300">
         <div class="card-body py-4">
             <div class="flex items-center justify-between">
@@ -533,6 +558,7 @@
             {/if}
         </div>
     </div>
+    {/if}
 
     <!-- Albums -->
     <div class="space-y-3">

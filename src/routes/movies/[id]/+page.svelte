@@ -295,7 +295,7 @@
             favoriteId={data.movie.id}
             heartBorderEnabled={!!data.settings?.heartBorderMovies}
             stats={[
-                { label: 'plays', value: data.stats.totalPlays, icon: '▶' },
+                { label: 'plays', value: data.stats.totalPlays },
                 ...(data.movie.runtime_minutes || lazyRuntime ? [{ label: 'runtime', value: formatRuntime(data.movie.runtime_minutes || lazyRuntime) }] : []),
                 ...(data.stats.lastWatched ? [{ label: timeAgo(data.stats.lastWatched), value: 'Last watched' }] : []),
             ]}
@@ -314,9 +314,36 @@
             extraBadges={[
                 ...(data.movie.collection_status === 'external' ? [{ label: '📡 Not in library', cls: 'badge-warning' }] : []),
             ]}
-            backUrl="/movies"
-            backLabel="All Movies"
-        />
+        >
+            {#snippet actions()}
+                {#if data.movie.radarr_id}
+                    <InteractiveSearchDialog
+                        service="radarr"
+                        mediaParentId={data.movie.id}
+                        title="{data.movie.title} ({data.movie.release_year || ''})"
+                        bind:this={searchDialog}
+                    />
+                    <button
+                        class="btn btn-xs btn-ghost gap-1"
+                        onclick={toggleMonitorRadarr}
+                        disabled={arrLoading === 'monitor'}
+                    >
+                        {#if arrLoading === 'monitor'}
+                            <span class="loading loading-spinner loading-xs"></span>
+                        {:else}
+                            {arrMonitored ? '📡' : '📴'}
+                        {/if}
+                        {arrMonitored ? 'Unmonitor' : 'Monitor'}
+                    </button>
+                {:else if data.movie.tmdb_id}
+                    <ArrAddDialog
+                        service="radarr"
+                        mediaParentId={data.movie.id}
+                        onComplete={onArrAdded}
+                    />
+                {/if}
+            {/snippet}
+        </MediaDetailHeader>
     {:else}
 
     <!-- Hero Section with Backdrop -->
@@ -542,7 +569,8 @@
     </div>
     {/if}
 
-    <!-- Radarr Status -->
+    <!-- Radarr Status (old layout only) -->
+    {#if !useNewLayout}
     <div class="card bg-base-200/50 border border-base-300">
         <div class="card-body py-4">
             <div class="flex items-center justify-between">
@@ -659,6 +687,7 @@
             {/if}
         </div>
     </div>
+    {/if}
 
     <!-- External Links (old layout only) -->
     {#if !useNewLayout}
