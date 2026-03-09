@@ -36,7 +36,7 @@
     let traktClientSecret = $state("");
     let lastfmApiKey = $state("");
     let lastfmSharedSecret = $state("");
-    let jellyfinPrDbPath = $state(data.settings.jellyfinPrDbPath || "");
+    let jellyfinPrDbPath = $state(data.settings.jellyfinPrDbPath || "/app/jellyfin/playback_reporting.db");
     let jellyfinSyncCheck = $state(!!data.settings.jellyfinSyncCheck);
 
     // Jellyfin PR DB Validation
@@ -168,7 +168,7 @@
         traktClientSecret: "",
         lastfmApiKey: "",
         lastfmSharedSecret: "",
-        jellyfinPrDbPath: data.settings.jellyfinPrDbPath || "",
+        jellyfinPrDbPath: data.settings.jellyfinPrDbPath || "/app/jellyfin/playback_reporting.db",
         jellyfinSyncCheck: !!data.settings.jellyfinSyncCheck,
         ollamaUrl: data.settings.ollamaUrl || "",
         ollamaEmbedModel: data.settings.ollamaEmbedModel || "nomic-embed-text",
