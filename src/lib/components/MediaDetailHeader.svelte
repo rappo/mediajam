@@ -351,8 +351,8 @@
     .ribbon-section-divider {
         width: 1px;
         align-self: stretch;
-        background: oklch(var(--bc) / 0.12);
-        margin: 0 0.25rem;
+        background: oklch(var(--bc) / 0.25);
+        margin: 0 0.5rem;
     }
 
     .ribbon-links {

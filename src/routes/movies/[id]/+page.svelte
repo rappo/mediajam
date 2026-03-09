@@ -361,6 +361,17 @@
                         onComplete={onArrAdded}
                     />
                 {/if}
+                <button
+                    class="btn btn-xs btn-ghost gap-1"
+                    onclick={refreshRatings}
+                    disabled={ratingsLoading}
+                >
+                    {#if ratingsLoading}
+                        <span class="loading loading-spinner loading-xs"></span> Fetching…
+                    {:else}
+                        📊 Fetch Ratings
+                    {/if}
+                </button>
             {/snippet}
         </MediaDetailHeader>
     {:else}
