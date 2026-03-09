@@ -141,6 +141,27 @@
             sendMessage();
         }
     }
+
+    let copied = $state(false);
+    function copyDebug() {
+        const lines = [`=== Mediajam Chat Debug ===`, `Time: ${new Date().toISOString()}`, ''];
+        for (const msg of messages) {
+            if (msg.loading) continue;
+            if (msg.role === 'user') {
+                lines.push(`USER: ${msg.text}`);
+            } else {
+                lines.push(`ASSISTANT: ${msg.text}`);
+                if (msg.sql) lines.push(`SQL: ${msg.sql}`);
+                if (msg.type) lines.push(`Type: ${msg.type}`);
+                if (msg.error) lines.push(`Error: ${msg.error}`);
+                if (msg.results) lines.push(`Results (${msg.results.length}): ${JSON.stringify(msg.results, null, 2)}`);
+            }
+            lines.push('');
+        }
+        navigator.clipboard.writeText(lines.join('\n'));
+        copied = true;
+        setTimeout(() => { copied = false; }, 2000);
+    }
 </script>
 
 <!-- Closed state: Fixed bottom-right button -->
@@ -207,6 +228,13 @@
         </div>
         <div class="flex items-center gap-0.5">
             {#if messages.length > 0}
+                <button class="btn btn-ghost btn-xs btn-square opacity-50 hover:opacity-100" onclick={copyDebug} title="Copy debug info">
+                    {#if copied}
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-success" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                    {:else}
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                    {/if}
+                </button>
                 <button class="btn btn-ghost btn-xs btn-square opacity-50 hover:opacity-100" onclick={clearChat} title="Clear chat">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
                 </button>

@@ -15,12 +15,16 @@ const ALLOWED_TABLES = [
  * @returns {string}
  */
 function getSchemaContext() {
-    return `SQLite database schema. IMPORTANT relationship notes:
-- media_parents is the shared catalog (NO user_id column). It has movies, TV shows, and music artists.
-- Each media_parent has one or more media_children (movie→1 child, show→many episode children, artist→album children).
-- playback_history.media_id references media_children.id (NOT media_parents.id). Always JOIN through media_children to reach media_parents.
-- For watch counts on movies: use media_children.play_count or COUNT from playback_history.
-- "recently" means within the last 30 days unless specified otherwise.
+    return `SQLite database schema.
+
+CRITICAL RULES — violating these will produce errors:
+1. media_parents has NO user_id column. Never filter media_parents by user.
+2. media_children has NO media_type column. To filter by type, JOIN to media_parents.media_type.
+3. playback_history.media_id → media_children.id (NOT media_parents.id). Always JOIN through media_children.
+4. "albums" are media_children rows whose parent's media_type = 'artist'.
+5. "episodes" are media_children rows whose parent's media_type = 'show'.
+6. For movies, each media_parent has exactly 1 media_children row.
+7. "recently" = last 30 days. Use: timestamp > datetime('now', '-30 days')
 
 Tables:
 
@@ -31,16 +35,17 @@ media_parents: id, title, media_type ('show'|'movie'|'artist'), release_year, po
 media_children: id, parent_id (FK→media_parents.id), jellyfin_id, title, season_number, item_number,
   is_special, is_collected, watch_status ('watched'|'unwatched'|'in_progress'), play_count,
   runtime_ticks, premiere_date, poster_url, community_rating
+  ⚠️ NO media_type column — use parent's media_type via JOIN
 
-playback_history: id, user_id, media_id (FK→media_children.id), source, timestamp (ISO format),
-  duration_consumed_seconds, completion_pct, external_event_id, track_name
+playback_history: id, user_id, media_id (FK→media_children.id), source, timestamp (ISO),
+  duration_consumed_seconds, completion_pct, track_name
 
-tracks: id, album_id (FK→media_children.id), jellyfin_id, title, track_number, disc_number, runtime_ticks
+tracks: id, album_id (FK→media_children.id), title, track_number, disc_number, runtime_ticks
 
-persons: id, name, photo_url, bio, tmdb_person_id, is_favorite
+persons: id, name, photo_url, tmdb_person_id, is_favorite
 
 person_credits: id, person_id (FK→persons.id), media_parent_id (FK→media_parents.id),
-  role_type ('actor'|'director'|'writer'|'producer'|'composer'), character_name, sort_order
+  role_type ('actor'|'director'|'writer'|'producer'|'composer'), character_name
 
 media_tags: id, media_parent_id (FK→media_parents.id), tag_type ('genre'|'mood'|'tag'), tag_value
 
@@ -48,10 +53,15 @@ favorites: id, user_id, media_parent_id, person_id, created_at
 
 libraries: jellyfin_id, name, type, total_items
 
-EXAMPLE QUERIES:
--- Count movies: SELECT COUNT(*) as count FROM media_parents WHERE media_type = 'movie'
+EXAMPLE QUERIES (follow these patterns):
+-- How many movies: SELECT COUNT(*) as count FROM media_parents WHERE media_type = 'movie'
+-- How many albums: SELECT COUNT(*) as count FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.media_type = 'artist'
+-- How many TV shows: SELECT COUNT(*) as count FROM media_parents WHERE media_type = 'show'
 -- Recently watched movies: SELECT DISTINCT mp.title, mp.release_year, ph.timestamp FROM playback_history ph JOIN media_children mc ON ph.media_id = mc.id JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.media_type = 'movie' AND ph.timestamp > datetime('now', '-30 days') ORDER BY ph.timestamp DESC LIMIT 20
--- Movies by director: SELECT mp.title, mp.release_year FROM person_credits pc JOIN persons p ON pc.person_id = p.id JOIN media_parents mp ON pc.media_parent_id = mp.id WHERE p.name LIKE '%Spielberg%' AND pc.role_type = 'director'`;
+-- Movies by director: SELECT mp.title, mp.release_year FROM person_credits pc JOIN persons p ON pc.person_id = p.id JOIN media_parents mp ON pc.media_parent_id = mp.id WHERE p.name LIKE '%Spielberg%' AND pc.role_type = 'director'
+-- Genres for a type: SELECT mt.tag_value, COUNT(*) as cnt FROM media_tags mt JOIN media_parents mp ON mt.media_parent_id = mp.id WHERE mp.media_type = 'movie' AND mt.tag_type = 'genre' GROUP BY mt.tag_value ORDER BY cnt DESC
+-- Favorite movies: SELECT mp.title FROM media_parents mp WHERE mp.media_type = 'movie' AND mp.is_favorite = 1
+-- Most watched artists: SELECT mp.title, SUM(mc.play_count) as plays FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.media_type = 'artist' GROUP BY mp.id ORDER BY plays DESC LIMIT 10`;
 }
 
 /**
