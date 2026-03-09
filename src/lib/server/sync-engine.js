@@ -582,6 +582,51 @@ export async function startSync(libraryId = null, force = false) {
                     };
 
                     try {
+                        // ── Re-link stale Jellyfin IDs ─────────────────────────────
+                        // When a file moves, Jellyfin assigns a new ID. Check if we
+                        // already have this item by TMDB/IMDB but with an old jellyfin_id.
+                        const existingByJellyfinId = getParentId.get(item.Id);
+                        if (!existingByJellyfinId) {
+                            // No match by new jellyfin_id — check external IDs
+                            let staleParent = null;
+                            if (parentParams.tmdbId) {
+                                staleParent = /** @type {any} */ (db.prepare(
+                                    'SELECT id, jellyfin_id FROM media_parents WHERE tmdb_id = ? AND media_type = ? AND jellyfin_id != ? LIMIT 1'
+                                ).get(parentParams.tmdbId, parentParams.mediaType, item.Id));
+                            }
+                            if (!staleParent && parentParams.imdbId) {
+                                staleParent = /** @type {any} */ (db.prepare(
+                                    'SELECT id, jellyfin_id FROM media_parents WHERE imdb_id = ? AND media_type = ? AND jellyfin_id != ? LIMIT 1'
+                                ).get(parentParams.imdbId, parentParams.mediaType, item.Id));
+                            }
+                            if (!staleParent && parentParams.tvdbId) {
+                                staleParent = /** @type {any} */ (db.prepare(
+                                    'SELECT id, jellyfin_id FROM media_parents WHERE tvdb_id = ? AND media_type = ? AND jellyfin_id != ? LIMIT 1'
+                                ).get(parentParams.tvdbId, parentParams.mediaType, item.Id));
+                            }
+
+                            if (staleParent) {
+                                const oldJellyfinId = staleParent.jellyfin_id;
+                                // Update parent jellyfin_id to new one
+                                db.prepare('UPDATE media_parents SET jellyfin_id = ? WHERE id = ?').run(item.Id, staleParent.id);
+                                // Update movie child jellyfin_id (movies use Id + '_child')
+                                if (parentParams.mediaType === 'movie') {
+                                    db.prepare('UPDATE media_children SET jellyfin_id = ? WHERE jellyfin_id = ?')
+                                        .run(item.Id + '_child', oldJellyfinId + '_child');
+                                }
+                                // Update any children that reference the old ID directly
+                                db.prepare('UPDATE media_children SET jellyfin_id = ? WHERE jellyfin_id = ?')
+                                    .run(item.Id, oldJellyfinId);
+
+                                broadcast({
+                                    type: 'progress',
+                                    log: `🔄 ${item.Name}: Jellyfin ID changed (${oldJellyfinId.slice(0, 8)}… → ${item.Id.slice(0, 8)}…), re-linked`,
+                                    logType: 'info'
+                                });
+                                logInfo('sync', `Re-linked ${item.Name}: jellyfin_id ${oldJellyfinId} → ${item.Id}`);
+                            }
+                        }
+
                         upsertParent.run(parentParams);
                     } catch (upsertErr) {
                         const errStr = String(upsertErr);
