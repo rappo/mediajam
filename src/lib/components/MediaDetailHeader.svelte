@@ -48,6 +48,7 @@
 
     import FavoriteButton from '$lib/components/FavoriteButton.svelte';
     import HeartBorder from '$lib/components/HeartBorder.svelte';
+    import ServiceIcon from '$lib/components/ServiceIcon.svelte';
     import { imgUrl } from '$lib/utils.js';
 
     const isPerson = mediaType === 'person';
@@ -55,39 +56,39 @@
 
     // Build links array from externalLinks prop
     const linkDefs = $derived.by(() => {
-        /** @type {{ label: string, url: string, icon: string }[]} */
+        /** @type {{ label: string, url: string, service: string }[]} */
         const result = [];
         const el = externalLinks;
         const mt = el.mediaType || mediaType;
 
         if (el.jellyfin_id && el.jellyfin_url) {
-            result.push({ label: 'Jellyfin', url: `${el.jellyfin_url}/web/index.html#!/details?id=${el.jellyfin_id}`, icon: '🟦' });
+            result.push({ label: 'Jellyfin', url: `${el.jellyfin_url}/web/index.html#!/details?id=${el.jellyfin_id}`, service: 'jellyfin' });
         }
         const tmdb = el.tmdb_id || el.tmdb_person_id;
         if (tmdb) {
             const t = el.tmdb_person_id ? 'person' : mt === 'show' ? 'tv' : 'movie';
-            result.push({ label: 'TMDB', url: `https://www.themoviedb.org/${t}/${tmdb}`, icon: '🎬' });
+            result.push({ label: 'TMDB', url: `https://www.themoviedb.org/${t}/${tmdb}`, service: 'tmdb' });
         }
         const imdb = el.imdb_id || el.imdb_person_id;
         if (imdb) {
             const p = el.imdb_person_id || mt === 'person' ? 'name' : 'title';
-            result.push({ label: 'IMDb', url: `https://www.imdb.com/${p}/${imdb}`, icon: '⭐' });
+            result.push({ label: 'IMDb', url: `https://www.imdb.com/${p}/${imdb}`, service: 'imdb' });
         }
         if (el.tvdb_id) {
             const t = mt === 'movie' ? 'movies' : 'series';
-            result.push({ label: 'TVDB', url: `https://thetvdb.com/dereferrer/${t}/${el.tvdb_id}`, icon: '📺' });
+            result.push({ label: 'TVDB', url: `https://thetvdb.com/dereferrer/${t}/${el.tvdb_id}`, service: 'tvdb' });
         }
         const mb = el.musicbrainz_id || el.musicbrainz_artist_id;
         if (mb) {
-            result.push({ label: 'MusicBrainz', url: `https://musicbrainz.org/artist/${mb}`, icon: '🎵' });
+            result.push({ label: 'MusicBrainz', url: `https://musicbrainz.org/artist/${mb}`, service: 'musicbrainz' });
         }
         if (el.arr_slug && el.arr_url && el.arr_service) {
             const cfg = { radarr: { label: 'Radarr', path: 'movie' }, sonarr: { label: 'Sonarr', path: 'series' }, lidarr: { label: 'Lidarr', path: 'artist' } };
             const c = cfg[el.arr_service];
-            if (c) result.push({ label: c.label, url: `${String(el.arr_url).replace(/\/+$/, '')}/${c.path}/${el.arr_slug}`, icon: '📡' });
+            if (c) result.push({ label: c.label, url: `${String(el.arr_url).replace(/\/+$/, '')}/${c.path}/${el.arr_slug}`, service: el.arr_service });
         }
         if (el.wikipedia_url) {
-            result.push({ label: 'Wikipedia', url: el.wikipedia_url, icon: '📖' });
+            result.push({ label: 'Wikipedia', url: el.wikipedia_url, service: 'wikipedia' });
         }
         return result;
     });
@@ -141,7 +142,7 @@
             <div class="ribbon-links">
                 {#each linkDefs as link}
                     <a href={link.url} target="_blank" rel="noopener noreferrer" class="ribbon-link" title={link.label}>
-                        <span class="ribbon-link-icon">{link.icon}</span>
+                        <ServiceIcon service={link.service} size="w-4 h-4" />
                         <span class="ribbon-link-text">{link.label}</span>
                     </a>
                 {/each}

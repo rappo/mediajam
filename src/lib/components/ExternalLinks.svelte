@@ -1,4 +1,6 @@
 <script>
+    import ServiceIcon from '$lib/components/ServiceIcon.svelte';
+
     /**
      * @type {{
      *   tmdb_id?: string | null,
@@ -40,7 +42,7 @@
 
     // Build links array
     const links = $derived.by(() => {
-        /** @type {{ label: string, url: string, icon: string, color?: string }[]} */
+        /** @type {{ label: string, url: string, service: string }[]} */
         const result = [];
 
         // Jellyfin
@@ -48,8 +50,7 @@
             result.push({
                 label: "Jellyfin",
                 url: `${jellyfin_url}/web/index.html#!/details?id=${jellyfin_id}`,
-                icon: "🟦",
-                color: "text-[#00A4DC]",
+                service: "jellyfin",
             });
         }
 
@@ -64,7 +65,7 @@
             result.push({
                 label: "TMDB",
                 url: `https://www.themoviedb.org/${tmdbType}/${tmdb}`,
-                icon: "🎬",
+                service: "tmdb",
             });
         }
 
@@ -76,7 +77,7 @@
             result.push({
                 label: "IMDb",
                 url: `https://www.imdb.com/${imdbPath}/${imdb}`,
-                icon: "⭐",
+                service: "imdb",
             });
         }
 
@@ -86,7 +87,7 @@
             result.push({
                 label: "TVDB",
                 url: `https://thetvdb.com/dereferrer/${tvdbType}/${tvdb_id}`,
-                icon: "📺",
+                service: "tvdb",
             });
         }
 
@@ -97,7 +98,7 @@
             result.push({
                 label: "MusicBrainz",
                 url: `https://musicbrainz.org/${mbType}/${mb}`,
-                icon: "🎵",
+                service: "musicbrainz",
             });
         }
 
@@ -107,23 +108,23 @@
             result.push({
                 label: "Trakt",
                 url: `https://trakt.tv/${traktType}/${trakt_slug}`,
-                icon: "🎯",
+                service: "trakt",
             });
         }
 
         // *arr service
         if (arr_slug && arr_url && arr_service) {
             const arrConfig = {
-                radarr: { label: "Radarr", icon: "🎥", path: "movie" },
-                sonarr: { label: "Sonarr", icon: "📡", path: "series" },
-                lidarr: { label: "Lidarr", icon: "🎶", path: "artist" },
+                radarr: { label: "Radarr", path: "movie" },
+                sonarr: { label: "Sonarr", path: "series" },
+                lidarr: { label: "Lidarr", path: "artist" },
             };
             const cfg = arrConfig[arr_service];
             if (cfg) {
                 result.push({
                     label: cfg.label,
                     url: `${String(arr_url).replace(/\/+$/, '')}/${cfg.path}/${arr_slug}`,
-                    icon: cfg.icon,
+                    service: arr_service,
                 });
             }
         }
@@ -133,7 +134,7 @@
             result.push({
                 label: "Wikipedia",
                 url: wikipedia_url,
-                icon: "📖",
+                service: "wikipedia",
             });
         }
 
@@ -150,7 +151,7 @@
                 rel="noopener noreferrer"
                 class="badge badge-sm badge-outline gap-1 hover:badge-primary transition-colors"
             >
-                <span class="text-xs">{link.icon}</span>
+                <ServiceIcon service={link.service} size="w-3.5 h-3.5" />
                 {link.label} ↗
             </a>
         {/each}
