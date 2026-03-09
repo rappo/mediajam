@@ -523,27 +523,6 @@ if (!historyCols.has('track_id')) {
     }
 }
 
-// -- Fix jellyfin_sync entries that got today's date as timestamp instead of premiere_date --
-// This happened when premiere_date was null and the fallback was new Date() instead of 1900-01-01
-{
-    const badDateCount = /** @type {any} */ (db.prepare(
-        `SELECT COUNT(*) as c FROM playback_history
-         WHERE source = 'jellyfin_sync'
-         AND timestamp > '2026-03-09T00:00:00'
-         AND timestamp < '2026-03-10T00:00:00'`
-    ).get())?.c || 0;
-    if (badDateCount > 0) {
-        db.exec(`
-            UPDATE playback_history
-            SET timestamp = '1900-01-01T00:00:00.000Z'
-            WHERE source = 'jellyfin_sync'
-            AND timestamp > '2026-03-09T00:00:00'
-            AND timestamp < '2026-03-10T00:00:00'
-        `);
-        console.log(`[db] Fixed ${badDateCount} jellyfin_sync entries with incorrect today-date`);
-    }
-}
-
 // -- Migrate existing Jellyfin user IDs into user_identities --
 /** @type {Array<{id: number, jellyfin_user_id: string, jellyfin_access_token: string}>} */
 const usersWithJellyfin = /** @type {any} */ (db.prepare(

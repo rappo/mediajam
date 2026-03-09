@@ -151,6 +151,7 @@
                     <table class="table table-xs w-full">
                         <thead class="sticky top-0 bg-base-200 z-10">
                             <tr class="text-xs text-base-content/50 uppercase">
+                                <th class="w-10"></th>
                                 <th class="w-10">Src</th>
                                 <th class="w-20">Age</th>
                                 <th>Title</th>
@@ -160,12 +161,30 @@
                                 <th class="w-20">Lang</th>
                                 <th class="w-28">Quality</th>
                                 <th class="w-16 text-right">Score</th>
-                                <th class="w-10"></th>
                             </tr>
                         </thead>
                         <tbody>
                             {#each releases as release}
-                                <tr class="hover:bg-base-300/30 transition-colors {release.rejected ? 'opacity-40' : ''}">
+                                <tr class="hover:bg-base-300/30 transition-colors {release.rejected ? 'opacity-60' : ''}">
+                                    <!-- Download button (first column for visibility) -->
+                                    <td>
+                                        {#if downloadSuccess[release.guid]}
+                                            <span class="badge badge-sm badge-success gap-1">✓ Queued</span>
+                                        {:else}
+                                            <button
+                                                class="btn btn-xs {release.rejected ? 'btn-outline btn-warning' : 'btn-primary'} gap-1"
+                                                onclick={() => queueDownload(release)}
+                                                disabled={downloading[release.guid]}
+                                                title={release.rejected ? 'Download anyway (rejected by quality profile)' : 'Queue download'}
+                                            >
+                                                {#if downloading[release.guid]}
+                                                    <span class="loading loading-spinner loading-xs"></span>
+                                                {:else}
+                                                    ⬇
+                                                {/if}
+                                            </button>
+                                        {/if}
+                                    </td>
                                     <!-- Source icon -->
                                     <td>
                                         {#if release.protocol === 'usenet'}
@@ -227,27 +246,6 @@
                                         <span class="text-xs font-mono {release.customFormatScore > 0 ? 'text-success' : release.customFormatScore < 0 ? 'text-error' : 'text-base-content/40'}">
                                             {release.customFormatScore > 0 ? '+' : ''}{release.customFormatScore}
                                         </span>
-                                    </td>
-                                    <!-- Download button -->
-                                    <td>
-                                        {#if downloadSuccess[release.guid]}
-                                            <span class="text-success text-sm" title="Queued">✅</span>
-                                        {:else if release.rejected}
-                                            <span class="text-base-content/20 text-sm" title="Rejected">⛔</span>
-                                        {:else}
-                                            <button
-                                                class="btn btn-xs btn-ghost btn-circle"
-                                                onclick={() => queueDownload(release)}
-                                                disabled={downloading[release.guid]}
-                                                title="Queue download"
-                                            >
-                                                {#if downloading[release.guid]}
-                                                    <span class="loading loading-spinner loading-xs"></span>
-                                                {:else}
-                                                    ⬇️
-                                                {/if}
-                                            </button>
-                                        {/if}
                                     </td>
                                 </tr>
                             {/each}
