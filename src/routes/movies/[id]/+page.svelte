@@ -6,6 +6,7 @@
     import RemotePlayButton from "$lib/components/RemotePlayButton.svelte";
     import StatCard from "$lib/components/StatCard.svelte";
     import ServiceIcon from "$lib/components/ServiceIcon.svelte";
+    import InteractiveSearchDialog from "$lib/components/InteractiveSearchDialog.svelte";
     import { invalidateAll, goto } from "$app/navigation";
     import { page } from "$app/stores";
     import { imgUrl } from "$lib/utils.js";
@@ -133,29 +134,25 @@
     let arrLoading = $state("");
     let arrError = $state("");
     let arrMonitored = $state(!!data.movie.arr_monitored);
+    let searchDialog = $state(/** @type {any} */ (null));
+
+    // File quality lazy-fetch from *arr
+    let fileInfo = $state(/** @type {any} */ (null));
+    let fileInfoLoading = $state(false);
+
+    $effect(() => {
+        if (data.movie.radarr_id && data.movie.arr_has_file && !fileInfo && !fileInfoLoading) {
+            fileInfoLoading = true;
+            fetch(`/api/arr/radarr/file-info?mediaParentId=${data.movie.id}`)
+                .then(r => r.json())
+                .then(d => { if (d.hasFile) fileInfo = d; })
+                .catch(() => {})
+                .finally(() => { fileInfoLoading = false; });
+        }
+    });
 
     async function onArrAdded() {
         await invalidateAll();
-    }
-
-    async function searchRadarr() {
-        arrLoading = "search";
-        arrError = "";
-        try {
-            const res = await fetch("/api/arr/radarr/search", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ mediaParentId: data.movie.id }),
-            });
-            if (!res.ok) {
-                const result = await res.json();
-                throw new Error(result.error || "Failed");
-            }
-        } catch (e) {
-            arrError = e instanceof Error ? e.message : "Failed";
-            setTimeout(() => (arrError = ""), 5000);
-        }
-        arrLoading = "";
     }
 
     async function toggleMonitorRadarr() {
@@ -531,6 +528,22 @@
                         <span class="badge badge-success badge-sm gap-1"
                             >📁 Downloaded</span
                         >
+                        {#if fileInfo}
+                            {#if fileInfo.qualityName}
+                                <span class="badge badge-primary badge-sm">{fileInfo.qualityName}</span>
+                            {/if}
+                            {#if fileInfo.videoCodec}
+                                <span class="badge badge-ghost badge-sm">{fileInfo.videoCodec}</span>
+                            {/if}
+                            {#if fileInfo.videoDynamicRangeType || fileInfo.videoDynamicRange}
+                                <span class="badge badge-accent badge-sm">{fileInfo.videoDynamicRangeType || fileInfo.videoDynamicRange}</span>
+                            {/if}
+                            {#if fileInfo.audioCodec}
+                                <span class="badge badge-ghost badge-sm">{fileInfo.audioCodec}{fileInfo.audioChannels ? ` ${fileInfo.audioChannels}` : ''}</span>
+                            {/if}
+                        {:else if fileInfoLoading}
+                            <span class="loading loading-spinner loading-xs"></span>
+                        {/if}
                     {:else if data.movie.arr_status === "announced"}
                         <span class="badge badge-ghost badge-sm gap-1"
                             >📢 Announced</span
@@ -551,19 +564,12 @@
                     {/if}
                 </div>
                 <div class="flex gap-2 mt-2">
-                    <button
-                        class="btn btn-xs btn-outline gap-1"
-                        onclick={searchRadarr}
-                        disabled={arrLoading === "search"}
-                    >
-                        {#if arrLoading === "search"}
-                            <span class="loading loading-spinner loading-xs"
-                            ></span>
-                        {:else}
-                            🔍
-                        {/if}
-                        Search
-                    </button>
+                    <InteractiveSearchDialog
+                        service="radarr"
+                        mediaParentId={data.movie.id}
+                        title="{data.movie.title} ({data.movie.release_year || ''})"
+                        bind:this={searchDialog}
+                    />
                     <button
                         class="btn btn-xs btn-outline gap-1"
                         onclick={toggleMonitorRadarr}
