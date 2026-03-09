@@ -585,24 +585,42 @@ export async function startSync(libraryId = null, force = false) {
                         // ── Re-link stale Jellyfin IDs ─────────────────────────────
                         // When a file moves, Jellyfin assigns a new ID. Check if we
                         // already have this item by TMDB/IMDB but with an old jellyfin_id.
+                        // ONLY re-link when exactly ONE parent matches — if multiple
+                        // parents share the same external ID, re-linking is ambiguous
+                        // and would cause ping-ponging (A→B then B→A each sync).
                         const existingByJellyfinId = getParentId.get(item.Id);
                         if (!existingByJellyfinId) {
                             // No match by new jellyfin_id — check external IDs
                             let staleParent = null;
                             if (parentParams.tmdbId) {
-                                staleParent = /** @type {any} */ (db.prepare(
-                                    'SELECT id, jellyfin_id FROM media_parents WHERE tmdb_id = ? AND media_type = ? AND jellyfin_id != ? LIMIT 1'
-                                ).get(parentParams.tmdbId, parentParams.mediaType, item.Id));
+                                const count = /** @type {any} */ (db.prepare(
+                                    'SELECT COUNT(*) as c FROM media_parents WHERE tmdb_id = ? AND media_type = ?'
+                                ).get(parentParams.tmdbId, parentParams.mediaType));
+                                if (count?.c === 1) {
+                                    staleParent = /** @type {any} */ (db.prepare(
+                                        'SELECT id, jellyfin_id FROM media_parents WHERE tmdb_id = ? AND media_type = ? AND jellyfin_id != ? LIMIT 1'
+                                    ).get(parentParams.tmdbId, parentParams.mediaType, item.Id));
+                                }
                             }
                             if (!staleParent && parentParams.imdbId) {
-                                staleParent = /** @type {any} */ (db.prepare(
-                                    'SELECT id, jellyfin_id FROM media_parents WHERE imdb_id = ? AND media_type = ? AND jellyfin_id != ? LIMIT 1'
-                                ).get(parentParams.imdbId, parentParams.mediaType, item.Id));
+                                const count = /** @type {any} */ (db.prepare(
+                                    'SELECT COUNT(*) as c FROM media_parents WHERE imdb_id = ? AND media_type = ?'
+                                ).get(parentParams.imdbId, parentParams.mediaType));
+                                if (count?.c === 1) {
+                                    staleParent = /** @type {any} */ (db.prepare(
+                                        'SELECT id, jellyfin_id FROM media_parents WHERE imdb_id = ? AND media_type = ? AND jellyfin_id != ? LIMIT 1'
+                                    ).get(parentParams.imdbId, parentParams.mediaType, item.Id));
+                                }
                             }
                             if (!staleParent && parentParams.tvdbId) {
-                                staleParent = /** @type {any} */ (db.prepare(
-                                    'SELECT id, jellyfin_id FROM media_parents WHERE tvdb_id = ? AND media_type = ? AND jellyfin_id != ? LIMIT 1'
-                                ).get(parentParams.tvdbId, parentParams.mediaType, item.Id));
+                                const count = /** @type {any} */ (db.prepare(
+                                    'SELECT COUNT(*) as c FROM media_parents WHERE tvdb_id = ? AND media_type = ?'
+                                ).get(parentParams.tvdbId, parentParams.mediaType));
+                                if (count?.c === 1) {
+                                    staleParent = /** @type {any} */ (db.prepare(
+                                        'SELECT id, jellyfin_id FROM media_parents WHERE tvdb_id = ? AND media_type = ? AND jellyfin_id != ? LIMIT 1'
+                                    ).get(parentParams.tvdbId, parentParams.mediaType, item.Id));
+                                }
                             }
 
                             if (staleParent) {
