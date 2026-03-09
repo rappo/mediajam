@@ -58,6 +58,8 @@
     const isPerson = mediaType === 'person';
     const hasBackdrop = !!backdropUrl;
 
+    let gearOpen = $state(false);
+
     // Internal services (self-hosted)
     const INTERNAL_SERVICES = new Set(['jellyfin', 'radarr', 'sonarr', 'lidarr']);
 
@@ -102,7 +104,16 @@
 
     const internalLinks = $derived(linkDefs.filter(l => INTERNAL_SERVICES.has(l.service)));
     const externalLinksList = $derived(linkDefs.filter(l => !INTERNAL_SERVICES.has(l.service)));
+    const hasAnyLinks = $derived(internalLinks.length > 0 || externalLinksList.length > 0);
+    const hasStats = $derived(stats.length > 0);
+    const hasFileInfo = $derived(fileInfo.length > 0);
+
+    /** Count how many sections are rendered, for divider placement */
+    const sectionFlags = $derived([internalLinks.length > 0, externalLinksList.length > 0, hasStats, hasFileInfo].filter(Boolean));
 </script>
+
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 
 <!-- Backdrop / Gradient Header -->
 <div class="detail-header" class:has-backdrop={hasBackdrop} class:no-backdrop={!hasBackdrop}>
@@ -110,6 +121,26 @@
         <div class="backdrop-container">
             <img src={backdropUrl} alt="" class="backdrop-img" />
             <div class="backdrop-gradient"></div>
+        </div>
+    {/if}
+
+    <!-- Gear menu (top-right of hero) -->
+    {#if actions}
+        <div class="gear-menu-wrap">
+            <button class="gear-btn" onclick={() => gearOpen = !gearOpen} title="Actions">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+            </button>
+            {#if gearOpen}
+                <div class="gear-backdrop" onclick={() => gearOpen = false}></div>
+                <div class="gear-dropdown">
+                    <div class="gear-dropdown-label">Actions</div>
+                    <div class="gear-dropdown-items">
+                        {@render actions()}
+                    </div>
+                </div>
+            {/if}
         </div>
     {/if}
 
@@ -140,7 +171,7 @@
                 {#each heroBadges as hb}
                     <span class="badge badge-sm {hb.cls || 'badge-outline'}">{hb.label}</span>
                 {/each}
-                {#if watchStatusBadge}<span class="badge {watchStatusBadge.cls} badge-sm">{watchStatusBadge.label}</span>{/if}
+                {#if watchStatusBadge}<span class="badge {watchStatusBadge.cls} badge-sm watch-badge">{watchStatusBadge.label}</span>{/if}
             </div>
             {#if overview}
                 <div class="hero-overview-wrap">
@@ -158,6 +189,7 @@
 </div>
 
 <!-- ═══ TOOLBAR RIBBON ═══ -->
+{#if hasAnyLinks || hasStats || hasFileInfo || extraBadges.length > 0}
 <div class="toolbar-ribbon">
     <!-- Section 1: Links (internal: Jellyfin, Arr) -->
     {#if internalLinks.length > 0}
@@ -176,7 +208,7 @@
 
     <!-- Section 2: Read More (external: TMDB, IMDb, TVDB, etc.) -->
     {#if externalLinksList.length > 0}
-        {#if internalLinks.length > 0}<span class="ribbon-section-divider"></span>{/if}
+        {#if internalLinks.length > 0}<span class="ribbon-divider"></span>{/if}
         <div class="ribbon-section">
             <span class="ribbon-section-label">Read More</span>
             <div class="ribbon-links">
@@ -191,8 +223,8 @@
     {/if}
 
     <!-- Section 3: Stats -->
-    {#if stats.length > 0}
-        {#if internalLinks.length > 0 || externalLinksList.length > 0}<span class="ribbon-section-divider"></span>{/if}
+    {#if hasStats}
+        {#if hasAnyLinks}<span class="ribbon-divider"></span>{/if}
         <div class="ribbon-section">
             <span class="ribbon-section-label">Stats</span>
             <div class="ribbon-stats-row">
@@ -207,8 +239,8 @@
     {/if}
 
     <!-- Section 4: File Info -->
-    {#if fileInfo.length > 0}
-        <span class="ribbon-section-divider"></span>
+    {#if hasFileInfo}
+        <span class="ribbon-divider"></span>
         <div class="ribbon-section">
             <span class="ribbon-section-label">File Info</span>
             <div class="ribbon-stats-row">
@@ -222,18 +254,7 @@
         </div>
     {/if}
 
-    <!-- Section 5: Actions (slot from parent page) -->
-    {#if actions}
-        <span class="ribbon-section-divider"></span>
-        <div class="ribbon-section">
-            <span class="ribbon-section-label">Actions</span>
-            <div class="ribbon-actions">
-                {@render actions()}
-            </div>
-        </div>
-    {/if}
-
-    <!-- Extra badges (e.g. "External" indicator) -->
+    <!-- Extra badges -->
     {#if extraBadges.length > 0}
         <div class="ribbon-badges">
             {#each extraBadges as badge}
@@ -242,6 +263,7 @@
         </div>
     {/if}
 </div>
+{/if}
 
 {#if children}{@render children()}{/if}
 
@@ -261,6 +283,89 @@
     .backdrop-gradient {
         position: absolute; inset: 0;
         background: linear-gradient(to top, oklch(var(--b1)) 0%, oklch(var(--b1) / 0.9) 25%, oklch(var(--b1) / 0.4) 60%, oklch(var(--b1) / 0.15) 100%);
+    }
+
+    /* ══════════════ GEAR MENU ══════════════ */
+    .gear-menu-wrap {
+        position: absolute;
+        top: 0.75rem;
+        right: 0.75rem;
+        z-index: 10;
+    }
+    .gear-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 2.25rem;
+        height: 2.25rem;
+        border-radius: 0.5rem;
+        background: oklch(var(--b1) / 0.7);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border: 1px solid oklch(var(--bc) / 0.15);
+        color: oklch(var(--bc) / 0.7);
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+    .gear-btn:hover {
+        background: oklch(var(--b1) / 0.9);
+        color: oklch(var(--bc));
+    }
+    .gear-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 9;
+    }
+    .gear-dropdown {
+        position: absolute;
+        top: calc(100% + 0.5rem);
+        right: 0;
+        z-index: 10;
+        min-width: 10rem;
+        padding: 0.5rem;
+        background: oklch(var(--b2));
+        border: 1px solid oklch(var(--bc) / 0.15);
+        border-radius: 0.5rem;
+        box-shadow: 0 8px 24px -4px rgba(0,0,0,0.5);
+    }
+    .gear-dropdown-label {
+        font-size: 0.6rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: oklch(var(--bc) / 0.35);
+        font-weight: 600;
+        padding: 0.25rem 0.5rem;
+    }
+    .gear-dropdown-items {
+        display: flex;
+        flex-direction: column;
+        gap: 0.125rem;
+    }
+
+    /* Gear dropdown button styling */
+    :global(.gear-dropdown-items .btn) {
+        background: transparent !important;
+        border: none !important;
+        color: oklch(var(--bc) / 0.8) !important;
+        font-size: 0.8rem !important;
+        font-weight: 500 !important;
+        padding: 0.375rem 0.5rem !important;
+        height: auto !important;
+        min-height: 0 !important;
+        border-radius: 0.375rem !important;
+        justify-content: flex-start !important;
+        width: 100% !important;
+        transition: background 0.1s !important;
+    }
+    :global(.gear-dropdown-items .btn:hover) {
+        background: oklch(var(--bc) / 0.08) !important;
+        color: oklch(var(--bc)) !important;
+    }
+    :global(.gear-dropdown-items .btn-success) {
+        color: oklch(0.8 0.15 145) !important;
+    }
+    :global(.gear-dropdown-items .btn-error) {
+        color: oklch(0.8 0.15 25) !important;
     }
 
     /* UNIFIED: always bottom-align title with poster */
@@ -289,6 +394,12 @@
         text-shadow: 0 0 10px rgba(0,0,0,0.6), 0 1px 3px rgba(0,0,0,0.8);
     }
     .meta-year { font-weight: 600; color: oklch(var(--bc) / 0.7); }
+
+    /* Watched badge — no blur, solid background */
+    :global(.watch-badge) {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+    }
 
     /* Overview inside hero with faded background */
     .hero-overview-wrap {
@@ -322,19 +433,20 @@
         display: flex;
         align-items: stretch;
         gap: 0;
-        padding: 0.75rem 1rem;
+        padding: 1rem 1.25rem;
         border-radius: 0.75rem;
         background: oklch(var(--b2) / 0.6);
-        border: 1px solid oklch(var(--bc) / 0.1);
+        border: 1px solid oklch(var(--bc) / 0.15);
         margin-top: 0.75rem;
         flex-wrap: wrap;
+        min-height: 3.5rem;
     }
 
     .ribbon-section {
         display: flex;
         flex-direction: column;
         gap: 0.375rem;
-        padding: 0 1rem;
+        padding: 0 1.25rem;
         min-width: 0;
     }
 
@@ -348,25 +460,29 @@
         font-weight: 600;
     }
 
-    .ribbon-section-divider {
+    /* Visible vertical dividers */
+    .ribbon-divider {
+        display: block;
         width: 1px;
         align-self: stretch;
-        background: oklch(var(--bc) / 0.25);
-        margin: 0 0.5rem;
+        background: oklch(var(--bc) / 0.2);
+        margin: 0.25rem 0.5rem;
+        flex-shrink: 0;
+        min-height: 2rem;
     }
 
     .ribbon-links {
         display: flex;
         align-items: center;
-        gap: 0.625rem;
+        gap: 0.75rem;
         flex-wrap: wrap;
     }
 
     .ribbon-link {
         display: flex;
         align-items: center;
-        gap: 0.25rem;
-        font-size: 0.75rem;
+        gap: 0.3rem;
+        font-size: 0.8rem;
         color: oklch(var(--bc) / 0.6);
         text-decoration: none;
         transition: color 0.15s;
@@ -379,63 +495,26 @@
     .ribbon-stats-row {
         display: flex;
         align-items: baseline;
-        gap: 1rem;
+        gap: 1.25rem;
         flex-wrap: wrap;
     }
 
     .ribbon-stat-cell {
         display: flex;
         align-items: baseline;
-        gap: 0.25rem;
+        gap: 0.3rem;
         white-space: nowrap;
     }
 
     .ribbon-stat-value {
-        font-size: 1rem;
+        font-size: 1.1rem;
         font-weight: 700;
         color: oklch(var(--bc));
     }
 
     .ribbon-stat-label {
-        font-size: 0.7rem;
+        font-size: 0.75rem;
         color: oklch(var(--bc) / 0.45);
-    }
-
-    /* Actions row — consistent filled button look */
-    .ribbon-actions {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-    }
-
-    /* Force filled style on ALL action buttons via :global */
-    :global(.ribbon-actions .btn) {
-        background: oklch(var(--b3)) !important;
-        border: 1px solid oklch(var(--bc) / 0.15) !important;
-        color: oklch(var(--bc) / 0.8) !important;
-        font-size: 0.75rem !important;
-        font-weight: 500 !important;
-        padding: 0.25rem 0.75rem !important;
-        height: auto !important;
-        min-height: 0 !important;
-        border-radius: 0.375rem !important;
-        transition: all 0.15s ease !important;
-    }
-    :global(.ribbon-actions .btn:hover) {
-        background: oklch(var(--bc) / 0.15) !important;
-        color: oklch(var(--bc)) !important;
-        border-color: oklch(var(--bc) / 0.25) !important;
-    }
-    :global(.ribbon-actions .btn-success) {
-        background: oklch(0.65 0.2 145 / 0.2) !important;
-        border-color: oklch(0.65 0.2 145 / 0.3) !important;
-        color: oklch(0.8 0.15 145) !important;
-    }
-    :global(.ribbon-actions .btn-error) {
-        background: oklch(0.65 0.2 25 / 0.2) !important;
-        border-color: oklch(0.65 0.2 25 / 0.3) !important;
-        color: oklch(0.8 0.15 25) !important;
     }
 
     .ribbon-badges { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-left: auto; align-self: center; }

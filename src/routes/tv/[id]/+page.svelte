@@ -204,25 +204,6 @@
             >
             All Shows
         </a>
-        <button
-            class="btn btn-ghost btn-xs gap-1"
-            class:btn-success={syncStatus === "success"}
-            class:btn-error={syncStatus === "failed"}
-            disabled={syncing}
-            onclick={fullSync}
-            title="Re-fetch all data from Jellyfin for this show"
-        >
-            {#if syncing}
-                <span class="loading loading-spinner loading-xs"></span>
-                Syncing…
-            {:else if syncStatus === "success"}
-                ✅ Synced
-            {:else if syncStatus === "failed"}
-                ❌ {syncError || "Failed"}
-            {:else}
-                🔄 Full Sync
-            {/if}
-        </button>
         {#if !data.show.jellyfin_id}
         <button
             class="btn btn-ghost btn-xs gap-1 text-error/60 hover:text-error"
