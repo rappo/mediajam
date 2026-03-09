@@ -221,23 +221,29 @@ async function fetchJellyfinAlbums(api, artistId) {
 }
 
 /**
- * Fetch tracks for an album using the SDK.
+ * Fetch tracks for an album (or all tracks for an artist if artistId is provided).
+ * When albumId is null and artistId is set, fetches ALL tracks for the artist in one call.
  */
-async function fetchJellyfinTracks(api, albumId) {
+async function fetchJellyfinTracks(api, albumId, artistId = null) {
     try {
-        const res = await getItemsApi(api).getItems({
-            parentId: albumId,
+        const params = {
             includeItemTypes: ['Audio'],
             recursive: true,
             fields: ['ProviderIds'],
             enableUserData: true,
             startIndex: 0,
             limit: 10000
-        });
+        };
+        if (albumId) {
+            params.parentId = albumId;
+        } else if (artistId) {
+            params.artistIds = [artistId];
+        }
+        const res = await getItemsApi(api).getItems(params);
         return res.data.Items || [];
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        console.error(`[sync] Failed to fetch tracks for ${albumId}:`, msg);
+        console.error(`[sync] Failed to fetch tracks for ${albumId || artistId}:`, msg);
         return [];
     }
 }
@@ -1004,33 +1010,26 @@ export async function startSync(libraryId = null, force = false) {
                             }
                         }
 
-                        // Second pass: fetch ALL tracks in parallel
-                        const CONCURRENCY = 5;
-                        const albumEntries = [...albumIdMap.entries()];
-                        for (let b = 0; b < albumEntries.length; b += CONCURRENCY) {
-                            const batch = albumEntries.slice(b, b + CONCURRENCY);
-                            const trackResults = await Promise.allSettled(
-                                batch.map(([jellyfinId]) => fetchJellyfinTracks(api, jellyfinId))
-                            );
-                            for (let r = 0; r < batch.length; r++) {
-                                const [, dbAlbumId] = batch[r];
-                                const result = trackResults[r];
-                                if (result.status === 'fulfilled') {
-                                    for (const track of result.value) {
-                                        try {
-                                            upsertTrack.run({
-                                                albumId: dbAlbumId,
-                                                jellyfinId: track.Id,
-                                                title: track.Name || 'Unknown Track',
-                                                trackNumber: track.IndexNumber || 0,
-                                                discNumber: track.ParentIndexNumber || 1,
-                                                runtimeTicks: track.RunTimeTicks || 0,
-                                                musicbrainzId: track.ProviderIds?.MusicBrainzTrack || null
-                                            });
-                                        } catch { /* skip bad track */ }
-                                    }
-                                }
+                        // Second pass: fetch ALL tracks for this artist in ONE call (bulk)
+                        try {
+                            const allTracks = await fetchJellyfinTracks(api, null, item.Id);
+                            for (const track of allTracks) {
+                                const dbAlbumId = albumIdMap.get(track.AlbumId);
+                                if (!dbAlbumId) continue; // track belongs to unknown album
+                                try {
+                                    upsertTrack.run({
+                                        albumId: dbAlbumId,
+                                        jellyfinId: track.Id,
+                                        title: track.Name || 'Unknown Track',
+                                        trackNumber: track.IndexNumber || 0,
+                                        discNumber: track.ParentIndexNumber || 1,
+                                        runtimeTicks: track.RunTimeTicks || 0,
+                                        musicbrainzId: track.ProviderIds?.MusicBrainzTrack || null
+                                    });
+                                } catch { /* skip bad track */ }
                             }
+                        } catch (trackErr) {
+                            console.error(`[sync] Failed to bulk-fetch tracks for ${item.Name}:`, trackErr instanceof Error ? trackErr.message : String(trackErr));
                         }
 
                         updateParentCounts.run(parentId);
