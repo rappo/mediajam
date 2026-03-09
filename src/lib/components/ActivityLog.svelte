@@ -63,7 +63,13 @@
         });
         unreadCount = 0;
         activities = activities.map((a) => ({ ...a, read: 1 }));
-        close();
+    }
+
+    async function clearReadEntries() {
+        const res = await fetch("/api/activity", { method: "DELETE" });
+        const data = await res.json();
+        activities = data.activities || [];
+        unreadCount = data.unreadCount || 0;
     }
 
     /** @param {any} activity */
@@ -179,16 +185,22 @@
             class="absolute right-0 top-full mt-2 w-96 max-h-[80vh] bg-base-200 border border-base-300 rounded-xl shadow-2xl z-[100] flex flex-col overflow-hidden"
         >
             <!-- Header -->
-            <div
-                class="flex items-center justify-between px-4 py-3 border-b border-base-300"
-            >
+                <div class="flex items-center justify-between px-4 py-3 border-b border-base-300">
                 <h3 class="font-semibold text-sm">Activity</h3>
-                {#if unreadCount > 0}
-                    <button
-                        class="btn btn-ghost btn-xs text-primary"
-                        onclick={markAllRead}>Mark all read</button
-                    >
-                {/if}
+                <div class="flex gap-1">
+                    {#if activities.some(a => a.read)}
+                        <button
+                            class="btn btn-ghost btn-xs text-base-content/50"
+                            onclick={clearReadEntries}>Clear read</button
+                        >
+                    {/if}
+                    {#if unreadCount > 0}
+                        <button
+                            class="btn btn-ghost btn-xs text-primary"
+                            onclick={markAllRead}>Mark all read</button
+                        >
+                    {/if}
+                </div>
             </div>
 
             <!-- Body -->

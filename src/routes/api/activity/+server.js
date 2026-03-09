@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { getActivities, getUnreadCount, markRead } from '$lib/server/activity-log.js';
+import { getActivities, getUnreadCount, markRead, clearRead } from '$lib/server/activity-log.js';
 
 /**
  * GET /api/activity
@@ -27,4 +27,15 @@ export async function PUT({ request }) {
     markRead(id);
     const unreadCount = getUnreadCount();
     return json({ success: true, unreadCount });
+}
+
+/**
+ * DELETE /api/activity
+ * Remove all read entries from the activity log.
+ */
+export async function DELETE() {
+    const deleted = clearRead();
+    const activities = getActivities();
+    const unreadCount = getUnreadCount();
+    return json({ success: true, deleted, activities, unreadCount });
 }

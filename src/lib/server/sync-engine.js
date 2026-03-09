@@ -1106,6 +1106,53 @@ export async function startSync(libraryId = null, force = false) {
             });
         }
 
+        // === Generate playback_history entries from Jellyfin played items ===
+        // The sync stores play_count/watch_status on media_children, but the History
+        // page reads from playback_history. Create synthetic entries for anything
+        // Jellyfin says is played but has no history record yet.
+        try {
+            const dbUser = /** @type {any} */ (db.prepare('SELECT id FROM users LIMIT 1').get());
+            if (dbUser) {
+                const playedWithoutHistory = /** @type {any[]} */ (db.prepare(`
+                    SELECT mc.id, mc.play_count, mc.title, mc.premiere_date,
+                           mp.title AS parent_title, mp.media_type
+                    FROM media_children mc
+                    JOIN media_parents mp ON mp.id = mc.parent_id
+                    WHERE mc.watch_status = 'watched'
+                      AND mc.play_count > 0
+                      AND NOT EXISTS (
+                          SELECT 1 FROM playback_history ph
+                          WHERE ph.media_id = mc.id AND ph.user_id = ?
+                      )
+                `).all(dbUser.id));
+
+                if (playedWithoutHistory.length > 0) {
+                    broadcast({ type: 'progress', log: `📊 Generating ${playedWithoutHistory.length} history entries from Jellyfin play data...`, logType: 'info' });
+
+                    const insertHistory = db.prepare(`
+                        INSERT OR IGNORE INTO playback_history (user_id, media_id, source, timestamp, completion_pct, external_event_id)
+                        VALUES (?, ?, 'jellyfin_sync', ?, 100, ?)
+                    `);
+
+                    const txn = db.transaction(() => {
+                        for (const item of playedWithoutHistory) {
+                            // Use premiere_date as a rough timestamp, or fallback to now
+                            const timestamp = item.premiere_date || new Date().toISOString();
+                            const eventId = `jellyfin_sync:${item.id}`;
+                            try {
+                                insertHistory.run(dbUser.id, item.id, timestamp, eventId);
+                            } catch { /* ignore duplicate */ }
+                        }
+                    });
+                    txn();
+                    broadcast({ type: 'progress', log: `✅ Created ${playedWithoutHistory.length} history entries`, logType: 'success' });
+                }
+            }
+        } catch (histErr) {
+            console.error('[sync] History generation error:', histErr);
+            broadcast({ type: 'progress', log: `⚠️ History generation failed: ${histErr instanceof Error ? histErr.message : String(histErr)}`, logType: 'warning' });
+        }
+
         // All done
         updateSyncState({
             status: 'idle',

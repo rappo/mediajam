@@ -15,8 +15,23 @@ export async function GET({ locals }) {
         return json({ found: false, error: 'Could not determine local network' });
     }
 
-    // Also try localhost and common addresses
-    const candidates = new Set(['127.0.0.1', ...subnets.flatMap(s => generateSubnetIPs(s))]);
+    // Also try localhost, Docker host gateway, and common addresses
+    const hostIPs = await getDockerHostIPs();
+    const candidates = new Set([
+        '127.0.0.1',
+        ...hostIPs,
+        ...subnets.flatMap(s => generateSubnetIPs(s)),
+        // Also scan subnets discovered from the host gateway
+        ...hostIPs.flatMap(ip => {
+            const parts = ip.split('.');
+            if (parts.length === 4) {
+                const subnet = `${parts[0]}.${parts[1]}.${parts[2]}`;
+                // Only scan non-Docker subnets we haven't covered yet
+                if (!subnets.includes(subnet)) return generateSubnetIPs(subnet);
+            }
+            return [];
+        })
+    ]);
 
     const results = [];
     const BATCH = 50; // scan 50 IPs concurrently
@@ -75,6 +90,50 @@ function generateSubnetIPs(subnet) {
         ips.push(`${subnet}.${i}`);
     }
     return ips;
+}
+
+/**
+ * Get Docker host gateway IPs so we can scan the host's network.
+ * Inside Docker, the container only sees 172.17.x.x — this resolves the actual host IP.
+ * @returns {Promise<string[]>}
+ */
+async function getDockerHostIPs() {
+    const ips = [];
+
+    // 1. Try host.docker.internal (Docker Desktop + extra_hosts in compose)
+    try {
+        const dns = await import('dns');
+        const { promisify } = await import('util');
+        const lookup = promisify(dns.lookup);
+        const result = await lookup('host.docker.internal');
+        if (result?.address) ips.push(result.address);
+    } catch { /* not available */ }
+
+    // 2. Try reading default gateway from /proc/net/route (Linux Docker)
+    try {
+        const fs = await import('fs');
+        const routes = fs.readFileSync('/proc/net/route', 'utf8');
+        for (const line of routes.split('\n').slice(1)) {
+            const parts = line.trim().split(/\s+/);
+            if (parts[1] === '00000000' && parts[7] === '00000000') {
+                // Default route — gateway is in parts[2] as little-endian hex
+                const hex = parts[2];
+                const ip = [
+                    parseInt(hex.slice(6, 8), 16),
+                    parseInt(hex.slice(4, 6), 16),
+                    parseInt(hex.slice(2, 4), 16),
+                    parseInt(hex.slice(0, 2), 16)
+                ].join('.');
+                if (ip !== '0.0.0.0') ips.push(ip);
+                break;
+            }
+        }
+    } catch { /* not on Linux or no /proc */ }
+
+    // 3. Common Docker bridge gateway
+    ips.push('172.17.0.1');
+
+    return [...new Set(ips)];
 }
 
 /**

@@ -2,6 +2,7 @@ import db from '$lib/server/db.js';
 import { json } from '@sveltejs/kit';
 import { isRunning as isSyncRunning } from '$lib/server/sync-engine.js';
 import { isMBRunning } from '$lib/server/musicbrainz-engine.js';
+import { markConflictsRead } from '$lib/server/activity-log.js';
 
 /**
  * GET /api/conflicts — list pending sync conflicts with media details.
@@ -110,12 +111,16 @@ export async function POST({ request, locals }) {
         db.prepare(`UPDATE sync_conflicts SET status = 'resolved', resolution = 'merge', resolved_at = datetime('now') WHERE external_id = ? AND status = 'pending'`)
             .run(conflict.external_id);
 
+        // Mark related activity notifications as read
+        if (conflict.external_id) markConflictsRead(conflict.external_id);
+
         return json({ success: true, merged: moved.changes, deletedId: secondaryId });
     }
 
     if (resolution === 'dismissed') {
         db.prepare(`UPDATE sync_conflicts SET status = 'resolved', resolution = 'dismissed', resolved_at = datetime('now') WHERE id = ?`)
             .run(conflictId);
+        if (conflict.external_id) markConflictsRead(conflict.external_id);
         return json({ success: true });
     }
 

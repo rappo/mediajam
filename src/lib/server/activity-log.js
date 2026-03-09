@@ -67,3 +67,22 @@ export function markRead(id) {
         db.prepare('UPDATE activity_log SET read = 1 WHERE id = ?').run(id);
     }
 }
+
+/**
+ * Delete all read activity entries.
+ * @returns {number} number of deleted rows
+ */
+export function clearRead() {
+    const result = db.prepare('DELETE FROM activity_log WHERE read = 1').run();
+    return result.changes;
+}
+
+/**
+ * Mark conflict-related activity entries as read.
+ * @param {string} externalId — the MusicBrainz/TMDB/IMDb ID that was resolved
+ */
+export function markConflictsRead(externalId) {
+    // Match by looking for the externalId in the detail JSON
+    db.prepare(`UPDATE activity_log SET read = 1 WHERE action = 'conflict_detected' AND read = 0 AND detail LIKE ?`)
+        .run(`%${externalId}%`);
+}
