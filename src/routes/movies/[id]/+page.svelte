@@ -278,6 +278,7 @@
             stats={[
                 { label: 'plays', value: data.stats.totalPlays },
                 ...(data.stats.lastWatched ? [{ label: 'watched', value: timeAgo(data.stats.lastWatched) }] : []),
+                ...(data.movie.community_rating ? [{ label: 'Rating', value: `${data.movie.community_rating} ★` }] : []),
             ]}
             fileInfo={[
                 ...(fileInfo?.qualityName ? [{ label: 'quality', value: fileInfo.qualityName }] : []),
@@ -355,6 +356,53 @@
                 </button>
             {/snippet}
         </MediaDetailHeader>
+
+        <!-- External Ratings (new layout) -->
+        {#if externalRatings.length > 0}
+            <div class="flex flex-wrap items-center gap-2 mt-3 px-1">
+                {#if getRating('omdb_imdb')}
+                    {@const r = getRating('omdb_imdb')}
+                    <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#F5C518]/10 border border-[#F5C518]/20">
+                        <ServiceIcon service="imdb" size="w-4 h-4" class="text-[#F5C518]" />
+                        <span class="font-bold text-sm">{r.raw_value}</span>
+                        {#if r.vote_count}
+                            <span class="text-xs text-base-content/40">{(r.vote_count / 1000).toFixed(0)}k</span>
+                        {/if}
+                    </div>
+                {/if}
+                {#if getRating('omdb_rt')}
+                    {@const r = getRating('omdb_rt')}
+                    <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FA320A]/10 border border-[#FA320A]/20">
+                        <span class="text-lg leading-none">🍅</span>
+                        <span class="font-bold text-sm">{r.raw_value}</span>
+                    </div>
+                {/if}
+                {#if getRating('omdb_metacritic')}
+                    {@const r = getRating('omdb_metacritic')}
+                    <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border {r.value >= 61 ? 'bg-success/10 border-success/20' : r.value >= 40 ? 'bg-warning/10 border-warning/20' : 'bg-error/10 border-error/20'}">
+                        <span class="font-bold text-xs">MC</span>
+                        <span class="font-bold text-sm">{r.raw_value}</span>
+                    </div>
+                {/if}
+                {#if getRating('tmdb')}
+                    {@const r = getRating('tmdb')}
+                    <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#01B4E4]/10 border border-[#01B4E4]/20">
+                        <ServiceIcon service="tmdb" size="w-3.5 h-3.5" class="text-[#01B4E4]" />
+                        <span class="font-bold text-sm">{r.raw_value}</span>
+                        {#if r.vote_count}
+                            <span class="text-xs text-base-content/40">{(r.vote_count / 1000).toFixed(0)}k</span>
+                        {/if}
+                    </div>
+                {/if}
+                {#if data.movie.jellyfin_user_rating}
+                    <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-warning/10 border border-warning/20">
+                        <span class="text-warning">★</span>
+                        <span class="font-bold text-sm">{data.movie.jellyfin_user_rating}</span>
+                        <span class="text-xs text-base-content/40">Yours</span>
+                    </div>
+                {/if}
+            </div>
+        {/if}
     {:else}
 
     <!-- Hero Section with Backdrop -->
