@@ -144,7 +144,7 @@ async function getDockerHostIPs() {
 async function probeOllama(ip) {
     try {
         const res = await fetch(`http://${ip}:11434/api/tags`, {
-            signal: AbortSignal.timeout(800),
+            signal: AbortSignal.timeout(5000),
         });
         if (!res.ok) return null;
         const data = await res.json();

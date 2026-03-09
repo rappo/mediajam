@@ -880,22 +880,34 @@
                                     </button>
                                 </div>
                                 {#if svc.service === 'radarr'}
+                                    {@const linkUrl = radarrExternalUrl || radarrUrl}
                                     <div class="grid gap-2 sm:grid-cols-2">
                                         <input type="text" class="input input-sm input-bordered font-mono" placeholder="http://localhost:7878" bind:value={radarrUrl} />
                                         <input type="text" class="input input-sm input-bordered font-mono" placeholder="API key" bind:value={radarrApiKey} />
                                     </div>
+                                    {#if linkUrl}
+                                        <p class="text-[10px] text-base-content/40"><a href="{linkUrl}/settings/general" target="_blank" rel="noopener" class="link link-hover link-primary">{linkUrl}/settings/general</a><br/>Settings → General → Security</p>
+                                    {/if}
                                     <input type="text" class="input input-sm input-bordered font-mono w-full" placeholder="External URL (optional, for browser links)" bind:value={radarrExternalUrl} />
                                 {:else if svc.service === 'sonarr'}
+                                    {@const linkUrl = sonarrExternalUrl || sonarrUrl}
                                     <div class="grid gap-2 sm:grid-cols-2">
                                         <input type="text" class="input input-sm input-bordered font-mono" placeholder="http://localhost:8989" bind:value={sonarrUrl} />
                                         <input type="text" class="input input-sm input-bordered font-mono" placeholder="API key" bind:value={sonarrApiKey} />
                                     </div>
+                                    {#if linkUrl}
+                                        <p class="text-[10px] text-base-content/40"><a href="{linkUrl}/settings/general" target="_blank" rel="noopener" class="link link-hover link-primary">{linkUrl}/settings/general</a><br/>Settings → General → Security</p>
+                                    {/if}
                                     <input type="text" class="input input-sm input-bordered font-mono w-full" placeholder="External URL (optional, for browser links)" bind:value={sonarrExternalUrl} />
                                 {:else}
+                                    {@const linkUrl = lidarrExternalUrl || lidarrUrl}
                                     <div class="grid gap-2 sm:grid-cols-2">
                                         <input type="text" class="input input-sm input-bordered font-mono" placeholder="http://localhost:8686" bind:value={lidarrUrl} />
                                         <input type="text" class="input input-sm input-bordered font-mono" placeholder="API key" bind:value={lidarrApiKey} />
                                     </div>
+                                    {#if linkUrl}
+                                        <p class="text-[10px] text-base-content/40"><a href="{linkUrl}/settings/general" target="_blank" rel="noopener" class="link link-hover link-primary">{linkUrl}/settings/general</a><br/>Settings → General → Security</p>
+                                    {/if}
                                     <input type="text" class="input input-sm input-bordered font-mono w-full" placeholder="External URL (optional, for browser links)" bind:value={lidarrExternalUrl} />
                                 {/if}
                                 {#if arrTestInfo[svc.service]}
