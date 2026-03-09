@@ -139,7 +139,7 @@
     </div>
 
     <!-- Form -->
-    <div class="space-y-4">
+    <form class="space-y-4" onsubmit={(e) => { e.preventDefault(); handleAuth(); }}>
         <div class="form-control">
             <label class="label" for="username">
                 <span class="label-text font-medium">Username</span>
@@ -216,11 +216,11 @@
         {/if}
 
         <div class="flex gap-3 pt-2">
-            <button class="btn btn-ghost" onclick={onBack}>Back</button>
+            <button type="button" class="btn btn-ghost" onclick={onBack}>Back</button>
             <button
+                type="submit"
                 class="btn btn-primary flex-1"
                 disabled={loading}
-                onclick={handleAuth}
             >
                 {#if loading}
                     <span class="loading loading-spinner loading-sm"></span>
@@ -228,5 +228,5 @@
                 Create Account
             </button>
         </div>
-    </div>
+    </form>
 </div>

@@ -41,24 +41,26 @@ export function load({ locals }) {
     // Import stats
     let importStats = { trakt: null, lastfm: null };
     if (userId) {
-        const traktStats = /** @type {any} */ (db.prepare(`
-            SELECT COUNT(*) as playCount,
-                   MIN(watched_at) as earliest,
-                   MAX(watched_at) as latest
-            FROM play_history WHERE source = 'trakt' AND user_id = ?
-        `).get(userId));
-        if (traktStats?.playCount > 0) {
-            importStats.trakt = traktStats;
-        }
-        const lastfmStats = /** @type {any} */ (db.prepare(`
-            SELECT COUNT(*) as playCount,
-                   MIN(watched_at) as earliest,
-                   MAX(watched_at) as latest
-            FROM play_history WHERE source = 'lastfm' AND user_id = ?
-        `).get(userId));
-        if (lastfmStats?.playCount > 0) {
-            importStats.lastfm = lastfmStats;
-        }
+        try {
+            const traktStats = /** @type {any} */ (db.prepare(`
+                SELECT COUNT(*) as playCount,
+                       MIN(timestamp) as earliest,
+                       MAX(timestamp) as latest
+                FROM playback_history WHERE source = 'trakt' AND user_id = ?
+            `).get(userId));
+            if (traktStats?.playCount > 0) {
+                importStats.trakt = traktStats;
+            }
+            const lastfmStats = /** @type {any} */ (db.prepare(`
+                SELECT COUNT(*) as playCount,
+                       MIN(timestamp) as earliest,
+                       MAX(timestamp) as latest
+                FROM playback_history WHERE source = 'lastfm' AND user_id = ?
+            `).get(userId));
+            if (lastfmStats?.playCount > 0) {
+                importStats.lastfm = lastfmStats;
+            }
+        } catch { /* table may not exist on fresh install */ }
     }
 
     return {

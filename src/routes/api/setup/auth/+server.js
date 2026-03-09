@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import db from '$lib/server/db.js';
 import bcrypt from 'bcryptjs';
 import { createJellyfinApi, getUserApi } from '$lib/server/jellyfin.js';
+import { signSession, SESSION_COOKIE, COOKIE_OPTIONS } from '$lib/server/session.js';
 
 async function authenticateWithJellyfin(jellyfinUrl, username, password) {
     const api = createJellyfinApi(jellyfinUrl);
@@ -32,7 +33,7 @@ async function authenticateWithJellyfin(jellyfinUrl, username, password) {
 }
 
 /** @type {import('./$types').RequestHandler} */
-export async function POST({ request }) {
+export async function POST({ request, cookies }) {
     const { authType, username, password, jellyfinUrl } = await request.json();
 
     try {
@@ -63,6 +64,10 @@ export async function POST({ request }) {
             // Save Jellyfin URL
             db.prepare('UPDATE app_settings SET jellyfin_url = ? WHERE id = 1').run(jellyfinUrl);
 
+            // Set session cookie so user is logged in for the rest of setup
+            const dbUser = /** @type {any} */ (db.prepare('SELECT id FROM users WHERE jellyfin_user_id = ?').get(userId));
+            if (dbUser) cookies.set(SESSION_COOKIE, signSession(dbUser.id), COOKIE_OPTIONS);
+
             return json({
                 success: true,
                 userId,
@@ -84,6 +89,9 @@ export async function POST({ request }) {
 
             // Save Jellyfin URL
             db.prepare('UPDATE app_settings SET jellyfin_url = ? WHERE id = 1').run(jellyfinUrl);
+
+            // Set session cookie so user is logged in for the rest of setup
+            cookies.set(SESSION_COOKIE, signSession(Number(result.lastInsertRowid)), COOKIE_OPTIONS);
 
             return json({
                 success: true,
