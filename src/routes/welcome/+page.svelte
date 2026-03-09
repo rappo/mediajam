@@ -77,10 +77,10 @@
 
     async function validateKey(service, credentials) {
         if (!credentials || Object.values(credentials).some(v => !v)) {
-            validationStatus = { ...validationStatus, [service]: 'idle' };
+            validationStatus[service] = 'idle';
             return;
         }
-        validationStatus = { ...validationStatus, [service]: 'checking' };
+        validationStatus[service] = 'checking';
         try {
             const res = await fetch('/api/settings/validate', {
                 method: 'POST',
@@ -88,11 +88,11 @@
                 body: JSON.stringify({ service, credentials }),
             });
             const result = await res.json();
-            validationStatus = { ...validationStatus, [service]: result.valid ? 'valid' : 'error' };
-            validationMsg = { ...validationMsg, [service]: result.message || '' };
+            validationStatus[service] = result.valid ? 'valid' : 'error';
+            validationMsg[service] = result.message || '';
         } catch {
-            validationStatus = { ...validationStatus, [service]: 'error' };
-            validationMsg = { ...validationMsg, [service]: 'Connection error' };
+            validationStatus[service] = 'error';
+            validationMsg[service] = 'Connection error';
         }
     }
 
@@ -103,22 +103,28 @@
 
     // MusicBrainz is just an app name, valid if non-empty
     function validateMusicBrainz(value) {
-        validationStatus = { ...validationStatus, musicbrainz: value.trim() ? 'valid' : 'idle' };
+        validationStatus.musicbrainz = value.trim() ? 'valid' : 'idle';
     }
 
     // Auto-validate paired keys when both filled
     $effect(() => {
-        if (traktClientId && traktClientSecret) {
-            debouncedValidate('trakt', { trakt_client_id: traktClientId });
+        // Read the reactive values
+        const id = traktClientId;
+        const secret = traktClientSecret;
+        // Use untracked write to avoid infinite loop
+        if (id && secret) {
+            debouncedValidate('trakt', { trakt_client_id: id, trakt_client_secret: secret });
         } else {
-            validationStatus = { ...validationStatus, trakt: 'idle' };
+            validationStatus.trakt = 'idle';
         }
     });
     $effect(() => {
-        if (lastfmApiKey && lastfmSharedSecret) {
-            debouncedValidate('lastfm', { lastfm_api_key: lastfmApiKey });
+        const key = lastfmApiKey;
+        const secret = lastfmSharedSecret;
+        if (key && secret) {
+            debouncedValidate('lastfm', { lastfm_api_key: key, lastfm_shared_secret: secret });
         } else {
-            validationStatus = { ...validationStatus, lastfm: 'idle' };
+            validationStatus.lastfm = 'idle';
         }
     });
 
