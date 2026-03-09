@@ -30,3 +30,4 @@ uploads/
 logs/
 cache/
 *.log
+tmp-backup/
