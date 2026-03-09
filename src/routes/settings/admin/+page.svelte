@@ -2529,6 +2529,13 @@
                             : svc.service === "sonarr"
                               ? sonarrApiKey
                               : lidarrApiKey}
+                    {@const extUrl =
+                        svc.service === "radarr"
+                            ? radarrExternalUrl
+                            : svc.service === "sonarr"
+                              ? sonarrExternalUrl
+                              : lidarrExternalUrl}
+                    {@const linkUrl = extUrl || url}
                     {@const testStatus = arrTestStatus[svc.service]}
                     {@const testInfo = arrTestInfo[svc.service]}
                     <div
@@ -2592,13 +2599,13 @@
                                 <span
                                     class="label-text-alt text-[10px] text-base-content/40"
                                 >
-                                    {#if url}
+                                    {#if linkUrl}
                                         <a
-                                            href="{url}/settings/general"
+                                            href="{linkUrl}/settings/general"
                                             target="_blank"
                                             rel="noopener"
                                             class="link link-hover link-primary"
-                                            >{url}/settings/general</a
+                                            >{linkUrl}/settings/general</a
                                         >
                                         <br />
                                     {/if}
