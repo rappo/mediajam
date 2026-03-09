@@ -72,9 +72,10 @@ export async function GET({ params, locals }) {
             const entry = seen.get(key);
             // Track the department for filtering (Acting, Directing, Writing, Production, etc.)
             if (item.character !== undefined) {
-                // Cast credit
-                entry.departments.add('Acting');
+                // Cast credit — split "Self" appearances from real acting roles
                 const role = item.character || 'Unknown';
+                const isSelf = /^(self|himself|herself|themselves)$/i.test(role.trim());
+                entry.departments.add(isSelf ? 'Self' : 'Acting');
                 if (!entry.roles.includes(role)) entry.roles.push(role);
             } else {
                 // Crew credit
