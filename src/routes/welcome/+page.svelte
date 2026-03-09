@@ -615,6 +615,7 @@
                                     {:else if validationStatus.tmdb === 'error'}<span class="text-error text-xs tooltip tooltip-right" data-tip={validationMsg.tmdb || 'Invalid'}>❌</span>{/if}
                                 </div>
                                 <input type="text" class="input input-sm input-bordered font-mono" placeholder="Enter key..." bind:value={tmdbApiKey} onblur={() => debouncedValidate('tmdb', { tmdb_api_key: tmdbApiKey }, 0)} />
+                                <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener" class="link link-primary text-xs mt-1 inline-block">Get API key →</a>
                             </label>
                             <label class="form-control">
                                 <div class="label py-1 flex items-center gap-1.5">
@@ -625,6 +626,7 @@
                                     {:else if validationStatus.tvdb === 'error'}<span class="text-error text-xs tooltip tooltip-right" data-tip={validationMsg.tvdb || 'Invalid'}>❌</span>{/if}
                                 </div>
                                 <input type="text" class="input input-sm input-bordered font-mono" placeholder="Enter key..." bind:value={tvdbApiKey} onblur={() => debouncedValidate('tvdb', { tvdb_api_key: tvdbApiKey }, 0)} />
+                                <a href="https://thetvdb.com/dashboard/account/apikey" target="_blank" rel="noopener" class="link link-primary text-xs mt-1 inline-block">Get API key →</a>
                             </label>
                             <label class="form-control">
                                 <div class="label py-1 flex items-center gap-1.5">
@@ -633,6 +635,7 @@
                                     {#if validationStatus.musicbrainz === 'valid'}<span class="text-success text-xs">✅</span>{/if}
                                 </div>
                                 <input type="text" class="input input-sm input-bordered font-mono" placeholder="MyApp/1.0" bind:value={musicbrainzApiKey} onblur={() => validateMusicBrainz(musicbrainzApiKey)} />
+                                <a href="https://musicbrainz.org/doc/MusicBrainz_API" target="_blank" rel="noopener" class="link link-primary text-xs mt-1 inline-block">Learn more →</a>
                             </label>
                             <label class="form-control">
                                 <div class="label py-1 flex items-center gap-1.5">
@@ -643,6 +646,7 @@
                                     {:else if validationStatus.omdb === 'error'}<span class="text-error text-xs tooltip tooltip-right" data-tip={validationMsg.omdb || 'Invalid'}>❌</span>{/if}
                                 </div>
                                 <input type="text" class="input input-sm input-bordered font-mono" placeholder="Enter key..." bind:value={omdbApiKey} onblur={() => debouncedValidate('omdb', { omdb_api_key: omdbApiKey }, 0)} />
+                                <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" rel="noopener" class="link link-primary text-xs mt-1 inline-block">Get free API key →</a>
                             </label>
                             <label class="form-control sm:col-span-2">
                                 <div class="label py-1 flex items-center gap-1.5">
@@ -653,6 +657,7 @@
                                     {:else if validationStatus.discogs === 'error'}<span class="text-error text-xs tooltip tooltip-right" data-tip={validationMsg.discogs || 'Invalid'}>❌</span>{/if}
                                 </div>
                                 <input type="text" class="input input-sm input-bordered font-mono" placeholder="Enter token..." bind:value={discogsToken} onblur={() => debouncedValidate('discogs', { discogs_token: discogsToken }, 0)} />
+                                <a href="https://www.discogs.com/settings/developers" target="_blank" rel="noopener" class="link link-primary text-xs mt-1 inline-block">Generate personal access token →</a>
                             </label>
                         </div>
 
