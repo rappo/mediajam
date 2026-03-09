@@ -15,6 +15,7 @@ export function load({ locals }) {
     // Connected services (Trakt/Last.fm OAuth)
     const userId = locals.user?.id;
     let connectedServices = { trakt: null, lastfm: null };
+    let autoSync = { trakt: false, lastfm: false };
     if (userId) {
         const traktConn = /** @type {any} */ (
             db.prepare("SELECT * FROM connected_services WHERE user_id = ? AND provider = 'trakt'").get(userId)
@@ -23,6 +24,18 @@ export function load({ locals }) {
             db.prepare("SELECT * FROM connected_services WHERE user_id = ? AND provider = 'lastfm'").get(userId)
         );
         connectedServices = { trakt: traktConn || null, lastfm: lastfmConn || null };
+
+        // Auto-sync state from user_identities
+        const traktIdentity = /** @type {any} */ (
+            db.prepare("SELECT auto_sync FROM user_identities WHERE user_id = ? AND provider = 'trakt'").get(userId)
+        );
+        const lastfmIdentity = /** @type {any} */ (
+            db.prepare("SELECT auto_sync FROM user_identities WHERE user_id = ? AND provider = 'lastfm'").get(userId)
+        );
+        autoSync = {
+            trakt: !!(traktIdentity?.auto_sync),
+            lastfm: !!(lastfmIdentity?.auto_sync),
+        };
     }
 
     // Import stats
@@ -75,6 +88,7 @@ export function load({ locals }) {
         hasPeopleSync: !!peopleHistory,
         hasMusicBrainzSync: !!mbHistory,
         connectedServices,
+        autoSync,
         appCredentials: {
             hasTraktCreds: !!(settings?.trakt_client_id && settings?.trakt_client_secret),
             hasLastfmCreds: !!(settings?.lastfm_api_key && settings?.lastfm_shared_secret),

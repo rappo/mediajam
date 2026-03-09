@@ -234,6 +234,20 @@
     // ─── History Import (reuses account page pattern) ────────────────────────────
     let importState = $state({ active: false, tier: '', status: 'idle', logs: [], progressPercent: 0, totalImported: 0, totalSkipped: 0, eventSource: null });
 
+    // Auto-sync toggle state
+    let traktAutoSync = $state(data.autoSync?.trakt || false);
+    let lastfmAutoSync = $state(data.autoSync?.lastfm || false);
+
+    async function toggleAutoSync(provider, enabled) {
+        try {
+            await fetch('/api/auto-sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ provider, enabled }),
+            });
+        } catch { /* silent */ }
+    }
+
     function addImportLog(message, type = 'info') {
         importState.logs = [...importState.logs.slice(-500), { time: new Date().toLocaleTimeString(), message, type }];
     }
@@ -760,6 +774,14 @@
                                 <button class="btn btn-xs btn-outline gap-1" onclick={() => startImport('trakt')} disabled={importState.active}>
                                     Import History
                                 </button>
+                                <label class="flex items-center gap-2 mt-1 cursor-pointer">
+                                    <input type="checkbox" class="toggle toggle-xs toggle-primary"
+                                        bind:checked={traktAutoSync}
+                                        onchange={() => toggleAutoSync('trakt', traktAutoSync)} />
+                                    <span class="text-xs text-base-content/60">
+                                        {traktAutoSync ? 'Stay in sync with Trakt' : 'One-time import only'}
+                                    </span>
+                                </label>
                             {/if}
                         </div>
 
@@ -783,6 +805,14 @@
                                 <button class="btn btn-xs btn-outline gap-1" onclick={() => startImport('lastfm')} disabled={importState.active}>
                                     Import History
                                 </button>
+                                <label class="flex items-center gap-2 mt-1 cursor-pointer">
+                                    <input type="checkbox" class="toggle toggle-xs toggle-primary"
+                                        bind:checked={lastfmAutoSync}
+                                        onchange={() => toggleAutoSync('lastfm', lastfmAutoSync)} />
+                                    <span class="text-xs text-base-content/60">
+                                        {lastfmAutoSync ? 'Stay in sync with Last.fm' : 'One-time import only'}
+                                    </span>
+                                </label>
                             {/if}
                         </div>
 
