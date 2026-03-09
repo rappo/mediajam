@@ -628,7 +628,8 @@
     </div>
     {/if}
 
-    <!-- Stats -->
+    <!-- Stats (old layout only) -->
+    {#if !useNewLayout}
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div class="card bg-base-200/50 border border-base-300">
             <div class="card-body py-3 px-4">
@@ -683,6 +684,7 @@
             </div>
         {/if}
     </div>
+    {/if}
 
     <!-- Legend (applies to all sections – click to filter) -->
     <div class="flex items-center gap-2 flex-wrap text-xs text-base-content/50">

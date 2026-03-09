@@ -451,14 +451,15 @@
     {/if}
     {/if}
 
-    <!-- Overview (shown below backdrop layout) -->
-    {#if data.movie.backdropUrl && data.movie.overview}
+    <!-- Overview (shown below backdrop layout, old layout only) -->
+    {#if !useNewLayout && data.movie.backdropUrl && data.movie.overview}
         <p class="text-sm text-base-content/70 leading-relaxed">
             {data.movie.overview}
         </p>
     {/if}
 
-    <!-- Stats Grid -->
+    <!-- Stats Grid (old layout only) -->
+    {#if !useNewLayout}
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div class="card bg-base-200/50 border border-base-300">
             <div class="card-body py-4 px-5">
@@ -539,6 +540,7 @@
             </div>
         {/if}
     </div>
+    {/if}
 
     <!-- Radarr Status -->
     <div class="card bg-base-200/50 border border-base-300">
@@ -658,7 +660,8 @@
         </div>
     </div>
 
-    <!-- External Links -->
+    <!-- External Links (old layout only) -->
+    {#if !useNewLayout}
     <div class="card bg-base-200/50 border border-base-300">
         <div class="card-body">
             <h2 class="card-title text-lg">
@@ -824,6 +827,7 @@
             {/if}
         </div>
     </div>
+    {/if}
 
     <!-- Cast & Crew -->
     {#if data.cast.length > 0 || data.crew.length > 0}
