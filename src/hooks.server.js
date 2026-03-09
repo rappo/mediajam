@@ -3,6 +3,10 @@ import db from '$lib/server/db.js';
 import { verifySession, SESSION_COOKIE } from '$lib/server/session.js';
 import { startAutoSyncScheduler } from '$lib/server/auto-sync.js';
 import { logError } from '$lib/server/logger.js';
+import { prefetchIcons } from '$lib/server/icon-cache.js';
+
+// Prefetch service icons from CDN on boot (non-blocking)
+prefetchIcons().catch(err => console.warn('[icon-cache] Prefetch failed:', err.message));
 
 // Prevent unhandled errors from crashing the entire process
 process.on('unhandledRejection', (reason) => {
@@ -62,7 +66,7 @@ export async function handle({ event, resolve }) {
 
         // Require auth for everything except /login, /api/auth, and /api/setup
         // TODO: Remove '/api/debug' from public paths once album research is complete
-        const publicPaths = ['/login', '/reset-password', '/api/auth', '/api/setup', '/api/debug'];
+        const publicPaths = ['/login', '/reset-password', '/api/auth', '/api/setup', '/api/debug', '/api/icons'];
         const isPublic = publicPaths.some(p => event.url.pathname.startsWith(p));
 
         if (!event.locals.user && !isPublic) {
