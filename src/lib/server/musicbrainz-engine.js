@@ -558,46 +558,59 @@ async function runEnrichment() {
                 const others = persons.slice(1);
 
                 for (const other of others) {
-                    // Merge all enrichment fields the survivor is missing from the deleted row
-                    db.prepare(`
-                        UPDATE persons SET
-                            musicbrainz_artist_id = COALESCE(musicbrainz_artist_id, ?),
-                            photo_url = COALESCE(photo_url, ?),
-                            bio = COALESCE(bio, ?),
-                            bio_jellyfin = COALESCE(bio_jellyfin, ?),
-                            bio_tmdb = COALESCE(bio_tmdb, ?),
-                            birth_date = COALESCE(birth_date, ?),
-                            death_date = COALESCE(death_date, ?),
-                            birth_place = COALESCE(birth_place, ?),
-                            tmdb_person_id = COALESCE(tmdb_person_id, ?),
-                            wikipedia_url = COALESCE(wikipedia_url, ?),
-                            wikipedia_summary = COALESCE(wikipedia_summary, ?)
-                        WHERE id = ?
-                    `).run(
-                        other.musicbrainz_artist_id, other.photo_url,
-                        other.bio, other.bio_jellyfin, other.bio_tmdb,
-                        other.birth_date, other.death_date, other.birth_place,
-                        other.tmdb_person_id, other.wikipedia_url, other.wikipedia_summary,
-                        survivor.id
-                    );
+                    try {
+                        // Check if unique fields would clash before merging
+                        const safeMbId = other.musicbrainz_artist_id && !survivor.musicbrainz_artist_id
+                            ? (db.prepare('SELECT 1 FROM persons WHERE musicbrainz_artist_id = ? AND id != ?').get(other.musicbrainz_artist_id, survivor.id) ? null : other.musicbrainz_artist_id)
+                            : null;
+                        const safeTmdbId = other.tmdb_person_id && !survivor.tmdb_person_id
+                            ? (db.prepare('SELECT 1 FROM persons WHERE tmdb_person_id = ? AND id != ?').get(other.tmdb_person_id, survivor.id) ? null : other.tmdb_person_id)
+                            : null;
 
-                    // Re-point all credits from other → survivor
-                    db.prepare(`
-                        UPDATE OR IGNORE person_credits SET person_id = ? WHERE person_id = ?
-                    `).run(survivor.id, other.id);
+                        // Merge all enrichment fields the survivor is missing from the deleted row
+                        db.prepare(`
+                            UPDATE persons SET
+                                musicbrainz_artist_id = COALESCE(musicbrainz_artist_id, ?),
+                                photo_url = COALESCE(photo_url, ?),
+                                bio = COALESCE(bio, ?),
+                                bio_jellyfin = COALESCE(bio_jellyfin, ?),
+                                bio_tmdb = COALESCE(bio_tmdb, ?),
+                                birth_date = COALESCE(birth_date, ?),
+                                death_date = COALESCE(death_date, ?),
+                                birth_place = COALESCE(birth_place, ?),
+                                tmdb_person_id = COALESCE(tmdb_person_id, ?),
+                                wikipedia_url = COALESCE(wikipedia_url, ?),
+                                wikipedia_summary = COALESCE(wikipedia_summary, ?)
+                            WHERE id = ?
+                        `).run(
+                            safeMbId, other.photo_url,
+                            other.bio, other.bio_jellyfin, other.bio_tmdb,
+                            other.birth_date, other.death_date, other.birth_place,
+                            safeTmdbId, other.wikipedia_url, other.wikipedia_summary,
+                            survivor.id
+                        );
 
-                    // Re-point external_ids
-                    db.prepare(`
-                        UPDATE OR IGNORE external_ids SET person_id = ? WHERE person_id = ?
-                    `).run(survivor.id, other.id);
+                        // Re-point all credits from other → survivor
+                        db.prepare(`
+                            UPDATE OR IGNORE person_credits SET person_id = ? WHERE person_id = ?
+                        `).run(survivor.id, other.id);
 
-                    // Delete the duplicate
-                    db.prepare('DELETE FROM person_credits WHERE person_id = ?').run(other.id);
-                    db.prepare('DELETE FROM external_ids WHERE person_id = ?').run(other.id);
-                    db.prepare('DELETE FROM persons WHERE id = ?').run(other.id);
+                        // Re-point external_ids
+                        db.prepare(`
+                            UPDATE OR IGNORE external_ids SET person_id = ? WHERE person_id = ?
+                        `).run(survivor.id, other.id);
 
-                    mergedPersons++;
-                    broadcast({ log: `  ✓ Merged "${other.name}" → "${survivor.name}" (IMDb: ${dup.imdb_person_id})`, logType: 'success' });
+                        // Delete the duplicate
+                        db.prepare('DELETE FROM person_credits WHERE person_id = ?').run(other.id);
+                        db.prepare('DELETE FROM external_ids WHERE person_id = ?').run(other.id);
+                        db.prepare('DELETE FROM persons WHERE id = ?').run(other.id);
+
+                        mergedPersons++;
+                        broadcast({ log: `  ✓ Merged "${other.name}" → "${survivor.name}" (IMDb: ${dup.imdb_person_id})`, logType: 'success' });
+                    } catch {
+                        // Skip this merge pair if it still fails
+                        broadcast({ log: `  ⚠ Could not merge "${other.name}" → "${survivor.name}" (constraint conflict)`, logType: 'warning' });
+                    }
                 }
             }
         });
