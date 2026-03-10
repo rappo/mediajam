@@ -110,16 +110,20 @@ export async function syncJellyfinHistory(userId) {
     const itemsApi = getItemsApi(api);
     const jellyfinUserId = user.jellyfin_user_id;
 
-    // Clean up previous jellyfin-sourced history
-    const cleaned = db.prepare(
-        "DELETE FROM playback_history WHERE source = 'jellyfin' AND user_id = ?"
-    ).run(userId);
-    broadcast({ log: `🗑️ Cleaned ${cleaned.changes} previous jellyfin history entries`, logType: 'info' });
-    logInfo('jellyfin-history', `Cleaned ${cleaned.changes} previous entries`);
-
+    // Use upsert: insert new entries, upgrade unknown-date entries with real dates.
+    // Don't delete existing history — preserve good timestamps from previous runs.
     const insertHistory = db.prepare(`
-        INSERT OR IGNORE INTO playback_history (user_id, media_id, source, timestamp, completion_pct, external_event_id)
+        INSERT INTO playback_history (user_id, media_id, source, timestamp, completion_pct, external_event_id)
         VALUES (@userId, @mediaId, 'jellyfin', @timestamp, 100, @externalEventId)
+        ON CONFLICT(external_event_id) DO UPDATE SET
+            timestamp = CASE
+                WHEN excluded.timestamp IS NOT NULL
+                    AND excluded.timestamp != '1970-01-01T00:00:00.000Z'
+                    AND (playback_history.timestamp IS NULL
+                         OR playback_history.timestamp = '1970-01-01T00:00:00.000Z')
+                THEN excluded.timestamp
+                ELSE playback_history.timestamp
+            END
     `);
 
     const findChildByJellyfinId = db.prepare(
@@ -180,6 +184,8 @@ export async function syncJellyfinHistory(userId) {
 
                 let playedDate = movie.UserData?.LastPlayedDate;
 
+                // Jellyfin only stores most-recent play date, and sometimes none at all.
+                // Always check Trakt as a potentially better source when Jellyfin has no date.
                 if (!playedDate) {
                     const tmdbId = movie.ProviderIds?.Tmdb || null;
                     const traktDate = findTraktDateForMovie(userId, tmdbId);
@@ -187,7 +193,8 @@ export async function syncJellyfinHistory(userId) {
                         playedDate = traktDate;
                         traktMatched++;
                     } else {
-                        playedDate = UNKNOWN_DATE;
+                        // Real play, unknown date — use null so UI can show "Unknown date"
+                        playedDate = null;
                         noDate++;
                     }
                 }
@@ -245,7 +252,7 @@ export async function syncJellyfinHistory(userId) {
                         playedDate = traktDate;
                         traktMatched++;
                     } else {
-                        playedDate = UNKNOWN_DATE;
+                        playedDate = null;
                         noDate++;
                     }
                 }
@@ -305,7 +312,7 @@ export async function syncJellyfinHistory(userId) {
 
                 if (!mediaId) { notFound++; continue; }
 
-                const playedDate = track.UserData?.LastPlayedDate || UNKNOWN_DATE;
+                const playedDate = track.UserData?.LastPlayedDate || null;
                 if (!track.UserData?.LastPlayedDate) noDate++;
 
                 const eventId = `jellyfin:audio:${track.Id}`;
@@ -340,7 +347,6 @@ export async function syncJellyfinHistory(userId) {
             noDate,
             notFound,
             errors,
-            cleaned: cleaned.changes,
             total: movies.length + episodes.length + tracks.length,
         });
     } catch (e) {

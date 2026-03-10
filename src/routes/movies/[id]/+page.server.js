@@ -50,12 +50,13 @@ export async function load({ params, locals }) {
         SELECT ph.id, ph.timestamp, ph.source, ph.duration_consumed_seconds, ph.completion_pct
         FROM playback_history ph
         WHERE ph.media_id = ? AND ph.user_id = ?
-        ORDER BY ph.timestamp DESC
+        ORDER BY ph.timestamp IS NULL, ph.timestamp DESC
     `).all(movie.child_id || 0, userId));
 
     const totalPlays = history.length;
-    const firstWatched = history.length > 0 ? history[history.length - 1].timestamp : null;
-    const lastWatched = history.length > 0 ? history[0].timestamp : null;
+    const datedHistory = history.filter(h => h.timestamp);
+    const firstWatched = datedHistory.length > 0 ? datedHistory[datedHistory.length - 1].timestamp : null;
+    const lastWatched = datedHistory.length > 0 ? datedHistory[0].timestamp : null;
 
     // Poster URL from Jellyfin if available
     const posterUrl = movie.jellyfin_id
