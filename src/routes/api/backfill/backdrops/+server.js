@@ -28,7 +28,7 @@ export async function POST() {
                 const items = /** @type {any[]} */ (db.prepare(`
                     SELECT id, title, media_type, tmdb_id, musicbrainz_id
                     FROM media_parents
-                    WHERE backdrop_url IS NULL
+                    WHERE backdrop_fetched_at IS NULL
                       AND (
                         (media_type IN ('movie', 'show') AND tmdb_id IS NOT NULL)
                         OR (media_type = 'artist' AND musicbrainz_id IS NOT NULL)
@@ -60,10 +60,11 @@ export async function POST() {
                         }
 
                         if (url) {
-                            db.prepare('UPDATE media_parents SET backdrop_url = ? WHERE id = ?').run(url, item.id);
+                            db.prepare('UPDATE media_parents SET backdrop_url = ?, backdrop_fetched_at = datetime(\'now\') WHERE id = ?').run(url, item.id);
                             enriched++;
                             send(JSON.stringify({ type: 'progress', index: i + 1, total: items.length, enriched, title: item.title, status: 'ok' }));
                         } else {
+                            db.prepare('UPDATE media_parents SET backdrop_fetched_at = datetime(\'now\') WHERE id = ?').run(item.id);
                             send(JSON.stringify({ type: 'progress', index: i + 1, total: items.length, enriched, title: item.title, status: 'skip' }));
                         }
                     } catch (e) {

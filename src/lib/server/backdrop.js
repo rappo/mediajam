@@ -107,7 +107,9 @@ export async function resolveBackdrop(mediaParentId) {
     }
 
     if (url) {
-        db.prepare('UPDATE media_parents SET backdrop_url = ? WHERE id = ?').run(url, mediaParentId);
+        db.prepare('UPDATE media_parents SET backdrop_url = ?, backdrop_fetched_at = datetime(\'now\') WHERE id = ?').run(url, mediaParentId);
+    } else {
+        db.prepare('UPDATE media_parents SET backdrop_fetched_at = datetime(\'now\') WHERE id = ?').run(mediaParentId);
     }
 
     return url;

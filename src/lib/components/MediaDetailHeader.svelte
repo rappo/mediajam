@@ -128,9 +128,7 @@
 <!-- Ambient glow container -->
 <div class="ambient-glow-wrap">
     {#if hasBackdrop}
-        <div class="ambient-glow">
-            <img src={effectiveBackdrop} alt="" class="ambient-glow-img" />
-        </div>
+        <div class="ambient-glow" style="background-image: url({effectiveBackdrop});"></div>
     {/if}
 
 <!-- Backdrop / Gradient Header -->
@@ -298,26 +296,20 @@
 </div> <!-- end ambient-glow-wrap -->
 
 <style>
-    /* ══════════════ AMBIENT GLOW ══════════════ */
+    /* ══════════════ AMBIENT GLOW (react-image-glow style) ══════════════ */
     .ambient-glow-wrap {
         position: relative;
         isolation: isolate;
     }
     .ambient-glow {
         position: absolute;
-        inset: -40px;
+        inset: 0;
         z-index: -1;
         pointer-events: none;
-        -webkit-mask-image: radial-gradient(ellipse 84% 80% at 50% 50%, black 15%, transparent 65%);
-        mask-image: radial-gradient(ellipse 84% 80% at 50% 50%, black 15%, transparent 65%);
-    }
-    .ambient-glow-img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        filter: blur(80px) brightness(1.5) saturate(1.8);
-        opacity: 0.7;
-        transform: scale(1.15);
+        background-size: cover;
+        background-position: center;
+        filter: blur(50px) saturate(2);
+        opacity: 0.8;
     }
 
     /* ══════════════ HEADER ══════════════ */

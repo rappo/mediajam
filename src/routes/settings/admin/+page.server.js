@@ -34,7 +34,7 @@ export function load() {
     const peoplePending = /** @type {any} */ (db.prepare(`
         SELECT COUNT(*) as cnt FROM persons
         WHERE tmdb_person_id IS NOT NULL AND tmdb_person_id != ''
-        AND bio_tmdb IS NULL AND photo_url IS NULL
+        AND tmdb_enriched_at IS NULL
     `).get())?.cnt || 0;
 
     // MusicBrainz enrichment: artists with MBID + collected albums that haven't been enriched yet
@@ -46,11 +46,20 @@ export function load() {
           AND mp.mb_enriched_at IS NULL
     `).get())?.cnt || 0;
 
-    const wikiTotal = /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM media_parents WHERE tmdb_id IS NOT NULL AND media_type IN ('movie','show','artist')`).get())?.cnt || 0;
-    const wikiWithSummary = /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM media_parents WHERE wikipedia_summary IS NOT NULL AND wikipedia_summary != ''`).get())?.cnt || 0;
-    const wikiPersonTotal = /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM persons WHERE tmdb_person_id IS NOT NULL`).get())?.cnt || 0;
-    const wikiPersonWithSummary = /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM persons WHERE wikipedia_summary IS NOT NULL AND wikipedia_summary != ''`).get())?.cnt || 0;
-    const wikiPending = (wikiTotal - wikiWithSummary) + (wikiPersonTotal - wikiPersonWithSummary);
+    const wikiMediaPending = /** @type {any} */ (db.prepare(`
+        SELECT COUNT(*) as cnt FROM media_parents
+        WHERE media_type IN ('movie','show','artist')
+        AND (
+            (media_type IN ('movie','show') AND tmdb_id IS NOT NULL)
+            OR (media_type = 'artist' AND musicbrainz_id IS NOT NULL)
+        )
+        AND wikipedia_fetched_at IS NULL
+    `).get())?.cnt || 0;
+    const wikiPersonPending = /** @type {any} */ (db.prepare(`
+        SELECT COUNT(*) as cnt FROM persons
+        WHERE tmdb_person_id IS NOT NULL AND wikipedia_fetched_at IS NULL
+    `).get())?.cnt || 0;
+    const wikiPending = wikiMediaPending + wikiPersonPending;
 
     // Load API keys
     const apiKeys = /** @type {any[]} */ (db.prepare(`
@@ -66,7 +75,7 @@ export function load() {
 
     const backdropsPending = /** @type {any} */ (db.prepare(`
         SELECT COUNT(*) as cnt FROM media_parents
-        WHERE backdrop_url IS NULL
+        WHERE backdrop_fetched_at IS NULL
         AND (
             (media_type IN ('movie', 'show') AND tmdb_id IS NOT NULL)
             OR (media_type = 'artist' AND musicbrainz_id IS NOT NULL)

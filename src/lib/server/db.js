@@ -711,6 +711,19 @@ if (!mpCols3.has('mb_enriched_at')) {
     db.exec("ALTER TABLE media_parents ADD COLUMN mb_enriched_at TEXT");
     console.log('[db] Added mb_enriched_at column to media_parents');
 }
+if (!mpCols3.has('backdrop_fetched_at')) {
+    db.exec("ALTER TABLE media_parents ADD COLUMN backdrop_fetched_at TEXT");
+    console.log('[db] Added backdrop_fetched_at column to media_parents');
+}
+
+// -- tmdb_enriched_at on persons (tracks when TMDB enrich was last attempted) --
+const pCols3 = new Set(db.prepare("PRAGMA table_info(persons)").all().map((/** @type {any} */ c) => c.name));
+if (!pCols3.has('tmdb_enriched_at')) {
+    db.exec("ALTER TABLE persons ADD COLUMN tmdb_enriched_at TEXT");
+    // Backfill: mark persons that already have TMDB data as enriched
+    db.exec("UPDATE persons SET tmdb_enriched_at = datetime('now') WHERE tmdb_person_id IS NOT NULL AND bio_tmdb IS NOT NULL AND photo_url IS NOT NULL");
+    console.log('[db] Added tmdb_enriched_at column to persons');
+}
 
 // -- LLM Embedding & Tagging Tables --
 try {

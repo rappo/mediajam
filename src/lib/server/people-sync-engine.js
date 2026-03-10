@@ -451,6 +451,7 @@ export async function startPeopleEnrichSync() {
             SELECT id, name, tmdb_person_id, bio, bio_tmdb, birth_date, death_date, photo_url, imdb_person_id, birth_place
             FROM persons
             WHERE tmdb_person_id IS NOT NULL AND tmdb_person_id != ''
+              AND tmdb_enriched_at IS NULL
         `).all());
 
         if (persons.length === 0) {
@@ -474,7 +475,8 @@ export async function startPeopleEnrichSync() {
                 birth_date = COALESCE(@birthDate, birth_date),
                 death_date = COALESCE(@deathDate, death_date),
                 photo_url = COALESCE(@photoUrl, photo_url),
-                birth_place = COALESCE(@birthPlace, birth_place)
+                birth_place = COALESCE(@birthPlace, birth_place),
+                tmdb_enriched_at = datetime('now')
             WHERE id = @personId
         `);
 
@@ -515,6 +517,8 @@ export async function startPeopleEnrichSync() {
                         });
                         enriched++;
                     } else {
+                        // Still stamp tmdb_enriched_at so we don't re-fetch next time
+                        db.prepare(`UPDATE persons SET tmdb_enriched_at = datetime('now') WHERE id = ?`).run(person.id);
                         skipped++;
                     }
                 } else if (tmdbRes.status === 429) {
