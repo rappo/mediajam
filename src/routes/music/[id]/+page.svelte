@@ -335,6 +335,38 @@
             mbCorrecting = false;
         }
     }
+
+    /** @param {number} albumId @param {string} albumTitle */
+    async function deleteAlbum(albumId, albumTitle) {
+        if (!confirm(`Delete "${albumTitle}"? This cannot be undone.`)) return;
+        try {
+            const res = await fetch(`/api/media/child/${albumId}`, { method: 'DELETE' });
+            if (res.ok) location.reload();
+            else alert(`Failed: ${(await res.json()).error}`);
+        } catch (e) { alert(`Error: ${e}`); }
+    }
+
+    /** @param {number} albumId @param {string} albumTitle */
+    async function mergeAlbum(albumId, albumTitle) {
+        const siblings = data.albums.filter((/** @type {any} */ a) => a.id !== albumId && a.jellyfin_id);
+        if (siblings.length === 0) { alert('No Jellyfin-linked albums to merge into.'); return; }
+        const options = siblings.map((/** @type {any} */ a, /** @type {number} */ i) => `${i + 1}. ${a.title} (${a.release_year || '?'})`).join('\n');
+        const choice = prompt(`Merge "${albumTitle}" into which album?\n\n${options}\n\nEnter number:`);
+        if (!choice) return;
+        const idx = parseInt(choice) - 1;
+        if (isNaN(idx) || idx < 0 || idx >= siblings.length) { alert('Invalid choice'); return; }
+        const target = siblings[idx];
+        if (!confirm(`Merge "${albumTitle}" into "${target.title}"? History & tracks will be moved.`)) return;
+        try {
+            const res = await fetch(`/api/media/child/${albumId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mergeInto: target.id })
+            });
+            if (res.ok) location.reload();
+            else alert(`Failed: ${(await res.json()).error}`);
+        } catch (e) { alert(`Error: ${e}`); }
+    }
 </script>
 
 <svelte:head>
@@ -531,6 +563,20 @@
                                 {/if}
                             </p>
                         </div>
+                        {#if !album.jellyfin_id}
+                            <div class="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                    class="btn btn-xs btn-circle btn-ghost bg-base-300/80"
+                                    title="Merge into another album"
+                                    onclick={(e) => { e.preventDefault(); e.stopPropagation(); mergeAlbum(album.id, album.title); }}
+                                >🔀</button>
+                                <button
+                                    class="btn btn-xs btn-circle btn-ghost bg-base-300/80"
+                                    title="Delete this album"
+                                    onclick={(e) => { e.preventDefault(); e.stopPropagation(); deleteAlbum(album.id, album.title); }}
+                                >🗑</button>
+                            </div>
+                        {/if}
                     </a>
                 {/each}
             </div>
@@ -567,6 +613,20 @@
                                     · {formatRuntime(album.runtimeMinutes)}
                                 </p>
                             </div>
+                            {#if !album.jellyfin_id}
+                                <div class="flex items-center gap-1 shrink-0">
+                                    <button
+                                        class="btn btn-xs btn-ghost"
+                                        title="Merge into another album"
+                                        onclick={(e) => { e.preventDefault(); e.stopPropagation(); mergeAlbum(album.id, album.title); }}
+                                    >🔀</button>
+                                    <button
+                                        class="btn btn-xs btn-ghost"
+                                        title="Delete this album"
+                                        onclick={(e) => { e.preventDefault(); e.stopPropagation(); deleteAlbum(album.id, album.title); }}
+                                    >🗑</button>
+                                </div>
+                            {/if}
                             <div class="flex items-center gap-3 shrink-0">
                                 {#if album.play_count > 0}
                                     <span class="badge badge-sm badge-accent"

@@ -1,4 +1,4 @@
-import { reconcileExternalMedia, deduplicateParents, deduplicateChildren, deduplicateParentsByTitle, deduplicatePlaybackHistory, deduplicateExternalAlbums } from '$lib/server/reconcile.js';
+import { reconcileExternalMedia, deduplicateParents, deduplicateChildren, deduplicateParentsByTitle, deduplicatePlaybackHistory, deduplicateExternalAlbums, reconcileFuzzyAlbums } from '$lib/server/reconcile.js';
 import { smartMergeCompilations, autoMergeMediumPlus } from '$lib/server/album-matcher.js';
 import { syncAllArr } from '$lib/server/arr-sync.js';
 import db from '$lib/server/db.js';
@@ -24,6 +24,9 @@ export async function POST({ locals }) {
         // Deduplicate external music album title variants ("Vol. 4" vs "Vol 4" etc)
         const albumDedup = deduplicateExternalAlbums();
 
+        // Fuzzy-merge orphan albums into Jellyfin siblings (e.g. "Patient Number 9 (feat. Jeff Beck)" → "Patient Number 9")
+        const fuzzyAlbumDedup = reconcileFuzzyAlbums();
+
         // Auto-merge external albums into matching Jellyfin albums (exact, high, medium confidence)
         const albumMerge = autoMergeMediumPlus();
 
@@ -45,9 +48,10 @@ export async function POST({ locals }) {
         }
 
         const albumDedupSummary = albumDedup.deduped > 0 ? `, ${albumDedup.deduped} album title variants merged` : '';
+        const fuzzyAlbumSummary = fuzzyAlbumDedup.merged > 0 ? `, ${fuzzyAlbumDedup.merged} fuzzy-matched albums merged` : '';
         const albumMergeSummary = albumMerge.merged > 0 ? `, ${albumMerge.merged} albums matched to library (${albumMerge.totalPlays} plays moved)` : '';
         const compilationSummary = compilationMerge.merged > 0 ? `, ${compilationMerge.merged} compilations merged (${compilationMerge.playsRouted} plays routed)` : '';
-        const summary = `${result.merged} merged, ${result.deleted} orphans, ${dedupResult.deduped + titleDedup.deduped} deduped parents, ${childDedup.deduped} deduped children, ${historyDedup.removed} duplicate plays removed${albumDedupSummary}${albumMergeSummary}${compilationSummary}${arrSummary}`;
+        const summary = `${result.merged} merged, ${result.deleted} orphans, ${dedupResult.deduped + titleDedup.deduped} deduped parents, ${childDedup.deduped} deduped children, ${historyDedup.removed} duplicate plays removed${albumDedupSummary}${fuzzyAlbumSummary}${albumMergeSummary}${compilationSummary}${arrSummary}`;
         console.log(`[reconcile] Manual: ${summary}`);
         db.prepare('UPDATE sync_history SET status = ?, finished_at = ?, summary = ? WHERE id = ?')
             .run('success', new Date().toISOString(), summary, histId);

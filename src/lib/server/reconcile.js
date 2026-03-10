@@ -584,3 +584,131 @@ export function deduplicateExternalAlbums() {
 
     return { deduped, historyMoved };
 }
+
+/**
+ * Strip parenthetical suffixes, edition tags, and 'Live' from album titles
+ * to produce a "base" title for fuzzy matching.
+ * E.g. "Patient Number 9 (feat. Jeff Beck)" → "patient number 9"
+ *      "Colors (2020 Remix / Remaster)" → "colors"
+ *      "Blizzard Of Ozz (Expanded Edition)" → "blizzard of ozz"
+ *      "The Great Misdirect Live" → "the great misdirect"
+ * @param {string} title
+ * @returns {string}
+ */
+function stripAlbumSuffix(title) {
+    return title
+        // Remove anything in parentheses at the end: (feat. X), (Expanded Edition), (Bonus Track Version), etc.
+        .replace(/\s*\([^)]*\)\s*$/g, '')
+        // Remove trailing " Live" (common live album suffix)
+        .replace(/\s+Live$/i, '')
+        // Normalize using existing helper
+        .toLowerCase()
+        .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+        .replace(/[\u201C\u201D\u201E\u201F\u2033\u2036]/g, '"')
+        .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\uFE58\uFE63\uFF0D]/g, '-')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+/**
+ * Reconcile orphan album children (no jellyfin_id) with Jellyfin-sourced siblings
+ * using fuzzy title matching. Strips parenthetical suffixes (feat., edition, remix)
+ * and matches base titles.
+ *
+ * This complements reconcileExternalMedia() (exact title match) by handling cases
+ * like "Patient Number 9 (feat. Jeff Beck)" → "Patient Number 9".
+ *
+ * Existing dedup functions and their roles:
+ * - reconcileExternalMedia(): exact title match orphan→Jellyfin children
+ * - deduplicateParents(): by external ID (tmdb_id, musicbrainz_id, imdb_id)
+ * - deduplicateChildren(): by season_number + item_number
+ * - deduplicateParentsByTitle(): orphan parents → canonical parents by exact title
+ * - mergeOrphanArtistsIntoAlbums(): orphan artist parents → album children
+ * - deduplicateExternalAlbums(): orphan-to-orphan albums by normalized title
+ *
+ * This function fills the remaining gap: orphan albums → Jellyfin albums by fuzzy title.
+ *
+ * @returns {{ merged: number, historyMoved: number }}
+ */
+export function reconcileFuzzyAlbums() {
+    // Find orphan album children (no jellyfin_id) under artist parents
+    const orphans = /** @type {any[]} */ (db.prepare(`
+        SELECT mc.id, mc.title, mc.parent_id, mc.play_count
+        FROM media_children mc
+        JOIN media_parents mp ON mc.parent_id = mp.id
+        WHERE mp.media_type = 'artist'
+        AND mc.jellyfin_id IS NULL
+        ORDER BY mc.parent_id, mc.id
+    `).all());
+
+    if (orphans.length === 0) return { merged: 0, historyMoved: 0 };
+
+    // Build a lookup of Jellyfin-sourced albums by parent_id + stripped base title
+    const jellyfinAlbums = /** @type {any[]} */ (db.prepare(`
+        SELECT mc.id, mc.title, mc.parent_id
+        FROM media_children mc
+        JOIN media_parents mp ON mc.parent_id = mp.id
+        WHERE mp.media_type = 'artist'
+        AND mc.jellyfin_id IS NOT NULL
+    `).all());
+
+    /** @type {Map<string, any>} */
+    const jfByBaseTitle = new Map();
+    for (const a of jellyfinAlbums) {
+        const key = `${a.parent_id}::${stripAlbumSuffix(a.title)}`;
+        if (!jfByBaseTitle.has(key)) jfByBaseTitle.set(key, a);
+    }
+
+    let merged = 0;
+    let historyMoved = 0;
+
+    const migrateHistory = db.prepare(
+        'UPDATE playback_history SET media_id = ? WHERE media_id = ?'
+    );
+    const migrateTracks = db.prepare(
+        'UPDATE OR IGNORE tracks SET album_id = ? WHERE album_id = ?'
+    );
+    const deleteTracks = db.prepare(
+        'DELETE FROM tracks WHERE album_id = ?'
+    );
+    const deleteChild = db.prepare(
+        'DELETE FROM media_children WHERE id = ?'
+    );
+
+    db.transaction(() => {
+        for (const orphan of orphans) {
+            const orphanBase = stripAlbumSuffix(orphan.title);
+            // Skip very short base titles to avoid false matches (e.g. "X", "II")
+            if (orphanBase.length < 3) continue;
+
+            const key = `${orphan.parent_id}::${orphanBase}`;
+            const jfMatch = jfByBaseTitle.get(key);
+
+            if (!jfMatch || jfMatch.id === orphan.id) continue;
+
+            // Also check reverse: maybe the Jellyfin title is the longer one
+            // e.g. JF has "Blizzard of Ozz (Expanded Edition)", orphan has "Blizzard of Ozz"
+            // The forward lookup already handles this since we strip both sides' titles
+
+            // Migrate playback_history from orphan to Jellyfin entry
+            const histResult = migrateHistory.run(jfMatch.id, orphan.id);
+            historyMoved += histResult.changes;
+
+            // Migrate tracks (if any)
+            migrateTracks.run(jfMatch.id, orphan.id);
+            deleteTracks.run(orphan.id); // clean up any that couldn't move due to UNIQUE
+
+            // Delete the orphan album
+            deleteChild.run(orphan.id);
+            merged++;
+
+            console.log(`[dedupe] Fuzzy-merged album "${orphan.title}" (${orphan.id}) → "${jfMatch.title}" (${jfMatch.id})`);
+        }
+    })();
+
+    if (merged > 0) {
+        console.log(`[dedupe] Fuzzy-merged ${merged} orphan albums into Jellyfin siblings, moved ${historyMoved} history entries`);
+    }
+
+    return { merged, historyMoved };
+}
