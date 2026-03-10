@@ -775,7 +775,7 @@ export async function startSync(libraryId = null, force = false) {
                                         broadcast({ type: 'progress', log: `  ❌ ${item.Name}: auto-merge failed: ${mergeErrStr}`, logType: 'error' });
                                         logWarn('sync', `TMDB auto-merge failed for ${item.Name}: ${mergeErrStr}`);
                                     }
-                                } else if (existing && !currentRow) {
+                                } else if (existing && !currentRow && !existing.jellyfin_id) {
                                     // External-only row exists (from trakt/backfill import) with tmdb_id but no jellyfin_id.
                                     // Adopt it: set jellyfin_id and update metadata on the existing row.
                                     try {
@@ -816,10 +816,11 @@ export async function startSync(libraryId = null, force = false) {
                                         logWarn('sync', `TMDB adopt failed for ${item.Name}: ${adoptErrStr}`);
                                     }
                                 } else {
-                                    // Fallback: retry upsert without tmdb_id
+                                    // Genuine duplicate: two Jellyfin items share the same TMDB ID,
+                                    // or existing row already has a jellyfin_id — sync without tmdb_id
                                     retryParams.tmdbId = null;
                                     upsertParent.run(retryParams);
-                                    broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: TMDB conflict (no merge target), synced without tmdb_id`, logType: 'warning' });
+                                    broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: shares TMDB ID ${parentParams.tmdbId} with "${existing?.title || 'unknown'}" — synced without tmdb_id`, logType: 'warning' });
                                 }
                             } else if (errStr.includes('imdb_id') && parentParams.imdbId) {
                                 conflictField = 'IMDb ID';
