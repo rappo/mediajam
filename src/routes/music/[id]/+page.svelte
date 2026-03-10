@@ -6,8 +6,6 @@
     import MediaDetailHeader from "$lib/components/MediaDetailHeader.svelte";
     let { data } = $props();
     let expandedAlbum = $state(null);
-
-    let useNewLayout = $state(true);
     let albumTracks = $state({});
     let loadingTracks = $state(null);
     /** @type {'list' | 'grid'} */
@@ -305,43 +303,11 @@
 </svelte:head>
 
 <div class="space-y-6 max-w-6xl mx-auto">
-    <!-- Back + Sync + Layout Toggle -->
-    <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2">
-        <a href="/music" class="btn btn-ghost btn-sm gap-1">
-            <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-4 w-4"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"><polyline points="15 18 9 12 15 6" /></svg
-            >
-            All Artists
-        </a>
-        {#if !data.artist.jellyfin_id}
-        <button
-            class="btn btn-ghost btn-xs gap-1 text-error/60 hover:text-error"
-            onclick={() => (showDeleteConfirm = true)}
-            title="Delete this artist"
-        >
-            🗑️
-        </button>
-        {/if}
-        </div>
-        <button
-            class="btn btn-ghost btn-xs gap-1 text-base-content/30 hover:text-base-content/60"
-            onclick={() => useNewLayout = !useNewLayout}
-            title="Toggle layout"
-        >
-            {useNewLayout ? '🔀 Classic' : '✨ New'}
-        </button>
-    </div>
-
-    {#if useNewLayout}
-        <!-- ═══ NEW LAYOUT (Option B) ═══ -->
+        <!-- ═══ ARTIST HEADER ═══ -->
         <MediaDetailHeader
             mediaType="artist"
+            backHref="/music"
+            backLabel="Artists"
             title={data.artist.title}
             posterUrl={data.artist.imageUrl}
             isFavorite={!!data.artist.is_favorite}
@@ -410,150 +376,6 @@
                 {/if}
             {/snippet}
         </MediaDetailHeader>
-    {:else}
-    <div class="flex gap-6 items-start">
-        {#if data.artist.imageUrl}
-            <HeartBorder
-                show={!!data.artist.is_favorite &&
-                    data.settings?.heartBorderMusic}
-                class="rounded-xl"
-            >
-                <img
-                    src={data.artist.imageUrl}
-                    alt={data.artist.title}
-                    class="w-40 h-40 rounded-xl shadow-lg shrink-0 object-cover"
-                />
-            </HeartBorder>
-        {/if}
-        <div class="space-y-3 min-w-0">
-            <div>
-                <h1 class="text-3xl font-bold">{data.artist.title}</h1>
-                <ExternalLinks
-                    musicbrainz_id={data.artist.musicbrainz_id}
-                    jellyfin_id={data.artist.jellyfin_id}
-                    jellyfin_url={data.jellyfinUrl}
-                    arr_slug={data.artist.arr_slug}
-                    arr_url={data.arrUrl}
-                    arr_service={data.arrService}
-                    wikipedia_url={data.artist.wikipedia_url}
-                    mediaType="artist"
-                    class="mt-1"
-                />
-            </div>
-            <div class="flex flex-wrap gap-3">
-                {#if !data.artist.jellyfin_id}
-                    <div class="badge badge-lg badge-warning gap-1">
-                        📡 External
-                    </div>
-                {/if}
-                <div class="badge badge-lg badge-info gap-1">
-                    💿 {data.albums.length} albums
-                </div>
-                <div class="badge badge-lg badge-secondary gap-1">
-                    ▶️ {data.artist.total_plays} plays
-                </div>
-                <div class="badge badge-lg badge-accent gap-1">
-                    ⏱️ {formatRuntime(data.totalRuntimeMinutes)}
-                </div>
-                {#if data.artist.collection_pct !== null}
-                    <div class="badge badge-lg badge-primary gap-1">
-                        📦 {data.artist.collection_pct}% collected
-                    </div>
-                {/if}
-            </div>
-        </div>
-    </div>
-    {/if}
-
-    <!-- Lidarr Status (old layout only) -->
-    {#if !useNewLayout}
-    <div class="card bg-base-200/50 border border-base-300">
-        <div class="card-body py-4">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                    <span class="text-lg">🎵</span>
-                    <span class="font-semibold text-sm">Lidarr</span>
-                </div>
-                {#if arrError}
-                    <span class="text-xs text-error">{arrError}</span>
-                {/if}
-            </div>
-            {#if data.artist.lidarr_id}
-                <div class="flex flex-wrap items-center gap-2 mt-1">
-                    {#if data.arrUrl && data.artist.arr_slug}
-                        <a
-                            href="{data.arrUrl}/artist/{data.artist.arr_slug}"
-                            target="_blank"
-                            rel="noopener"
-                            class="badge badge-success badge-sm gap-1 hover:brightness-110 cursor-pointer"
-                        >
-                            ✅ In Lidarr ↗
-                        </a>
-                    {:else}
-                        <span class="badge badge-success badge-sm gap-1"
-                            >✅ In Lidarr</span
-                        >
-                    {/if}
-                    {#if arrMonitored}
-                        <span class="badge badge-info badge-sm"
-                            >📡 Monitored</span
-                        >
-                    {:else}
-                        <span class="badge badge-ghost badge-sm"
-                            >Unmonitored</span
-                        >
-                    {/if}
-                    {#if data.artist.arr_has_file}
-                        <span class="badge badge-success badge-sm gap-1"
-                            >📁 Has Files</span
-                        >
-                    {/if}
-                    {#if data.artist.arr_quality_profile}
-                        <span class="badge badge-ghost badge-sm"
-                            >{data.artist.arr_quality_profile}</span
-                        >
-                    {/if}
-                </div>
-                <div class="flex gap-2 mt-2">
-                    <button
-                        class="btn btn-xs btn-outline gap-1"
-                        onclick={searchLidarr}
-                        disabled={arrLoading === "search"}
-                    >
-                        {#if arrLoading === "search"}<span
-                                class="loading loading-spinner loading-xs"
-                            ></span>{:else}🔍{/if} Search
-                    </button>
-                    <button
-                        class="btn btn-xs btn-outline gap-1"
-                        onclick={toggleMonitorLidarr}
-                        disabled={arrLoading === "monitor"}
-                    >
-                        {#if arrLoading === "monitor"}<span
-                                class="loading loading-spinner loading-xs"
-                            ></span>{:else if arrMonitored}📡{:else}📴{/if}
-                        {arrMonitored ? "Unmonitor" : "Monitor"}
-                    </button>
-                </div>
-            {:else if data.artist.musicbrainz_id}
-                <div class="flex items-center gap-2 mt-1">
-                    <span class="text-xs text-base-content/50"
-                        >Not in Lidarr</span
-                    >
-                    <ArrAddDialog
-                        service="lidarr"
-                        mediaParentId={data.artist.id}
-                        onComplete={onArrAdded}
-                    />
-                </div>
-            {:else}
-                <p class="text-xs text-base-content/40 mt-1">
-                    No MusicBrainz ID — cannot link to Lidarr
-                </p>
-            {/if}
-        </div>
-    </div>
-    {/if}
 
     <!-- Albums -->
     <div class="space-y-3">

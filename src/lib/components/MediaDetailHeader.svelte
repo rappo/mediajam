@@ -5,6 +5,8 @@
      * @type {{
      *   mediaType: 'movie' | 'show' | 'artist' | 'person',
      *   title: string,
+     *   backHref?: string | null,
+     *   backLabel?: string | null,
      *   posterUrl?: string | null,
      *   backdropUrl?: string | null,
      *   year?: number | string | null,
@@ -30,6 +32,8 @@
     let {
         mediaType,
         title,
+        backHref = null,
+        backLabel = null,
         posterUrl = null,
         backdropUrl = null,
         year = null,
@@ -134,6 +138,14 @@
             <img src={effectiveBackdrop} alt="" class="backdrop-img" />
             <div class="backdrop-gradient"></div>
         </div>
+    {/if}
+
+    <!-- Back button (top-left of hero) -->
+    {#if backHref}
+        <a href={backHref} class="back-btn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+            {backLabel || 'Back'}
+        </a>
     {/if}
 
     <!-- Gear menu (top-right of hero) -->
@@ -321,6 +333,27 @@
         position: absolute; inset: 0;
         background: linear-gradient(to top, oklch(var(--b1)) 0%, oklch(var(--b1) / 0.9) 25%, oklch(var(--b1) / 0.4) 60%, oklch(var(--b1) / 0.15) 100%);
     }
+
+    /* ══════════════ BACK BUTTON ══════════════ */
+    .back-btn {
+        position: absolute;
+        top: 0.75rem;
+        left: 0.75rem;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.35rem 0.65rem 0.35rem 0.45rem;
+        border-radius: 0.5rem;
+        background: rgba(0,0,0,0.45);
+        color: rgba(255,255,255,0.8);
+        font-size: 0.75rem;
+        font-weight: 500;
+        text-decoration: none;
+        backdrop-filter: blur(8px);
+        transition: background 0.15s, color 0.15s;
+    }
+    .back-btn:hover { background: rgba(0,0,0,0.65); color: #fff; }
 
     /* ══════════════ GEAR MENU ══════════════ */
     .gear-menu-wrap {

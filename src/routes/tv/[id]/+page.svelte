@@ -190,35 +190,11 @@
 </svelte:head>
 
 <div class="space-y-6 max-w-6xl mx-auto">
-    <!-- Back + Sync + Layout Toggle -->
-    <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2">
-        <a href="/tv" class="btn btn-ghost btn-sm gap-1">
-            <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-4 w-4"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"><polyline points="15 18 9 12 15 6" /></svg
-            >
-            All Shows
-        </a>
-        {#if !data.show.jellyfin_id}
-        <button
-            class="btn btn-ghost btn-xs gap-1 text-error/60 hover:text-error"
-            onclick={() => (showDeleteConfirm = true)}
-            title="Delete this show"
-        >
-            🗑️
-        </button>
-        {/if}
-        </div>
-    </div>
-
         <!-- ═══ NEW LAYOUT (Option B) ═══ -->
         <MediaDetailHeader
             mediaType="show"
+            backHref="/tv"
+            backLabel="Shows"
             title={data.show.title}
             posterUrl={data.show.posterUrl || (data.show.poster_url ? imgUrl(data.show.poster_url) : null)}
             backdropUrl={data.show.backdropUrl}

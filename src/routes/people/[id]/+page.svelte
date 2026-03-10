@@ -6,8 +6,6 @@
     import { imgUrl } from "$lib/utils.js";
     let { data } = $props();
 
-    let useNewLayout = $state(true);
-
     function roleBadge(roleType) {
         const colors = {
             actor: "badge-primary",
@@ -437,6 +435,17 @@
         }
         personSyncing = false;
     }
+
+    // Year/age subtitle for person header
+    const personYearStr = $derived((() => {
+        const bd = data.person.birth_date ? new Date(data.person.birth_date) : null;
+        if (!bd) return null;
+        const endDate = data.person.death_date ? new Date(data.person.death_date) : new Date();
+        const age = Math.floor((endDate.getTime() - bd.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+        return data.person.death_date
+            ? `Born: ${data.person.birth_date} · Died: ${data.person.death_date} (aged ${age})`
+            : `Born: ${data.person.birth_date} (age ${age})`;
+    })());
 </script>
 
 <svelte:head>
@@ -444,44 +453,15 @@
 </svelte:head>
 
 <div class="space-y-6 max-w-5xl mx-auto">
-    <!-- Back + Toggle -->
-    <div class="flex items-center justify-between">
-        <a href="/movies" class="btn btn-ghost btn-sm gap-1">
-            <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-4 w-4"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"><polyline points="15 18 9 12 15 6" /></svg
-            >
-            Back
-        </a>
-        <button
-            class="btn btn-ghost btn-xs gap-1 text-base-content/30 hover:text-base-content/60"
-            onclick={() => useNewLayout = !useNewLayout}
-            title="Toggle layout"
-        >
-            {useNewLayout ? '🔀 Classic' : '✨ New'}
-        </button>
-    </div>
-
-    {#if useNewLayout}
-        <!-- ═══ NEW LAYOUT (Option B) ═══ -->
-        {@const bd = data.person.birth_date ? new Date(data.person.birth_date) : null}
-        {@const endDate = data.person.death_date ? new Date(data.person.death_date) : new Date()}
-        {@const age = bd ? Math.floor((endDate.getTime() - bd.getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : null}
-        {@const yearStr = data.person.death_date
-            ? `Born: ${data.person.birth_date} · Died: ${data.person.death_date} (aged ${age})`
-            : data.person.birth_date
-                ? `Born: ${data.person.birth_date} (age ${age})`
-                : null}
+        <!-- ═══ PERSON HEADER ═══ -->
         <MediaDetailHeader
             mediaType="person"
+            backHref="/people"
+            backLabel="People"
             title={data.person.name}
             posterUrl={data.person.photoUrl}
             backdropUrl={data.backdropUrl}
-            subtitle={yearStr}
+            subtitle={personYearStr}
             overview={data.person.displayBio || lazyBio}
             overviewSource={data.person.bioSource || lazyBioSource}
             isFavorite={!!data.person.is_favorite}
@@ -522,186 +502,6 @@
                 </button>
             {/snippet}
         </MediaDetailHeader>
-    {:else}
-
-    <!-- OLD: Back -->
-    <a href="/movies" class="btn btn-ghost btn-sm gap-1">
-        <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-4 w-4"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"><polyline points="15 18 9 12 15 6" /></svg
-        >
-        Back
-    </a>
-
-    <!-- Person Header -->
-    <div class="flex gap-6 items-start">
-        <!-- Portrait -->
-        <div class="shrink-0" style="width: 150px; min-width: 150px;">
-            <HeartBorder
-                show={!!data.person.is_favorite && data.settings?.heartBorderPeople}
-                class="rounded-2xl"
-            >
-                {#if data.person.photoUrl}
-                    <img
-                        src={imgUrl(data.person.photoUrl, 400)}
-                        alt={data.person.name}
-                        class="rounded-2xl shadow-lg"
-                        style="width: 150px; height: 200px; object-fit: cover; display: block;"
-                    />
-                {:else}
-                    <div
-                        class="rounded-2xl bg-base-300 flex items-center justify-center text-5xl"
-                        style="width: 150px; height: 200px;"
-                    >
-                        👤
-                    </div>
-                {/if}
-            </HeartBorder>
-        </div>
-        <div class="space-y-3 min-w-0">
-            <div>
-                <h1
-                    class="text-3xl md:text-4xl font-bold flex items-center gap-2"
-                >
-                    {data.person.name}
-                    <FavoriteButton
-                        type="person"
-                        id={data.person.id}
-                        isFavorite={!!data.person.is_favorite}
-                    />
-                    <button
-                        class="btn btn-ghost btn-xs gap-1 ml-1"
-                        disabled={personSyncing}
-                        onclick={syncPerson}
-                        title="Sync this person's data from Jellyfin, TMDB, and MusicBrainz"
-                    >
-                        {#if personSyncing}
-                            <span class="loading loading-spinner loading-xs"></span>
-                        {:else}
-                            🔄
-                        {/if}
-                        Sync
-                    </button>
-                </h1>
-                <div
-                    class="flex flex-wrap items-center gap-2 text-sm text-base-content/60 mt-1"
-                >
-                    {#if data.person.birth_date}
-                        {@const bd = new Date(data.person.birth_date)}
-                        {@const endDate = data.person.death_date ? new Date(data.person.death_date) : new Date()}
-                        {@const age = Math.floor((endDate.getTime() - bd.getTime()) / (365.25 * 24 * 60 * 60 * 1000))}
-                        {#if data.person.death_date}
-                            <span>Born: {data.person.birth_date} · Died: {data.person.death_date} (aged {age})</span>
-                        {:else}
-                            <span>Born: {data.person.birth_date} (age {age})</span>
-                        {/if}
-                    {/if}
-                </div>
-            </div>
-
-            {#if data.person.displayBio || lazyBio}
-                <p class="text-sm text-base-content/70 line-clamp-4">
-                    {data.person.displayBio || lazyBio}
-                </p>
-                {#if data.person.bioSource || lazyBioSource}
-                    {@const src = data.person.bioSource || lazyBioSource}
-                    <span class="text-xs text-base-content/40 italic">via {src === 'tmdb' ? 'TMDB' : src === 'wikipedia' ? 'Wikipedia' : src === 'jellyfin' ? 'Jellyfin' : src}</span>
-                {/if}
-            {:else if bioLoading}
-                <p class="text-sm text-base-content/40 italic">Loading bio…</p>
-            {/if}
-
-            <!-- External links -->
-            <div class="flex flex-wrap items-center gap-1.5">
-                <ExternalLinks
-                    tmdb_person_id={data.person.tmdb_person_id}
-                    imdb_person_id={data.person.imdb_person_id}
-                    musicbrainz_artist_id={data.person.musicbrainz_artist_id}
-                    jellyfin_id={data.person.jellyfin_id}
-                    jellyfin_url={data.jellyfinUrl}
-                    wikipedia_url={data.person.wikipedia_url}
-                    mediaType="person"
-                />
-                {#each data.externalIds.filter((e) => !(e.source === "imdb" && data.person.imdb_person_id)) as ext}
-                    {@const cfg = sourceConfig[ext.source]}
-                    {#if cfg}
-                        <a
-                            href={cfg.urlFn(ext.external_id)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            class="badge badge-sm badge-outline gap-1 hover:badge-primary transition-colors"
-                        >
-                            <span class="text-xs">{cfg.icon}</span>
-                            {cfg.label} ↗
-                        </a>
-                    {/if}
-                {/each}
-            </div>
-        </div>
-    </div>
-    {/if}
-
-    <!-- Stats (old layout only) -->
-    {#if !useNewLayout}
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div class="card bg-base-200/50 border border-base-300">
-            <div class="card-body py-3 px-4">
-                <p
-                    class="text-xs text-base-content/50 uppercase tracking-wider"
-                >
-                    Titles
-                </p>
-                <p class="text-2xl font-bold">{data.stats.totalCredits}</p>
-            </div>
-        </div>
-        {#if data.stats.movieCount > 0}
-            <div class="card bg-base-200/50 border border-base-300">
-                <div class="card-body py-3 px-4">
-                    <p
-                        class="text-xs text-base-content/50 uppercase tracking-wider"
-                    >
-                        Movies
-                    </p>
-                    <p class="text-2xl font-bold">
-                        {data.stats.watchedMovies}<span
-                            class="text-sm text-base-content/40"
-                            >/{data.stats.movieCount}</span
-                        >
-                    </p>
-                    <p class="text-xs text-base-content/40">watched</p>
-                </div>
-            </div>
-        {/if}
-        {#if data.stats.showCount > 0}
-            <div class="card bg-base-200/50 border border-base-300">
-                <div class="card-body py-3 px-4">
-                    <p
-                        class="text-xs text-base-content/50 uppercase tracking-wider"
-                    >
-                        TV Shows
-                    </p>
-                    <p class="text-2xl font-bold">{data.stats.showCount}</p>
-                </div>
-            </div>
-        {/if}
-        {#if data.stats.artistCount > 0}
-            <div class="card bg-base-200/50 border border-base-300">
-                <div class="card-body py-3 px-4">
-                    <p
-                        class="text-xs text-base-content/50 uppercase tracking-wider"
-                    >
-                        Music
-                    </p>
-                    <p class="text-2xl font-bold">{data.stats.artistCount}</p>
-                </div>
-            </div>
-        {/if}
-    </div>
-    {/if}
 
     <!-- Legend (applies to all sections – click to filter) -->
     <div class="flex items-center gap-2 flex-wrap text-xs text-base-content/50">

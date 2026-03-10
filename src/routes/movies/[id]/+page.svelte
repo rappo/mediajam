@@ -280,34 +280,11 @@
 </svelte:head>
 
 <div class="space-y-6 max-w-5xl mx-auto">
-    <!-- Back + Sync + Layout Toggle -->
-    <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2">
-        <a href="/movies" class="btn btn-ghost btn-sm gap-1">
-            <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="h-4 w-4"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"><polyline points="15 18 9 12 15 6" /></svg
-            >
-            All Movies
-        </a>
-        {#if !data.movie.jellyfin_id}
-        <button
-            class="btn btn-ghost btn-xs text-base-content/40 hover:text-error"
-            onclick={() => showDeleteConfirm = true}
-            title="Delete this movie from Mediajam"
-        >
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-        </button>
-        {/if}
-        </div>
-    </div>
         <!-- ═══ NEW LAYOUT (Option B) ═══ -->
         <MediaDetailHeader
             mediaType="movie"
+            backHref="/movies"
+            backLabel="Movies"
             title={data.movie.title}
             posterUrl={data.movie.posterUrl}
             backdropUrl={data.movie.backdropUrl}
