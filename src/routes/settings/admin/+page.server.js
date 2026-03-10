@@ -105,6 +105,8 @@ export function load() {
             discogsToken: settings?.discogs_token ? '••••••••' : '',
             // Fanart.tv
             fanartApiKey: settings?.fanart_api_key ? '••••••••' : '',
+            // Database backups
+            dbBackupCount: settings?.db_backup_count ?? 2,
         },
         syncState: {
             status: syncState?.status || 'idle',

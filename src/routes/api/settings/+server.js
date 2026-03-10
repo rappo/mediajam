@@ -31,6 +31,8 @@ export async function GET() {
         discogsToken: settings?.discogs_token ? '••••••••' : '',
         // Fanart.tv
         fanartApiKey: settings?.fanart_api_key ? '••••••••' : '',
+        // Database backups
+        dbBackupCount: settings?.db_backup_count ?? 2,
     });
 }
 
@@ -78,6 +80,8 @@ export async function PUT({ request }) {
             discogs_token: 'discogs_token',
             // Fanart.tv
             fanart_api_key: 'fanart_api_key',
+            // Database backups
+            db_backup_count: 'db_backup_count',
             // Welcome flow
             welcome_complete: 'welcome_complete'
         };

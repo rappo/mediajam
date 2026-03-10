@@ -1,11 +1,51 @@
 import Database from 'better-sqlite3';
 import { resolve, dirname } from 'path';
-import { mkdirSync } from 'fs';
+import { mkdirSync, existsSync, copyFileSync, unlinkSync, renameSync } from 'fs';
 
 const DB_PATH = process.env.DATABASE_PATH || resolve(process.cwd(), 'mediajam.sqlite');
 
 // Ensure the directory exists (important for /app/data/ in Docker)
 mkdirSync(dirname(DB_PATH), { recursive: true });
+
+// ── Auto-backup BEFORE opening the database ──────────────────────────────
+// Read backup count from existing DB (if it exists) using a throwaway connection.
+// Default to 2 backups. 0 = disabled.
+let backupCount = 2;
+if (existsSync(DB_PATH)) {
+    try {
+        const probe = new Database(DB_PATH, { readonly: true, fileMustExist: true });
+        try {
+            const row = /** @type {any} */ (probe.prepare(
+                'SELECT db_backup_count FROM app_settings WHERE id = 1'
+            ).get());
+            if (row && typeof row.db_backup_count === 'number') {
+                backupCount = row.db_backup_count;
+            }
+        } catch { /* column doesn't exist yet — use default */ }
+        probe.close();
+    } catch { /* DB unreadable — skip backup */ }
+
+    if (backupCount > 0) {
+        try {
+            // Rotate existing backups: .bak.2 → .bak.3, .bak.1 → .bak.2, etc.
+            for (let i = backupCount; i >= 1; i--) {
+                const src = i === 1 ? `${DB_PATH}.bak.1` : `${DB_PATH}.bak.${i - 1}`;
+                const dest = `${DB_PATH}.bak.${i}`;
+                if (i === backupCount && existsSync(dest)) {
+                    unlinkSync(dest); // Remove oldest beyond retention
+                }
+                if (i > 1 && existsSync(src)) {
+                    renameSync(src, dest);
+                }
+            }
+            // Copy current DB to .bak.1
+            copyFileSync(DB_PATH, `${DB_PATH}.bak.1`);
+            console.log(`[db] Backup created: ${DB_PATH}.bak.1 (keeping ${backupCount})`);
+        } catch (e) {
+            console.error(`[db] Backup failed:`, e instanceof Error ? e.message : e);
+        }
+    }
+}
 
 const db = new Database(DB_PATH);
 
@@ -337,6 +377,8 @@ const newAppCols = [
     ['discogs_token', 'TEXT'],
     // Fanart.tv
     ['fanart_api_key', 'TEXT'],
+    // Database backups
+    ['db_backup_count', 'INTEGER DEFAULT 2'],
 ];
 for (const [col, type] of newAppCols) {
     if (!existingCols.has(col)) {
