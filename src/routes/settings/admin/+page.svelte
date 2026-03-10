@@ -291,6 +291,7 @@
     let exportPasswords = $state(false);
     let exportTokens = $state(false);
     let exportApiKeys = $state(false);
+    let exportImages = $state(false);
 
     let importFile = $state(null);
     let importMode = $state("merge");
@@ -305,6 +306,7 @@
             if (exportPasswords) params.set("includePasswords", "1");
             if (exportTokens) params.set("includeTokens", "1");
             if (exportApiKeys) params.set("includeApiKeys", "1");
+            if (exportImages) params.set("includeImages", "1");
             const url = `/api/backup${params.toString() ? "?" + params.toString() : ""}`;
             const res = await fetch(url);
             if (!res.ok) throw new Error("Export failed");
@@ -4010,6 +4012,22 @@
                             </label>
                         </div>
                     {/if}
+                </div>
+
+                <!-- Cached images opt-in -->
+                <div class="bg-base-300/30 rounded-lg p-3">
+                    <label class="flex items-start gap-2 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            class="checkbox checkbox-sm mt-0.5"
+                            bind:checked={exportImages}
+                        />
+                        <span class="text-xs text-base-content/70">
+                            <span class="font-semibold">Include cached images.</span>
+                            Adds all locally cached poster/photo images to the backup.
+                            <span class="text-base-content/40">This may significantly increase the backup file size.</span>
+                        </span>
+                    </label>
                 </div>
 
                 <button

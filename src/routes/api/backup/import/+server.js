@@ -80,7 +80,9 @@ export async function POST({ request, url, locals }) {
             'sync_conflicts',
             'discovered_media',
             'discovered_credits',
-            'external_ratings'
+            'external_ratings',
+            'watchlist',
+            'activity_log'
         ];
 
         // In overwrite mode, clear tables in reverse order
@@ -219,6 +221,26 @@ export async function POST({ request, url, locals }) {
                 } catch { /* skip */ }
             }
             results.imported['avatars'] = avatarCount;
+        }
+
+        // Restore cached images
+        const cacheImgDir = path.join(backupDir, 'cache', 'images');
+        if (fs.existsSync(cacheImgDir)) {
+            const destDir = path.resolve('cache/images');
+            mkdirSync(destDir, { recursive: true });
+            const files = fs.readdirSync(cacheImgDir);
+            let cacheCount = 0;
+            for (const file of files) {
+                try {
+                    const destPath = path.join(destDir, file);
+                    // Only restore if not already cached
+                    if (!fs.existsSync(destPath)) {
+                        fs.copyFileSync(path.join(cacheImgDir, file), destPath);
+                        cacheCount++;
+                    }
+                } catch { /* skip */ }
+            }
+            results.imported['cached_images'] = cacheCount;
         }
 
         return json({

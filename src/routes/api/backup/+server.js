@@ -21,6 +21,7 @@ export async function GET({ url, locals }) {
     const includePasswords = url.searchParams.get('includePasswords') === '1';
     const includeTokens = url.searchParams.get('includeTokens') === '1';
     const includeApiKeys = url.searchParams.get('includeApiKeys') === '1';
+    const includeImages = url.searchParams.get('includeImages') === '1';
 
     const now = new Date(); const ts = `${now.toISOString().split('T')[0]}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}`;
     const prefix = `mediajam-backup-${ts}`;
@@ -90,6 +91,8 @@ export async function GET({ url, locals }) {
     tables['discovered_media'] = db.prepare('SELECT * FROM discovered_media').all();
     tables['discovered_credits'] = db.prepare('SELECT * FROM discovered_credits').all();
     tables['external_ratings'] = db.prepare('SELECT * FROM external_ratings').all();
+    tables['watchlist'] = db.prepare('SELECT * FROM watchlist').all();
+    tables['activity_log'] = db.prepare('SELECT * FROM activity_log').all();
 
     // Build manifest
     const manifest = {
@@ -128,6 +131,20 @@ export async function GET({ url, locals }) {
             const filePath = path.join(uploadsDir, file);
             if (fs.statSync(filePath).isFile()) {
                 archive.file(filePath, { name: `${prefix}/uploads/avatars/${file}` });
+            }
+        }
+    }
+
+    // Add cached images if opted in
+    if (includeImages) {
+        const cacheDir = path.resolve('cache/images');
+        if (fs.existsSync(cacheDir)) {
+            const files = fs.readdirSync(cacheDir);
+            for (const file of files) {
+                const filePath = path.join(cacheDir, file);
+                if (fs.statSync(filePath).isFile()) {
+                    archive.file(filePath, { name: `${prefix}/cache/images/${file}` });
+                }
             }
         }
     }
