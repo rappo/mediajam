@@ -21,6 +21,7 @@
                 { tab: "sync", label: "Data Sync" },
                 { tab: "cleanup", label: "Data Clean-up" },
                 { tab: "import-export", label: "Import / Export" },
+                { tab: "api-keys", label: "API Keys" },
             ],
         },
         {

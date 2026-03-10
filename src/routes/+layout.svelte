@@ -328,7 +328,7 @@
 										d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"
 									/><circle cx="12" cy="7" r="4" />
 								</svg>
-								Account Settings
+								Account
 							</a>
 						</li>
 						<li>
@@ -341,28 +341,9 @@
 									stroke="currentColor"
 									stroke-width="2"
 								>
-									<rect
-										x="2"
-										y="2"
-										width="20"
-										height="8"
-										rx="2"
-										ry="2"
-									/><rect
-										x="2"
-										y="14"
-										width="20"
-										height="8"
-										rx="2"
-										ry="2"
-									/><line
-										x1="6"
-										y1="6"
-										x2="6.01"
-										y2="6"
-									/><line x1="6" y1="18" x2="6.01" y2="18" />
+									<path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065zM15 12a3 3 0 11-6 0 3 3 0 016 0z" />
 								</svg>
-								System Settings
+								Admin
 							</a>
 						</li>
 						<li>
@@ -417,7 +398,7 @@
 										y2="4.22"
 									/>
 								</svg>
-								Display Settings
+								Display
 							</a>
 						</li>
 						<div class="divider my-0"></div>
@@ -427,9 +408,11 @@
 								action="/api/auth/logout"
 								style="display:contents"
 							>
-								<button
-									type="submit"
+								<a
+									href="/api/auth/logout"
+									role="button"
 									class="text-error/70 hover:text-error"
+									onclick={(e) => { e.preventDefault(); e.currentTarget.closest('form').requestSubmit(); }}
 								>
 									<svg
 										xmlns="http://www.w3.org/2000/svg"
@@ -451,7 +434,7 @@
 										/>
 									</svg>
 									Logout
-								</button>
+								</a>
 							</form>
 						</li>
 					</ul>
