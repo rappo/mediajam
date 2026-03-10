@@ -257,6 +257,84 @@ export async function backfillTrakt(userId, options = {}) {
         broadcast({ type: 'backfill_error', tier: 'trakt', log: `❌ Error: ${e instanceof Error ? e.message : String(e)}`, logType: 'error' });
     }
 
+    // Phase 1.5: Cross-check with /users/me/watched/movies for events missing from bulk history
+    // (Trakt API quirk: very old history events sometimes don't appear in bulk /history endpoint)
+    try {
+        broadcast({ type: 'backfill_progress', tier: 'trakt', log: `  🔍 Cross-checking watched movies for missing history...`, logType: 'info' });
+        const watchedRes = await fetch('https://api.trakt.tv/users/me/watched/movies', {
+            headers: {
+                'Content-Type': 'application/json',
+                'trakt-api-version': '2',
+                'trakt-api-key': settings.trakt_client_id,
+                'Authorization': `Bearer ${identity.access_token}`
+            }
+        });
+        if (watchedRes.ok) {
+            const watchedMovies = await watchedRes.json();
+            let missingCount = 0;
+            let recoveredCount = 0;
+
+            for (const wm of watchedMovies) {
+                const traktMovieId = wm.movie?.ids?.trakt;
+                const tmdbId = String(wm.movie?.ids?.tmdb || '');
+                if (!traktMovieId || !tmdbId) continue;
+
+                // Check if we already have this movie in trakt_history
+                const exists = /** @type {any} */ (db.prepare(
+                    'SELECT 1 FROM trakt_history WHERE user_id = ? AND tmdb_id = ? AND type = ?'
+                ).get(userId, tmdbId, 'movie'));
+                if (exists) continue;
+
+                missingCount++;
+                // Fetch movie-specific history from Trakt
+                await new Promise(r => setTimeout(r, 1100)); // rate limit
+                const movieHistRes = await fetch(
+                    `https://api.trakt.tv/users/me/history/movies/${traktMovieId}`,
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'trakt-api-version': '2',
+                            'trakt-api-key': settings.trakt_client_id,
+                            'Authorization': `Bearer ${identity.access_token}`
+                        }
+                    }
+                );
+                if (movieHistRes.ok) {
+                    const movieEvents = await movieHistRes.json();
+                    for (const item of movieEvents) {
+                        try {
+                            upsertTraktHistory.run({
+                                userId,
+                                traktId: item.id,
+                                type: 'movie',
+                                watchedAt: item.watched_at,
+                                title: item.movie?.title || wm.movie?.title || 'Unknown',
+                                showTitle: null,
+                                seasonNumber: null,
+                                episodeNumber: null,
+                                year: item.movie?.year || wm.movie?.year || null,
+                                tmdbId,
+                                imdbId: item.movie?.ids?.imdb || wm.movie?.ids?.imdb || '',
+                                traktSlug: item.movie?.ids?.slug || wm.movie?.ids?.slug || ''
+                            });
+                            totalStored++;
+                            recoveredCount++;
+                        } catch {
+                            // duplicate
+                        }
+                    }
+                }
+            }
+            if (missingCount > 0) {
+                broadcast({ type: 'backfill_progress', tier: 'trakt', log: `  🔧 Found ${missingCount} watched movies missing from bulk history, recovered ${recoveredCount} events`, logType: 'info' });
+            } else {
+                broadcast({ type: 'backfill_progress', tier: 'trakt', log: `  ✅ All watched movies accounted for in bulk history`, logType: 'info' });
+            }
+        }
+    } catch (e) {
+        broadcast({ type: 'backfill_error', tier: 'trakt', log: `⚠️ Watched cross-check failed: ${e instanceof Error ? e.message : String(e)}`, logType: 'warning' });
+    }
+
     broadcast({
         type: 'backfill_progress', tier: 'trakt',
         log: `  📥 Phase 1 complete: ${totalStored} raw records stored. Processing into playback history...`,
