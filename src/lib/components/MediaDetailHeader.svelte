@@ -359,7 +359,9 @@
         z-index: 10;
         min-width: 10rem;
         padding: 0.5rem;
-        background: oklch(var(--b2));
+        background: oklch(var(--b2) / 0.85);
+        backdrop-filter: blur(24px) saturate(1.5);
+        -webkit-backdrop-filter: blur(24px) saturate(1.5);
         border: 1px solid oklch(var(--bc) / 0.15);
         border-radius: 0.5rem;
         box-shadow: 0 8px 24px -4px rgba(0,0,0,0.5);
