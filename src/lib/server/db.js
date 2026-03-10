@@ -811,20 +811,21 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash)');
 
 // -- One-time: fix jellyfin_sync timestamps that used premiere_date (movie release date) --
 // These entries had timestamps like "2000-08-30" which is the movie's release date, not the play date.
+// Note: timestamp column is NOT NULL, so we use '' as a sentinel for "unknown date".
 {
     const badEntries = /** @type {any} */ (db.prepare(`
         SELECT COUNT(*) as c FROM playback_history ph
         JOIN media_children mc ON mc.id = ph.media_id
         WHERE ph.source = 'jellyfin_sync'
-          AND ph.timestamp IS NOT NULL
+          AND ph.timestamp != ''
           AND mc.premiere_date IS NOT NULL
           AND ph.timestamp = mc.premiere_date
     `).get());
     if (badEntries?.c > 0) {
         db.prepare(`
-            UPDATE playback_history SET timestamp = NULL
+            UPDATE playback_history SET timestamp = ''
             WHERE source = 'jellyfin_sync'
-              AND timestamp IS NOT NULL
+              AND timestamp != ''
               AND media_id IN (
                   SELECT mc.id FROM media_children mc
                   WHERE mc.premiere_date = playback_history.timestamp
@@ -834,14 +835,14 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash)');
     }
     // Also fix the 1900-01-01 sentinel values
     const sentinel1900 = db.prepare(
-        "UPDATE playback_history SET timestamp = NULL WHERE source = 'jellyfin_sync' AND timestamp LIKE '1900-%'"
+        "UPDATE playback_history SET timestamp = '' WHERE source = 'jellyfin_sync' AND timestamp LIKE '1900-%'"
     ).run();
     if (sentinel1900.changes > 0) {
         console.log(`[db] Fixed ${sentinel1900.changes} jellyfin_sync entries with 1900-01-01 sentinel dates`);
     }
     // Also fix 1970 epoch values
     const sentinel1970 = db.prepare(
-        "UPDATE playback_history SET timestamp = NULL WHERE timestamp LIKE '1970-01-01%'"
+        "UPDATE playback_history SET timestamp = '' WHERE timestamp LIKE '1970-01-01%'"
     ).run();
     if (sentinel1970.changes > 0) {
         console.log(`[db] Fixed ${sentinel1970.changes} playback entries with 1970 epoch dates`);

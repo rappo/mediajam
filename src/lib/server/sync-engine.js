@@ -1176,8 +1176,8 @@ export async function startSync(libraryId = null, force = false) {
                     const txn = db.transaction(() => {
                         for (const item of playedWithoutHistory) {
                             // Don't use premiere_date — that's the release date, not when it was watched.
-                            // Use null for unknown date; the UI will display "—" instead of a wrong date.
-                            const timestamp = null;
+                            // Use '' for unknown date (column is NOT NULL); the UI will display "—" instead of a wrong date.
+                            const timestamp = '';
                             const eventId = `jellyfin_sync:${item.id}`;
                             try {
                                 insertHistory.run(dbUser.id, item.id, timestamp, eventId);
