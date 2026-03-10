@@ -375,11 +375,11 @@
     .header-content.with-backdrop { position: absolute; bottom: 0; left: 0; right: 0; padding: 2rem; }
 
     .poster-wrap { flex-shrink: 0; z-index: 2; }
-    .poster-img { width: 145px; height: 215px; object-fit: cover; display: block; border-radius: 0.75rem; box-shadow: 0 12px 30px -5px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05); }
-    .poster-placeholder { width: 145px; height: 215px; border-radius: 0.75rem; background: oklch(var(--b3)); display: flex; align-items: center; justify-content: center; font-size: 3rem; }
+    .poster-img { width: 145px; aspect-ratio: 2/3; object-fit: cover; display: block; border-radius: 0.75rem; box-shadow: 0 12px 30px -5px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05); }
+    .poster-placeholder { width: 145px; aspect-ratio: 2/3; border-radius: 0.75rem; background: oklch(var(--b3)); display: flex; align-items: center; justify-content: center; font-size: 3rem; }
     @media (min-width: 768px) {
-        .poster-img { width: 160px; height: 300px; }
-        .poster-placeholder { width: 160px; height: 300px; }
+        .poster-img { width: 160px; }
+        .poster-placeholder { width: 160px; }
     }
 
     .title-area { min-width: 0; display: flex; flex-direction: column; gap: 0.25rem; z-index: 2; padding-bottom: 0.25rem; flex: 1; }

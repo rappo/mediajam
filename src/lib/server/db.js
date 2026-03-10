@@ -859,6 +859,21 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash)');
     if (sentinel1970.changes > 0) {
         console.log(`[db] Fixed ${sentinel1970.changes} playback entries with 1970 epoch dates`);
     }
+
+    // Remove synthetic jellyfin_sync entries when real play history exists from other sources
+    const dedupSynthetic = db.prepare(`
+        DELETE FROM playback_history
+        WHERE source = 'jellyfin_sync'
+          AND timestamp = ''
+          AND media_id IN (
+              SELECT media_id FROM playback_history
+              WHERE source != 'jellyfin_sync' AND timestamp != ''
+              GROUP BY media_id
+          )
+    `).run();
+    if (dedupSynthetic.changes > 0) {
+        console.log(`[db] Removed ${dedupSynthetic.changes} synthetic jellyfin_sync entries superseded by real history`);
+    }
 }
 
 // Initialize logger from DB settings
