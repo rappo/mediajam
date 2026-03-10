@@ -7,6 +7,7 @@
     import HeartBorder from "$lib/components/HeartBorder.svelte";
     import FavoriteButton from "$lib/components/FavoriteButton.svelte";
     import MediaDetailHeader from "$lib/components/MediaDetailHeader.svelte";
+    import InteractiveSearchDialog from "$lib/components/InteractiveSearchDialog.svelte";
     import { imgUrl } from "$lib/utils.js";
 
 
@@ -381,13 +382,11 @@
                     {/if}
                 </button>
                 {#if data.show.sonarr_id}
-                    <button
-                        class="btn btn-xs btn-ghost gap-1"
-                        onclick={searchSonarr}
-                        disabled={arrLoading === 'search'}
-                    >
-                        {#if arrLoading === 'search'}<span class="loading loading-spinner loading-xs"></span>{:else}<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>{/if} Download Search
-                    </button>
+                    <InteractiveSearchDialog
+                        service="sonarr"
+                        mediaParentId={data.show.id}
+                        title="{data.show.title} ({data.show.release_year || ''})"
+                    />
                     <button
                         class="btn btn-xs btn-ghost gap-1"
                         onclick={toggleMonitorSonarr}

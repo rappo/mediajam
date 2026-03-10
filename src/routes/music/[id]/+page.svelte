@@ -4,6 +4,7 @@
     import ArrAddDialog from "$lib/components/ArrAddDialog.svelte";
     import HeartBorder from "$lib/components/HeartBorder.svelte";
     import MediaDetailHeader from "$lib/components/MediaDetailHeader.svelte";
+    import InteractiveSearchDialog from "$lib/components/InteractiveSearchDialog.svelte";
     let { data } = $props();
     let expandedAlbum = $state(null);
     let albumTracks = $state({});
@@ -385,13 +386,11 @@
                     {/if}
                 </button>
                 {#if data.artist.lidarr_id}
-                    <button
-                        class="btn btn-xs btn-ghost gap-1"
-                        onclick={searchLidarr}
-                        disabled={arrLoading === 'search'}
-                    >
-                        {#if arrLoading === 'search'}<span class="loading loading-spinner loading-xs"></span>{:else}🔍{/if} Search
-                    </button>
+                    <InteractiveSearchDialog
+                        service="lidarr"
+                        mediaParentId={data.artist.id}
+                        title="{data.artist.title}"
+                    />
                     <button
                         class="btn btn-xs btn-ghost gap-1"
                         onclick={toggleMonitorLidarr}
