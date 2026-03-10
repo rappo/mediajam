@@ -792,6 +792,23 @@ db.exec(`
 `);
 db.exec('CREATE INDEX IF NOT EXISTS idx_activity_log_read ON activity_log(read)');
 
+// -- API Keys (Bearer token authentication for API access) --
+db.exec(`
+    CREATE TABLE IF NOT EXISTS api_keys (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        key_hash TEXT NOT NULL UNIQUE,
+        key_prefix TEXT NOT NULL,
+        permissions TEXT NOT NULL DEFAULT '[]',
+        last_used_at TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        expires_at TEXT,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash)');
+
 // Initialize logger from DB settings
 import { initLogging } from './logger.js';
 initLogging(db);

@@ -45,6 +45,18 @@ export function load() {
     const wikiPersonWithSummary = /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM persons WHERE wikipedia_summary IS NOT NULL AND wikipedia_summary != ''`).get())?.cnt || 0;
     const wikiPending = (wikiTotal - wikiWithSummary) + (wikiPersonTotal - wikiPersonWithSummary);
 
+    // Load API keys
+    const apiKeys = /** @type {any[]} */ (db.prepare(`
+        SELECT ak.id, ak.name, ak.key_prefix, ak.permissions, ak.last_used_at,
+               ak.created_at, ak.expires_at, u.username as owner
+        FROM api_keys ak
+        JOIN users u ON ak.user_id = u.id
+        ORDER BY ak.created_at DESC
+    `).all()).map(k => ({
+        ...k,
+        permissions: JSON.parse(k.permissions || '[]')
+    }));
+
     return {
         syncPending: {
             jellyfin: jellyfinPending,
@@ -85,6 +97,7 @@ export function load() {
             lastSync: syncState?.last_sync_timestamp
         },
         libraries,
-        syncHistory: historyByType
+        syncHistory: historyByType,
+        apiKeys
     };
 }

@@ -47,20 +47,59 @@ export async function handle({ event, resolve }) {
 
     // ─── Session Auth ────────────────────────────────────────────────────────
     if (isSetupComplete) {
-        const sessionCookie = event.cookies.get(SESSION_COOKIE);
-        const userId = verifySession(sessionCookie);
+        // Check for API key Bearer token first
+        const authHeader = event.request.headers.get('authorization');
+        if (authHeader?.startsWith('Bearer mj_')) {
+            const token = authHeader.slice(7); // "Bearer " = 7 chars
+            const { createHash } = await import('crypto');
+            const keyHash = createHash('sha256').update(token).digest('hex');
 
-        if (userId) {
-            const user = /** @type {any} */ (db.prepare(
-                'SELECT id, username, is_admin, avatar_url FROM users WHERE id = ?'
-            ).get(userId));
-            if (user) {
-                event.locals.user = {
-                    id: user.id,
-                    username: user.username,
-                    isAdmin: user.is_admin === 1,
-                    avatarUrl: user.avatar_url || null
-                };
+            const apiKey = /** @type {any} */ (db.prepare(
+                `SELECT ak.id, ak.user_id, ak.permissions, ak.expires_at
+                 FROM api_keys ak WHERE ak.key_hash = ?`
+            ).get(keyHash));
+
+            if (apiKey) {
+                // Check expiry
+                const isExpired = apiKey.expires_at && new Date(apiKey.expires_at) < new Date();
+                if (!isExpired) {
+                    const user = /** @type {any} */ (db.prepare(
+                        'SELECT id, username, is_admin, avatar_url FROM users WHERE id = ?'
+                    ).get(apiKey.user_id));
+
+                    if (user) {
+                        event.locals.user = {
+                            id: user.id,
+                            username: user.username,
+                            isAdmin: user.is_admin === 1,
+                            avatarUrl: user.avatar_url || null
+                        };
+                        event.locals.apiKeyPermissions = JSON.parse(apiKey.permissions || '[]');
+
+                        // Update last_used_at (non-blocking)
+                        db.prepare('UPDATE api_keys SET last_used_at = datetime(\'now\') WHERE id = ?').run(apiKey.id);
+                    }
+                }
+            }
+        }
+
+        // Fall through to session cookie auth if no API key matched
+        if (!event.locals.user) {
+            const sessionCookie = event.cookies.get(SESSION_COOKIE);
+            const userId = verifySession(sessionCookie);
+
+            if (userId) {
+                const user = /** @type {any} */ (db.prepare(
+                    'SELECT id, username, is_admin, avatar_url FROM users WHERE id = ?'
+                ).get(userId));
+                if (user) {
+                    event.locals.user = {
+                        id: user.id,
+                        username: user.username,
+                        isAdmin: user.is_admin === 1,
+                        avatarUrl: user.avatar_url || null
+                    };
+                }
             }
         }
 
@@ -70,6 +109,13 @@ export async function handle({ event, resolve }) {
         const isPublic = publicPaths.some(p => event.url.pathname.startsWith(p));
 
         if (!event.locals.user && !isPublic) {
+            // API requests get 401 JSON, page requests get redirected
+            if (event.url.pathname.startsWith('/api/')) {
+                return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+                    status: 401,
+                    headers: { 'Content-Type': 'application/json' }
+                });
+            }
             throw redirect(302, '/login');
         }
     }

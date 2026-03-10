@@ -4,9 +4,10 @@ declare global {
 	namespace App {
 		// interface Error {}
 		interface Locals {
-			user?: { id: number; username: string; isAdmin: boolean } | null;
+			user?: { id: number; username: string; isAdmin: boolean; avatarUrl?: string | null } | null;
 			theme?: string;
 			isSetupComplete?: boolean;
+			apiKeyPermissions?: string[];
 		}
 		// interface PageData {}
 		// interface PageState {}

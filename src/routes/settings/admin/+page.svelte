@@ -122,8 +122,8 @@
     let arrSyncLogs = $state([]);
 
     // ─── Tab Navigation ─────────────────────────────────────────────────────────
-    const VALID_TABS = /** @type {const} */ (['server', 'credentials', 'sync', 'cleanup', 'import-export']);
-    /** @type {'server' | 'credentials' | 'sync' | 'cleanup' | 'import-export'} */
+    const VALID_TABS = /** @type {const} */ (['server', 'credentials', 'sync', 'cleanup', 'import-export', 'api-keys']);
+    /** @type {'server' | 'credentials' | 'sync' | 'cleanup' | 'import-export' | 'api-keys'} */
     let activeTab = $state(
         VALID_TABS.includes(/** @type {any} */ ($page.url.searchParams.get('tab')))
             ? /** @type {typeof VALID_TABS[number]} */ ($page.url.searchParams.get('tab'))
@@ -156,7 +156,88 @@
         { id: 'sync', label: 'Data Sync', icon: 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15' },
         { id: 'cleanup', label: 'Data Clean-up', icon: 'M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.414 3.414H4.828c-1.78 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z' },
         { id: 'import-export', label: 'Import / Export', icon: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12' },
+        { id: 'api-keys', label: 'API Keys', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z' },
     ];
+
+    // ─── API Keys State ──────────────────────────────────────────────────────────
+    let apiKeysList = $state(data.apiKeys || []);
+    let newKeyName = $state('');
+    let newKeyPermissions = $state({ 'read:media': true, 'write:media': false, 'read:sync': true, 'write:sync': false, 'admin': false });
+    let newKeyExpiry = $state('');
+    let creatingKey = $state(false);
+    /** @type {string|null} */
+    let newlyCreatedKey = $state(null);
+    let keyCopied = $state(false);
+
+    const PERMISSION_GROUPS = [
+        { label: 'Media', scopes: [
+            { id: 'read:media', label: 'Read', desc: 'View media, history, stats' },
+            { id: 'write:media', label: 'Write', desc: 'Modify play history, ratings, delete entries' },
+        ]},
+        { label: 'Sync', scopes: [
+            { id: 'read:sync', label: 'Read', desc: 'View sync status and logs' },
+            { id: 'write:sync', label: 'Write', desc: 'Trigger syncs, backfills, reconciliations' },
+        ]},
+        { label: 'Admin', scopes: [
+            { id: 'admin', label: 'Full Access', desc: 'All endpoints, equivalent to admin user' },
+        ]},
+    ];
+
+    async function createApiKey() {
+        if (!newKeyName.trim()) return;
+        creatingKey = true;
+        const permissions = Object.entries(newKeyPermissions)
+            .filter(([, v]) => v)
+            .map(([k]) => k);
+        try {
+            const res = await fetch('/api/api-keys', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: newKeyName.trim(),
+                    permissions,
+                    expiresAt: newKeyExpiry || null
+                })
+            });
+            const result = await res.json();
+            if (res.ok) {
+                newlyCreatedKey = result.key;
+                keyCopied = false;
+                // Add to local list
+                apiKeysList = [{
+                    id: result.id,
+                    name: result.name,
+                    key_prefix: result.keyPrefix,
+                    permissions: result.permissions,
+                    last_used_at: null,
+                    created_at: result.createdAt,
+                    expires_at: result.expiresAt,
+                    owner: 'you'
+                }, ...apiKeysList];
+                // Reset form
+                newKeyName = '';
+                newKeyPermissions = { 'read:media': true, 'write:media': false, 'read:sync': true, 'write:sync': false, 'admin': false };
+                newKeyExpiry = '';
+            }
+        } catch { /* ignore */ }
+        creatingKey = false;
+    }
+
+    async function deleteApiKey(id) {
+        if (!confirm('Revoke this API key? Any integrations using it will stop working.')) return;
+        try {
+            const res = await fetch(`/api/api-keys/${id}`, { method: 'DELETE' });
+            if (res.ok) {
+                apiKeysList = apiKeysList.filter(k => k.id !== id);
+            }
+        } catch { /* ignore */ }
+    }
+
+    function copyToClipboard(text) {
+        navigator.clipboard.writeText(text);
+        keyCopied = true;
+        setTimeout(() => keyCopied = false, 3000);
+    }
 
     // Snapshot initial values for dirty detection and undo
     let initialValues = $state({
@@ -4191,6 +4272,195 @@
     <!-- ═══════════════════════ TAB: DATA CLEAN-UP ═══════════════════════ -->
     {#if activeTab === 'cleanup'}
     <ReconciliationPanel settings={{ radarrUrl: (data.settings.radarrExternalUrl || data.settings.radarrUrl || '').replace(/\/+$/, ''), sonarrUrl: (data.settings.sonarrExternalUrl || data.settings.sonarrUrl || '').replace(/\/+$/, ''), lidarrUrl: (data.settings.lidarrExternalUrl || data.settings.lidarrUrl || '').replace(/\/+$/, '') }} />
+    {/if}
+
+    <!-- ═══════════════════════ TAB: API KEYS ═══════════════════════ -->
+    {#if activeTab === 'api-keys'}
+    <div class="space-y-6">
+        <!-- Create New Key -->
+        <div class="card bg-base-200/50 border border-base-300">
+            <div class="card-body">
+                <h3 class="card-title text-base">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 4v16m8-8H4" />
+                    </svg>
+                    Create New API Key
+                </h3>
+                <p class="text-sm text-base-content/50 mb-2">API keys allow external tools to access Mediajam's API using Bearer token authentication.</p>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Name -->
+                    <div class="form-control">
+                        <label class="label" for="api-key-name">
+                            <span class="label-text text-sm font-medium">Key Name</span>
+                        </label>
+                        <input
+                            id="api-key-name"
+                            type="text"
+                            placeholder="e.g. CLI Access, Home Assistant..."
+                            class="input input-sm input-bordered w-full"
+                            bind:value={newKeyName}
+                        />
+                    </div>
+
+                    <!-- Expiry -->
+                    <div class="form-control">
+                        <label class="label" for="api-key-expiry">
+                            <span class="label-text text-sm font-medium">Expires (optional)</span>
+                        </label>
+                        <input
+                            id="api-key-expiry"
+                            type="date"
+                            class="input input-sm input-bordered w-full"
+                            bind:value={newKeyExpiry}
+                        />
+                    </div>
+                </div>
+
+                <!-- Permissions -->
+                <div class="mt-3">
+                    <span class="text-sm font-medium">Permissions</span>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-2">
+                        {#each PERMISSION_GROUPS as group}
+                            <div class="bg-base-300/30 rounded-lg p-3">
+                                <span class="text-xs font-semibold uppercase tracking-wider text-base-content/60">{group.label}</span>
+                                {#each group.scopes as scope}
+                                    <label class="flex items-start gap-2 mt-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            class="checkbox checkbox-sm checkbox-primary mt-0.5"
+                                            bind:checked={newKeyPermissions[scope.id]}
+                                        />
+                                        <div>
+                                            <span class="text-sm font-medium">{scope.label}</span>
+                                            <p class="text-xs text-base-content/40">{scope.desc}</p>
+                                        </div>
+                                    </label>
+                                {/each}
+                            </div>
+                        {/each}
+                    </div>
+                </div>
+
+                <div class="card-actions justify-end mt-3">
+                    <button
+                        class="btn btn-primary btn-sm"
+                        disabled={!newKeyName.trim() || creatingKey}
+                        onclick={createApiKey}
+                    >
+                        {#if creatingKey}
+                            <span class="loading loading-spinner loading-xs"></span>
+                        {/if}
+                        Generate Key
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Newly Created Key Display -->
+        {#if newlyCreatedKey}
+            <div class="alert alert-warning shadow-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div class="flex-1">
+                    <h4 class="font-bold text-sm">Copy your API key now — it won't be shown again!</h4>
+                    <div class="flex items-center gap-2 mt-2">
+                        <code class="bg-base-300 px-3 py-1.5 rounded text-xs font-mono select-all break-all">{newlyCreatedKey}</code>
+                        <button
+                            class="btn btn-sm btn-ghost"
+                            onclick={() => copyToClipboard(newlyCreatedKey)}
+                        >
+                            {#if keyCopied}
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-success" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12" /></svg>
+                                Copied!
+                            {:else}
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
+                                Copy
+                            {/if}
+                        </button>
+                    </div>
+                    <p class="text-xs mt-2 opacity-70">Usage: <code class="bg-base-300 px-1 rounded">curl -H "Authorization: Bearer {newlyCreatedKey.substring(0, 16)}..." http://your-server/api/...</code></p>
+                </div>
+                <button class="btn btn-sm btn-ghost" onclick={() => newlyCreatedKey = null}>Dismiss</button>
+            </div>
+        {/if}
+
+        <!-- Existing Keys -->
+        <div class="card bg-base-200/50 border border-base-300">
+            <div class="card-body">
+                <h3 class="card-title text-base">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-secondary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    Active Keys
+                    <span class="badge badge-ghost badge-sm">{apiKeysList.length}</span>
+                </h3>
+
+                {#if apiKeysList.length === 0}
+                    <div class="text-center py-8">
+                        <div class="text-4xl mb-2">🔑</div>
+                        <p class="text-base-content/50 text-sm">No API keys yet. Create one above to get started.</p>
+                    </div>
+                {:else}
+                    <div class="overflow-x-auto">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr class="text-xs text-base-content/50">
+                                    <th>Key</th>
+                                    <th>Name</th>
+                                    <th>Permissions</th>
+                                    <th>Last Used</th>
+                                    <th>Created</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {#each apiKeysList as key}
+                                    <tr class="hover:bg-base-300/20">
+                                        <td>
+                                            <code class="text-xs bg-base-300/50 px-1.5 py-0.5 rounded font-mono">{key.key_prefix}...</code>
+                                        </td>
+                                        <td>
+                                            <span class="font-medium text-sm">{key.name}</span>
+                                            {#if key.owner && key.owner !== 'you'}
+                                                <span class="text-xs text-base-content/40 ml-1">({key.owner})</span>
+                                            {/if}
+                                        </td>
+                                        <td>
+                                            <div class="flex flex-wrap gap-1">
+                                                {#each key.permissions as perm}
+                                                    <span class="badge badge-xs {perm === 'admin' ? 'badge-error' : perm.startsWith('write') ? 'badge-warning' : 'badge-info'}">{perm}</span>
+                                                {/each}
+                                            </div>
+                                        </td>
+                                        <td class="text-xs text-base-content/50">
+                                            {key.last_used_at ? timeAgo(key.last_used_at) : 'Never'}
+                                        </td>
+                                        <td class="text-xs text-base-content/50">
+                                            {timeAgo(key.created_at)}
+                                            {#if key.expires_at}
+                                                <br/><span class="text-warning text-[10px]">expires {new Date(key.expires_at).toLocaleDateString()}</span>
+                                            {/if}
+                                        </td>
+                                        <td>
+                                            <button
+                                                class="btn btn-ghost btn-xs btn-circle text-base-content/30 hover:text-error"
+                                                title="Revoke this key"
+                                                onclick={() => deleteApiKey(key.id)}
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                {/each}
+                            </tbody>
+                        </table>
+                    </div>
+                {/if}
+            </div>
+        </div>
+    </div>
     {/if}
 </div>
 
