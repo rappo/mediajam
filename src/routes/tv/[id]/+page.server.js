@@ -29,12 +29,14 @@ export async function load({ params }) {
             mp.arr_quality_profile,
             mp.arr_has_file,
             mp.arr_status,
+            mp.wikipedia_url,
             CASE WHEN mp.collected_children > 0
                 THEN ROUND(CAST(mp.watched_children AS REAL) / mp.collected_children * 100, 1)
                 ELSE 0 END as completion,
             CASE WHEN mp.total_released_children > 0
                 THEN ROUND(CAST(mp.collected_children AS REAL) / mp.total_released_children * 100, 1)
-                ELSE NULL END as collection_pct
+                ELSE NULL END as collection_pct,
+            (SELECT th.trakt_slug FROM trakt_history th WHERE th.tmdb_id = mp.tmdb_id AND th.type = 'episode' AND th.trakt_slug != '' LIMIT 1) as trakt_slug
         FROM media_parents mp
         WHERE mp.id = ? AND mp.media_type = 'show'
     `).get(showId));

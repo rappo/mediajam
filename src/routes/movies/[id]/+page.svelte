@@ -322,6 +322,7 @@
                 arr_slug: data.movie.arr_slug,
                 arr_url: data.arrUrl,
                 arr_service: data.arrService,
+                trakt_slug: data.movie.trakt_slug,
                 wikipedia_url: data.movie.wikipedia_url,
                 mediaType: 'movie'
             }}
@@ -502,6 +503,7 @@
                         arr_slug={data.movie.arr_slug}
                         arr_url={data.arrUrl}
                         arr_service={data.arrService}
+                        trakt_slug={data.movie.trakt_slug}
                         wikipedia_url={data.movie.wikipedia_url}
                         mediaType="movie"
                     />

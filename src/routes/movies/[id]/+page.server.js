@@ -37,7 +37,8 @@ export async function load({ params, locals }) {
             mc.play_count,
             mc.runtime_ticks,
             ROUND(mc.runtime_ticks / 10000000.0 / 60, 0) as local_runtime_minutes,
-            mp.runtime_minutes as external_runtime_minutes
+            mp.runtime_minutes as external_runtime_minutes,
+            (SELECT th.trakt_slug FROM trakt_history th WHERE th.tmdb_id = mp.tmdb_id AND th.type = 'movie' AND th.trakt_slug != '' LIMIT 1) as trakt_slug
         FROM media_parents mp
         LEFT JOIN media_children mc ON mc.parent_id = mp.id
         WHERE mp.id = ? AND mp.media_type = 'movie'

@@ -255,6 +255,7 @@
                 arr_slug: data.show.arr_slug,
                 arr_url: data.arrUrl,
                 arr_service: data.arrService,
+                trakt_slug: data.show.trakt_slug,
                 wikipedia_url: data.show.wikipedia_url,
                 mediaType: 'show'
             }}
@@ -353,6 +354,7 @@
                     arr_slug={data.show.arr_slug}
                     arr_url={data.arrUrl}
                     arr_service={data.arrService}
+                    trakt_slug={data.show.trakt_slug}
                     wikipedia_url={data.show.wikipedia_url}
                     mediaType="show"
                     class="mt-1"
