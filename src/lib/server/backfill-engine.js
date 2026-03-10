@@ -476,6 +476,10 @@ export function processTraktHistory(userId) {
         if (result.changes > 0) {
             imported++;
             lastSessionTime.set(mediaId, watchedAt);
+            // Remove synthetic jellyfin_sync placeholder now that we have real history
+            db.prepare(
+                "DELETE FROM playback_history WHERE media_id = ? AND user_id = ? AND source = 'jellyfin_sync' AND timestamp = ''"
+            ).run(mediaId, userId);
         } else {
             skipped++;
         }
@@ -805,7 +809,13 @@ export function processLastfmScrobbles(userId) {
             trackName: s.track_name || null
         });
 
-        if (result.changes > 0) imported++;
+        if (result.changes > 0) {
+            imported++;
+            // Remove synthetic jellyfin_sync placeholder now that we have real history
+            db.prepare(
+                "DELETE FROM playback_history WHERE media_id = ? AND user_id = ? AND source = 'jellyfin_sync' AND timestamp = ''"
+            ).run(mediaId, userId);
+        }
         else skipped++;
     }
 
