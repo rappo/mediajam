@@ -20,6 +20,7 @@
      *   heartBorderEnabled?: boolean,
      *   stats?: { label: string, value: string | number }[],
      *   fileInfo?: { label: string, value: string }[],
+     *   onFileInfoClick?: () => void,
      *   externalLinks?: Record<string, any>,
      *   extraBadges?: { label: string, cls?: string }[],
      *   actions?: any,
@@ -46,6 +47,7 @@
         fileInfo = [],
         externalLinks = {},
         extraBadges = [],
+        onFileInfoClick,
         actions,
         children,
     } = $props();
@@ -243,7 +245,9 @@
     <!-- Section 4: File Info -->
     {#if hasFileInfo}
         <span class="ribbon-divider"></span>
-        <div class="ribbon-section">
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="ribbon-section" class:clickable-section={!!onFileInfoClick} onclick={onFileInfoClick}>
             <span class="ribbon-section-label">File Info</span>
             <div class="ribbon-stats-row">
                 {#each fileInfo as info}
@@ -455,6 +459,8 @@
         padding: 0 1.25rem;
         min-width: 0;
     }
+    .ribbon-section.clickable-section { cursor: pointer; border-radius: 0.5rem; transition: background 0.15s; }
+    .ribbon-section.clickable-section:hover { background: oklch(var(--bc) / 0.05); }
 
     .ribbon-section:first-child { padding-left: 0.25rem; }
 

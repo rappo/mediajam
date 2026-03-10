@@ -9,7 +9,7 @@
     import MediaDetailHeader from "$lib/components/MediaDetailHeader.svelte";
     import { imgUrl } from "$lib/utils.js";
 
-    let useNewLayout = $state(true);
+
     function statusColor(status) {
         if (status === "watched") return "var(--color-success, #22c55e)";
         if (status === "in_progress") return "var(--color-warning, #f59e0b)";
@@ -214,16 +214,8 @@
         </button>
         {/if}
         </div>
-        <button
-            class="btn btn-ghost btn-xs gap-1 text-base-content/30 hover:text-base-content/60"
-            onclick={() => useNewLayout = !useNewLayout}
-            title="Toggle layout"
-        >
-            {useNewLayout ? '🔀 Classic' : '✨ New'}
-        </button>
     </div>
 
-    {#if useNewLayout}
         <!-- ═══ NEW LAYOUT (Option B) ═══ -->
         <MediaDetailHeader
             mediaType="show"
@@ -303,184 +295,6 @@
                 {/if}
             {/snippet}
         </MediaDetailHeader>
-    {:else}
-    <!-- OLD Header -->
-    <div class="flex gap-6 items-start">
-        <!-- Poster -->
-        <div class="shrink-0" style="width: 150px; min-width: 150px;">
-            <HeartBorder
-                show={!!data.show.is_favorite &&
-                    data.settings?.heartBorderShows}
-                class="rounded-2xl"
-            >
-                {#if data.show.poster_url}
-                    <img
-                        src={imgUrl(data.show.poster_url)}
-                        alt={data.show.title}
-                        class="rounded-2xl shadow-lg"
-                        style="width: 150px; height: 225px; object-fit: cover; display: block;"
-                    />
-                {:else}
-                    <div
-                        class="rounded-2xl bg-base-300 flex items-center justify-center text-5xl"
-                        style="width: 150px; height: 225px;"
-                    >
-                        📺
-                    </div>
-                {/if}
-            </HeartBorder>
-        </div>
-        <div class="space-y-3 min-w-0">
-            <div>
-                <h1 class="text-3xl md:text-4xl font-bold flex items-center gap-2">
-                    {data.show.title}
-                    <FavoriteButton
-                        type="media"
-                        id={data.show.id}
-                        isFavorite={!!data.show.is_favorite}
-                    />
-                </h1>
-                <div class="flex flex-wrap items-center gap-2 text-sm text-base-content/60 mt-1">
-                    {#if data.show.release_year}
-                        <span>{data.show.release_year}</span>
-                    {/if}
-                </div>
-                <ExternalLinks
-                    tmdb_id={data.show.tmdb_id}
-                    imdb_id={data.show.imdb_id}
-                    tvdb_id={data.show.tvdb_id}
-                    jellyfin_id={data.show.jellyfin_id}
-                    jellyfin_url={data.jellyfinUrl}
-                    arr_slug={data.show.arr_slug}
-                    arr_url={data.arrUrl}
-                    arr_service={data.arrService}
-                    trakt_slug={data.show.trakt_slug}
-                    wikipedia_url={data.show.wikipedia_url}
-                    mediaType="show"
-                    class="mt-1"
-                />
-            </div>
-            {#if data.show.overview}
-                <p class="text-sm text-base-content/70 line-clamp-4">
-                    {data.show.overview}
-                </p>
-            {/if}
-            <div class="flex flex-wrap gap-3">
-                <div class="badge badge-lg badge-info gap-1">
-                    📺 {data.seasons.length} seasons
-                </div>
-                <div class="badge badge-lg badge-success gap-1">
-                    ✅ {data.totalWatched}/{data.totalEpisodes} watched
-                </div>
-                {#if data.totalInProgress > 0}
-                    <div class="badge badge-lg badge-warning gap-1">
-                        ⏳ {data.totalInProgress} in progress
-                    </div>
-                {/if}
-                {#if data.totalMissing > 0}
-                    <div class="badge badge-lg badge-error gap-1">
-                        📭 {data.totalMissing} missing
-                    </div>
-                {/if}
-                {#if data.totalUpcoming > 0}
-                    <div class="badge badge-lg badge-ghost gap-1">
-                        🔮 {data.totalUpcoming} upcoming
-                    </div>
-                {/if}
-                {#if data.show.collection_pct !== null}
-                    <div class="badge badge-lg badge-secondary gap-1">
-                        📦 {data.show.collection_pct}% collected
-                    </div>
-                {/if}
-            </div>
-        </div>
-    </div>
-    {/if}
-
-    <!-- Sonarr Status (old layout only) -->
-    {#if !useNewLayout}
-    <div class="card bg-base-200/50 border border-base-300">
-        <div class="card-body py-4">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                    <span class="text-lg">📥</span>
-                    <span class="font-semibold text-sm">Sonarr</span>
-                </div>
-                {#if arrError}
-                    <span class="text-xs text-error">{arrError}</span>
-                {/if}
-            </div>
-            {#if data.show.sonarr_id}
-                <div class="flex flex-wrap items-center gap-2 mt-1">
-                    {#if data.arrUrl && data.show.arr_slug}
-                        <a
-                            href="{data.arrUrl}/series/{data.show.arr_slug}"
-                            target="_blank"
-                            rel="noopener"
-                            class="badge badge-success badge-sm gap-1 hover:brightness-110 cursor-pointer"
-                        >
-                            ✅ In Sonarr ↗
-                        </a>
-                    {:else}
-                        <span class="badge badge-success badge-sm gap-1"
-                            >✅ In Sonarr</span
-                        >
-                    {/if}
-                    {#if arrMonitored}
-                        <span class="badge badge-info badge-sm"
-                            >📡 Monitored</span
-                        >
-                    {:else}
-                        <span class="badge badge-ghost badge-sm"
-                            >Unmonitored</span
-                        >
-                    {/if}
-                    {#if data.show.arr_quality_profile}
-                        <span class="badge badge-ghost badge-sm"
-                            >{data.show.arr_quality_profile}</span
-                        >
-                    {/if}
-                </div>
-                <div class="flex gap-2 mt-2">
-                    <button
-                        class="btn btn-xs btn-outline gap-1"
-                        onclick={searchSonarr}
-                        disabled={arrLoading === "search"}
-                    >
-                        {#if arrLoading === "search"}<span
-                                class="loading loading-spinner loading-xs"
-                            ></span>{:else}🔍{/if} Search
-                    </button>
-                    <button
-                        class="btn btn-xs btn-outline gap-1"
-                        onclick={toggleMonitorSonarr}
-                        disabled={arrLoading === "monitor"}
-                    >
-                        {#if arrLoading === "monitor"}<span
-                                class="loading loading-spinner loading-xs"
-                            ></span>{:else if arrMonitored}📡{:else}📴{/if}
-                        {arrMonitored ? "Unmonitor" : "Monitor"}
-                    </button>
-                </div>
-            {:else if data.show.tvdb_id}
-                <div class="flex items-center gap-2 mt-1">
-                    <span class="text-xs text-base-content/50"
-                        >Not in Sonarr</span
-                    >
-                    <ArrAddDialog
-                        service="sonarr"
-                        mediaParentId={data.show.id}
-                        onComplete={onArrAdded}
-                    />
-                </div>
-            {:else}
-                <p class="text-xs text-base-content/40 mt-1">
-                    No TVDB ID — cannot link to Sonarr
-                </p>
-            {/if}
-        </div>
-    </div>
-    {/if}
 
     <!-- Episode Grid / List -->
     <div class="space-y-2">

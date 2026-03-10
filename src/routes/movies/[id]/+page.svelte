@@ -13,7 +13,7 @@
     import { imgUrl } from "$lib/utils.js";
     let { data } = $props();
 
-    let useNewLayout = $state(true);
+
 
     function formatRuntime(minutes) {
         if (!minutes) return "—";
@@ -176,26 +176,27 @@
         }
     });
 
-    /** Extract just the resolution label from qualityName like "Bluray-2160p" → "2160p" */
+    /** Format resolution as SD/HD/Ultra-HD label */
     function formatResolution(fi) {
         if (!fi) return null;
-        // Try qualityResolution first (numeric, e.g. 2160)
-        if (fi.qualityResolution) {
-            const r = fi.qualityResolution;
-            if (r >= 2160) return '2160p';
-            if (r >= 1080) return '1080p';
-            if (r >= 720) return '720p';
-            if (r >= 480) return '480p';
-            return 'SDTV';
+        let r = fi.qualityResolution;
+        if (!r && fi.qualityName) {
+            const m = fi.qualityName.match(/(\d+)/i);
+            if (m) r = parseInt(m[1]);
         }
-        // Fallback: extract from qualityName like "Bluray-1080p"
-        if (fi.qualityName) {
-            const m = fi.qualityName.match(/(\d+p)/i);
-            if (m) return m[1];
-            if (/sdtv/i.test(fi.qualityName)) return 'SDTV';
-        }
-        return null;
+        if (!r) return null;
+        if (r >= 2160) return 'Ultra-HD';
+        if (r >= 720) return 'HD';
+        return 'SD';
     }
+
+    /** Check if file has any HDR format */
+    function hasHDR(fi) {
+        if (!fi) return false;
+        return !!(fi.videoDynamicRangeType || fi.videoDynamicRange);
+    }
+
+    let fileInfoExpanded = $state(false);
 
     function formatFileSize(bytes) {
         if (!bytes) return null;
@@ -302,16 +303,7 @@
         </button>
         {/if}
         </div>
-        <button
-            class="btn btn-ghost btn-xs gap-1 text-base-content/30 hover:text-base-content/60"
-            onclick={() => useNewLayout = !useNewLayout}
-            title="Toggle layout"
-        >
-            {useNewLayout ? '🔀 Classic' : '✨ New'}
-        </button>
     </div>
-
-    {#if useNewLayout}
         <!-- ═══ NEW LAYOUT (Option B) ═══ -->
         <MediaDetailHeader
             mediaType="movie"
@@ -332,9 +324,11 @@
                 ...(data.movie.community_rating ? [{ label: 'Rating', value: `${data.movie.community_rating} ★` }] : []),
             ]}
             fileInfo={[
-                ...(formatResolution(fileInfo) ? [{ label: 'resolution', value: formatResolution(fileInfo) }] : []),
+                ...(formatResolution(fileInfo) ? [{ label: 'quality', value: formatResolution(fileInfo) }] : []),
+                ...(hasHDR(fileInfo) ? [{ label: 'hdr', value: 'HDR' }] : []),
                 ...(formatFileSize(fileInfo?.fileSize) ? [{ label: 'size', value: formatFileSize(fileInfo?.fileSize) }] : []),
             ]}
+            onFileInfoClick={() => fileInfoExpanded = !fileInfoExpanded}
             externalLinks={{
                 tmdb_id: data.movie.tmdb_id,
                 imdb_id: data.movie.imdb_id,
@@ -466,531 +460,77 @@
                 {/if}
             </div>
         {/if}
-    {:else}
 
-    <!-- Hero Section with Backdrop -->
-    {#if data.movie.backdropUrl}
-        <div
-            class="relative rounded-2xl overflow-hidden border border-base-300"
-        >
-            <img
-                src={data.movie.backdropUrl}
-                alt=""
-                class="w-full h-56 md:h-72 object-cover opacity-30"
-            />
-            <div
-                class="absolute inset-0 bg-gradient-to-t from-base-100 via-base-100/80 to-transparent"
-            ></div>
-            <div class="absolute bottom-0 left-0 right-0 p-6 flex gap-6">
-                {#if data.movie.posterUrl}
-                    <HeartBorder
-                        show={!!data.movie.is_favorite &&
-                            data.settings?.heartBorderMovies}
-                        class="rounded-xl -mt-20"
-                    >
-                        <img
-                            src={imgUrl(data.movie.posterUrl)}
-                            alt={data.movie.title}
-                            class="w-32 md:w-40 rounded-xl shadow-2xl shrink-0"
-                        />
-                    </HeartBorder>
-                {/if}
-                <div class="space-y-2 min-w-0 self-end">
-                    <h1
-                        class="text-3xl md:text-4xl font-bold leading-tight flex items-center gap-2"
-                    >
-                        {data.movie.title}
-                        <FavoriteButton
-                            type="media"
-                            id={data.movie.id}
-                            isFavorite={!!data.movie.is_favorite}
-                        />
-                    </h1>
-                    <div
-                        class="flex flex-wrap items-center gap-2 text-sm text-base-content/60"
-                    >
-                        {#if data.movie.release_year}
-                            <span>{data.movie.release_year}</span>
-                        {/if}
-                        {#if data.movie.runtime_minutes || lazyRuntime}
-                            <span
-                                >· {formatRuntime(
-                                    data.movie.runtime_minutes || lazyRuntime,
-                                )}</span
-                            >
-                        {/if}
-                        <span class="badge {badge.cls} badge-sm"
-                            >{badge.label}</span
-                        >
-                        <button
-                            class="btn btn-ghost btn-xs p-0.5 {inWatchlist ? 'text-primary' : 'text-base-content/30 hover:text-base-content/60'}"
-                            onclick={toggleWatchlist}
-                            disabled={watchlistLoading}
-                            title={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
-                        >
-                            {#if inWatchlist}
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zM2 16h8v-2H2v2zm19.5-4.5L23 13l-6.99 7-4.51-4.5L13 14l3.01 3z"/></svg>
-                            {:else}
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM2 16h8v-2H2v2z"/></svg>
-                            {/if}
-                        </button>
-                        {#if data.movie.collection_status === "external"}
-                            <span class="badge badge-warning badge-sm gap-1"
-                                >📡 Not in library</span
-                            >
-                        {/if}
-                    </div>
-                    <ExternalLinks
-                        tmdb_id={data.movie.tmdb_id}
-                        imdb_id={data.movie.imdb_id}
-                        tvdb_id={data.movie.tvdb_id}
-                        jellyfin_id={data.movie.jellyfin_id}
-                        jellyfin_url={data.jellyfinUrl}
-                        arr_slug={data.movie.arr_slug}
-                        arr_url={data.arrUrl}
-                        arr_service={data.arrService}
-                        trakt_slug={data.movie.trakt_slug}
-                        wikipedia_url={data.movie.wikipedia_url}
-                        mediaType="movie"
-                    />
-                    {#if data.movie.jellyfin_id}
-                        <RemotePlayButton
-                            jellyfinId={data.movie.jellyfin_id}
-                            enabled={$page.data.remoteControlEnabled}
-                            savedPlayers={$page.data.userPreferences
-                                ?.savedPlayers || []}
-                            defaultPlayerId={$page.data.userPreferences
-                                ?.defaultPlayerId || ""}
-                        />
-                    {/if}
-                </div>
-            </div>
-        </div>
-    {:else}
-        <!-- No backdrop fallback -->
-        <div class="flex gap-6 items-start">
-            {#if data.movie.posterUrl}
-                <img
-                    src={imgUrl(data.movie.posterUrl)}
-                    alt={data.movie.title}
-                    class="w-36 rounded-xl shadow-lg shrink-0"
-                />
-            {:else}
-                <div
-                    class="w-36 h-52 rounded-xl bg-base-300 flex items-center justify-center text-4xl shrink-0"
-                >
-                    🎬
-                </div>
-            {/if}
-            <div class="space-y-3 min-w-0">
-                <div>
-                    <h1 class="text-3xl font-bold">{data.movie.title}</h1>
-                    <div
-                        class="flex flex-wrap items-center gap-2 text-sm text-base-content/60 mt-1"
-                    >
-                        {#if data.movie.release_year}
-                            <span>{data.movie.release_year}</span>
-                        {/if}
-                        {#if data.movie.runtime_minutes || lazyRuntime}
-                            <span
-                                >· {formatRuntime(
-                                    data.movie.runtime_minutes || lazyRuntime,
-                                )}</span
-                            >
-                        {/if}
-                        <span class="badge {badge.cls} badge-sm"
-                            >{badge.label}</span
-                        >
-                    </div>
-                </div>
-                {#if data.movie.overview}
-                    <p class="text-sm text-base-content/70 line-clamp-4">
-                        {data.movie.overview}
-                    </p>
-                {/if}
-            </div>
-        </div>
-    {/if}
-    {/if}
-
-    <!-- Overview (shown below backdrop layout, old layout only) -->
-    {#if !useNewLayout && data.movie.backdropUrl && data.movie.overview}
-        <p class="text-sm text-base-content/70 leading-relaxed">
-            {data.movie.overview}
-        </p>
-    {/if}
-
-    <!-- Stats Grid (old layout only) -->
-    {#if !useNewLayout}
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <!-- Expandable File Info Detail Panel -->
+    {#if fileInfoExpanded && fileInfo}
         <div class="card bg-base-200/50 border border-base-300">
-            <div class="card-body py-4 px-5">
-                <p
-                    class="text-xs text-base-content/50 uppercase tracking-wider"
-                >
-                    Total Plays
-                </p>
-                <p class="text-2xl font-bold text-primary">
-                    {data.stats.totalPlays}
-                </p>
-            </div>
-        </div>
-        <div class="card bg-base-200/50 border border-base-300">
-            <div class="card-body py-4 px-5">
-                <p
-                    class="text-xs text-base-content/50 uppercase tracking-wider"
-                >
-                    Runtime
-                </p>
-                <p class="text-2xl font-bold">
-                    {formatRuntime(data.movie.runtime_minutes || lazyRuntime)}
-                </p>
-            </div>
-        </div>
-        {#if data.stats.totalPlays > 1}
-            <div class="card bg-base-200/50 border border-base-300">
-                <div class="card-body py-4 px-5">
-                    <p
-                        class="text-xs text-base-content/50 uppercase tracking-wider"
-                    >
-                        First Watched
-                    </p>
-                    <p class="text-lg font-bold">
-                        {formatDate(data.stats.firstWatched)}
-                    </p>
-                    {#if data.stats.firstWatched}
-                        <p class="text-xs text-base-content/40">
-                            {timeAgo(data.stats.firstWatched)}
-                        </p>
+            <div class="card-body py-4">
+                <div class="flex items-center justify-between mb-2">
+                    <h3 class="text-sm font-semibold text-base-content/70">File Details</h3>
+                    <button class="btn btn-ghost btn-xs" onclick={() => fileInfoExpanded = false}>✕</button>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                    {#if fileInfo.qualityName}
+                        <div>
+                            <span class="text-xs text-base-content/40 uppercase">Quality</span>
+                            <p class="font-medium">{fileInfo.qualityName}</p>
+                        </div>
+                    {/if}
+                    {#if fileInfo.videoCodec}
+                        <div>
+                            <span class="text-xs text-base-content/40 uppercase">Video Codec</span>
+                            <p class="font-medium">{fileInfo.videoCodec}</p>
+                        </div>
+                    {/if}
+                    {#if fileInfo.videoDynamicRangeType || fileInfo.videoDynamicRange}
+                        <div>
+                            <span class="text-xs text-base-content/40 uppercase">Dynamic Range</span>
+                            <p class="font-medium">{fileInfo.videoDynamicRangeType || fileInfo.videoDynamicRange}</p>
+                        </div>
+                    {/if}
+                    {#if fileInfo.audioCodec}
+                        <div>
+                            <span class="text-xs text-base-content/40 uppercase">Audio</span>
+                            <p class="font-medium">{fileInfo.audioCodec}{fileInfo.audioChannels ? ` ${fileInfo.audioChannels}ch` : ''}</p>
+                        </div>
+                    {/if}
+                    {#if fileInfo.audioLanguages}
+                        <div>
+                            <span class="text-xs text-base-content/40 uppercase">Audio Languages</span>
+                            <p class="font-medium">{fileInfo.audioLanguages}</p>
+                        </div>
+                    {/if}
+                    {#if fileInfo.subtitles}
+                        <div>
+                            <span class="text-xs text-base-content/40 uppercase">Subtitles</span>
+                            <p class="font-medium">{fileInfo.subtitles}</p>
+                        </div>
+                    {/if}
+                    {#if formatFileSize(fileInfo.fileSize)}
+                        <div>
+                            <span class="text-xs text-base-content/40 uppercase">File Size</span>
+                            <p class="font-medium">{formatFileSize(fileInfo.fileSize)}</p>
+                        </div>
+                    {/if}
+                    {#if fileInfo.filePath}
+                        <div class="col-span-2 md:col-span-3">
+                            <span class="text-xs text-base-content/40 uppercase">File</span>
+                            <p class="font-medium text-xs break-all text-base-content/60">{fileInfo.filePath}</p>
+                        </div>
                     {/if}
                 </div>
-            </div>
-            <div class="card bg-base-200/50 border border-base-300">
-                <div class="card-body py-4 px-5">
-                    <p
-                        class="text-xs text-base-content/50 uppercase tracking-wider"
-                    >
-                        Last Watched
-                    </p>
-                    <p class="text-lg font-bold">
-                        {formatDate(data.stats.lastWatched)}
-                    </p>
-                    {#if data.stats.lastWatched}
-                        <p class="text-xs text-base-content/40">
-                            {timeAgo(data.stats.lastWatched)}
-                        </p>
-                    {/if}
-                </div>
-            </div>
-        {:else}
-            <div class="card bg-base-200/50 border border-base-300">
-                <div class="card-body py-4 px-5">
-                    <p
-                        class="text-xs text-base-content/50 uppercase tracking-wider"
-                    >
-                        Watched
-                    </p>
-                    <p class="text-lg font-bold">
-                        {formatDate(data.stats.firstWatched)}
-                    </p>
-                    {#if data.stats.firstWatched}
-                        <p class="text-xs text-base-content/40">
-                            {timeAgo(data.stats.firstWatched)}
-                        </p>
-                    {/if}
-                </div>
-            </div>
-        {/if}
-    </div>
-    {/if}
-
-    <!-- Radarr Status (old layout only) -->
-    {#if !useNewLayout}
-    <div class="card bg-base-200/50 border border-base-300">
-        <div class="card-body py-4">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                    <span class="text-lg">📥</span>
-                    <span class="font-semibold text-sm">Radarr</span>
-                </div>
-                {#if arrError}
-                    <span class="text-xs text-error">{arrError}</span>
-                {/if}
-            </div>
-            {#if data.movie.radarr_id}
-                <div class="flex flex-wrap items-center gap-2 mt-1">
-                    {#if data.arrUrl && data.movie.arr_slug}
-                        <a
-                            href="{data.arrUrl}/movie/{data.movie.arr_slug}"
-                            target="_blank"
-                            rel="noopener"
-                            class="badge badge-success badge-sm gap-1 hover:brightness-110 cursor-pointer"
-                        >
-                            ✅ In Radarr ↗
-                        </a>
-                    {:else}
-                        <span class="badge badge-success badge-sm gap-1"
-                            >✅ In Radarr</span
-                        >
-                    {/if}
-                    {#if arrMonitored}
-                        <span class="badge badge-info badge-sm"
-                            >📡 Monitored</span
-                        >
-                    {:else}
-                        <span class="badge badge-ghost badge-sm"
-                            >Unmonitored</span
-                        >
-                    {/if}
-                    {#if data.movie.arr_has_file}
-                        <span class="badge badge-success badge-sm gap-1"
-                            >📁 Downloaded</span
-                        >
-                        {#if fileInfo}
-                            {#if fileInfo.qualityName}
-                                <span class="badge badge-primary badge-sm">{fileInfo.qualityName}</span>
-                            {/if}
-                            {#if fileInfo.videoCodec}
-                                <span class="badge badge-ghost badge-sm">{fileInfo.videoCodec}</span>
-                            {/if}
-                            {#if fileInfo.videoDynamicRangeType || fileInfo.videoDynamicRange}
-                                <span class="badge badge-accent badge-sm">{fileInfo.videoDynamicRangeType || fileInfo.videoDynamicRange}</span>
-                            {/if}
-                            {#if fileInfo.audioCodec}
-                                <span class="badge badge-ghost badge-sm">{fileInfo.audioCodec}{fileInfo.audioChannels ? ` ${fileInfo.audioChannels}` : ''}</span>
-                            {/if}
-                        {:else if fileInfoLoading}
-                            <span class="loading loading-spinner loading-xs"></span>
-                        {/if}
-                    {:else if data.movie.arr_status === "announced"}
-                        <span class="badge badge-ghost badge-sm gap-1"
-                            >📢 Announced</span
-                        >
-                    {:else if data.movie.arr_status === "inCinemas"}
-                        <span class="badge badge-info badge-sm gap-1"
-                            >🎬 In Cinemas</span
-                        >
-                    {:else}
-                        <span class="badge badge-warning badge-sm gap-1"
-                            >⏳ Missing</span
-                        >
-                    {/if}
-                    {#if data.movie.arr_quality_profile}
-                        <span class="badge badge-ghost badge-sm"
-                            >{data.movie.arr_quality_profile}</span
-                        >
-                    {/if}
-                </div>
-                <div class="flex gap-2 mt-2">
-                    <InteractiveSearchDialog
-                        service="radarr"
-                        mediaParentId={data.movie.id}
-                        title="{data.movie.title} ({data.movie.release_year || ''})"
-                        bind:this={searchDialog}
-                    />
-                    <button
-                        class="btn btn-xs btn-outline gap-1"
-                        onclick={toggleMonitorRadarr}
-                        disabled={arrLoading === "monitor"}
-                    >
-                        {#if arrLoading === "monitor"}
-                            <span class="loading loading-spinner loading-xs"
-                            ></span>
-                        {:else if arrMonitored}
-                            📡
-                        {:else}
-                            📴
-                        {/if}
-                        {arrMonitored ? "Unmonitor" : "Monitor"}
-                    </button>
-                </div>
-            {:else if data.movie.tmdb_id}
-                <div class="flex items-center gap-2 mt-1">
-                    <span class="text-xs text-base-content/50"
-                        >Not in Radarr</span
-                    >
-                    <ArrAddDialog
-                        service="radarr"
-                        mediaParentId={data.movie.id}
-                        onComplete={onArrAdded}
-                    />
-                </div>
-            {:else}
-                <p class="text-xs text-base-content/40 mt-1">
-                    No TMDB ID — cannot link to Radarr
-                </p>
-            {/if}
-        </div>
-    </div>
-    {/if}
-
-    <!-- External Links (old layout only) -->
-    {#if !useNewLayout}
-    <div class="card bg-base-200/50 border border-base-300">
-        <div class="card-body">
-            <h2 class="card-title text-lg">
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5 text-info"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                >
-                    <path
-                        d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"
-                    /><path
-                        d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"
-                    />
-                </svg>
-                Links & Metadata
-            </h2>
-            <div class="flex flex-wrap gap-3 mt-2">
-                {#if data.movie.imdb_id}
-                    <a
-                        href="https://www.imdb.com/title/{data.movie.imdb_id}"
-                        target="_blank"
-                        rel="noopener"
-                        class="btn btn-sm btn-outline gap-2"
-                    >
-                        <span class="text-[#F5C518] font-bold text-xs"
-                            >IMDb</span
-                        >
-                        {data.movie.imdb_id}
-                    </a>
-                {/if}
-                {#if data.movie.tmdb_id}
-                    <a
-                        href="https://www.themoviedb.org/movie/{data.movie
-                            .tmdb_id}"
-                        target="_blank"
-                        rel="noopener"
-                        class="btn btn-sm btn-outline gap-2"
-                    >
-                        <ServiceIcon
-                            service="tmdb"
-                            size="w-4 h-4"
-                            class="text-[#01B4E4]"
-                        />
-                        TMDB
-                    </a>
-                {/if}
-                {#if data.movie.tvdb_id}
-                    <a
-                        href="https://thetvdb.com/?id={data.movie
-                            .tvdb_id}&tab=series"
-                        target="_blank"
-                        rel="noopener"
-                        class="btn btn-sm btn-outline gap-2"
-                    >
-                        <ServiceIcon
-                            service="tvdb"
-                            size="w-4 h-4"
-                            class="text-[#6CD491]"
-                        />
-                        TVDB
-                    </a>
-                {/if}
-                {#if data.movie.jellyfin_id && data.jellyfinUrl}
-                    <a
-                        href="{data.jellyfinUrl}/web/index.html#!/details?id={data
-                            .movie.jellyfin_id}"
-                        target="_blank"
-                        rel="noopener"
-                        class="btn btn-sm btn-outline gap-2"
-                    >
-                        <ServiceIcon
-                            service="jellyfin"
-                            size="w-4 h-4"
-                            class="text-[#00A4DC]"
-                        />
-                        Jellyfin
-                    </a>
-                {/if}
-            </div>
-
-            {#if data.movie.jellyfin_user_rating}
-                <div class="mt-3 flex items-center gap-2">
-                    <span class="text-sm text-base-content/50"
-                        >Your rating:</span
-                    >
-                    <div class="flex items-center gap-1">
-                        <span class="text-warning text-lg">★</span>
-                        <span class="font-bold"
-                            >{data.movie.jellyfin_user_rating}</span
-                        >
+                {#if fileInfo.customFormats?.length > 0}
+                    <div class="mt-2 pt-2 border-t border-base-300">
+                        <span class="text-xs text-base-content/40 uppercase">Custom Formats</span>
+                        <div class="flex flex-wrap gap-1 mt-1">
+                            {#each fileInfo.customFormats as cf}
+                                <span class="badge badge-ghost badge-xs">{cf}</span>
+                            {/each}
+                        </div>
                     </div>
-                </div>
-            {/if}
-
-            <!-- External Ratings -->
-            {#if externalRatings.length > 0}
-                <div class="divider my-2"></div>
-                <div class="flex flex-wrap items-center gap-3">
-                    {#if getRating('omdb_imdb')}
-                        {@const r = getRating('omdb_imdb')}
-                        <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#F5C518]/10 border border-[#F5C518]/20">
-                            <ServiceIcon service="imdb" size="w-4 h-4" class="text-[#F5C518]" />
-                            <span class="font-bold text-sm">{r.raw_value}</span>
-                            {#if r.vote_count}
-                                <span class="text-xs text-base-content/40">{(r.vote_count / 1000).toFixed(0)}k</span>
-                            {/if}
-                        </div>
-                    {/if}
-                    {#if getRating('omdb_rt')}
-                        {@const r = getRating('omdb_rt')}
-                        <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FA320A]/10 border border-[#FA320A]/20">
-                            <span class="text-lg leading-none">🍅</span>
-                            <span class="font-bold text-sm">{r.raw_value}</span>
-                        </div>
-                    {/if}
-                    {#if getRating('omdb_metacritic')}
-                        {@const r = getRating('omdb_metacritic')}
-                        <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border {r.value >= 61 ? 'bg-success/10 border-success/20' : r.value >= 40 ? 'bg-warning/10 border-warning/20' : 'bg-error/10 border-error/20'}">
-                            <span class="font-bold text-xs">MC</span>
-                            <span class="font-bold text-sm">{r.raw_value}</span>
-                        </div>
-                    {/if}
-                    {#if getRating('tmdb')}
-                        {@const r = getRating('tmdb')}
-                        <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#01B4E4]/10 border border-[#01B4E4]/20">
-                            <ServiceIcon service="tmdb" size="w-3.5 h-3.5" class="text-[#01B4E4]" />
-                            <span class="font-bold text-sm">{r.raw_value}</span>
-                            {#if r.vote_count}
-                                <span class="text-xs text-base-content/40">{(r.vote_count / 1000).toFixed(0)}k</span>
-                            {/if}
-                        </div>
-                    {/if}
-                    <button
-                        class="btn btn-ghost btn-xs gap-1 text-base-content/40 hover:text-base-content"
-                        onclick={refreshRatings}
-                        disabled={ratingsLoading}
-                        title="Refresh external ratings"
-                    >
-                        {#if ratingsLoading}
-                            <span class="loading loading-spinner loading-xs"></span>
-                        {:else}
-                            ↻
-                        {/if}
-                    </button>
-                </div>
-            {:else}
-                <div class="divider my-2"></div>
-                <button
-                    class="btn btn-ghost btn-xs gap-1"
-                    onclick={refreshRatings}
-                    disabled={ratingsLoading}
-                >
-                    {#if ratingsLoading}
-                        <span class="loading loading-spinner loading-xs"></span>
-                        Fetching ratings…
-                    {:else}
-                        📊 Fetch External Ratings
-                    {/if}
-                </button>
-            {/if}
+                {/if}
+            </div>
         </div>
-    </div>
     {/if}
 
     <!-- Cast & Crew -->
