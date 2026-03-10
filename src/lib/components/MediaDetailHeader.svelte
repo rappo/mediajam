@@ -119,6 +119,14 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 
+<!-- Ambient glow container -->
+<div class="ambient-glow-wrap">
+    {#if hasBackdrop}
+        <div class="ambient-glow">
+            <img src={effectiveBackdrop} alt="" class="ambient-glow-img" />
+        </div>
+    {/if}
+
 <!-- Backdrop / Gradient Header -->
 <div class="detail-header" class:has-backdrop={hasBackdrop} class:no-backdrop={!hasBackdrop}>
     {#if hasBackdrop}
@@ -272,8 +280,30 @@
 {/if}
 
 {#if children}{@render children()}{/if}
+</div> <!-- end ambient-glow-wrap -->
 
 <style>
+    /* ══════════════ AMBIENT GLOW ══════════════ */
+    .ambient-glow-wrap {
+        position: relative;
+    }
+    .ambient-glow {
+        position: absolute;
+        inset: -20px;
+        z-index: -1;
+        overflow: hidden;
+        border-radius: 2rem;
+        pointer-events: none;
+    }
+    .ambient-glow-img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        filter: blur(60px) saturate(1.8);
+        opacity: 0.35;
+        transform: scale(1.15);
+    }
+
     /* ══════════════ HEADER ══════════════ */
     .detail-header { position: relative; border-radius: 1rem; overflow: hidden; }
     .detail-header.has-backdrop { border: 1px solid oklch(var(--bc) / 0.1); }
