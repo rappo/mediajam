@@ -166,3 +166,72 @@ export async function POST({ request, locals }) {
 
     return json({ success: true, id: item.id, title: item.title, route });
 }
+
+/**
+ * PATCH /api/media/[id] — Correct an external ID (musicbrainz_id, tmdb_id, imdb_id).
+ * Handles duplicate merging when the corrected ID already exists on another record.
+ * Body: { field: 'musicbrainz_id' | 'tmdb_id' | 'imdb_id', value: string }
+ */
+export async function PATCH({ params, request, locals }) {
+    if (!locals.user) return json({ error: 'Unauthorized' }, { status: 401 });
+
+    const mediaId = parseInt(params.id);
+    if (isNaN(mediaId)) return json({ error: 'Invalid ID' }, { status: 400 });
+
+    const { field, value } = await request.json();
+    const ALLOWED_FIELDS = ['musicbrainz_id', 'tmdb_id', 'imdb_id'];
+    if (!ALLOWED_FIELDS.includes(field)) {
+        return json({ error: `Invalid field. Allowed: ${ALLOWED_FIELDS.join(', ')}` }, { status: 400 });
+    }
+    if (!value || typeof value !== 'string') {
+        return json({ error: 'Value is required' }, { status: 400 });
+    }
+
+    const target = /** @type {any} */ (db.prepare('SELECT * FROM media_parents WHERE id = ?').get(mediaId));
+    if (!target) return json({ error: 'Not found' }, { status: 404 });
+
+    // Check if the new value already exists on another record (same media_type)
+    const duplicate = /** @type {any} */ (db.prepare(
+        `SELECT * FROM media_parents WHERE ${field} = ? AND media_type = ? AND id != ?`
+    ).get(value, target.media_type, mediaId));
+
+    try {
+        db.transaction(() => {
+            if (duplicate) {
+                // Merge: transfer useful data from the duplicate to the target
+                const mergeFields = ['poster_url', 'overview', 'lidarr_id', 'radarr_id', 'sonarr_id',
+                    'arr_monitored', 'arr_quality_profile', 'arr_has_file', 'arr_status', 'arr_slug',
+                    'wikipedia_url', 'wikipedia_summary', 'wikipedia_fetched_at', 'runtime_minutes'];
+
+                for (const f of mergeFields) {
+                    if (duplicate[f] && !target[f]) {
+                        db.prepare(`UPDATE media_parents SET ${f} = ? WHERE id = ?`).run(duplicate[f], mediaId);
+                    }
+                }
+
+                // Move any children from the duplicate to the target
+                db.prepare('UPDATE media_children SET parent_id = ? WHERE parent_id = ?').run(mediaId, duplicate.id);
+                // Move credits
+                db.prepare('UPDATE OR IGNORE person_credits SET media_parent_id = ? WHERE media_parent_id = ?').run(mediaId, duplicate.id);
+                // Clean up remaining duplicate credits (ones that caused IGNORE)
+                db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?').run(duplicate.id);
+
+                // Clear the duplicate's conflicting field, then delete it
+                db.prepare(`UPDATE media_parents SET ${field} = NULL WHERE id = ?`).run(duplicate.id);
+                db.prepare('DELETE FROM media_parents WHERE id = ?').run(duplicate.id);
+
+                console.log(`[media] Merged duplicate ${duplicate.id} ("${duplicate.title}") into ${mediaId} ("${target.title}")`);
+            }
+
+            // Set the corrected value
+            db.prepare(`UPDATE media_parents SET ${field} = ? WHERE id = ?`).run(value, mediaId);
+        })();
+    } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error(`[media] Failed to correct ${field} on ${mediaId}:`, msg);
+        return json({ error: msg }, { status: 500 });
+    }
+
+    console.log(`[media] Corrected ${field} on ${mediaId} ("${target.title}"): ${target[field]} → ${value}${duplicate ? ` (merged #${duplicate.id})` : ''}`);
+    return json({ success: true, merged: !!duplicate, mergedId: duplicate?.id });
+}

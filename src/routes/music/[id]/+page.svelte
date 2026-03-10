@@ -6,6 +6,8 @@
     import MediaDetailHeader from "$lib/components/MediaDetailHeader.svelte";
     let { data } = $props();
     let expandedAlbum = $state(null);
+    let mbCorrecting = $state(false);
+    let mbCorrected = $state(false);
     let albumTracks = $state({});
     let loadingTracks = $state(null);
     /** @type {'list' | 'grid'} */
@@ -296,6 +298,43 @@
     function countByType(type) {
         return discoveryItems.filter((i) => i.type === type).length;
     }
+    async function correctMusicBrainzId() {
+        const newId = prompt(
+            'Paste the correct MusicBrainz artist ID (UUID):\n\n' +
+            `Current: ${data.artist.musicbrainz_id || 'none'}\n\n` +
+            'You can find the correct ID at musicbrainz.org',
+            data.artist.musicbrainz_id || ''
+        );
+        if (!newId || newId === data.artist.musicbrainz_id) return;
+
+        // Basic UUID validation
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(newId)) {
+            alert('Invalid MusicBrainz ID format. Expected a UUID like: 2bcf2e02-5bc3-4c76-bf76-41126cb11444');
+            return;
+        }
+
+        mbCorrecting = true;
+        try {
+            const res = await fetch(`/api/media/${data.artist.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ field: 'musicbrainz_id', value: newId })
+            });
+            const result = await res.json();
+            if (res.ok) {
+                mbCorrected = true;
+                setTimeout(() => { mbCorrected = false; }, 3000);
+                // Reload to show updated links
+                location.reload();
+            } else {
+                alert(`Failed: ${result.error}`);
+            }
+        } catch (e) {
+            alert(`Error: ${e}`);
+        } finally {
+            mbCorrecting = false;
+        }
+    }
 </script>
 
 <svelte:head>
@@ -374,6 +413,20 @@
                         onComplete={onArrAdded}
                     />
                 {/if}
+                <button
+                    class="btn btn-xs btn-ghost gap-1"
+                    onclick={correctMusicBrainzId}
+                    disabled={mbCorrecting}
+                    title="Correct the MusicBrainz ID for this artist"
+                >
+                    {#if mbCorrecting}
+                        <span class="loading loading-spinner loading-xs"></span>
+                    {:else if mbCorrected}
+                        ✅
+                    {:else}
+                        ✏️ Fix MB ID
+                    {/if}
+                </button>
             {/snippet}
         </MediaDetailHeader>
 

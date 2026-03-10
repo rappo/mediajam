@@ -164,6 +164,8 @@
     }
 
     let showDeleteConfirm = $state(false);
+    let showAllCast = $state(false);
+    let showAllCrew = $state(false);
     let deleting = $state(false);
 
     async function deleteItem() {
@@ -522,26 +524,29 @@
 
     <!-- Cast & Crew -->
     {#if data.cast.length > 0 || data.crew.length > 0}
+        {@const CAST_LIMIT = 16}
+        {@const CREW_LIMIT = 16}
         <div class="card bg-base-200/50 border border-base-300">
             <div class="card-body">
                 <h2 class="card-title text-lg">🎭 Cast & Crew</h2>
 
                 {#if data.cast.length > 0}
-                    <div class="flex gap-4 overflow-x-auto pb-2 -mx-2 px-2">
-                        {#each data.cast as person}
+                    <h3 class="text-sm font-semibold text-base-content/60 mt-2">Cast</h3>
+                    <div class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-3">
+                        {#each (showAllCast ? data.cast : data.cast.slice(0, CAST_LIMIT)) as person}
                             <a
                                 href="/people/{person.id}"
-                                class="flex flex-col items-center gap-1 shrink-0 w-28 group"
+                                class="flex flex-col items-center gap-1 group"
                             >
                                 {#if person.photo_url}
                                     <img
                                         src={imgUrl(person.photo_url, 200)}
                                         alt={person.name}
-                                        class="w-24 h-24 rounded-full object-cover border-2 border-base-300 group-hover:border-primary transition-colors"
+                                        class="w-20 h-20 rounded-full object-cover border-2 border-base-300 group-hover:border-primary transition-colors"
                                     />
                                 {:else}
                                     <div
-                                        class="w-24 h-24 rounded-full bg-base-300 flex items-center justify-center text-2xl"
+                                        class="w-20 h-20 rounded-full bg-base-300 flex items-center justify-center text-2xl"
                                     >
                                         👤
                                     </div>
@@ -559,14 +564,20 @@
                             </a>
                         {/each}
                     </div>
+                    {#if data.cast.length > CAST_LIMIT}
+                        <button
+                            class="text-xs text-primary/70 hover:text-primary mt-1 self-start"
+                            onclick={() => showAllCast = !showAllCast}
+                        >
+                            {showAllCast ? '← Show less' : `Show all ${data.cast.length} →`}
+                        </button>
+                    {/if}
                 {/if}
 
                 {#if data.crew.length > 0}
-                    <h3 class="text-sm font-semibold text-base-content/60 mt-3">
-                        Crew
-                    </h3>
+                    <h3 class="text-sm font-semibold text-base-content/60 mt-3">Crew</h3>
                     <div class="flex flex-wrap gap-2 mt-1">
-                        {#each data.crew as person}
+                        {#each (showAllCrew ? data.crew : data.crew.slice(0, CREW_LIMIT)) as person}
                             <a
                                 href="/people/{person.id}"
                                 class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-base-300/50 hover:bg-base-300 transition-colors text-sm group"
@@ -595,6 +606,14 @@
                             </a>
                         {/each}
                     </div>
+                    {#if data.crew.length > CREW_LIMIT}
+                        <button
+                            class="text-xs text-primary/70 hover:text-primary mt-1 self-start"
+                            onclick={() => showAllCrew = !showAllCrew}
+                        >
+                            {showAllCrew ? '← Show less' : `Show all ${data.crew.length} →`}
+                        </button>
+                    {/if}
                 {/if}
             </div>
         </div>
