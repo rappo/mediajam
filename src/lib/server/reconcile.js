@@ -270,8 +270,13 @@ export function deduplicateParentsByTitle() {
             if (orphanParent && keepParent) {
                 for (const col of ['musicbrainz_id', 'tmdb_id', 'imdb_id']) {
                     if (orphanParent[col] && !keepParent[col]) {
-                        db.prepare(`UPDATE media_parents SET ${col} = ? WHERE id = ?`).run(orphanParent[col], keep_id);
-                        keepParent[col] = orphanParent[col]; // update local ref
+                        try {
+                            db.prepare(`UPDATE media_parents SET ${col} = ? WHERE id = ?`).run(orphanParent[col], keep_id);
+                            keepParent[col] = orphanParent[col]; // update local ref
+                        } catch (e) {
+                            // UNIQUE constraint — another entry already has this ID, skip it
+                            console.log(`[dedupe] Skipping ${col} copy for "${orphanParent[col]}" — UNIQUE constraint`);
+                        }
                     }
                 }
             }
