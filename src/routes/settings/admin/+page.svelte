@@ -3429,7 +3429,13 @@
                     </button>
 
                     {#if expandedSync === "people" || (peopleSyncStatus !== "idle" && peopleSyncStatus !== "complete" && peopleSyncStatus !== "error")}
-                        <p class="text-xs text-base-content/50 px-4 pt-2 pb-1">Fetches cast & crew details for movies and TV shows from <strong>TMDB</strong> — photo URLs, biographies, and external IDs (IMDb, Instagram, etc). <strong>External IDs Only</strong> is a lighter pass that skips bios and just links existing people to their TMDB/IMDb profiles.</p>
+                        <div class="text-xs text-base-content/50 px-4 pt-2 pb-1 space-y-1">
+                            <ul class="list-disc list-inside space-y-0.5">
+                                <li><strong>Full Sync</strong> — Fetches cast & crew for all movies and TV shows from TMDB, including photos, bios, and external IDs</li>
+                                <li><strong>Enrich All</strong> — Updates existing people with TMDB profile data (biographies, profile photos, birth/death dates). Skips cast/crew mapping</li>
+                                <li><strong>External IDs Only</strong> — Lighter pass that links existing people to their external profiles (IMDb, Instagram, Twitter, etc.) without fetching bios or photos</li>
+                            </ul>
+                        </div>
                         <div
                             class="px-4 pb-4 space-y-3 border-t border-base-content/5 pt-3"
                             class:hidden={expandedSync !== "people" &&

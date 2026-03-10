@@ -176,7 +176,7 @@
         }
     });
 
-    /** Format resolution as SD/HD/Ultra-HD label */
+    /** Format resolution as familiar label */
     function formatResolution(fi) {
         if (!fi) return null;
         let r = fi.qualityResolution;
@@ -185,8 +185,9 @@
             if (m) r = parseInt(m[1]);
         }
         if (!r) return null;
-        if (r >= 2160) return 'Ultra-HD';
-        if (r >= 720) return 'HD';
+        if (r >= 2160) return '4K';
+        if (r >= 1080) return '1080p';
+        if (r >= 720) return '720p';
         return 'SD';
     }
 
