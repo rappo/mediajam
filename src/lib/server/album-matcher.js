@@ -2,7 +2,8 @@ import db from '$lib/server/db.js';
 
 /**
  * Normalize album titles for comparison.
- * Strips smart quotes, trims, lowercases, removes trailing " - Single", " - EP", etc.
+ * Strips smart quotes, punctuation, common edition/remaster suffixes,
+ * trims, lowercases, and removes trailing " - Single", " - EP", etc.
  * @param {string} title
  * @returns {string}
  */
@@ -14,12 +15,16 @@ export function normalizeTitle(title) {
         .replace(/[\u201C\u201D\u201E\u201F\u2033\u2036]/g, '"')
         .replace(/[\u2013\u2014]/g, '-')
         .replace(/[\u2026]/g, '...')
-        // Normalize whitespace
-        .replace(/\s+/g, ' ')
         .trim()
         .toLowerCase()
-        // Remove common suffixes
+        // Remove common suffixes: "- Single", "- EP"
         .replace(/\s*[-–—]\s*(single|ep|e\.p\.)$/i, '')
+        // Remove edition/remaster suffixes in parens or brackets
+        .replace(/\s*[\(\[](remaster(ed)?|deluxe(\s+edition)?|super\s+deluxe|expanded(\s+edition)?|anniversary(\s+edition)?|\d{4}\s+remaster(ed)?|\d+th\s+anniversary.*|bonus\s+track.*|special\s+edition|limited\s+edition)[\)\]]/gi, '')
+        // Strip all remaining punctuation (periods, commas, colons, etc.)
+        .replace(/[^\w\s]/g, '')
+        // Normalize whitespace
+        .replace(/\s+/g, ' ')
         .trim();
 }
 

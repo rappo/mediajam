@@ -1,5 +1,5 @@
 import { reconcileExternalMedia, deduplicateParents, deduplicateChildren, deduplicateParentsByTitle, deduplicatePlaybackHistory, deduplicateExternalAlbums } from '$lib/server/reconcile.js';
-import { smartMergeCompilations, autoMergeExact } from '$lib/server/album-matcher.js';
+import { smartMergeCompilations, autoMergeMediumPlus } from '$lib/server/album-matcher.js';
 import { syncAllArr } from '$lib/server/arr-sync.js';
 import db from '$lib/server/db.js';
 import { json } from '@sveltejs/kit';
@@ -24,8 +24,8 @@ export async function POST({ locals }) {
         // Deduplicate external music album title variants ("Vol. 4" vs "Vol 4" etc)
         const albumDedup = deduplicateExternalAlbums();
 
-        // Auto-merge exact-matching external albums into Jellyfin albums
-        const albumMerge = autoMergeExact();
+        // Auto-merge external albums into matching Jellyfin albums (exact, high, medium confidence)
+        const albumMerge = autoMergeMediumPlus();
 
         // Smart-merge compilations: route individual plays from best-of/compilation
         // albums to the correct studio albums based on track name matching
