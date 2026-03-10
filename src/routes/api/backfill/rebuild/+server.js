@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import db from '$lib/server/db.js';
-import { processTraktHistory, processLastfmScrobbles, backfillTrakt, backfillLastfm } from '$lib/server/backfill-engine.js';
+import { processLastfmScrobbles, backfillTrakt, backfillLastfm } from '$lib/server/backfill-engine.js';
 
 /**
  * POST /api/backfill/rebuild
@@ -18,24 +18,16 @@ export async function POST({ locals }) {
     const results = { trakt: null, lastfm: null };
 
     try {
-        // Check if we have raw Trakt data to reprocess
-        const traktCount = /** @type {any} */ (db.prepare(
-            'SELECT COUNT(*) as cnt FROM trakt_history WHERE user_id = ?'
-        ).get(userId))?.cnt || 0;
-
-        if (traktCount > 0) {
-            // Re-process existing raw data → playback_history (incremental)
-            results.trakt = processTraktHistory(userId);
+        // Check if Trakt is linked
+        const hasTrakt = /** @type {any} */ (db.prepare(
+            "SELECT 1 FROM user_identities WHERE user_id = ? AND provider = 'trakt' AND access_token IS NOT NULL"
+        ).get(userId));
+        if (hasTrakt) {
+            // Always do a full re-fetch from the Trakt API to ensure completeness.
+            // Incremental fetches can miss old data if the initial import was interrupted.
+            results.trakt = await backfillTrakt(userId, { fullFetch: true });
         } else {
-            // No raw data — check if Trakt is linked and do a full fetch
-            const hasTrakt = /** @type {any} */ (db.prepare(
-                "SELECT 1 FROM user_identities WHERE user_id = ? AND provider = 'trakt' AND access_token IS NOT NULL"
-            ).get(userId));
-            if (hasTrakt) {
-                results.trakt = await backfillTrakt(userId);
-            } else {
-                results.trakt = { imported: 0, external: 0, skipped: 0, note: 'No Trakt account linked' };
-            }
+            results.trakt = { imported: 0, external: 0, skipped: 0, note: 'No Trakt account linked' };
         }
     } catch (e) {
         console.error('[rebuild] Trakt error:', e instanceof Error ? e.message : String(e));

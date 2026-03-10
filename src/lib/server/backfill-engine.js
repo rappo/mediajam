@@ -118,12 +118,15 @@ const upsertTraktHistory = db.prepare(`
 
 /**
  * Phase 1: Fetch raw history from Trakt API and store in trakt_history table.
- * Incremental: only fetches history newer than the latest stored record.
+ * Incremental by default: only fetches history newer than the latest stored record.
+ * Set fullFetch=true to clear existing data and re-fetch everything.
  * @param {number} userId - Mediajam user ID
+ * @param {{ fullFetch?: boolean }} [options]
  */
-export async function backfillTrakt(userId) {
+export async function backfillTrakt(userId, options = {}) {
+    const { fullFetch = false } = options;
     backfillState = { running: true, currentTier: 'trakt' };
-    broadcast({ type: 'backfill_start', tier: 'trakt', log: '🎬 Starting Trakt history import...', logType: 'info' });
+    broadcast({ type: 'backfill_start', tier: 'trakt', log: fullFetch ? '🎬 Starting full Trakt history re-fetch...' : '🎬 Starting Trakt history import...', logType: 'info' });
 
     const identity = /** @type {any} */ (db.prepare(
         'SELECT access_token FROM user_identities WHERE user_id = ? AND provider = ?'
@@ -142,11 +145,21 @@ export async function backfillTrakt(userId) {
         return { success: false, error: 'Trakt Client ID not configured' };
     }
 
-    // Incremental: only fetch history newer than what we already have
-    const latestRow = /** @type {any} */ (db.prepare(
-        'SELECT MAX(watched_at) as latest FROM trakt_history WHERE user_id = ?'
-    ).get(userId));
-    const startAt = latestRow?.latest || null;
+    // Full re-fetch: clear existing raw data and playback_history from trakt
+    if (fullFetch) {
+        const deletedRaw = db.prepare('DELETE FROM trakt_history WHERE user_id = ?').run(userId);
+        const deletedHistory = db.prepare("DELETE FROM playback_history WHERE user_id = ? AND source = 'trakt'").run(userId);
+        broadcast({ type: 'backfill_progress', tier: 'trakt', log: `  🗑️ Cleared ${deletedRaw.changes} raw + ${deletedHistory.changes} history entries for full re-fetch`, logType: 'info' });
+    }
+
+    // Incremental: only fetch history newer than what we already have (skip for fullFetch)
+    let startAt = null;
+    if (!fullFetch) {
+        const latestRow = /** @type {any} */ (db.prepare(
+            'SELECT MAX(watched_at) as latest FROM trakt_history WHERE user_id = ?'
+        ).get(userId));
+        startAt = latestRow?.latest || null;
+    }
 
     let totalStored = 0;
     let totalSkipped = 0;
