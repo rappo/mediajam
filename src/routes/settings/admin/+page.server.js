@@ -31,9 +31,11 @@ export function load() {
         ? /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM media_parents WHERE date_last_modified > ?`).get(lastJellyfinSync))?.cnt || 0
         : /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM media_parents WHERE jellyfin_id IS NULL`).get())?.cnt || 0;
 
-    const peopleTotal = /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM persons`).get())?.cnt || 0;
-    const peopleWithTmdb = /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM persons WHERE tmdb_person_id IS NOT NULL AND photo_url IS NOT NULL`).get())?.cnt || 0;
-    const peoplePending = peopleTotal - peopleWithTmdb;
+    const peoplePending = /** @type {any} */ (db.prepare(`
+        SELECT COUNT(*) as cnt FROM persons
+        WHERE tmdb_person_id IS NOT NULL AND tmdb_person_id != ''
+        AND (bio_tmdb IS NULL OR birth_date IS NULL OR photo_url IS NULL)
+    `).get())?.cnt || 0;
 
     const mbTotal = /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM media_parents WHERE media_type = 'artist'`).get())?.cnt || 0;
     const mbWithData = /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM media_parents WHERE media_type = 'artist' AND musicbrainz_id IS NOT NULL`).get())?.cnt || 0;
