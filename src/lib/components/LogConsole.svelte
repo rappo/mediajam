@@ -50,9 +50,11 @@
         return l.time || l.timestamp || "";
     }
 
+    import { copyToClipboard } from '$lib/utils.js';
+
     function copyAll() {
         const text = logs.map((l) => `[${getTime(l)}] ${l.message}`).join("\n");
-        navigator.clipboard.writeText(text).then(() => {
+        copyToClipboard(text).then(() => {
             copyFeedback = true;
             setTimeout(() => (copyFeedback = false), 2000);
         });

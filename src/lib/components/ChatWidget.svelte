@@ -142,6 +142,8 @@
         }
     }
 
+    import { copyToClipboard } from '$lib/utils.js';
+
     let copied = $state(false);
     function copyDebug() {
         const lines = [`=== Mediajam Chat Debug ===`, `Time: ${new Date().toISOString()}`, ''];
@@ -158,7 +160,7 @@
             }
             lines.push('');
         }
-        navigator.clipboard.writeText(lines.join('\n'));
+        copyToClipboard(lines.join('\n'));
         copied = true;
         setTimeout(() => { copied = false; }, 2000);
     }

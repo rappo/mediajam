@@ -2,6 +2,7 @@
     import ServiceIcon from "$lib/components/ServiceIcon.svelte";
     import LogConsole from "$lib/components/LogConsole.svelte";
     import ReconciliationPanel from "$lib/components/ReconciliationPanel.svelte";
+    import { copyToClipboard } from "$lib/utils.js";
     import { page } from "$app/stores";
     import { goto } from "$app/navigation";
     import { jellyfinAuthInvalid } from "$lib/stores/auth.js";
@@ -235,8 +236,8 @@
         } catch { /* ignore */ }
     }
 
-    function copyToClipboard(text) {
-        navigator.clipboard.writeText(text);
+    function copyApiKey(text) {
+        copyToClipboard(text);
         keyCopied = true;
         setTimeout(() => keyCopied = false, 3000);
     }
@@ -1121,7 +1122,7 @@
         const text = peopleSyncLogs
             .map((l) => `[${l.time}] ${l.message}`)
             .join("\n");
-        navigator.clipboard.writeText(text);
+        copyToClipboard(text);
         peopleSyncCopyFeedback = true;
         setTimeout(() => (peopleSyncCopyFeedback = false), 2000);
     }
@@ -1261,7 +1262,7 @@
 
     function copyMBLog() {
         const text = mbLogs.map((l) => `[${l.time}] ${l.message}`).join("\n");
-        navigator.clipboard.writeText(text);
+        copyToClipboard(text);
         mbCopyFeedback = true;
         setTimeout(() => (mbCopyFeedback = false), 2000);
     }
@@ -2002,7 +2003,7 @@
 
     function copySyncLog() {
         const text = syncLogs.map((l) => `[${l.time}] ${l.message}`).join("\n");
-        navigator.clipboard.writeText(text);
+        copyToClipboard(text);
         copyFeedback = true;
         setTimeout(() => (copyFeedback = false), 2000);
     }
@@ -4608,7 +4609,7 @@
                         <code class="flex-1 bg-base-300 border border-base-content/10 px-3 py-2 rounded-lg text-xs font-mono select-all break-all text-base-content/90">{newlyCreatedKey}</code>
                         <button
                             class="btn btn-sm {keyCopied ? 'btn-success' : 'btn-primary'} gap-1 shrink-0"
-                            onclick={() => copyToClipboard(newlyCreatedKey)}
+                            onclick={() => copyApiKey(newlyCreatedKey)}
                         >
                             {#if keyCopied}
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12" /></svg>

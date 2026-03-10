@@ -1,5 +1,6 @@
 <script>
     import { toasts, removeToast } from "$lib/stores/toast.js";
+    import { copyToClipboard } from "$lib/utils.js";
 
     let copyFeedback = $state(/** @type {number | null} */ (null));
 
@@ -7,26 +8,12 @@
      * @param {string} text
      * @param {number} id
      */
-    async function copyToClipboard(text, id) {
-        try {
-            await navigator.clipboard.writeText(text);
-            copyFeedback = id;
-            setTimeout(() => {
-                if (copyFeedback === id) copyFeedback = null;
-            }, 2000);
-        } catch {
-            // Fallback
-            const ta = document.createElement("textarea");
-            ta.value = text;
-            document.body.appendChild(ta);
-            ta.select();
-            document.execCommand("copy");
-            ta.remove();
-            copyFeedback = id;
-            setTimeout(() => {
-                if (copyFeedback === id) copyFeedback = null;
-            }, 2000);
-        }
+    async function copyText(text, id) {
+        await copyToClipboard(text);
+        copyFeedback = id;
+        setTimeout(() => {
+            if (copyFeedback === id) copyFeedback = null;
+        }, 2000);
     }
 </script>
 
@@ -54,7 +41,7 @@
                                 class="toast-btn"
                                 title="Copy error to clipboard"
                                 onclick={() =>
-                                    copyToClipboard(
+                                    copyText(
                                         `${toast.message}\n${toast.detail}`,
                                         toast.id,
                                     )}
