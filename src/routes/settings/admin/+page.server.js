@@ -37,9 +37,18 @@ export function load() {
         AND bio_tmdb IS NULL AND photo_url IS NULL
     `).get())?.cnt || 0;
 
-    const mbTotal = /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM media_parents WHERE media_type = 'artist'`).get())?.cnt || 0;
-    const mbWithData = /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM media_parents WHERE media_type = 'artist' AND musicbrainz_id IS NOT NULL`).get())?.cnt || 0;
-    const mbPending = mbTotal - mbWithData;
+    // MusicBrainz enrichment: artists with MBID + collected albums that don't yet have member credits
+    const mbPending = /** @type {any} */ (db.prepare(`
+        SELECT COUNT(*) as cnt FROM media_parents mp
+        WHERE mp.media_type = 'artist'
+          AND mp.musicbrainz_id IS NOT NULL AND mp.musicbrainz_id != ''
+          AND mp.collected_children > 0
+          AND mp.id NOT IN (
+              SELECT DISTINCT pc.media_parent_id FROM person_credits pc
+              JOIN persons p ON pc.person_id = p.id
+              WHERE p.musicbrainz_artist_id IS NOT NULL
+          )
+    `).get())?.cnt || 0;
 
     const wikiTotal = /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM media_parents WHERE tmdb_id IS NOT NULL AND media_type IN ('movie','show','artist')`).get())?.cnt || 0;
     const wikiWithSummary = /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM media_parents WHERE wikipedia_summary IS NOT NULL AND wikipedia_summary != ''`).get())?.cnt || 0;
