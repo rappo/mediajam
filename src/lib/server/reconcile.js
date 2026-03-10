@@ -519,3 +519,68 @@ export function mergeOrphanArtistsIntoAlbums() {
 
     return { merged, historyMoved };
 }
+
+/**
+ * Deduplicate external music albums (no jellyfin_id) under the same artist
+ * by normalizing titles. "Vol. 4", "Vol 4", "vol.4" → same entry.
+ * Migrates playback history from duplicates to the kept entry (oldest id wins).
+ * @returns {{ deduped: number, historyMoved: number }}
+ */
+export function deduplicateExternalAlbums() {
+    const normalize = (/** @type {string} */ t) => t.toLowerCase()
+        .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+        .replace(/[\u201C\u201D\u201E\u201F\u2033\u2036]/g, '"')
+        .replace(/[\u2013\u2014]/g, '-')
+        .replace(/[^\w\s]/g, '')  // strip all punctuation
+        .replace(/\s+/g, ' ').trim();
+
+    // Get all external music albums (no jellyfin_id) grouped by artist
+    const externalAlbums = /** @type {any[]} */ (db.prepare(`
+        SELECT mc.id, mc.title, mc.parent_id
+        FROM media_children mc
+        JOIN media_parents mp ON mc.parent_id = mp.id
+        WHERE mp.media_type = 'artist'
+        AND mc.jellyfin_id IS NULL
+        ORDER BY mc.parent_id, mc.id ASC
+    `).all());
+
+    // Group by artist + normalized title
+    /** @type {Map<string, any[]>} */
+    const groups = new Map();
+    for (const album of externalAlbums) {
+        const key = `${album.parent_id}::${normalize(album.title)}`;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key)?.push(album);
+    }
+
+    let deduped = 0;
+    let historyMoved = 0;
+
+    db.transaction(() => {
+        for (const [, albums] of groups) {
+            if (albums.length <= 1) continue;
+
+            // Keep the first (oldest id), remove the rest
+            const keepId = albums[0].id;
+            const staleAlbums = albums.slice(1);
+
+            for (const stale of staleAlbums) {
+                // Migrate playback_history
+                const result = db.prepare(
+                    'UPDATE playback_history SET media_id = ? WHERE media_id = ?'
+                ).run(keepId, stale.id);
+                historyMoved += result.changes;
+
+                // Delete stale child
+                db.prepare('DELETE FROM media_children WHERE id = ?').run(stale.id);
+                deduped++;
+            }
+        }
+    })();
+
+    if (deduped > 0) {
+        console.log(`[dedupe] Removed ${deduped} duplicate external albums, moved ${historyMoved} history entries`);
+    }
+
+    return { deduped, historyMoved };
+}

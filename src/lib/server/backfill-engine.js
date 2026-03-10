@@ -94,9 +94,33 @@ function findOrCreateExternalMedia(info) {
 
     // 2. Find or create media_child
     const effectiveChildTitle = childTitle || parentTitle;
+
+    // Try exact match first (case-insensitive)
     let child = /** @type {any} */ (db.prepare(
-        `SELECT id FROM media_children WHERE parent_id = ? AND title = ? AND COALESCE(season_number, 0) = ? AND COALESCE(item_number, 0) = ?`
+        `SELECT id FROM media_children WHERE parent_id = ? AND title = ? COLLATE NOCASE AND COALESCE(season_number, 0) = ? AND COALESCE(item_number, 0) = ?`
     ).get(parent.id, effectiveChildTitle, seasonNumber || 0, itemNumber || 0));
+
+    // For music albums, also try fuzzy matching by stripping punctuation/whitespace
+    if (!child && mediaType === 'artist') {
+        // Normalize: lowercase, strip punctuation except alphanumerics/spaces, collapse spaces
+        const normalize = (/** @type {string} */ t) => t.toLowerCase()
+            .replace(/['']/g, "'").replace(/[""]/g, '"')  // smart quotes
+            .replace(/[^\w\s]/g, '')  // strip punctuation
+            .replace(/\s+/g, ' ').trim();
+        const normTarget = normalize(effectiveChildTitle);
+
+        // Check all existing children for this artist
+        const existing = /** @type {any[]} */ (db.prepare(
+            `SELECT id, title FROM media_children WHERE parent_id = ?`
+        ).all(parent.id));
+
+        for (const c of existing) {
+            if (normalize(c.title) === normTarget) {
+                child = c;
+                break;
+            }
+        }
+    }
 
     if (!child) {
         const result = db.prepare(`

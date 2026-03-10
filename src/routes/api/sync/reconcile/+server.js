@@ -1,5 +1,5 @@
-import { reconcileExternalMedia, deduplicateParents, deduplicateChildren, deduplicateParentsByTitle, deduplicatePlaybackHistory } from '$lib/server/reconcile.js';
-import { smartMergeCompilations } from '$lib/server/album-matcher.js';
+import { reconcileExternalMedia, deduplicateParents, deduplicateChildren, deduplicateParentsByTitle, deduplicatePlaybackHistory, deduplicateExternalAlbums } from '$lib/server/reconcile.js';
+import { smartMergeCompilations, autoMergeExact } from '$lib/server/album-matcher.js';
 import { syncAllArr } from '$lib/server/arr-sync.js';
 import db from '$lib/server/db.js';
 import { json } from '@sveltejs/kit';
@@ -21,6 +21,12 @@ export async function POST({ locals }) {
         const titleDedup = deduplicateParentsByTitle();
         const historyDedup = deduplicatePlaybackHistory();
 
+        // Deduplicate external music album title variants ("Vol. 4" vs "Vol 4" etc)
+        const albumDedup = deduplicateExternalAlbums();
+
+        // Auto-merge exact-matching external albums into Jellyfin albums
+        const albumMerge = autoMergeExact();
+
         // Smart-merge compilations: route individual plays from best-of/compilation
         // albums to the correct studio albums based on track name matching
         const compilationMerge = smartMergeCompilations();
@@ -38,8 +44,10 @@ export async function POST({ locals }) {
             console.error('[reconcile] arr-sync error:', e);
         }
 
+        const albumDedupSummary = albumDedup.deduped > 0 ? `, ${albumDedup.deduped} album title variants merged` : '';
+        const albumMergeSummary = albumMerge.merged > 0 ? `, ${albumMerge.merged} albums matched to library (${albumMerge.totalPlays} plays moved)` : '';
         const compilationSummary = compilationMerge.merged > 0 ? `, ${compilationMerge.merged} compilations merged (${compilationMerge.playsRouted} plays routed)` : '';
-        const summary = `${result.merged} merged, ${result.deleted} orphans, ${dedupResult.deduped + titleDedup.deduped} deduped parents, ${childDedup.deduped} deduped children, ${historyDedup.removed} duplicate plays removed${compilationSummary}${arrSummary}`;
+        const summary = `${result.merged} merged, ${result.deleted} orphans, ${dedupResult.deduped + titleDedup.deduped} deduped parents, ${childDedup.deduped} deduped children, ${historyDedup.removed} duplicate plays removed${albumDedupSummary}${albumMergeSummary}${compilationSummary}${arrSummary}`;
         console.log(`[reconcile] Manual: ${summary}`);
         db.prepare('UPDATE sync_history SET status = ?, finished_at = ?, summary = ? WHERE id = ?')
             .run('success', new Date().toISOString(), summary, histId);
