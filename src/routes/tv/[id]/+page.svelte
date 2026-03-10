@@ -242,7 +242,7 @@
                 ...(data.show.collection_pct !== null ? [{ label: `${data.show.collection_pct}% collected` }] : []),
             ]}
             stats={[
-                { label: 'total plays', value: data.show.total_plays ?? 0 },
+                { label: (data.show.total_plays ?? 0) === 1 ? 'play' : 'total plays', value: data.show.total_plays ?? 0 },
                 ...(data.totalMissing > 0 ? [{ label: 'missing', value: data.totalMissing }] : []),
                 ...(data.totalUpcoming > 0 ? [{ label: 'upcoming', value: data.totalUpcoming }] : []),
             ]}

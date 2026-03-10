@@ -350,7 +350,7 @@
             heartBorderEnabled={!!data.settings?.heartBorderMusic}
             stats={[
                 { label: 'albums', value: data.albums.length },
-                { label: 'plays', value: data.artist.total_plays },
+                { label: data.artist.total_plays === 1 ? 'play' : 'plays', value: data.artist.total_plays },
                 ...(data.artist.collection_pct !== null ? [{ label: 'collected', value: `${data.artist.collection_pct}%` }] : []),
             ]}
             externalLinks={{

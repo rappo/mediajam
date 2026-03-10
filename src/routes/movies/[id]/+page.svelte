@@ -154,6 +154,35 @@
         }
     });
 
+    /** Extract just the resolution label from qualityName like "Bluray-2160p" → "2160p" */
+    function formatResolution(fi) {
+        if (!fi) return null;
+        // Try qualityResolution first (numeric, e.g. 2160)
+        if (fi.qualityResolution) {
+            const r = fi.qualityResolution;
+            if (r >= 2160) return '2160p';
+            if (r >= 1080) return '1080p';
+            if (r >= 720) return '720p';
+            if (r >= 480) return '480p';
+            return 'SDTV';
+        }
+        // Fallback: extract from qualityName like "Bluray-1080p"
+        if (fi.qualityName) {
+            const m = fi.qualityName.match(/(\d+p)/i);
+            if (m) return m[1];
+            if (/sdtv/i.test(fi.qualityName)) return 'SDTV';
+        }
+        return null;
+    }
+
+    function formatFileSize(bytes) {
+        if (!bytes) return null;
+        const gb = bytes / (1024 * 1024 * 1024);
+        if (gb >= 1) return `${gb.toFixed(1)} GB`;
+        const mb = bytes / (1024 * 1024);
+        return `${mb.toFixed(0)} MB`;
+    }
+
     async function onArrAdded() {
         await invalidateAll();
     }
@@ -276,14 +305,13 @@
             favoriteId={data.movie.id}
             heartBorderEnabled={!!data.settings?.heartBorderMovies}
             stats={[
-                { label: 'plays', value: data.stats.totalPlays },
+                { label: data.stats.totalPlays === 1 ? 'play' : 'plays', value: data.stats.totalPlays },
                 ...(data.stats.lastWatched ? [{ label: 'watched', value: timeAgo(data.stats.lastWatched) }] : []),
                 ...(data.movie.community_rating ? [{ label: 'Rating', value: `${data.movie.community_rating} ★` }] : []),
             ]}
             fileInfo={[
-                ...(fileInfo?.qualityName ? [{ label: 'quality', value: fileInfo.qualityName }] : []),
-                ...(fileInfo?.videoCodec ? [{ label: 'video', value: `${fileInfo.videoCodec}${fileInfo.videoDynamicRangeType ? ` ${fileInfo.videoDynamicRangeType}` : ''}` }] : []),
-                ...(fileInfo?.audioCodec ? [{ label: 'audio', value: `${fileInfo.audioCodec}${fileInfo.audioChannels ? ` ${fileInfo.audioChannels}` : ''}` }] : []),
+                ...(formatResolution(fileInfo) ? [{ label: 'resolution', value: formatResolution(fileInfo) }] : []),
+                ...(formatFileSize(fileInfo?.fileSize) ? [{ label: 'size', value: formatFileSize(fileInfo?.fileSize) }] : []),
             ]}
             externalLinks={{
                 tmdb_id: data.movie.tmdb_id,

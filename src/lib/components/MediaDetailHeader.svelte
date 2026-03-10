@@ -418,7 +418,7 @@
         max-width: 42rem;
     }
     .hero-overview {
-        font-size: 0.8rem;
+        font-size: 0.875rem;
         color: oklch(var(--bc) / 0.7);
         line-height: 1.5;
         display: -webkit-box;
