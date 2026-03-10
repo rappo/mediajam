@@ -194,11 +194,12 @@ RULES:
 1. Output ONLY the raw SQL query. No explanation, no markdown, no code fences.
 2. Must be a SELECT statement.
 3. media_parents has NO user_id column — do not filter it by user.
-4. To get watched items: JOIN playback_history → media_children → media_parents.
-5. "recently" means last 30 days. Use: timestamp > datetime('now', '-30 days')
-6. For counting movies: SELECT COUNT(*) FROM media_parents WHERE media_type = 'movie'
-7. Limit results to 50 rows.
-8. Always use table aliases for JOINs.
+4. To check watched/unwatched/in-progress status: use media_children.watch_status directly (values: 'watched', 'unwatched', 'in_progress'). Do NOT use playback_history for this.
+5. playback_history is ONLY for: play timestamps, duration consumed, listening history, "recently played". playback_history.media_id → media_children.id.
+6. "recently" means last 30 days. Use: timestamp > datetime('now', '-30 days')
+7. For counting movies: SELECT COUNT(*) FROM media_parents WHERE media_type = 'movie'
+8. Limit results to 50 rows.
+9. Always use table aliases for JOINs.
 
 Question: ${question}`;
 

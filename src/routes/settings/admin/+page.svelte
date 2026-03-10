@@ -579,7 +579,6 @@
     let syncSseRetries = $state(0);
     let copyFeedback = $state(false);
     /** @type {HTMLDivElement | null} */
-    let consoleEl = $state(null);
 
     // ─── Sync Conflicts ──────────────────────────────────────────────────────────
     let syncConflicts = $state([]);
@@ -646,7 +645,6 @@
     let peopleSyncEventSource = $state(null);
     let peopleSseRetries = $state(0);
     /** @type {HTMLDivElement | null} */
-    let peopleSyncConsoleEl = $state(null);
     let peopleSyncCopyFeedback = $state(false);
     let externalIdsSyncing = $state(false);
 
@@ -782,17 +780,7 @@
         };
     });
 
-    $effect(() => {
-        if (syncLogs.length && consoleEl) {
-            consoleEl.scrollTop = consoleEl.scrollHeight;
-        }
-    });
 
-    $effect(() => {
-        if (peopleSyncLogs.length && peopleSyncConsoleEl) {
-            peopleSyncConsoleEl.scrollTop = peopleSyncConsoleEl.scrollHeight;
-        }
-    });
 
     function addSyncLog(message, type = "info") {
         syncLogs = [
@@ -3252,13 +3240,12 @@
                     </div>
 
                     <!-- Pipeline console -->
-                    <div class="bg-base-300/50 rounded-lg p-3 mt-2 max-h-32 overflow-y-auto text-xs font-mono space-y-0.5">
-                        {#each runAllLogs as log}
-                            <div class="{log.type === 'success' ? 'text-success' : log.type === 'error' ? 'text-error' : log.type === 'warning' ? 'text-warning' : 'text-base-content/70'}">
-                                <span class="text-base-content/30">[{log.time}]</span> {log.message}
-                            </div>
-                        {/each}
-                    </div>
+                    <LogConsole
+                        logs={runAllLogs}
+                        running={runAllStep > 0 && runAllStep < 5}
+                        title="Pipeline Log"
+                        height="h-32"
+                    />
 
                     {#if runAllStep === 5}
                         <button class="btn btn-xs btn-ghost mt-1" onclick={() => { runAllStep = 0; runAllLogs = []; }}>Dismiss</button>
@@ -3995,15 +3982,12 @@
                                     <button class="btn btn-ghost btn-xs" onclick={stopWikipedia}>Stop</button>
                                 </div>
                             {/if}
-                            {#if wikiLogs.length > 0}
-                                <div class="bg-base-300/50 rounded-lg p-3 max-h-48 overflow-y-auto text-xs font-mono space-y-0.5">
-                                    {#each wikiLogs as log}
-                                        <div class="{log.type === 'success' ? 'text-success' : log.type === 'error' ? 'text-error' : log.type === 'warning' ? 'text-warning' : 'text-base-content/70'}">
-                                            <span class="text-base-content/30">[{log.time}]</span> {log.message}
-                                        </div>
-                                    {/each}
-                                </div>
-                            {/if}
+                            <LogConsole
+                                logs={wikiLogs}
+                                running={wikiStatus === 'syncing'}
+                                title="Wikipedia Log"
+                                height="h-36"
+                            />
                         </div>
                     {/if}
                 </div>
