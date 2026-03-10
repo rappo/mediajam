@@ -93,6 +93,8 @@ export function load() {
             // External ratings
             omdbApiKey: settings?.omdb_api_key ? '••••••••' : '',
             discogsToken: settings?.discogs_token ? '••••••••' : '',
+            // Fanart.tv
+            fanartApiKey: settings?.fanart_api_key ? '••••••••' : '',
         },
         syncState: {
             status: syncState?.status || 'idle',

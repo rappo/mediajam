@@ -1,6 +1,7 @@
 import db from '$lib/server/db.js';
 import { error } from '@sveltejs/kit';
 import { checkJellyfinFavorite } from '$lib/server/jellyfin-favorites.js';
+import { resolveBackdrop } from '$lib/server/backdrop.js';
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ params, locals }) {
@@ -26,6 +27,7 @@ export async function load({ params, locals }) {
             mp.jellyfin_user_rating,
             mp.is_favorite,
             mp.wikipedia_url,
+            mp.backdrop_url,
             mp.radarr_id,
             mp.arr_slug,
             mp.arr_monitored,
@@ -64,10 +66,15 @@ export async function load({ params, locals }) {
         ? `${jellyfinUrl}/Items/${movie.jellyfin_id}/Images/Primary?maxHeight=400`
         : movie.poster_url;
 
-    // Backdrop from Jellyfin if available
-    const backdropUrl = movie.jellyfin_id
-        ? `${jellyfinUrl}/Items/${movie.jellyfin_id}/Images/Backdrop?maxWidth=1200`
-        : null;
+    // Backdrop: prefer TMDB textless backdrop (cached in DB), fallback to Jellyfin
+    let backdropUrl = movie.backdrop_url;
+    if (!backdropUrl && movie.jellyfin_id) {
+        backdropUrl = `${jellyfinUrl}/Items/${movie.jellyfin_id}/Images/Backdrop?maxWidth=1200`;
+    }
+    // Lazy-fetch TMDB backdrop if not yet cached
+    if (!movie.backdrop_url && movie.tmdb_id) {
+        resolveBackdrop(movieId).catch(() => {});
+    }
 
     // Cast & Crew
     const cast = /** @type {any[]} */ (db.prepare(`

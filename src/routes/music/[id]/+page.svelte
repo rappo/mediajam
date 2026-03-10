@@ -342,6 +342,7 @@
             backLabel="Artists"
             title={data.artist.title}
             posterUrl={data.artist.imageUrl}
+            backdropUrl={data.artist.backdropUrl}
             isFavorite={!!data.artist.is_favorite}
             favoriteType="media"
             favoriteId={data.artist.id}

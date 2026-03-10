@@ -132,9 +132,15 @@ export async function load({ params, locals }) {
             // Then by release year (newest first)
             return (b.release_year || 0) - (a.release_year || 0);
         })[0];
-    const backdropUrl = backdropCredit
+    let backdropUrl = backdropCredit
         ? `${jellyfinUrl}/Items/${backdropCredit.jellyfin_id}/Images/Backdrop?maxWidth=1200`
         : null;
+    // Fallback: use TMDB person profile as backdrop (lazy-fetch)
+    if (!backdropUrl && person.tmdb_person_id) {
+        const { fetchTmdbPersonBackdrop } = await import('$lib/server/backdrop.js');
+        const tmdbBackdrop = await fetchTmdbPersonBackdrop(person.tmdb_person_id);
+        if (tmdbBackdrop) backdropUrl = tmdbBackdrop;
+    }
 
     return {
         person: { ...person, photoUrl, is_favorite: liveFavorite ?? person.is_favorite, displayBio, bioSource, needsBioFetch, needsEnrichment },

@@ -16,6 +16,7 @@ export async function GET({ url }) {
             'artworks.thetvdb.com',
             'coverartarchive.org',
             'img.discogs.com',
+            'assets.fanart.tv',
         ];
         // Allow Jellyfin (any host on local network or custom domain)
         // Allow known CDNs

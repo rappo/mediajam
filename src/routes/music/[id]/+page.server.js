@@ -1,6 +1,7 @@
 import db from '$lib/server/db.js';
 import { error } from '@sveltejs/kit';
 import { checkJellyfinFavorite } from '$lib/server/jellyfin-favorites.js';
+import { resolveBackdrop } from '$lib/server/backdrop.js';
 
 export async function load({ params, locals }) {
     const artistId = parseInt(params.id);
@@ -25,6 +26,7 @@ export async function load({ params, locals }) {
             mp.arr_has_file,
             mp.arr_status,
             mp.collection_status,
+            mp.backdrop_url,
             CASE WHEN mp.total_released_children > 0
                 THEN ROUND(CAST(mp.collected_children AS REAL) / mp.total_released_children * 100, 1)
                 ELSE NULL END as collection_pct
@@ -125,8 +127,15 @@ export async function load({ params, locals }) {
     // Live Jellyfin favorite check
     const liveFavorite = await checkJellyfinFavorite(artist.jellyfin_id, 'media_parents', artist.id);
 
+    // Artist backdrop: prefer Fanart.tv (cached in DB), fallback to Jellyfin poster
+    const backdropUrl = artist.backdrop_url || null;
+    // Lazy-fetch Fanart.tv backdrop if not yet cached
+    if (!artist.backdrop_url && artist.musicbrainz_id) {
+        resolveBackdrop(artistId).catch(() => {});
+    }
+
     return {
-        artist: { ...artist, is_favorite: liveFavorite ?? artist.is_favorite, total_plays: totalPlays, imageUrl: artistImageUrl },
+        artist: { ...artist, is_favorite: liveFavorite ?? artist.is_favorite, total_plays: totalPlays, imageUrl: artistImageUrl, backdropUrl },
         albums: albumsWithRatings,
         jellyfinUrl,
         arrUrl: (settings?.lidarr_external_url || settings?.lidarr_url || '').replace(/\/+$/, ''),

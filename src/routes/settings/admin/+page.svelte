@@ -82,6 +82,8 @@
     // External Ratings
     let omdbApiKey = $state("");
     let discogsToken = $state("");
+    // Fanart.tv
+    let fanartApiKey = $state("");
 
     // LLM Integration
     let ollamaUrl = $state(data.settings.ollamaUrl || "");
@@ -256,6 +258,7 @@
         ollamaChatModel: data.settings.ollamaChatModel || "llama3.2:3b",
         omdbApiKey: "",
         discogsToken: "",
+        fanartApiKey: "",
     });
 
     let saving = $state(false);
@@ -277,7 +280,8 @@
             ollamaEmbedModel !== initialValues.ollamaEmbedModel ||
             ollamaChatModel !== initialValues.ollamaChatModel ||
             omdbApiKey !== initialValues.omdbApiKey ||
-            discogsToken !== initialValues.discogsToken,
+            discogsToken !== initialValues.discogsToken ||
+            fanartApiKey !== initialValues.fanartApiKey,
     );
 
     // ─── Undo Toast ──────────────────────────────────────────────────────────────
@@ -393,6 +397,7 @@
             ollamaChatModel,
             omdbApiKey,
             discogsToken,
+            fanartApiKey,
         };
     }
 
@@ -412,6 +417,7 @@
         ollamaChatModel = snapshot.ollamaChatModel;
         omdbApiKey = snapshot.omdbApiKey;
         discogsToken = snapshot.discogsToken;
+        fanartApiKey = snapshot.fanartApiKey;
     }
 
     // ─── Validation ──────────────────────────────────────────────────────────────
@@ -510,6 +516,8 @@
                 payload.omdb_api_key = omdbApiKey;
             if (discogsToken && discogsToken !== "••••••••")
                 payload.discogs_token = discogsToken;
+            if (fanartApiKey && fanartApiKey !== "••••••••")
+                payload.fanart_api_key = fanartApiKey;
 
             const res = await fetch("/api/settings", {
                 method: "PUT",
@@ -1358,6 +1366,78 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action: "stop" })
         });
+    }
+
+    // ─── Backdrop Enrichment ──────────────────────────────────────────────────────
+    let backdropStatus = $state("idle"); // idle | syncing | complete | error
+    let backdropDone = $state(0);
+    let backdropTotal = $state(0);
+    let backdropEnriched = $state(0);
+    /** @type {Array<{time: string, message: string, type: string}>} */
+    let backdropLogs = $state([]);
+
+    /** @param {string} msg @param {string} [type] */
+    function addBackdropLog(msg, type = "info") {
+        const time = new Date().toLocaleTimeString();
+        backdropLogs = [...backdropLogs, { time, message: msg, type }];
+    }
+
+    async function triggerBackdropEnrich() {
+        backdropStatus = "syncing";
+        backdropDone = 0;
+        backdropTotal = 0;
+        backdropEnriched = 0;
+        backdropLogs = [];
+        addBackdropLog("Starting backdrop enrichment...");
+
+        try {
+            const res = await fetch("/api/backfill/backdrops", { method: "POST" });
+            const reader = res.body?.getReader();
+            if (!reader) throw new Error("No stream");
+
+            const decoder = new TextDecoder();
+            let buffer = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+
+                const lines = buffer.split("\n\n");
+                buffer = lines.pop() || "";
+
+                for (const line of lines) {
+                    const dataLine = line.replace(/^data: /, "").trim();
+                    if (!dataLine) continue;
+                    try {
+                        const evt = JSON.parse(dataLine);
+                        if (evt.type === "start") {
+                            backdropTotal = evt.total;
+                            addBackdropLog(`Found ${evt.total} items without backdrops`);
+                        } else if (evt.type === "progress") {
+                            backdropDone = evt.index;
+                            backdropEnriched = evt.enriched;
+                            if (evt.status === "ok") {
+                                addBackdropLog(`✓ ${evt.title}`, "success");
+                            } else if (evt.status === "error") {
+                                addBackdropLog(`✗ ${evt.title}: ${evt.error}`, "error");
+                            }
+                        } else if (evt.type === "complete") {
+                            addBackdropLog(`Done! ${evt.enriched}/${evt.total} backdrops found`, "success");
+                            backdropStatus = "complete";
+                        } else if (evt.type === "error") {
+                            addBackdropLog(evt.message, "error");
+                            backdropStatus = "error";
+                        }
+                    } catch { /* skip bad JSON */ }
+                }
+            }
+        } catch (e) {
+            addBackdropLog(`Error: ${e instanceof Error ? e.message : String(e)}`, "error");
+            backdropStatus = "error";
+        }
+
+        if (backdropStatus === "syncing") backdropStatus = "complete";
     }
 
     // ─── Run All Pipeline ────────────────────────────────────────────────────────
@@ -2280,6 +2360,24 @@
                         />
                     </div>
                     <a href="https://www.discogs.com/settings/developers" target="_blank" rel="noopener" class="link link-primary text-xs mt-1 inline-block">Generate personal access token →</a>
+                </div>
+
+                <!-- Fanart.tv -->
+                <div class="bg-base-300/30 rounded-lg p-4 border border-base-300/50">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="font-bold text-sm">Fanart.tv</span>
+                        <span class="text-xs text-base-content/40">Artist backdrops & logos</span>
+                    </div>
+                    <div class="form-control">
+                        <input
+                            id="settings-fanart"
+                            type="password"
+                            class="input input-bordered input-sm"
+                            bind:value={fanartApiKey}
+                            placeholder={data.settings.fanartApiKey ? "••••••••" : "Not set"}
+                        />
+                    </div>
+                    <a href="https://fanart.tv/get-an-api-key/" target="_blank" rel="noopener" class="link link-primary text-xs mt-1 inline-block">Get a free API key →</a>
                 </div>
             </div>
         </div>
@@ -3892,6 +3990,63 @@
                             {#if wikiLogs.length > 0}
                                 <div class="bg-base-300/50 rounded-lg p-3 max-h-48 overflow-y-auto text-xs font-mono space-y-0.5">
                                     {#each wikiLogs as log}
+                                        <div class="{log.type === 'success' ? 'text-success' : log.type === 'error' ? 'text-error' : log.type === 'warning' ? 'text-warning' : 'text-base-content/70'}">
+                                            <span class="text-base-content/30">[{log.time}]</span> {log.message}
+                                        </div>
+                                    {/each}
+                                </div>
+                            {/if}
+                        </div>
+                    {/if}
+                </div>
+
+                <!-- Enrich Backdrops Row -->
+                <div
+                    class="rounded-lg border border-base-content/10 overflow-hidden"
+                >
+                    <button
+                        class="w-full flex items-center gap-3 px-4 py-3 hover:bg-base-300/50 transition-colors text-left"
+                        onclick={() =>
+                            (expandedSync =
+                                expandedSync === "backdrops"
+                                    ? null
+                                    : "backdrops")}
+                    >
+                        <span class="text-lg">🖼️</span>
+                        <div class="flex-1 min-w-0">
+                            <span class="font-medium text-sm">Enrich Backdrops</span>
+                            <span class="text-xs text-base-content/40 block">TMDB textless backdrops (movies/TV) &middot; Fanart.tv artist backgrounds (music)</span>
+                        </div>
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="h-4 w-4 text-base-content/30 transition-transform"
+                            class:rotate-180={expandedSync === "backdrops"}
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            ><polyline points="6 9 12 15 18 9"></polyline></svg
+                        >
+                    </button>
+
+                    {#if expandedSync === "backdrops"}
+                        <p class="text-xs text-base-content/50 px-4 pt-2 pb-1">Fetches high-quality, textless backdrop images from <strong>TMDB</strong> (movies & TV) and <strong>Fanart.tv</strong> (music artists). Cached locally after first fetch.</p>
+                        <div
+                            class="px-4 pb-4 space-y-3 border-t border-base-content/5 pt-3"
+                        >
+                            {#if backdropStatus === "idle" || backdropStatus === "complete" || backdropStatus === "error"}
+                                <div class="flex flex-wrap gap-2">
+                                    <button class="btn btn-secondary btn-sm" onclick={triggerBackdropEnrich} disabled={backdropStatus === 'syncing'}>Start Enrichment</button>
+                                </div>
+                            {:else}
+                                <div class="flex items-center gap-3">
+                                    <progress class="progress progress-secondary w-full" value={backdropDone} max={backdropTotal || 1}></progress>
+                                    <span class="text-xs text-base-content/60 whitespace-nowrap">{backdropDone}/{backdropTotal} ({backdropEnriched} found)</span>
+                                </div>
+                            {/if}
+                            {#if backdropLogs.length > 0}
+                                <div class="bg-base-300/50 rounded-lg p-3 max-h-48 overflow-y-auto text-xs font-mono space-y-0.5">
+                                    {#each backdropLogs as log}
                                         <div class="{log.type === 'success' ? 'text-success' : log.type === 'error' ? 'text-error' : log.type === 'warning' ? 'text-warning' : 'text-base-content/70'}">
                                             <span class="text-base-content/30">[{log.time}]</span> {log.message}
                                         </div>

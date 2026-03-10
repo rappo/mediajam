@@ -335,6 +335,8 @@ const newAppCols = [
     // External ratings
     ['omdb_api_key', 'TEXT'],
     ['discogs_token', 'TEXT'],
+    // Fanart.tv
+    ['fanart_api_key', 'TEXT'],
 ];
 for (const [col, type] of newAppCols) {
     if (!existingCols.has(col)) {
@@ -373,6 +375,9 @@ for (const [col, type] of arrParentCols) {
     if (!mediaParentsCols.has(col)) {
         db.exec(`ALTER TABLE media_parents ADD COLUMN ${col} ${type}`);
     }
+}
+if (!mediaParentsCols.has('backdrop_url')) {
+    db.exec("ALTER TABLE media_parents ADD COLUMN backdrop_url TEXT");
 }
 
 // -- Unique external-ID constraints (dedup existing data first) --

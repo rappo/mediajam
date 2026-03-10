@@ -29,6 +29,8 @@ export async function GET() {
         // External ratings
         omdbApiKey: settings?.omdb_api_key ? '••••••••' : '',
         discogsToken: settings?.discogs_token ? '••••••••' : '',
+        // Fanart.tv
+        fanartApiKey: settings?.fanart_api_key ? '••••••••' : '',
     });
 }
 
@@ -74,6 +76,8 @@ export async function PUT({ request }) {
             // External ratings
             omdb_api_key: 'omdb_api_key',
             discogs_token: 'discogs_token',
+            // Fanart.tv
+            fanart_api_key: 'fanart_api_key',
             // Welcome flow
             welcome_complete: 'welcome_complete'
         };

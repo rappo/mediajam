@@ -1,6 +1,7 @@
 import db from '$lib/server/db.js';
 import { error } from '@sveltejs/kit';
 import { checkJellyfinFavorite } from '$lib/server/jellyfin-favorites.js';
+import { resolveBackdrop } from '$lib/server/backdrop.js';
 
 export async function load({ params }) {
     const showId = parseInt(params.id);
@@ -30,6 +31,7 @@ export async function load({ params }) {
             mp.arr_has_file,
             mp.arr_status,
             mp.wikipedia_url,
+            mp.backdrop_url,
             CASE WHEN mp.collected_children > 0
                 THEN ROUND(CAST(mp.watched_children AS REAL) / mp.collected_children * 100, 1)
                 ELSE 0 END as completion,
@@ -168,10 +170,15 @@ export async function load({ params }) {
     // Live Jellyfin favorite check
     const liveFavorite = await checkJellyfinFavorite(show.jellyfin_id, 'media_parents', show.id);
 
-    // Backdrop from Jellyfin if available
-    const backdropUrl = show.jellyfin_id
-        ? `${jellyfinUrl}/Items/${show.jellyfin_id}/Images/Backdrop?maxWidth=1200`
-        : null;
+    // Backdrop: prefer TMDB textless backdrop (cached in DB), fallback to Jellyfin
+    let backdropUrl = show.backdrop_url;
+    if (!backdropUrl && show.jellyfin_id) {
+        backdropUrl = `${jellyfinUrl}/Items/${show.jellyfin_id}/Images/Backdrop?maxWidth=1200`;
+    }
+    // Lazy-fetch TMDB backdrop if not yet cached
+    if (!show.backdrop_url && show.tmdb_id) {
+        resolveBackdrop(showId).catch(() => {});
+    }
 
     // Poster URL from Jellyfin if available
     const posterUrl = show.jellyfin_id
