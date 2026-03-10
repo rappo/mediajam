@@ -881,6 +881,16 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash)');
     }
 }
 
+// -- One-time: strip /preview from Fanart.tv backdrop URLs (causes 404) --
+{
+    const fixPreview = db.prepare(
+        "UPDATE media_parents SET backdrop_url = REPLACE(backdrop_url, '/preview', '') WHERE backdrop_url LIKE '%/preview'"
+    ).run();
+    if (fixPreview.changes > 0) {
+        console.log(`[db] Fixed ${fixPreview.changes} Fanart.tv backdrop URLs (removed /preview suffix)`);
+    }
+}
+
 // Initialize logger from DB settings
 import { initLogging } from './logger.js';
 initLogging(db);

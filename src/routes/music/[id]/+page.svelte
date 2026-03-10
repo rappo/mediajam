@@ -9,7 +9,7 @@
     let albumTracks = $state({});
     let loadingTracks = $state(null);
     /** @type {'list' | 'grid'} */
-    let viewMode = $state("list");
+    let viewMode = $state("grid");
 
     async function toggleAlbum(album) {
         if (expandedAlbum === album.id) {

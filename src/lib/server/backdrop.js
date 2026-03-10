@@ -75,7 +75,7 @@ export async function fetchFanartBackdrop(musicbrainzId) {
 
         // Pick highest-liked background, append /preview for compressed version
         const best = backgrounds.sort((/** @type {any} */ a, /** @type {any} */ b) => (parseInt(b.likes) || 0) - (parseInt(a.likes) || 0))[0];
-        return best?.url ? `${best.url}/preview` : null;
+        return best?.url || null;
     } catch {
         return null;
     }
