@@ -658,6 +658,9 @@ export async function runFullReconciliation(userId, options = {}) {
             // Cache artist matches to avoid re-querying (artist name → match result)
             /** @type {Map<string, Awaited<ReturnType<typeof matchArtist>>>} */
             const artistCache = new Map();
+            // Cache child matches to avoid re-querying (parentId::album → media_child id)
+            /** @type {Map<string, number | null>} */
+            const childCache = new Map();
 
             for (let i = 0; i < scrobbles.length; i++) {
                 const s = scrobbles[i];
@@ -671,8 +674,14 @@ export async function runFullReconciliation(userId, options = {}) {
 
                 let mediaId = null;
                 if (artistMatch) {
-                    // Found the artist — now find the specific album/child
-                    mediaId = matchChild(artistMatch.matchedId, s.album_name, s.track_name, s.album_mbid || undefined);
+                    // Check child cache first
+                    const childKey = `${artistMatch.matchedId}::${s.album_name || ''}::${s.track_name || ''}::${s.album_mbid || ''}`;
+                    if (childCache.has(childKey)) {
+                        mediaId = childCache.get(childKey) ?? null;
+                    } else {
+                        mediaId = matchChild(artistMatch.matchedId, s.album_name, s.track_name, s.album_mbid || undefined);
+                        childCache.set(childKey, mediaId);
+                    }
                     if (mediaId) {
                         stats.lastfm[`tier${artistMatch.tier}`]++;
                         stats.lastfm.matched++;
@@ -717,8 +726,8 @@ export async function runFullReconciliation(userId, options = {}) {
                     trackSessionTracker.set(`${s.artist_name}::${s.track_name || ''}`, timestampMs);
                 }
 
-                // Progress updates every 1000
-                if ((i + 1) % 1000 === 0 || i === scrobbles.length - 1) {
+                // Progress updates every 2500
+                if ((i + 1) % 2500 === 0 || i === scrobbles.length - 1) {
                     broadcast({
                         type: 'reconcile_progress', phase: 'matching_lastfm',
                         done: i + 1, total: scrobbles.length,
@@ -728,8 +737,8 @@ export async function runFullReconciliation(userId, options = {}) {
                     updateRun(runId, 'running', 'matching_lastfm', stats, JSON.stringify({ lastProcessedIndex: i }));
                 }
 
-                // Yield event loop every 100 iterations so SSE events can flush
-                if ((i + 1) % 100 === 0) {
+                // Yield event loop every 500 iterations so SSE events can flush
+                if ((i + 1) % 500 === 0) {
                     await new Promise(r => setTimeout(r, 0));
                     // Check for stop request
                     if (!reconcileState.running) {

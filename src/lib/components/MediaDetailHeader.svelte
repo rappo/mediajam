@@ -286,22 +286,23 @@
     /* ══════════════ AMBIENT GLOW ══════════════ */
     .ambient-glow-wrap {
         position: relative;
+        isolation: isolate;
     }
     .ambient-glow {
         position: absolute;
-        inset: -20px;
+        inset: -30px;
         z-index: -1;
         overflow: hidden;
-        border-radius: 2rem;
+        border-radius: 2.5rem;
         pointer-events: none;
     }
     .ambient-glow-img {
         width: 100%;
         height: 100%;
         object-fit: cover;
-        filter: blur(60px) saturate(1.8);
-        opacity: 0.35;
-        transform: scale(1.15);
+        filter: blur(80px) saturate(2.2) brightness(1.1);
+        opacity: 0.5;
+        transform: scale(1.2);
     }
 
     /* ══════════════ HEADER ══════════════ */
