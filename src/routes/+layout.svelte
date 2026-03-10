@@ -411,7 +411,7 @@
 								<a
 									href="/api/auth/logout"
 									role="button"
-									class="text-error/70 hover:text-error"
+									class="text-error/70 hover:text-error whitespace-nowrap"
 									onclick={(e) => { e.preventDefault(); e.currentTarget.closest('form').requestSubmit(); }}
 								>
 									<svg
