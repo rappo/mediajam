@@ -4359,30 +4359,32 @@
 
         <!-- Newly Created Key Display -->
         {#if newlyCreatedKey}
-            <div class="alert alert-warning shadow-lg">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-                <div class="flex-1">
-                    <h4 class="font-bold text-sm">Copy your API key now — it won't be shown again!</h4>
-                    <div class="flex items-center gap-2 mt-2">
-                        <code class="bg-base-300 px-3 py-1.5 rounded text-xs font-mono select-all break-all">{newlyCreatedKey}</code>
+            <div class="card bg-base-200 border border-warning/30 shadow-lg shadow-warning/5">
+                <div class="card-body py-4 px-5 gap-3">
+                    <div class="flex items-start justify-between">
+                        <div class="flex items-center gap-2">
+                            <span class="text-warning text-lg">⚠️</span>
+                            <h4 class="font-bold text-sm text-base-content">Copy your API key now — it won't be shown again!</h4>
+                        </div>
+                        <button class="btn btn-ghost btn-xs btn-circle text-base-content/40 hover:text-base-content" onclick={() => newlyCreatedKey = null}>✕</button>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <code class="flex-1 bg-base-300 border border-base-content/10 px-3 py-2 rounded-lg text-xs font-mono select-all break-all text-base-content/90">{newlyCreatedKey}</code>
                         <button
-                            class="btn btn-sm btn-ghost"
+                            class="btn btn-sm {keyCopied ? 'btn-success' : 'btn-primary'} gap-1 shrink-0"
                             onclick={() => copyToClipboard(newlyCreatedKey)}
                         >
                             {#if keyCopied}
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-success" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12" /></svg>
-                                Copied!
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12" /></svg>
+                                Copied
                             {:else}
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
                                 Copy
                             {/if}
                         </button>
                     </div>
-                    <p class="text-xs mt-2 opacity-70">Usage: <code class="bg-base-300 px-1 rounded">curl -H "Authorization: Bearer {newlyCreatedKey.substring(0, 16)}..." http://your-server/api/...</code></p>
+                    <p class="text-xs text-base-content/40">Usage: <code class="text-base-content/60 bg-base-300/50 px-1.5 py-0.5 rounded text-[11px]">curl -H "Authorization: Bearer {newlyCreatedKey.substring(0, 16)}..." http://your-server/api/...</code></p>
                 </div>
-                <button class="btn btn-sm btn-ghost" onclick={() => newlyCreatedKey = null}>Dismiss</button>
             </div>
         {/if}
 
