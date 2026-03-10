@@ -2347,6 +2347,7 @@
                 <!-- Discogs -->
                 <div class="bg-base-300/30 rounded-lg p-4 border border-base-300/50">
                     <div class="flex items-center gap-2 mb-2">
+                        <ServiceIcon service="discogs" size="w-4 h-4" />
                         <span class="font-bold text-sm">Discogs</span>
                         <span class="text-xs text-base-content/40">Album community ratings</span>
                     </div>
@@ -2365,6 +2366,7 @@
                 <!-- Fanart.tv -->
                 <div class="bg-base-300/30 rounded-lg p-4 border border-base-300/50">
                     <div class="flex items-center gap-2 mb-2">
+                        <ServiceIcon service="fanart" size="w-4 h-4" />
                         <span class="font-bold text-sm">Fanart.tv</span>
                         <span class="text-xs text-base-content/40">Artist backdrops & logos</span>
                     </div>
@@ -4017,6 +4019,17 @@
                             <span class="font-medium text-sm">Enrich Backdrops</span>
                             <span class="text-xs text-base-content/40 block">TMDB textless backdrops (movies/TV) &middot; Fanart.tv artist backgrounds (music)</span>
                         </div>
+                        {#if backdropStatus === "syncing"}
+                            <span
+                                class="loading loading-spinner loading-xs text-secondary"
+                            ></span>
+                            <span class="badge badge-secondary badge-sm gap-1"
+                                >syncing</span
+                            >
+                        {/if}
+                        {#if data.syncPending?.backdrops > 0}
+                            <span class="badge badge-warning badge-xs">{data.syncPending.backdrops} pending</span>
+                        {/if}
                         <svg
                             xmlns="http://www.w3.org/2000/svg"
                             class="h-4 w-4 text-base-content/30 transition-transform"
@@ -4029,28 +4042,67 @@
                         >
                     </button>
 
-                    {#if expandedSync === "backdrops"}
+                    {#if expandedSync === "backdrops" || (backdropStatus !== "idle" && backdropStatus !== "complete" && backdropStatus !== "error")}
                         <p class="text-xs text-base-content/50 px-4 pt-2 pb-1">Fetches high-quality, textless backdrop images from <strong>TMDB</strong> (movies & TV) and <strong>Fanart.tv</strong> (music artists). Cached locally after first fetch.</p>
                         <div
                             class="px-4 pb-4 space-y-3 border-t border-base-content/5 pt-3"
+                            class:hidden={expandedSync !== "backdrops" &&
+                                backdropStatus === "idle"}
                         >
                             {#if backdropStatus === "idle" || backdropStatus === "complete" || backdropStatus === "error"}
                                 <div class="flex flex-wrap gap-2">
-                                    <button class="btn btn-secondary btn-sm" onclick={triggerBackdropEnrich} disabled={backdropStatus === 'syncing'}>Start Enrichment</button>
-                                </div>
-                            {:else}
-                                <div class="flex items-center gap-3">
-                                    <progress class="progress progress-secondary w-full" value={backdropDone} max={backdropTotal || 1}></progress>
-                                    <span class="text-xs text-base-content/60 whitespace-nowrap">{backdropDone}/{backdropTotal} ({backdropEnriched} found)</span>
+                                    <button
+                                        class="btn btn-secondary btn-sm"
+                                        onclick={triggerBackdropEnrich}
+                                        disabled={backdropStatus === "syncing"}
+                                        >Start Enrichment</button
+                                    >
                                 </div>
                             {/if}
-                            {#if backdropLogs.length > 0}
-                                <div class="bg-base-300/50 rounded-lg p-3 max-h-48 overflow-y-auto text-xs font-mono space-y-0.5">
-                                    {#each backdropLogs as log}
-                                        <div class="{log.type === 'success' ? 'text-success' : log.type === 'error' ? 'text-error' : log.type === 'warning' ? 'text-warning' : 'text-base-content/70'}">
-                                            <span class="text-base-content/30">[{log.time}]</span> {log.message}
-                                        </div>
-                                    {/each}
+                            {#if backdropStatus !== "idle"}
+                                <div
+                                    class="flex justify-between items-center text-sm"
+                                >
+                                    <span class="font-medium">
+                                        {#if backdropStatus === "complete"}✅
+                                            Backdrop enrichment complete!{:else if backdropStatus === "error"}❌
+                                            Enrichment error{:else}🖼️ Enriching backdrops...{/if}
+                                    </span>
+                                    <span class="text-xs text-base-content/50"
+                                        >{backdropEnriched} found • {backdropDone}/{backdropTotal}</span
+                                    >
+                                </div>
+                                {#if backdropTotal > 0}
+                                    <progress
+                                        class="progress progress-secondary w-full"
+                                        value={backdropDone}
+                                        max={backdropTotal}
+                                    ></progress>
+                                {:else}
+                                    <progress
+                                        class="progress progress-secondary w-full"
+                                    ></progress>
+                                {/if}
+                                <LogConsole
+                                    logs={backdropLogs}
+                                    running={backdropStatus === "syncing"}
+                                    title="Backdrop Enrichment Log"
+                                    height="h-36"
+                                />
+                                <div class="flex gap-2">
+                                    {#if backdropStatus === "complete" || backdropStatus === "error"}
+                                        <button
+                                            class="btn btn-sm btn-info"
+                                            onclick={() => {
+                                                backdropStatus = "idle";
+                                            }}>Done</button
+                                        >
+                                        <button
+                                            class="btn btn-sm btn-ghost"
+                                            onclick={triggerBackdropEnrich}
+                                            >Enrich Again</button
+                                        >
+                                    {/if}
                                 </div>
                             {/if}
                         </div>

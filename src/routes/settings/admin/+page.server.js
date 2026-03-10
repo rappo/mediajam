@@ -34,7 +34,7 @@ export function load() {
     const peoplePending = /** @type {any} */ (db.prepare(`
         SELECT COUNT(*) as cnt FROM persons
         WHERE tmdb_person_id IS NOT NULL AND tmdb_person_id != ''
-        AND (bio_tmdb IS NULL OR birth_date IS NULL OR photo_url IS NULL)
+        AND bio_tmdb IS NULL AND photo_url IS NULL
     `).get())?.cnt || 0;
 
     const mbTotal = /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM media_parents WHERE media_type = 'artist'`).get())?.cnt || 0;
@@ -59,12 +59,22 @@ export function load() {
         permissions: JSON.parse(k.permissions || '[]')
     }));
 
+    const backdropsPending = /** @type {any} */ (db.prepare(`
+        SELECT COUNT(*) as cnt FROM media_parents
+        WHERE backdrop_url IS NULL
+        AND (
+            (media_type IN ('movie', 'show') AND tmdb_id IS NOT NULL)
+            OR (media_type = 'artist' AND musicbrainz_id IS NOT NULL)
+        )
+    `).get())?.cnt || 0;
+
     return {
         syncPending: {
             jellyfin: jellyfinPending,
             people: peoplePending,
             musicbrainz: mbPending,
-            wikipedia: wikiPending
+            wikipedia: wikiPending,
+            backdrops: backdropsPending
         },
         settings: {
             jellyfinUrl: settings?.jellyfin_url || '',
