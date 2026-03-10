@@ -1208,7 +1208,7 @@
 
     <!-- Import Progress Panel -->
     {#if importState.active}
-        <div class="card bg-base-200/50 border border-base-300">
+        <div id="sync-backfill" class="card bg-base-200/50 border border-base-300">
             <div class="card-body">
                 <div class="flex items-center justify-between">
                     <h2 class="card-title text-lg">

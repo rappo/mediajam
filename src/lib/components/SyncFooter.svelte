@@ -57,13 +57,13 @@
                 syncType = data.jellyfin.libraryName || "Jellyfin Sync";
                 progress = data.jellyfin.progress || 0;
                 if (data.jellyfin.lastLog) lastLog = data.jellyfin.lastLog;
-                syncViewUrl = "/settings/admin?tab=sync";
+                syncViewUrl = "/settings/admin?tab=sync#sync-jellyfin";
                 visible = !isOnSyncPage();
             } else if (data.people?.running) {
                 syncType = "People Sync";
                 progress = data.people.progress || 0;
                 if (data.people.lastLog) lastLog = data.people.lastLog;
-                syncViewUrl = "/settings/admin?tab=sync";
+                syncViewUrl = "/settings/admin?tab=sync#sync-people";
                 visible = !isOnSyncPage();
             } else if (data.backfill?.running) {
                 syncType = data.backfill.tier
@@ -71,14 +71,14 @@
                     : "Import";
                 progress = data.backfill.progress || 0;
                 if (data.backfill.lastLog) lastLog = data.backfill.lastLog;
-                syncViewUrl = "/settings/account";
+                syncViewUrl = "/settings/account#sync-backfill";
                 visible = !isOnSyncPage();
             } else if (data.musicbrainz?.running) {
                 syncType = "MusicBrainz Enrich";
                 progress = data.musicbrainz.progress || 0;
                 if (data.musicbrainz.lastLog)
                     lastLog = data.musicbrainz.lastLog;
-                syncViewUrl = "/settings/admin?tab=sync";
+                syncViewUrl = "/settings/admin?tab=sync#sync-musicbrainz";
                 visible = !isOnSyncPage();
             } else {
                 // Nothing running — hide

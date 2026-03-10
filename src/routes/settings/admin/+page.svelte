@@ -3161,6 +3161,7 @@
             <div class="space-y-1 mt-2">
                 <!-- Jellyfin Sync Row -->
                 <div
+                    id="sync-jellyfin"
                     class="rounded-lg border border-base-content/10 overflow-hidden"
                 >
                     <button
@@ -3375,6 +3376,7 @@
 
                 <!-- People Sync Row -->
                 <div
+                    id="sync-people"
                     class="rounded-lg border border-base-content/10 overflow-hidden"
                 >
                     <button
@@ -3556,6 +3558,7 @@
 
                 <!-- MusicBrainz Enrich Row -->
                 <div
+                    id="sync-musicbrainz"
                     class="rounded-lg border border-base-content/10 overflow-hidden"
                 >
                     <button
