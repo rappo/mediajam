@@ -119,6 +119,21 @@ export async function load({ params, locals }) {
     // If we have a TMDB ID but no bio from any source, UI should lazy-fetch
     const needsBioFetch = !displayBio && !!person.tmdb_person_id;
 
+    // Backdrop: pick the best credit with a jellyfin_id (prefer watched, then newest)
+    const backdropCredit = [...movies, ...shows]
+        .filter(c => c.jellyfin_id)
+        .sort((a, b) => {
+            // Prefer watched items
+            const aWatched = (a.watch_status === 'watched' || a.play_count > 0) ? 1 : 0;
+            const bWatched = (b.watch_status === 'watched' || b.play_count > 0) ? 1 : 0;
+            if (bWatched !== aWatched) return bWatched - aWatched;
+            // Then by release year (newest first)
+            return (b.release_year || 0) - (a.release_year || 0);
+        })[0];
+    const backdropUrl = backdropCredit
+        ? `${jellyfinUrl}/Items/${backdropCredit.jellyfin_id}/Images/Backdrop?maxWidth=1200`
+        : null;
+
     return {
         person: { ...person, photoUrl, is_favorite: liveFavorite ?? person.is_favorite, displayBio, bioSource, needsBioFetch },
         movies,
@@ -133,6 +148,7 @@ export async function load({ params, locals }) {
             watchedMovies,
             watchedShows
         },
-        jellyfinUrl
+        jellyfinUrl,
+        backdropUrl
     };
 }

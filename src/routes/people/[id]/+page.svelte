@@ -480,6 +480,7 @@
             mediaType="person"
             title={data.person.name}
             posterUrl={data.person.photoUrl}
+            backdropUrl={data.backdropUrl}
             subtitle={yearStr}
             overview={data.person.displayBio || lazyBio}
             overviewSource={data.person.bioSource || lazyBioSource}
@@ -502,7 +503,25 @@
                 wikipedia_url: data.person.wikipedia_url,
                 mediaType: 'person'
             }}
-        />
+        >
+            {#snippet actions()}
+                <button
+                    class="btn btn-xs btn-ghost gap-1"
+                    disabled={personSyncing}
+                    onclick={syncPerson}
+                >
+                    {#if personSyncing}
+                        <span class="loading loading-spinner loading-xs"></span> Syncing…
+                    {:else if personSyncResult?.success}
+                        ✅ Synced
+                    {:else if personSyncResult && !personSyncResult.success}
+                        ❌ Failed
+                    {:else}
+                        🔄 Sync Person
+                    {/if}
+                </button>
+            {/snippet}
+        </MediaDetailHeader>
     {:else}
 
     <!-- OLD: Back -->

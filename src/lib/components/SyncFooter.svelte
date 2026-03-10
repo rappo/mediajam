@@ -1,5 +1,6 @@
 <script>
     import { page } from "$app/stores";
+    import { addToast } from "$lib/stores/toast.js";
 
     /*
      * CONVENTION (10+ SECOND RULE):
@@ -22,6 +23,10 @@
     let expanded = $state(false);
     let syncViewUrl = $state("/settings/admin?tab=sync");
 
+    // Track previous running state for completion toast
+    let wasRunning = $state(false);
+    let lastSyncType = $state("");
+
     function isOnSyncPage() {
         const path =
             typeof window !== "undefined" ? window.location.pathname : "";
@@ -33,6 +38,19 @@
             const res = await fetch("/api/sync/status");
             if (!res.ok) return;
             const data = await res.json();
+
+            // Check if ANY sync is currently running
+            const anyRunning = !!(data.jellyfin?.running || data.people?.running || data.backfill?.running || data.musicbrainz?.running);
+
+            // Fire a toast when sync transitions from running → done
+            if (wasRunning && !anyRunning) {
+                addToast({
+                    type: 'success',
+                    message: `${lastSyncType} complete`,
+                    detail: lastLog || undefined,
+                    duration: 10000
+                });
+            }
 
             // Find the first running sync to display
             if (data.jellyfin?.running) {
@@ -66,6 +84,10 @@
                 // Nothing running — hide
                 visible = false;
             }
+
+            // Update tracking for next poll
+            if (anyRunning) lastSyncType = syncType;
+            wasRunning = anyRunning;
         } catch {
             /* ignore fetch errors */
         }

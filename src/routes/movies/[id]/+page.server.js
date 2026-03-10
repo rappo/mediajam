@@ -47,7 +47,7 @@ export async function load({ params, locals }) {
 
     // Playback history for this movie
     const history = /** @type {any[]} */ (db.prepare(`
-        SELECT ph.timestamp, ph.source, ph.duration_consumed_seconds, ph.completion_pct
+        SELECT ph.id, ph.timestamp, ph.source, ph.duration_consumed_seconds, ph.completion_pct
         FROM playback_history ph
         WHERE ph.media_id = ? AND ph.user_id = ?
         ORDER BY ph.timestamp DESC

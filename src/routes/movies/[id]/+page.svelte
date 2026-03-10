@@ -1048,6 +1048,7 @@
                                 <th>Date</th>
                                 <th>Source</th>
                                 <th>Completion</th>
+                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1102,6 +1103,21 @@
                                                 >—</span
                                             >
                                         {/if}
+                                    </td>
+                                    <td>
+                                        <button
+                                            class="btn btn-ghost btn-xs btn-circle text-base-content/30 hover:text-error"
+                                            title="Delete this play entry"
+                                            onclick={async () => {
+                                                if (!confirm(`Delete this ${play.source} play from ${formatDate(play.timestamp)}?`)) return;
+                                                try {
+                                                    const res = await fetch(`/api/playback-history/${play.id}`, { method: 'DELETE' });
+                                                    if (res.ok) await invalidateAll();
+                                                } catch { /* ignore */ }
+                                            }}
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                        </button>
                                     </td>
                                 </tr>
                             {/each}

@@ -139,7 +139,7 @@ async function runPeopleSync(jellyfinUrl, accessToken, userId) {
     const findPersonByJellyfin = db.prepare('SELECT id FROM persons WHERE jellyfin_id = ?');
     const findPersonByName = db.prepare('SELECT id FROM persons WHERE name = ? LIMIT 1');
     const insertPerson = db.prepare(`
-        INSERT INTO persons (name, tmdb_person_id, imdb_person_id, jellyfin_id, photo_url)
+        INSERT OR IGNORE INTO persons (name, tmdb_person_id, imdb_person_id, jellyfin_id, photo_url)
         VALUES (@name, @tmdbPersonId, @imdbPersonId, @jellyfinId, @photoUrl)
     `);
     const updatePersonByTmdb = db.prepare(`

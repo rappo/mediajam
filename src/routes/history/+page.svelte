@@ -15,6 +15,7 @@
     let fromDate = $state(data.filters?.from || "");
     let toDate = $state(data.filters?.to || "");
     let searchTimer = $state(/** @type {ReturnType<typeof setTimeout>|null} */ (null));
+    let showDateRange = $state(!!(data.filters?.from || data.filters?.to));
 
     /**
      * Push filter params to the URL (triggers server reload)
@@ -155,7 +156,7 @@
     <!-- Filter Bar -->
     <div class="card bg-base-200/30 border border-base-300/30 mb-6">
         <div class="card-body p-3 gap-3">
-            <!-- Row 1: Search + Type tabs -->
+            <!-- Row 1: Search + Date toggle + Type tabs -->
             <div class="flex flex-wrap items-center gap-3">
                 <!-- Search -->
                 <div class="relative flex-1 min-w-48">
@@ -181,6 +182,20 @@
                         oninput={(e) => onSearchInput(e.currentTarget.value)}
                     />
                 </div>
+
+                <!-- Date picker toggle button -->
+                <button
+                    class="btn btn-sm btn-square {showDateRange || fromDate || toDate ? 'btn-primary' : 'btn-ghost'}"
+                    onclick={() => showDateRange = !showDateRange}
+                    title="Filter by date range"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                        <line x1="16" y1="2" x2="16" y2="6" />
+                        <line x1="8" y1="2" x2="8" y2="6" />
+                        <line x1="3" y1="10" x2="21" y2="10" />
+                    </svg>
+                </button>
 
                 <!-- Type tabs -->
                 <div
@@ -226,41 +241,54 @@
                 </div>
             </div>
 
-            <!-- Row 2: Date range -->
-            <div class="flex flex-wrap items-center gap-2">
-                <span class="text-xs text-base-content/50 font-medium"
-                    >Date range:</span
-                >
-                <input
-                    id="history-date-from"
-                    type="date"
-                    class="input input-xs input-bordered bg-base-100/50 w-36"
-                    value={fromDate}
-                    onchange={(e) => {
-                        fromDate = e.currentTarget.value;
-                        applyFilters();
-                    }}
-                />
-                <span class="text-xs text-base-content/40">→</span>
-                <input
-                    id="history-date-to"
-                    type="date"
-                    class="input input-xs input-bordered bg-base-100/50 w-36"
-                    value={toDate}
-                    onchange={(e) => {
-                        toDate = e.currentTarget.value;
-                        applyFilters();
-                    }}
-                />
-                {#if hasActiveFilters}
+            <!-- Row 2: Date range (collapsible) -->
+            {#if showDateRange}
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="text-xs text-base-content/50 font-medium"
+                        >Date range:</span
+                    >
+                    <input
+                        id="history-date-from"
+                        type="date"
+                        class="input input-xs input-bordered bg-base-100/50 w-36"
+                        value={fromDate}
+                        onchange={(e) => {
+                            fromDate = e.currentTarget.value;
+                            applyFilters();
+                        }}
+                    />
+                    <span class="text-xs text-base-content/40">→</span>
+                    <input
+                        id="history-date-to"
+                        type="date"
+                        class="input input-xs input-bordered bg-base-100/50 w-36"
+                        value={toDate}
+                        onchange={(e) => {
+                            toDate = e.currentTarget.value;
+                            applyFilters();
+                        }}
+                    />
+                    {#if fromDate || toDate}
+                        <button
+                            class="btn btn-xs btn-ghost text-error"
+                            onclick={() => { fromDate = ''; toDate = ''; applyFilters(); }}
+                        >
+                            ✕ Clear dates
+                        </button>
+                    {/if}
+                </div>
+            {/if}
+
+            {#if hasActiveFilters}
+                <div class="flex justify-end">
                     <button
                         class="btn btn-xs btn-ghost text-error"
                         onclick={clearFilters}
                     >
-                        ✕ Clear
+                        ✕ Clear all filters
                     </button>
-                {/if}
-            </div>
+                </div>
+            {/if}
         </div>
     </div>
 
