@@ -31,3 +31,4 @@ logs/
 cache/
 *.log
 tmp-backup/
+*.sqlite.bak.*
