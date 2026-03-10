@@ -118,6 +118,8 @@ export async function load({ params, locals }) {
         : null;
     // If we have a TMDB ID but no bio from any source, UI should lazy-fetch
     const needsBioFetch = !displayBio && !!person.tmdb_person_id;
+    // Broader: auto-enrich if any key data is missing
+    const needsEnrichment = !displayBio || !person.birth_date || !person.tmdb_person_id;
 
     // Backdrop: pick the best credit with a jellyfin_id (prefer watched, then newest)
     const backdropCredit = [...movies, ...shows]
@@ -135,7 +137,7 @@ export async function load({ params, locals }) {
         : null;
 
     return {
-        person: { ...person, photoUrl, is_favorite: liveFavorite ?? person.is_favorite, displayBio, bioSource, needsBioFetch },
+        person: { ...person, photoUrl, is_favorite: liveFavorite ?? person.is_favorite, displayBio, bioSource, needsBioFetch, needsEnrichment },
         movies,
         shows,
         artists,

@@ -116,7 +116,9 @@ export async function load({ params, locals }) {
             watch_status: totalPlays > 0 ? 'watched' : movie.watch_status,
             play_count: Math.max(movie.play_count || 0, totalPlays),
             posterUrl,
-            backdropUrl
+            backdropUrl,
+            // Auto-enrich when key data is missing
+            needsEnrichment: !movie.overview && (!!movie.jellyfin_id || !!movie.tmdb_id),
         },
         history,
         stats: {

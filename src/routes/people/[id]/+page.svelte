@@ -418,6 +418,21 @@
         }
     });
 
+    // Auto-enrich: silently fetch missing data (bio, dates, IDs) on page load
+    let enriching = $state(false);
+    $effect(() => {
+        if (data.person.needsEnrichment && !enriching) {
+            enriching = true;
+            fetch(`/api/people/${data.person.id}/sync`, { method: 'POST' })
+                .then(r => r.json())
+                .then(d => {
+                    if (d.success) invalidateAll();
+                })
+                .catch(() => {})
+                .finally(() => { enriching = false; });
+        }
+    });
+
     async function syncPerson() {
         if (personSyncing) return;
         personSyncing = true;

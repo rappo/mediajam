@@ -275,6 +275,26 @@
         }
         syncing = false;
     }
+
+    // Auto-enrich: silently sync when key data is missing
+    let enriching = $state(false);
+    $effect(() => {
+        if (data.movie.needsEnrichment && !enriching) {
+            enriching = true;
+            const body = data.movie.jellyfin_id
+                ? { jellyfinId: data.movie.jellyfin_id }
+                : { mediaParentId: data.movie.id, tmdbId: data.movie.tmdb_id };
+            fetch('/api/sync/item', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            })
+                .then(r => r.json())
+                .then(d => { if (d.success) invalidateAll(); })
+                .catch(() => {})
+                .finally(() => { enriching = false; });
+        }
+    });
 </script>
 
 <svelte:head>

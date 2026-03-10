@@ -163,6 +163,23 @@
         syncing = false;
     }
 
+    // Auto-enrich: silently sync when key data is missing
+    let enriching = $state(false);
+    $effect(() => {
+        if (data.show.needsEnrichment && !enriching && data.show.jellyfin_id) {
+            enriching = true;
+            fetch('/api/sync/item', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jellyfinId: data.show.jellyfin_id }),
+            })
+                .then(r => r.json())
+                .then(d => { if (d.success) invalidateAll(); })
+                .catch(() => {})
+                .finally(() => { enriching = false; });
+        }
+    });
+
     let showDeleteConfirm = $state(false);
     let showAllCast = $state(false);
     let showAllCrew = $state(false);

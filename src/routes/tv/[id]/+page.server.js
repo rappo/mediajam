@@ -179,7 +179,14 @@ export async function load({ params }) {
         : show.poster_url;
 
     return {
-        show: { ...show, is_favorite: liveFavorite ?? show.is_favorite, posterUrl, backdropUrl, wikipedia_url: show.wikipedia_url || null },
+        show: {
+            ...show,
+            is_favorite: liveFavorite ?? show.is_favorite,
+            posterUrl,
+            backdropUrl,
+            wikipedia_url: show.wikipedia_url || null,
+            needsEnrichment: !show.overview && (!!show.jellyfin_id || !!show.tmdb_id),
+        },
         seasons: sortedSeasons,
         maxEpisodes,
         includeSpecials,
