@@ -321,7 +321,7 @@
     }
 
     /* ══════════════ HEADER ══════════════ */
-    .detail-header { position: relative; border-radius: 1rem; overflow: hidden; }
+    .detail-header { position: relative; border-radius: 1rem; overflow: hidden; margin-top: 1rem; }
     .detail-header.has-backdrop { border: 1px solid oklch(var(--bc) / 0.1); }
     .detail-header.no-backdrop {
         padding: 1.5rem 2rem;

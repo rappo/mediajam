@@ -202,6 +202,121 @@
         deleting = false;
         showDeleteConfirm = false;
     }
+
+    // ── Discovery state ──
+    let discoveryLoading = $state(false);
+    let discoveryLoaded = $state(false);
+    let discoveryError = $state("");
+    /** @type {any[]} */
+    let discoveryItems = $state([]);
+    /** @type {any[]} */
+    let discoveryInLibrary = $state([]);
+    let discoveryLimit = $state(12);
+    let showDiscoverInLib = $state(false);
+    let discAddingToArr = $state(/** @type {string|null} */ (null));
+    let discAddedToArr = $state(/** @type {Set<string>} */ (new Set()));
+    let discAddError = $state("");
+
+    // Quality profile dialog state for discovery
+    let discShowProfileDialog = $state(false);
+    /** @type {any} */
+    let discPendingItem = $state(null);
+    /** @type {any[]} */
+    let discAvailableProfiles = $state([]);
+    /** @type {any[]} */
+    let discAvailableRootFolders = $state([]);
+    let discSelectedProfileId = $state(/** @type {number|null} */ (null));
+    let discSelectedRootFolder = $state(/** @type {string|null} */ (null));
+
+    async function loadDiscovery() {
+        discoveryLoading = true;
+        discoveryError = "";
+        try {
+            const res = await fetch(`/api/discover/show/${data.show.id}`);
+            if (!res.ok) {
+                const r = await res.json();
+                throw new Error(r.error || "Failed");
+            }
+            const result = await res.json();
+            discoveryItems = result.items || [];
+            discoveryInLibrary = result.inLibrary || [];
+            discoveryLoaded = true;
+        } catch (e) {
+            discoveryError = e instanceof Error ? e.message : "Discovery failed";
+        }
+        discoveryLoading = false;
+    }
+
+    /** @param {any} item */
+    async function addDiscoveryToArr(item) {
+        try {
+            const res = await fetch("/api/arr/profiles");
+            if (!res.ok) throw new Error("Failed to fetch profiles");
+            const options = await res.json();
+            const serviceOptions = options.sonarr;
+            if (!serviceOptions) throw new Error("Sonarr not configured");
+            discAvailableProfiles = serviceOptions.profiles || [];
+            discAvailableRootFolders = serviceOptions.rootFolders || [];
+            discSelectedProfileId = discAvailableProfiles[0]?.id || null;
+            discSelectedRootFolder = discAvailableRootFolders[0]?.path || null;
+            discPendingItem = item;
+            discShowProfileDialog = true;
+        } catch (e) {
+            discAddError = e instanceof Error ? e.message : "Failed";
+            setTimeout(() => (discAddError = ""), 5000);
+        }
+    }
+
+    async function confirmDiscoveryAdd() {
+        if (!discPendingItem || !discSelectedProfileId) return;
+        const item = discPendingItem;
+        discShowProfileDialog = false;
+        discAddingToArr = item.tmdb_id;
+        discAddError = "";
+        try {
+            // Step 1: Create a media_parents stub
+            const createRes = await fetch("/api/discover/add", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    tmdb_id: item.tmdb_id,
+                    media_type: 'show',
+                    title: item.title,
+                    release_year: item.release_year ? parseInt(item.release_year) : null,
+                    poster_url: item.poster_url,
+                    overview: item.overview,
+                }),
+            });
+            if (!createRes.ok) {
+                const r = await createRes.json();
+                throw new Error(r.error || "Failed to create media entry");
+            }
+            const { mediaParentId } = await createRes.json();
+
+            // Step 2: Add to Sonarr
+            const arrRes = await fetch(`/api/arr/sonarr/add`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    mediaParentId,
+                    qualityProfileId: discSelectedProfileId,
+                    rootFolderPath: discSelectedRootFolder,
+                }),
+            });
+            if (!arrRes.ok) {
+                const r = await arrRes.json();
+                throw new Error(r.error || "Failed to add to Sonarr");
+            }
+            const next = new Set(discAddedToArr);
+            next.add(item.tmdb_id);
+            discAddedToArr = next;
+        } catch (e) {
+            discAddError = e instanceof Error ? e.message : "Failed";
+            setTimeout(() => (discAddError = ""), 5000);
+        }
+        discAddingToArr = null;
+        discPendingItem = null;
+    }
 </script>
 
 <svelte:head>
@@ -637,19 +752,152 @@
     {/if}
 </div>
 
-<!-- TODO: Discovery — show related shows from TMDb/TVDb not in your library -->
-<div class="container mx-auto px-6 py-8 opacity-30">
-    <div class="card bg-base-200/30 border border-dashed border-base-300/50">
-        <div class="card-body items-center text-center py-6">
-            <div class="text-3xl mb-2">🔍</div>
-            <h3 class="font-semibold text-base-content/50">Discover More</h3>
-            <p class="text-sm text-base-content/30 max-w-md">
-                Related shows discovery coming soon — browse similar series and
-                spin-offs from TMDb and add to Sonarr.
-            </p>
+<!-- Discovery: Related Shows from TMDb -->
+{#if data.show.tmdb_id}
+    <div class="card bg-base-200/50 border border-base-300 max-w-6xl mx-auto">
+        <div class="card-body">
+            {#if !discoveryLoaded && !discoveryLoading}
+                <button class="btn btn-ghost btn-sm gap-2 self-center" onclick={loadDiscovery}>
+                    🔍 Discover Related Shows
+                </button>
+            {:else if discoveryLoading}
+                <div class="flex justify-center py-6">
+                    <span class="loading loading-spinner loading-md"></span>
+                    <span class="ml-2 text-sm text-base-content/50">Finding related shows…</span>
+                </div>
+            {:else if discoveryError}
+                <div class="alert alert-error text-sm">{discoveryError}</div>
+            {:else}
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-lg font-bold flex items-center gap-2">
+                        🔍 Related Shows
+                        <span class="badge badge-sm badge-ghost">{discoveryItems.length} not in library</span>
+                    </h2>
+                    {#if discoveryInLibrary.length > 0}
+                        <button
+                            class="btn btn-ghost btn-xs"
+                            onclick={() => showDiscoverInLib = !showDiscoverInLib}
+                        >
+                            {showDiscoverInLib ? 'Hide' : 'Show'} {discoveryInLibrary.length} in library
+                        </button>
+                    {/if}
+                </div>
+
+                {#if discoveryItems.length === 0 && !showDiscoverInLib}
+                    <div class="text-center py-4 text-base-content/40">
+                        <p>🎉 You have all the related shows!</p>
+                    </div>
+                {:else}
+                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                        {#each discoveryItems.slice(0, discoveryLimit) as item}
+                            <div class="card bg-base-300/30 card-compact overflow-hidden group">
+                                {#if item.poster_url}
+                                    <figure class="aspect-[2/3] relative">
+                                        <img
+                                            src={imgUrl(item.poster_url)}
+                                            alt={item.title}
+                                            class="w-full h-full object-cover"
+                                        />
+                                        {#if item.vote_average > 0}
+                                            <div class="absolute top-1 right-1 badge badge-sm bg-black/60 border-0 text-warning">
+                                                ★ {item.vote_average.toFixed(1)}
+                                            </div>
+                                        {/if}
+                                    </figure>
+                                {:else}
+                                    <div class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl">📺</div>
+                                {/if}
+                                <div class="card-body !p-2 !gap-1">
+                                    <h3 class="font-medium text-xs leading-tight line-clamp-2" title={item.title}>{item.title}</h3>
+                                    {#if item.release_year}
+                                        <span class="text-[10px] text-base-content/40">{item.release_year}</span>
+                                    {/if}
+                                    <button
+                                        class="btn btn-xs btn-primary gap-1 mt-1 w-full"
+                                        disabled={discAddingToArr === item.tmdb_id || discAddedToArr.has(item.tmdb_id)}
+                                        onclick={() => addDiscoveryToArr(item)}
+                                    >
+                                        {#if discAddingToArr === item.tmdb_id}
+                                            <span class="loading loading-spinner loading-xs"></span>
+                                        {:else if discAddedToArr.has(item.tmdb_id)}
+                                            ✅ Added
+                                        {:else}
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                            Download
+                                        {/if}
+                                    </button>
+                                </div>
+                            </div>
+                        {/each}
+
+                        {#if showDiscoverInLib}
+                            {#each discoveryInLibrary as item}
+                                <a href="/tv/{item.library_id}" class="card bg-base-300/30 card-compact overflow-hidden group opacity-60 ring-2 ring-success/30">
+                                    {#if item.poster_url}
+                                        <figure class="aspect-[2/3]">
+                                            <img src={imgUrl(item.poster_url)} alt={item.title} class="w-full h-full object-cover" />
+                                        </figure>
+                                    {:else}
+                                        <div class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl">📺</div>
+                                    {/if}
+                                    <div class="card-body !p-2 !gap-1">
+                                        <span class="badge badge-xs badge-success">✓ In Library</span>
+                                        <h3 class="font-medium text-xs leading-tight line-clamp-2">{item.title}</h3>
+                                    </div>
+                                </a>
+                            {/each}
+                        {/if}
+                    </div>
+
+                    {#if discoveryItems.length > discoveryLimit}
+                        <button class="btn btn-ghost btn-sm w-full mt-2" onclick={() => discoveryLimit += 12}>
+                            Show more ({discoveryItems.length - discoveryLimit} remaining)
+                        </button>
+                    {/if}
+                {/if}
+
+                {#if discAddError}
+                    <div class="alert alert-error text-sm mt-2">{discAddError}</div>
+                {/if}
+            {/if}
         </div>
     </div>
-</div>
+{/if}
+
+<!-- Discovery Quality Profile Dialog -->
+{#if discShowProfileDialog && discPendingItem}
+    <div class="modal modal-open">
+        <div class="modal-box max-w-sm">
+            <h3 class="font-bold text-lg">Add to Sonarr</h3>
+            <p class="text-sm text-base-content/60 mt-1">{discPendingItem.title}</p>
+            <div class="space-y-3 mt-3">
+                <div class="form-control">
+                    <label class="label" for="disc-qp"><span class="label-text text-sm">Quality Profile</span></label>
+                    <select id="disc-qp" class="select select-bordered select-sm w-full" bind:value={discSelectedProfileId}>
+                        {#each discAvailableProfiles as p}
+                            <option value={p.id}>{p.name}</option>
+                        {/each}
+                    </select>
+                </div>
+                {#if discAvailableRootFolders.length > 1}
+                    <div class="form-control">
+                        <label class="label" for="disc-rf"><span class="label-text text-sm">Root Folder</span></label>
+                        <select id="disc-rf" class="select select-bordered select-sm w-full" bind:value={discSelectedRootFolder}>
+                            {#each discAvailableRootFolders as rf}
+                                <option value={rf.path}>{rf.path}</option>
+                            {/each}
+                        </select>
+                    </div>
+                {/if}
+            </div>
+            <div class="modal-action">
+                <button class="btn btn-sm btn-ghost" onclick={() => { discShowProfileDialog = false; discPendingItem = null; }}>Cancel</button>
+                <button class="btn btn-sm btn-primary" onclick={confirmDiscoveryAdd} disabled={!discSelectedProfileId}>Add</button>
+            </div>
+        </div>
+        <div class="modal-backdrop" onclick={() => { discShowProfileDialog = false; discPendingItem = null; }}></div>
+    </div>
+{/if}
 
 <!-- Delete Confirmation Modal -->
 {#if showDeleteConfirm}
