@@ -315,12 +315,9 @@ async function runEnrichment() {
     /** @type {Set<string>} */
     const processedMemberMbids = new Set();
 
-    // Check which artists already have MusicBrainz-sourced credits (for intelligent resume)
-    const hasCreditsForArtist = db.prepare(`
-        SELECT 1 FROM person_credits pc
-        JOIN persons p ON pc.person_id = p.id
-        WHERE pc.media_parent_id = ? AND p.musicbrainz_artist_id IS NOT NULL
-        LIMIT 1
+    // Check which artists already have been enriched (stamped mb_enriched_at)
+    const hasBeenEnriched = db.prepare(`
+        SELECT 1 FROM media_parents WHERE id = ? AND mb_enriched_at IS NOT NULL LIMIT 1
     `);
 
     // Phase 1: Extract members for each artist
@@ -331,8 +328,8 @@ async function runEnrichment() {
         const artist = artists[i];
         progress = Math.round(((i + 1) / artists.length) * 80);
 
-        // Intelligent resume: skip if this artist already has MB-sourced member credits
-        const existing = /** @type {any} */ (hasCreditsForArtist.get(artist.id));
+        // Intelligent resume: skip if this artist was already enriched
+        const existing = /** @type {any} */ (hasBeenEnriched.get(artist.id));
         if (existing) {
             skippedArtists++;
             // Still collect member MBIDs for Phase 2
@@ -443,6 +440,11 @@ async function runEnrichment() {
         });
 
         insertMembers();
+
+        // Stamp this artist as enriched (whether or not members were found)
+        db.prepare('UPDATE media_parents SET mb_enriched_at = ? WHERE id = ?')
+            .run(new Date().toISOString(), artist.id);
+
         itemsSynced = i + 1;
         broadcast({});
     }

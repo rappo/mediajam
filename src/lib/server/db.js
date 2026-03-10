@@ -707,6 +707,10 @@ if (!mpCols3.has('runtime_minutes')) {
     db.exec("ALTER TABLE media_parents ADD COLUMN runtime_minutes INTEGER");
     console.log('[db] Added runtime_minutes column to media_parents');
 }
+if (!mpCols3.has('mb_enriched_at')) {
+    db.exec("ALTER TABLE media_parents ADD COLUMN mb_enriched_at TEXT");
+    console.log('[db] Added mb_enriched_at column to media_parents');
+}
 
 // -- LLM Embedding & Tagging Tables --
 try {

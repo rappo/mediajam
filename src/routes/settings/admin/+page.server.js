@@ -37,17 +37,13 @@ export function load() {
         AND bio_tmdb IS NULL AND photo_url IS NULL
     `).get())?.cnt || 0;
 
-    // MusicBrainz enrichment: artists with MBID + collected albums that don't yet have member credits
+    // MusicBrainz enrichment: artists with MBID + collected albums that haven't been enriched yet
     const mbPending = /** @type {any} */ (db.prepare(`
         SELECT COUNT(*) as cnt FROM media_parents mp
         WHERE mp.media_type = 'artist'
           AND mp.musicbrainz_id IS NOT NULL AND mp.musicbrainz_id != ''
           AND mp.collected_children > 0
-          AND mp.id NOT IN (
-              SELECT DISTINCT pc.media_parent_id FROM person_credits pc
-              JOIN persons p ON pc.person_id = p.id
-              WHERE p.musicbrainz_artist_id IS NOT NULL
-          )
+          AND mp.mb_enriched_at IS NULL
     `).get())?.cnt || 0;
 
     const wikiTotal = /** @type {any} */ (db.prepare(`SELECT COUNT(*) as cnt FROM media_parents WHERE tmdb_id IS NOT NULL AND media_type IN ('movie','show','artist')`).get())?.cnt || 0;
