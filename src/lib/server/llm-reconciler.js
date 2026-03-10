@@ -886,12 +886,20 @@ export async function runFullReconciliation(userId, options = {}) {
             });
 
             // Dedup passes (external-ID, title, children, playback history)
-            const { deduplicateParents, deduplicateParentsByTitle, deduplicateChildren, deduplicatePlaybackHistory, mergeOrphanArtistsIntoAlbums } = await import('$lib/server/reconcile.js');
+            const { deduplicateParents, deduplicateParentsByTitle, deduplicateChildren, deduplicatePlaybackHistory, mergeOrphanArtistsIntoAlbums, deduplicateExternalAlbums } = await import('$lib/server/reconcile.js');
+            const { autoMergeMediumPlus } = await import('$lib/server/album-matcher.js');
+
             const dedupResult = deduplicateParents();
             const titleDedup = deduplicateParentsByTitle();
             const childDedup = deduplicateChildren();
             const historyDedup = deduplicatePlaybackHistory();
             const orphanMerge = mergeOrphanArtistsIntoAlbums();
+
+            // Deduplicate external album title variants ("Vol. 4" vs "Vol 4")
+            const albumDedup = deduplicateExternalAlbums();
+            // Auto-merge external albums into matching Jellyfin/Lidarr albums
+            const albumMerge = autoMergeMediumPlus();
+
             const totalDeduped = dedupResult.deduped + titleDedup.deduped;
             const totalHistMoved = dedupResult.historyMoved + titleDedup.historyMoved + childDedup.historyMoved + orphanMerge.historyMoved;
             broadcast({
@@ -899,6 +907,13 @@ export async function runFullReconciliation(userId, options = {}) {
                 log: `🧹 Dedupe: ${totalDeduped} parents merged, ${childDedup.deduped} children merged, ${orphanMerge.merged} orphan artists→albums, ${historyDedup.removed} duplicate plays removed, ${totalHistMoved} history entries migrated`,
                 logType: totalDeduped > 0 || childDedup.deduped > 0 || orphanMerge.merged > 0 ? 'success' : 'info'
             });
+            if (albumDedup.deduped > 0 || albumMerge.merged > 0) {
+                broadcast({
+                    type: 'reconcile_progress', phase: 'reclassifying',
+                    log: `💿 Albums: ${albumDedup.deduped} external title variants consolidated, ${albumMerge.merged} albums merged into Jellyfin/Lidarr entries`,
+                    logType: 'success'
+                });
+            }
 
         } // end if !shouldSkip('reclassifying')
 

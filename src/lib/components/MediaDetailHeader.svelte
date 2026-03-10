@@ -290,19 +290,19 @@
     }
     .ambient-glow {
         position: absolute;
-        inset: -30px;
+        inset: -40px;
         z-index: -1;
         overflow: hidden;
-        border-radius: 2.5rem;
+        border-radius: 3rem;
         pointer-events: none;
     }
     .ambient-glow-img {
         width: 100%;
         height: 100%;
         object-fit: cover;
-        filter: blur(80px) saturate(2.2) brightness(1.1);
-        opacity: 0.5;
-        transform: scale(1.2);
+        filter: blur(100px) saturate(1.6);
+        opacity: 0.35;
+        transform: scale(1.3);
     }
 
     /* ══════════════ HEADER ══════════════ */
