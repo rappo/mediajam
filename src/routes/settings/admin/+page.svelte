@@ -1833,6 +1833,7 @@
     }
 
     async function generateEmbeddings() {
+        if (isDirty) await saveSettings();
         embeddingStatus = "running";
         embeddingDone = 0;
         embeddingTotal = 0;
@@ -1893,6 +1894,7 @@
     }
 
     async function generateTags() {
+        if (isDirty) await saveSettings();
         taggingStatus = "running";
         taggingDone = 0;
         taggingTotal = 0;
