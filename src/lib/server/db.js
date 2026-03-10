@@ -240,7 +240,19 @@ CREATE TABLE IF NOT EXISTS trakt_history (
 );
 CREATE INDEX IF NOT EXISTS idx_trakt_history_user ON trakt_history(user_id, watched_at DESC);
 
--- 12. Persons (cross-media: actors, directors, musicians, writers, producers)
+-- 12. Watchlist (to-watch list for movies/shows)
+CREATE TABLE IF NOT EXISTS watchlist (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    media_parent_id INTEGER NOT NULL,
+    added_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY(user_id) REFERENCES users(id),
+    FOREIGN KEY(media_parent_id) REFERENCES media_parents(id) ON DELETE CASCADE,
+    UNIQUE(user_id, media_parent_id)
+);
+CREATE INDEX IF NOT EXISTS idx_watchlist_user ON watchlist(user_id, added_at DESC);
+
+-- 13. Persons (cross-media: actors, directors, musicians, writers, producers)
 CREATE TABLE IF NOT EXISTS persons (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,

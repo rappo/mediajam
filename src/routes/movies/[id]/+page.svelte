@@ -62,6 +62,28 @@
 
     const badge = watchStatusBadge(data.movie.watch_status);
 
+    // Watchlist toggle
+    let inWatchlist = $state(data.inWatchlist);
+    let watchlistLoading = $state(false);
+
+    async function toggleWatchlist() {
+        watchlistLoading = true;
+        const prev = inWatchlist;
+        inWatchlist = !inWatchlist; // optimistic
+        try {
+            const res = await fetch('/api/watchlist', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mediaParentId: data.movie.id })
+            });
+            const result = await res.json();
+            inWatchlist = result.inWatchlist;
+        } catch {
+            inWatchlist = prev; // revert
+        }
+        watchlistLoading = false;
+    }
+
     let syncing = $state(false);
     let syncStatus = $state("");
     let syncError = $state("");
@@ -332,6 +354,18 @@
         >
             {#snippet actions()}
                 <button
+                    class="btn btn-xs btn-ghost gap-1 {inWatchlist ? 'text-primary' : ''}"
+                    onclick={toggleWatchlist}
+                    disabled={watchlistLoading}
+                    title={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
+                >
+                    {#if inWatchlist}
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zM2 16h8v-2H2v2zm19.5-4.5L23 13l-6.99 7-4.51-4.5L13 14l3.01 3z"/></svg>
+                    {:else}
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM2 16h8v-2H2v2z"/></svg>
+                    {/if}
+                </button>
+                <button
                     class="btn btn-xs btn-ghost gap-1"
                     class:btn-success={syncStatus === 'success'}
                     class:btn-error={syncStatus === 'failed'}
@@ -488,6 +522,18 @@
                         <span class="badge {badge.cls} badge-sm"
                             >{badge.label}</span
                         >
+                        <button
+                            class="btn btn-ghost btn-xs p-0.5 {inWatchlist ? 'text-primary' : 'text-base-content/30 hover:text-base-content/60'}"
+                            onclick={toggleWatchlist}
+                            disabled={watchlistLoading}
+                            title={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
+                        >
+                            {#if inWatchlist}
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zM2 16h8v-2H2v2zm19.5-4.5L23 13l-6.99 7-4.51-4.5L13 14l3.01 3z"/></svg>
+                            {:else}
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM2 16h8v-2H2v2z"/></svg>
+                            {/if}
+                        </button>
                         {#if data.movie.collection_status === "external"}
                             <span class="badge badge-warning badge-sm gap-1"
                                 >📡 Not in library</span

@@ -101,6 +101,11 @@ export async function load({ params, locals }) {
     const runtime_minutes = movie.local_runtime_minutes || movie.external_runtime_minutes || null;
     const needsRuntimeFetch = !runtime_minutes && !!movie.tmdb_id;
 
+    // Watchlist status
+    const inWatchlist = !!db.prepare(
+        'SELECT 1 FROM watchlist WHERE user_id = ? AND media_parent_id = ?'
+    ).get(userId, movieId);
+
     return {
         movie: {
             ...movie,
@@ -124,6 +129,7 @@ export async function load({ params, locals }) {
         externalRatings,
         jellyfinUrl,
         arrUrl: (settings?.radarr_external_url || settings?.radarr_url || '').replace(/\/+$/, ''),
-        arrService: 'radarr'
+        arrService: 'radarr',
+        inWatchlist
     };
 }
