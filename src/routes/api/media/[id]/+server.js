@@ -179,16 +179,26 @@ export async function PATCH({ params, request, locals }) {
     if (isNaN(mediaId)) return json({ error: 'Invalid ID' }, { status: 400 });
 
     const { field, value } = await request.json();
-    const ALLOWED_FIELDS = ['musicbrainz_id', 'tmdb_id', 'imdb_id'];
+    const MERGE_FIELDS = ['musicbrainz_id', 'tmdb_id', 'imdb_id'];
+    const SIMPLE_FIELDS = ['backdrop_url', 'poster_url'];
+    const ALLOWED_FIELDS = [...MERGE_FIELDS, ...SIMPLE_FIELDS];
     if (!ALLOWED_FIELDS.includes(field)) {
         return json({ error: `Invalid field. Allowed: ${ALLOWED_FIELDS.join(', ')}` }, { status: 400 });
-    }
-    if (!value || typeof value !== 'string') {
-        return json({ error: 'Value is required' }, { status: 400 });
     }
 
     const target = /** @type {any} */ (db.prepare('SELECT * FROM media_parents WHERE id = ?').get(mediaId));
     if (!target) return json({ error: 'Not found' }, { status: 404 });
+
+    // Simple fields: just set (or clear with null)
+    if (SIMPLE_FIELDS.includes(field)) {
+        db.prepare(`UPDATE media_parents SET ${field} = ? WHERE id = ?`).run(value || null, mediaId);
+        console.log(`[media] Set ${field} on ${mediaId} ("${target.title}"): ${value || 'NULL'}`);
+        return json({ success: true });
+    }
+
+    if (!value || typeof value !== 'string') {
+        return json({ error: 'Value is required' }, { status: 400 });
+    }
 
     // Check if the new value already exists on another record (same media_type)
     const duplicate = /** @type {any} */ (db.prepare(
