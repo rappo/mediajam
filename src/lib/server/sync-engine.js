@@ -762,6 +762,46 @@ export async function startSync(libraryId = null, force = false) {
                                         broadcast({ type: 'progress', log: `  ❌ ${item.Name}: auto-merge failed: ${mergeErrStr}`, logType: 'error' });
                                         logWarn('sync', `TMDB auto-merge failed for ${item.Name}: ${mergeErrStr}`);
                                     }
+                                } else if (existing && !currentRow) {
+                                    // External-only row exists (from trakt/backfill import) with tmdb_id but no jellyfin_id.
+                                    // Adopt it: set jellyfin_id and update metadata on the existing row.
+                                    try {
+                                        db.prepare(`UPDATE media_parents SET
+                                            jellyfin_id = ?, library_id = ?, title = ?, poster_url = ?, overview = ?,
+                                            release_year = ?, jellyfin_user_rating = ?,
+                                            date_last_modified = ?, jellyfin_child_count = ?,
+                                            unplayed_count = ?, is_favorite = ?,
+                                            collection_status = CASE WHEN collection_status = 'external' THEN 'default' ELSE collection_status END,
+                                            imdb_id = COALESCE(?, imdb_id),
+                                            tvdb_id = COALESCE(?, tvdb_id)
+                                        WHERE id = ?`).run(
+                                            item.Id, parentParams.libraryId, parentParams.title, parentParams.posterUrl, parentParams.overview,
+                                            parentParams.releaseYear, parentParams.userRating,
+                                            parentParams.dateLastModified, parentParams.jellyfinChildCount,
+                                            parentParams.unplayedCount, parentParams.isFavorite,
+                                            parentParams.imdbId, parentParams.tvdbId,
+                                            existing.id
+                                        );
+
+                                        // For movies, create the child entry if missing
+                                        if (parentParams.mediaType === 'movie') {
+                                            const existingChild = /** @type {any} */ (db.prepare(
+                                                'SELECT id FROM media_children WHERE parent_id = ? LIMIT 1'
+                                            ).get(existing.id));
+                                            if (existingChild) {
+                                                // Update existing child with jellyfin_id
+                                                db.prepare('UPDATE media_children SET jellyfin_id = ? WHERE id = ?')
+                                                    .run(item.Id + '_child', existingChild.id);
+                                            }
+                                        }
+
+                                        broadcast({ type: 'progress', log: `  🔗 ${item.Name}: adopted external entry (id=${existing.id}) — linked to Jellyfin`, logType: 'info' });
+                                        logInfo('sync', `Adopted external TMDB entry: ${item.Name} (${parentParams.tmdbId})`);
+                                    } catch (adoptErr) {
+                                        const adoptErrStr = adoptErr instanceof Error ? adoptErr.message : String(adoptErr);
+                                        broadcast({ type: 'progress', log: `  ❌ ${item.Name}: adopt failed: ${adoptErrStr}`, logType: 'error' });
+                                        logWarn('sync', `TMDB adopt failed for ${item.Name}: ${adoptErrStr}`);
+                                    }
                                 } else {
                                     // Fallback: retry upsert without tmdb_id
                                     retryParams.tmdbId = null;
