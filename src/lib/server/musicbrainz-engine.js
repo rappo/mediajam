@@ -231,7 +231,7 @@ async function runEnrichment() {
     `);
 
     const insertPerson = db.prepare(`
-        INSERT INTO persons (name, musicbrainz_artist_id) VALUES (@name, @mbid)
+        INSERT OR IGNORE INTO persons (name, musicbrainz_artist_id) VALUES (@name, @mbid)
     `);
 
     const findPersonByName = db.prepare(`
@@ -400,12 +400,22 @@ async function runEnrichment() {
                     const byName = /** @type {any} */ (findPersonByName.get({ name: member.name }));
                     if (byName) {
                         personId = byName.id;
-                        // Set MBID on existing person
-                        db.prepare('UPDATE persons SET musicbrainz_artist_id = ? WHERE id = ? AND musicbrainz_artist_id IS NULL')
-                            .run(mbid, personId);
+                        // Set MBID on existing person (guard against UNIQUE constraint)
+                        try {
+                            db.prepare('UPDATE persons SET musicbrainz_artist_id = ? WHERE id = ? AND musicbrainz_artist_id IS NULL')
+                                .run(mbid, personId);
+                        } catch {
+                            // Another person already has this MB ID — just use the existing match
+                        }
                     } else {
                         const result = insertPerson.run({ name: member.name, mbid });
-                        personId = result.lastInsertRowid;
+                        if (result.changes > 0) {
+                            personId = result.lastInsertRowid;
+                        } else {
+                            // INSERT OR IGNORE didn't insert — find who owns this MBID
+                            const existingMb = /** @type {any} */ (findPersonByMbid.get({ mbid }));
+                            if (existingMb) personId = existingMb.id;
+                        }
                     }
                 }
 

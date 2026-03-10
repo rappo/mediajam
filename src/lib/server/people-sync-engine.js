@@ -226,8 +226,17 @@ async function runPeopleSync(jellyfinUrl, accessToken, userId) {
                                     updatePersonByTmdb.run(params);
                                     personId = existing.id;
                                 } else {
-                                    insertPerson.run(params);
-                                    personId = /** @type {any} */ (findPersonByTmdb.get(tmdbId))?.id;
+                                    try {
+                                        insertPerson.run(params);
+                                        personId = /** @type {any} */ (findPersonByTmdb.get(tmdbId))?.id;
+                                    } catch {
+                                        // UNIQUE constraint — another row got this tmdb_person_id first
+                                        const retry = /** @type {any} */ (findPersonByTmdb.get(tmdbId));
+                                        if (retry) {
+                                            updatePersonByTmdb.run(params);
+                                            personId = retry.id;
+                                        }
+                                    }
                                 }
                             } else if (jellyfinPersonId) {
                                 const existing = /** @type {any} */ (findPersonByJellyfin.get(jellyfinPersonId));
@@ -239,8 +248,12 @@ async function runPeopleSync(jellyfinUrl, accessToken, userId) {
                                     if (byName) {
                                         personId = byName.id;
                                     } else {
-                                        insertPerson.run(params);
-                                        personId = /** @type {any} */ (findPersonByJellyfin.get(jellyfinPersonId))?.id;
+                                        try {
+                                            insertPerson.run(params);
+                                            personId = /** @type {any} */ (findPersonByJellyfin.get(jellyfinPersonId))?.id;
+                                        } catch {
+                                            // constraint error — skip
+                                        }
                                     }
                                 }
                             }
@@ -337,8 +350,19 @@ async function runPeopleSync(jellyfinUrl, accessToken, userId) {
                         const tmdbId = providerIds.Tmdb || providerIds.TMDb || null;
                         const imdbId = providerIds.Imdb || providerIds.IMDb || null;
                         if (tmdbId || imdbId) {
-                            updatePersonIds.run({ personId: person.id, tmdbId, imdbId });
-                            idsUpdated++;
+                            // Guard: skip if another person already has this tmdb_person_id
+                            if (tmdbId) {
+                                const clash = /** @type {any} */ (db.prepare(
+                                    'SELECT id FROM persons WHERE tmdb_person_id = ? AND id != ?'
+                                ).get(tmdbId, person.id));
+                                if (clash) continue; // another person owns this TMDB ID
+                            }
+                            try {
+                                updatePersonIds.run({ personId: person.id, tmdbId, imdbId });
+                                idsUpdated++;
+                            } catch {
+                                // UNIQUE constraint — skip
+                            }
                         }
                     }
                 })();

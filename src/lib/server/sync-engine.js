@@ -466,8 +466,17 @@ export async function startSync(libraryId = null, force = false) {
                         updatePersonByTmdb.run(params);
                         personId = existing.id;
                     } else {
-                        insertPerson.run(params);
-                        personId = /** @type {any} */ (findPersonByTmdb.get(tmdbId))?.id;
+                        try {
+                            insertPerson.run(params);
+                            personId = /** @type {any} */ (findPersonByTmdb.get(tmdbId))?.id;
+                        } catch {
+                            // UNIQUE constraint — another row got this tmdb_person_id
+                            const retry = /** @type {any} */ (findPersonByTmdb.get(tmdbId));
+                            if (retry) {
+                                updatePersonByTmdb.run(params);
+                                personId = retry.id;
+                            }
+                        }
                     }
                 } else if (jellyfinPersonId) {
                     // No TMDB ID — try matching by Jellyfin ID
@@ -481,8 +490,12 @@ export async function startSync(libraryId = null, force = false) {
                         if (byName) {
                             personId = byName.id;
                         } else {
-                            insertPerson.run(params);
-                            personId = /** @type {any} */ (findPersonByJellyfin.get(jellyfinPersonId))?.id;
+                            try {
+                                insertPerson.run(params);
+                                personId = /** @type {any} */ (findPersonByJellyfin.get(jellyfinPersonId))?.id;
+                            } catch {
+                                // constraint error — skip
+                            }
                         }
                     }
                 }
