@@ -25,6 +25,14 @@ CRITICAL RULES — violating these will produce errors:
 5. "episodes" are media_children rows whose parent's media_type = 'show'.
 6. For movies, each media_parent has exactly 1 media_children row.
 7. "recently" = last 30 days. Use: timestamp > datetime('now', '-30 days')
+8. runtime_ticks is in Jellyfin 100-nanosecond units. ALWAYS convert:
+   - To seconds: runtime_ticks / 10000000.0
+   - To minutes: runtime_ticks / 600000000.0
+   - To hours: runtime_ticks / 36000000000.0
+   NEVER divide runtime_ticks by 3600 (that gives nanosecond-scale garbage).
+9. watch_status values: 'watched', 'unwatched', 'in_progress'
+10. "unwatched" or "remaining" episodes = watch_status = 'unwatched' OR watch_status = 'in_progress'
+11. duration_consumed_seconds in playback_history IS already in seconds (no conversion needed).
 
 Tables:
 
@@ -34,11 +42,11 @@ media_parents: id, title, media_type ('show'|'movie'|'artist'), release_year, po
 
 media_children: id, parent_id (FK→media_parents.id), jellyfin_id, title, season_number, item_number,
   is_special, is_collected, watch_status ('watched'|'unwatched'|'in_progress'), play_count,
-  runtime_ticks, premiere_date, poster_url, community_rating
+  runtime_ticks (100-nanosecond units — see rule 8), premiere_date, poster_url, community_rating
   ⚠️ NO media_type column — use parent's media_type via JOIN
 
 playback_history: id, user_id, media_id (FK→media_children.id), source, timestamp (ISO),
-  duration_consumed_seconds, completion_pct, track_name
+  duration_consumed_seconds (already in seconds), completion_pct, track_name
 
 tracks: id, album_id (FK→media_children.id), title, track_number, disc_number, runtime_ticks
 
@@ -56,12 +64,13 @@ libraries: jellyfin_id, name, type, total_items
 EXAMPLE QUERIES (follow these patterns):
 -- How many movies: SELECT COUNT(*) as count FROM media_parents WHERE media_type = 'movie'
 -- How many albums: SELECT COUNT(*) as count FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.media_type = 'artist'
--- How many TV shows: SELECT COUNT(*) as count FROM media_parents WHERE media_type = 'show'
+-- Total runtime of a show in hours: SELECT ROUND(SUM(mc.runtime_ticks) / 36000000000.0, 1) as hours FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.title LIKE '%Simpsons%' AND mp.media_type = 'show'
+-- Unwatched episodes remaining (hours): SELECT ROUND(SUM(mc.runtime_ticks) / 36000000000.0, 1) as hours_remaining, COUNT(*) as episodes FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.title LIKE '%Simpsons%' AND mc.watch_status != 'watched'
 -- Recently watched movies: SELECT DISTINCT mp.title, mp.release_year, ph.timestamp FROM playback_history ph JOIN media_children mc ON ph.media_id = mc.id JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.media_type = 'movie' AND ph.timestamp > datetime('now', '-30 days') ORDER BY ph.timestamp DESC LIMIT 20
 -- Movies by director: SELECT mp.title, mp.release_year FROM person_credits pc JOIN persons p ON pc.person_id = p.id JOIN media_parents mp ON pc.media_parent_id = mp.id WHERE p.name LIKE '%Spielberg%' AND pc.role_type = 'director'
 -- Genres for a type: SELECT mt.tag_value, COUNT(*) as cnt FROM media_tags mt JOIN media_parents mp ON mt.media_parent_id = mp.id WHERE mp.media_type = 'movie' AND mt.tag_type = 'genre' GROUP BY mt.tag_value ORDER BY cnt DESC
--- Favorite movies: SELECT mp.title FROM media_parents mp WHERE mp.media_type = 'movie' AND mp.is_favorite = 1
--- Most watched artists: SELECT mp.title, SUM(mc.play_count) as plays FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.media_type = 'artist' GROUP BY mp.id ORDER BY plays DESC LIMIT 10`;
+-- Most watched artists: SELECT mp.title, SUM(mc.play_count) as plays FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.media_type = 'artist' GROUP BY mp.id ORDER BY plays DESC LIMIT 10
+-- Hours of music listened: SELECT ROUND(SUM(ph.duration_consumed_seconds) / 3600.0, 1) as hours FROM playback_history ph JOIN media_children mc ON ph.media_id = mc.id JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.media_type = 'artist'`;
 }
 
 /**

@@ -50,7 +50,13 @@ export async function POST({ locals }) {
                             db.prepare(
                                 'INSERT OR REPLACE INTO overview_embeddings (media_parent_id, overview_embedding) VALUES (?, ?)'
                             ).run(parent.id, JSON.stringify(embedding));
-                        } catch { /* ignore vec0 errors */ }
+                        } catch (insertErr) {
+                            if (done === 1) {
+                                const errMsg = insertErr instanceof Error ? insertErr.message : String(insertErr);
+                                send({ type: 'warning', message: `Embedding insert error (dim=${embedding.length}): ${errMsg}` });
+                                console.error(`[embeddings] INSERT failed (dim=${embedding.length}, expected 768):`, errMsg);
+                            }
+                        }
                     }
                     done++;
                     if (done % 10 === 0 || done === parents.length) {
@@ -77,7 +83,13 @@ export async function POST({ locals }) {
                             db.prepare(
                                 'INSERT OR REPLACE INTO media_embeddings (media_id, title_embedding) VALUES (?, ?)'
                             ).run(child.id, JSON.stringify(embedding));
-                        } catch { /* ignore vec0 errors */ }
+                        } catch (insertErr) {
+                            if (done === 1) {
+                                const errMsg = insertErr instanceof Error ? insertErr.message : String(insertErr);
+                                send({ type: 'warning', message: `Title embedding insert error (dim=${embedding.length}): ${errMsg}` });
+                                console.error(`[embeddings] Title INSERT failed (dim=${embedding.length}, expected 768):`, errMsg);
+                            }
+                        }
                     }
                     done++;
                     if (done % 10 === 0 || done === children.length) {
