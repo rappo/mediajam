@@ -168,6 +168,13 @@
     /** @type {string|null} */
     let navigatingItem = $state(null);
 
+    // ── Discovery Lidarr download state ──
+    /** @type {any} */
+    let discDownloadItem = $state(null);
+    let discDownloading = $state(/** @type {string|null} */ (null));
+    let discDownloaded = $state(/** @type {Set<string>} */ (new Set()));
+    let discDownloadError = $state("");
+
     let filteredDiscovery = $derived(
         (discoveryFilter === "all"
             ? discoveryItems
@@ -220,6 +227,41 @@
         } finally {
             navigatingItem = null;
         }
+    }
+
+    /** @param {any} item */
+    function promptDownload(item) {
+        discDownloadItem = item;
+    }
+
+    async function confirmDownload() {
+        if (!discDownloadItem) return;
+        const item = discDownloadItem;
+        discDownloadItem = null;
+        discDownloading = item.mbid;
+        discDownloadError = "";
+        try {
+            const res = await fetch('/api/arr/lidarr/search-album', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mediaParentId: data.artist.id,
+                    mbid: item.mbid,
+                    title: item.title,
+                }),
+            });
+            if (!res.ok) {
+                const r = await res.json();
+                throw new Error(r.error || 'Failed');
+            }
+            const next = new Set(discDownloaded);
+            next.add(item.mbid);
+            discDownloaded = next;
+        } catch (e) {
+            discDownloadError = e instanceof Error ? e.message : 'Download failed';
+            setTimeout(() => (discDownloadError = ''), 5000);
+        }
+        discDownloading = null;
     }
 
     // ── Lidarr add state ──
@@ -783,6 +825,22 @@
                                     <p class="text-xs opacity-50 italic">{item.disambiguation}</p>
                                 {/if}
                             </div>
+                            {#if data.artist.lidarr_id}
+                                <button
+                                    class="absolute top-1 right-1 btn btn-xs btn-circle {discDownloaded.has(item.mbid) ? 'btn-success' : 'btn-ghost bg-base-300/80'} {discDownloading === item.mbid ? '' : 'opacity-0 group-hover:opacity-100'} transition-opacity z-10"
+                                    title="Download via Lidarr"
+                                    disabled={discDownloading === item.mbid || discDownloaded.has(item.mbid)}
+                                    onclick={(e) => { e.stopPropagation(); promptDownload(item); }}
+                                >
+                                    {#if discDownloading === item.mbid}
+                                        <span class="loading loading-spinner loading-xs"></span>
+                                    {:else if discDownloaded.has(item.mbid)}
+                                        ✅
+                                    {:else}
+                                        ⬇️
+                                    {/if}
+                                </button>
+                            {/if}
                         </div>
                     {/each}
 
@@ -828,6 +886,9 @@
             {#if addArrError}
                 <div class="alert alert-error text-sm mt-2">{addArrError}</div>
             {/if}
+            {#if discDownloadError}
+                <div class="alert alert-error text-sm mt-2">{discDownloadError}</div>
+            {/if}
         </div>
     {/if}
 </div>
@@ -866,6 +927,44 @@
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div class="modal-backdrop" onclick={() => (showProfileDialog = false)}></div>
+    </div>
+{/if}
+
+<!-- Lidarr Download Confirmation Dialog -->
+{#if discDownloadItem}
+    <div class="modal modal-open">
+        <div class="modal-box">
+            <h3 class="font-bold text-lg">Download via Lidarr</h3>
+            <div class="flex items-center gap-4 mt-4">
+                <img
+                    src={discDownloadItem.cover_url}
+                    alt={discDownloadItem.title}
+                    class="w-20 h-20 rounded-lg object-cover shadow"
+                    onerror={(e) => { e.target.style.display = 'none'; }}
+                />
+                <div>
+                    <p class="font-semibold text-lg">{discDownloadItem.title}</p>
+                    <p class="text-sm text-base-content/60">
+                        {data.artist.title}
+                        {#if discDownloadItem.release_year} · {discDownloadItem.release_year}{/if}
+                        {#if discDownloadItem.type !== 'Album'}
+                            <span class="badge badge-xs badge-outline ml-1">{discDownloadItem.type}</span>
+                        {/if}
+                    </p>
+                </div>
+            </div>
+            <p class="text-sm text-base-content/50 mt-3">This will monitor the album in Lidarr and trigger a search for downloads.</p>
+            <div class="modal-action">
+                <button class="btn" onclick={() => (discDownloadItem = null)}>Cancel</button>
+                <button class="btn btn-primary gap-1" onclick={confirmDownload}>
+                    <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/lidarr.svg" alt="" class="w-4 h-4" />
+                    Search & Download
+                </button>
+            </div>
+        </div>
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="modal-backdrop" onclick={() => (discDownloadItem = null)}></div>
     </div>
 {/if}
 

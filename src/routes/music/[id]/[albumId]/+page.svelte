@@ -121,10 +121,16 @@
                     </div>
                 {/if}
                 {#if data.isInLidarr}
-                    <div class="badge badge-lg badge-outline gap-1" style="border-color: #1db954; color: #1db954">
+                    <a
+                        href="{data.arrUrl && data.arrSlug ? `${data.arrUrl}/artist/${data.arrSlug}` : '#'}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="badge badge-lg badge-outline gap-1 hover:brightness-125 transition-all"
+                        style="border-color: #1db954; color: #1db954"
+                    >
                         <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/lidarr.svg" alt="Lidarr" class="w-4 h-4" />
                         In Lidarr
-                    </div>
+                    </a>
                 {/if}
             </div>
         </div>

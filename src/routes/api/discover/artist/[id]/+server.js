@@ -31,7 +31,7 @@ export async function GET({ params, locals }) {
     const limit = 100;
 
     while (true) {
-        const url = `${MB_BASE}/release-group?artist=${mbId}&type=album|ep|single&limit=${limit}&offset=${offset}&fmt=json`;
+        const url = `${MB_BASE}/release-group?artist=${mbId}&limit=${limit}&offset=${offset}&fmt=json`;
         const res = await fetch(url, {
             headers: { 'User-Agent': MB_USER_AGENT, 'Accept': 'application/json' }
         });

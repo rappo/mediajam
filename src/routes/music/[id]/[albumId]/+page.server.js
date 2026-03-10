@@ -5,7 +5,7 @@ import { enrichAlbumFromLidarr } from '$lib/server/lidarr-enrich.js';
 export async function load({ params, locals, fetch }) {
     const artistId = parseInt(params.id);
     const albumId = parseInt(params.albumId);
-    const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_url, jellyfin_sync_check FROM app_settings WHERE id = 1').get());
+    const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_url, jellyfin_sync_check, lidarr_url, lidarr_external_url FROM app_settings WHERE id = 1').get());
     const jellyfinUrl = settings?.jellyfin_url || '';
     const syncCheckEnabled = !!(settings?.jellyfin_sync_check ?? 1);
     const userId = locals.user?.id || 0;
@@ -13,7 +13,7 @@ export async function load({ params, locals, fetch }) {
 
     // Get artist
     const artist = /** @type {any} */ (db.prepare(`
-        SELECT id, title, poster_url, jellyfin_id, collection_status, lidarr_id
+        SELECT id, title, poster_url, jellyfin_id, collection_status, lidarr_id, arr_slug
         FROM media_parents WHERE id = ? AND media_type = 'artist'
     `).get(artistId));
     if (!artist) throw error(404, 'Artist not found');
@@ -237,6 +237,8 @@ export async function load({ params, locals, fetch }) {
         syncCheckEnabled,
         isUnmatched,
         isInLidarr: !!artist.lidarr_id,
-        lidarrEnriched
+        lidarrEnriched,
+        arrUrl: (settings?.lidarr_external_url || settings?.lidarr_url || '').replace(/\/+$/, ''),
+        arrSlug: artist.arr_slug || null
     };
 }
