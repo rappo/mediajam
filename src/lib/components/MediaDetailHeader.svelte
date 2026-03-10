@@ -26,6 +26,7 @@
      *   externalLinks?: Record<string, any>,
      *   extraBadges?: { label: string, cls?: string }[],
      *   actions?: any,
+     *   watchlistAction?: any,
      *   children?: any
      * }}
      */
@@ -53,6 +54,7 @@
         extraBadges = [],
         onFileInfoClick,
         actions,
+        watchlistAction,
         children,
     } = $props();
 
@@ -196,6 +198,7 @@
                     <span class="badge badge-sm {hb.cls || 'badge-outline'}">{hb.label}</span>
                 {/each}
                 {#if watchStatusBadge}<span class="badge {watchStatusBadge.cls} badge-sm watch-badge">{watchStatusBadge.label}</span>{/if}
+                {#if watchlistAction}{@render watchlistAction()}{/if}
             </div>
             {#if overview}
                 <div class="hero-overview-wrap">

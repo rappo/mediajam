@@ -326,7 +326,7 @@
                 ...(data.movie.collection_status === 'external' ? [{ label: '📡 Not in library', cls: 'badge-warning' }] : []),
             ]}
         >
-            {#snippet actions()}
+            {#snippet watchlistAction()}
                 <button
                     class="btn btn-xs btn-ghost gap-1 {inWatchlist ? 'text-primary' : ''}"
                     onclick={toggleWatchlist}
@@ -339,6 +339,8 @@
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM2 16h8v-2H2v2z"/></svg>
                     {/if}
                 </button>
+            {/snippet}
+            {#snippet actions()}
                 <button
                     class="btn btn-xs btn-ghost gap-1"
                     class:btn-success={syncStatus === 'success'}
@@ -370,8 +372,12 @@
                     >
                         {#if arrLoading === 'monitor'}
                             <span class="loading loading-spinner loading-xs"></span>
+                        {:else if arrMonitored}
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg>
+                        {:else}
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
                         {/if}
-                        {arrMonitored ? 'Unmonitor' : 'Monitor'}
+                        {arrMonitored ? 'Unmonitor Downloads' : 'Monitor Downloads'}
                     </button>
                 {:else if data.movie.tmdb_id}
                     <ArrAddDialog

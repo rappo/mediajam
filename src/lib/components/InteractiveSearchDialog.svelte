@@ -91,11 +91,12 @@
 </script>
 
 <button
-    class="btn btn-xs btn-outline gap-1"
+    class="btn btn-xs btn-ghost gap-1"
     onclick={show}
-    title="Interactive Search — query indexers for available releases"
+    title="Search indexers for available releases"
 >
-    🔍 Interactive Search
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    Download Search
 </button>
 
 {#if open}
