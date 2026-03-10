@@ -56,7 +56,9 @@
     import { imgUrl } from '$lib/utils.js';
 
     const isPerson = mediaType === 'person';
-    const hasBackdrop = !!backdropUrl;
+    // Use poster as backdrop fallback for pages without explicit backdrops (e.g. music)
+    const effectiveBackdrop = backdropUrl || posterUrl;
+    const hasBackdrop = !!effectiveBackdrop;
 
     let gearOpen = $state(false);
 
@@ -119,7 +121,7 @@
 <div class="detail-header" class:has-backdrop={hasBackdrop} class:no-backdrop={!hasBackdrop}>
     {#if hasBackdrop}
         <div class="backdrop-container">
-            <img src={backdropUrl} alt="" class="backdrop-img" />
+            <img src={effectiveBackdrop} alt="" class="backdrop-img" />
             <div class="backdrop-gradient"></div>
         </div>
     {/if}
@@ -146,12 +148,12 @@
 
     <div class="header-content" class:with-backdrop={hasBackdrop}>
         <!-- Poster / Portrait -->
-        <div class="poster-wrap" class:poster-portrait={isPerson}>
-            <HeartBorder show={isFavorite && heartBorderEnabled} class={isPerson ? 'rounded-full' : 'rounded-xl'}>
+        <div class="poster-wrap">
+            <HeartBorder show={isFavorite && heartBorderEnabled} class="rounded-xl">
                 {#if posterUrl}
-                    <img src={imgUrl(posterUrl, isPerson ? 400 : undefined)} alt={title} class="poster-img" class:poster-round={isPerson} />
+                    <img src={imgUrl(posterUrl)} alt={title} class="poster-img" />
                 {:else}
-                    <div class="poster-placeholder" class:poster-round={isPerson}>
+                    <div class="poster-placeholder">
                         {#if mediaType === 'movie'}🎬{:else if mediaType === 'show'}📺{:else if mediaType === 'artist'}🎵{:else}👤{/if}
                     </div>
                 {/if}
@@ -277,8 +279,8 @@
         border: 1px solid oklch(var(--bc) / 0.08);
     }
 
-    .backdrop-container { position: relative; width: 100%; height: 18rem; }
-    @media (min-width: 768px) { .backdrop-container { height: 22rem; } }
+    .backdrop-container { position: relative; width: 100%; height: 20rem; }
+    @media (min-width: 768px) { .backdrop-container { height: 24rem; } }
     .backdrop-img { width: 100%; height: 100%; object-fit: cover; opacity: 0.55; }
     .backdrop-gradient {
         position: absolute; inset: 0;
@@ -370,13 +372,15 @@
 
     /* UNIFIED: always bottom-align title with poster */
     .header-content { display: flex; gap: 1.5rem; align-items: flex-end; padding: 0; }
-    .header-content.with-backdrop { position: absolute; bottom: 0; left: 0; right: 0; padding: 1.5rem 2rem; }
+    .header-content.with-backdrop { position: absolute; bottom: 0; left: 0; right: 0; padding: 2rem; }
 
     .poster-wrap { flex-shrink: 0; z-index: 2; }
-    .poster-img { width: 160px; height: 240px; object-fit: cover; display: block; border-radius: 0.75rem; box-shadow: 0 12px 30px -5px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05); }
-    .poster-img.poster-round { width: 150px; height: 150px; border-radius: 50%; }
-    .poster-placeholder { width: 160px; height: 240px; border-radius: 0.75rem; background: oklch(var(--b3)); display: flex; align-items: center; justify-content: center; font-size: 3rem; }
-    .poster-placeholder.poster-round { width: 150px; height: 150px; border-radius: 50%; }
+    .poster-img { width: 145px; height: 215px; object-fit: cover; display: block; border-radius: 0.75rem; box-shadow: 0 12px 30px -5px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05); }
+    .poster-placeholder { width: 145px; height: 215px; border-radius: 0.75rem; background: oklch(var(--b3)); display: flex; align-items: center; justify-content: center; font-size: 3rem; }
+    @media (min-width: 768px) {
+        .poster-img { width: 160px; height: 300px; }
+        .poster-placeholder { width: 160px; height: 300px; }
+    }
 
     .title-area { min-width: 0; display: flex; flex-direction: column; gap: 0.25rem; z-index: 2; padding-bottom: 0.25rem; flex: 1; }
 
