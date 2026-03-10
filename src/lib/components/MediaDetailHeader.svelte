@@ -292,17 +292,17 @@
         position: absolute;
         inset: -40px;
         z-index: -1;
-        overflow: hidden;
-        border-radius: 3rem;
         pointer-events: none;
+        -webkit-mask-image: radial-gradient(ellipse 84% 80% at 50% 50%, black 15%, transparent 65%);
+        mask-image: radial-gradient(ellipse 84% 80% at 50% 50%, black 15%, transparent 65%);
     }
     .ambient-glow-img {
         width: 100%;
         height: 100%;
         object-fit: cover;
-        filter: blur(100px) saturate(1.6);
-        opacity: 0.35;
-        transform: scale(1.3);
+        filter: blur(80px) brightness(1.5) saturate(1.8);
+        opacity: 0.7;
+        transform: scale(1.15);
     }
 
     /* ══════════════ HEADER ══════════════ */
