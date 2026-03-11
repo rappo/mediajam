@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import db from '$lib/server/db.js';
-import { isEmbeddingAvailable, healthCheck } from '$lib/server/ollama.js';
+import { isEmbeddingAvailable, healthCheck, embed } from '$lib/server/ollama.js';
 
 /** @type {import('./$types').RequestHandler} */
 export async function GET({ locals }) {
@@ -23,6 +23,19 @@ export async function GET({ locals }) {
     // Check Ollama connectivity using the shared healthCheck
     const health = await healthCheck();
 
+    // Quick embed test — try embedding a single word
+    let embedTest = 'not tested';
+    try {
+        const vec = await embed('test');
+        if (vec && Array.isArray(vec) && vec.length > 0) {
+            embedTest = `ok (${vec.length} dims)`;
+        } else {
+            embedTest = `failed: embed returned ${vec === null ? 'null' : typeof vec}`;
+        }
+    } catch (e) {
+        embedTest = `error: ${e instanceof Error ? e.message : String(e)}`;
+    }
+
     // Embedding stats
     const ragAvailable = isEmbeddingAvailable();
     let embeddingsTotal = 0;
@@ -38,6 +51,7 @@ export async function GET({ locals }) {
         ollamaError: health.error || null,
         chatModel,
         embeddingModel,
+        embedTest,
         ragAvailable,
         embeddingsTotal,
         overviewsTotal,

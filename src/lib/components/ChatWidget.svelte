@@ -13,7 +13,7 @@
     /** @type {Record<string, boolean>} */
     let showSql = $state({});
     let showStatus = $state(false);
-    /** @type {{ ollamaConnected?: boolean, ollamaUrl?: string, ollamaError?: string, chatModel?: string, embeddingModel?: string, ragAvailable?: boolean, embeddingsTotal?: number, overviewsTotal?: number, embeddingsPct?: number } | null} */
+    /** @type {{ ollamaConnected?: boolean, ollamaUrl?: string, ollamaError?: string, chatModel?: string, embeddingModel?: string, embedTest?: string, ragAvailable?: boolean, embeddingsTotal?: number, overviewsTotal?: number, embeddingsPct?: number } | null} */
     let statusData = $state(null);
     let statusLoading = $state(false);
 
@@ -176,6 +176,7 @@
             lines.push(`Embedding model: ${statusData.embeddingModel || 'none'}`);
             lines.push(`RAG: ${statusData.ragAvailable ? '✓ available' : '✗ unavailable'}`);
             lines.push(`Embeddings: ${statusData.embeddingsTotal}/${statusData.overviewsTotal} (${statusData.embeddingsPct}%)`);
+            if (statusData.embedTest) lines.push(`Embed test: ${statusData.embedTest}`);
             lines.push('');
         }
         for (const msg of messages) {
@@ -323,6 +324,12 @@
                 <div class="text-base-content/60 pl-4">
                     Embeddings: {statusData.embeddingsTotal}/{statusData.overviewsTotal} ({statusData.embeddingsPct}%)
                 </div>
+                {#if statusData.embedTest}
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full {statusData.embedTest.startsWith('ok') ? 'bg-success' : 'bg-error'}"></span>
+                        Embed test: {statusData.embedTest}
+                    </div>
+                {/if}
             {:else}
                 <div class="text-base-content/40">Could not fetch status</div>
             {/if}
