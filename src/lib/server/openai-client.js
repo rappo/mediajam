@@ -17,17 +17,14 @@ async function refreshOAuthToken(identity) {
     if (!identity?.refresh_token) return null;
 
     try {
-        const settings = /** @type {any} */ (db.prepare(
-            'SELECT openai_client_id, openai_client_secret FROM app_settings WHERE id = 1'
-        ).get());
-        if (!settings?.openai_client_id || !settings?.openai_client_secret) return null;
+        // PKCE public client — use the same client ID as Codex CLI, no secret needed
+        const OPENAI_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
 
         const res = await fetch('https://auth.openai.com/oauth/token', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                client_id: settings.openai_client_id,
-                client_secret: settings.openai_client_secret,
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                client_id: OPENAI_CLIENT_ID,
                 refresh_token: identity.refresh_token,
                 grant_type: 'refresh_token',
             }),
