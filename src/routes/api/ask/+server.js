@@ -161,6 +161,11 @@ async function retrieveContext(question, userId) {
 
     if (isHistoryBased && userId) {
         // Use average of recently-watched item embeddings for better personalization
+        // Filter by detected media type — "movies based on my history" should only look at watched movies
+        const historyTypeFilter = mediaTypeLabel === 'movie' ? "AND mp.media_type = 'movie'"
+            : mediaTypeLabel === 'show' ? "AND mp.media_type = 'show'"
+            : mediaTypeLabel === 'music' ? "AND mp.media_type = 'artist'"
+            : "AND mp.media_type IN ('movie', 'show')"; // default: visual media only
         try {
             const recentEmbeddings = /** @type {any[]} */ (db.prepare(`
                 SELECT oe.overview_embedding
@@ -168,7 +173,8 @@ async function retrieveContext(question, userId) {
                 JOIN media_children mc ON ph.media_id = mc.id
                 JOIN media_parents mp ON mc.parent_id = mp.id
                 JOIN overview_embeddings oe ON oe.media_parent_id = mp.id
-                WHERE ph.user_id = ? AND ph.timestamp > datetime('now', '-14 days')
+                WHERE ph.user_id = ? AND ph.timestamp > datetime('now', '-30 days')
+                ${historyTypeFilter}
                 GROUP BY mp.id
                 ORDER BY MAX(ph.timestamp) DESC
                 LIMIT 10
