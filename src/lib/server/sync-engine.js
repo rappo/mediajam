@@ -1320,7 +1320,12 @@ export async function startSync(libraryId = null, force = false) {
             detail: detailParts.join(' · '),
             icon: allFailed ? '❌' : hasErrors ? '⚠️' : '✅',
             status: allFailed ? 'error' : hasErrors ? 'warning' : 'success',
-            actionable: true, actionType: 'navigate', actionData: { href: '/settings/admin' }
+            actionable: true, actionType: 'navigate', actionData: {
+                href: '/settings/admin?tab=sync',
+                errors: totalErrorMessages.slice(0, 10),
+                totalErrors,
+                totalSynced
+            }
         });
 
     } catch (e) {

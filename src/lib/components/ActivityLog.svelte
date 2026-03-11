@@ -17,6 +17,8 @@
     let activities = $state([]);
     let loading = $state(false);
     let pollInterval = $state(/** @type {any} */ (null));
+    /** @type {Record<number, boolean>} */
+    let expandedActivity = $state({});
 
     // Start polling for unread count when mounted
     $effect(() => {
@@ -87,16 +89,23 @@
 
         // Handle actions
         if (activity.actionable && activity.action_type) {
+            let actionData = activity.action_data;
+            if (typeof actionData === "string") {
+                try { actionData = JSON.parse(actionData); } catch { /* ignore */ }
+            }
+
+            // If this activity has error details, toggle expanded view instead of navigating
+            if (actionData?.errors?.length > 0) {
+                expandedActivity = { ...expandedActivity, [activity.id]: !expandedActivity[activity.id] };
+                return;
+            }
+
             switch (activity.action_type) {
                 case "open_conflict":
                     close();
                     conflictDialog?.show();
                     break;
                 case "navigate": {
-                    let actionData = activity.action_data;
-                    if (typeof actionData === "string") {
-                        try { actionData = JSON.parse(actionData); } catch { /* ignore */ }
-                    }
                     if (actionData?.href) {
                         close();
                         window.location.href = actionData.href;
@@ -107,6 +116,19 @@
                     break;
             }
         }
+    }
+
+    /**
+     * Parse action_data for an activity
+     * @param {any} activity
+     * @returns {any}
+     */
+    function getActionData(activity) {
+        let data = activity.action_data;
+        if (typeof data === 'string') {
+            try { data = JSON.parse(data); } catch { return null; }
+        }
+        return data;
     }
 
     /**
@@ -250,8 +272,9 @@
                                     </div>
                                 {/if}
                                 {#if activity.actionable}
+                                    {@const ad = getActionData(activity)}
                                     <div class="text-xs text-primary/60 mt-0.5">
-                                        Click to view →
+                                        {ad?.errors?.length > 0 ? (expandedActivity[activity.id] ? '▾ Hide errors' : '▸ Show errors') : 'Click to view →'}
                                     </div>
                                 {/if}
                             </div>
@@ -284,6 +307,41 @@
                                 ></span>
                             {/if}
                         </div>
+
+                        <!-- Expanded error details -->
+                        {#if expandedActivity[activity.id]}
+                            {@const ad = getActionData(activity)}
+                            {#if ad?.errors?.length > 0}
+                                <div class="px-4 py-3 bg-error/5 border-b border-base-content/5">
+                                    <div class="text-xs font-semibold text-error mb-2">
+                                        {ad.totalErrors} error{ad.totalErrors !== 1 ? 's' : ''} during sync
+                                    </div>
+                                    <ul class="text-xs text-base-content/70 space-y-1 list-none">
+                                        {#each ad.errors as err}
+                                            <li class="flex items-start gap-1.5">
+                                                <span class="text-error/60 shrink-0 mt-px">•</span>
+                                                <span>{err}</span>
+                                            </li>
+                                        {/each}
+                                    </ul>
+                                    {#if ad.totalErrors > ad.errors.length}
+                                        <div class="text-xs text-base-content/40 mt-1">
+                                            …and {ad.totalErrors - ad.errors.length} more
+                                        </div>
+                                    {/if}
+                                    <div class="mt-3 text-xs text-base-content/50">
+                                        <span class="font-medium">Suggestions:</span>
+                                        These are usually caused by duplicate external IDs or items that Jellyfin reports differently.
+                                        Try running a full sync (force re-sync) or check the items in Jellyfin.
+                                    </div>
+                                    {#if ad.href}
+                                        <a href={ad.href} class="text-xs text-primary hover:underline mt-2 inline-block">
+                                            Go to Settings →
+                                        </a>
+                                    {/if}
+                                </div>
+                            {/if}
+                        {/if}
                     {/each}
                 {/if}
             </div>

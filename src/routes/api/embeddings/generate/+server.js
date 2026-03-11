@@ -55,11 +55,21 @@ export async function POST({ locals }) {
                      WHERE mp.overview IS NOT NULL AND mp.overview != ''`
                 ).all());
 
-                // Filter to items needing embedding: no hash (new) or hash mismatch (stale)
+                // Filter to items needing embedding: no hash (new), hash mismatch (stale),
+                // or hash exists but actual vec0 row is missing (orphan from failed INSERT OR REPLACE)
+                const checkVecExists = db.prepare(
+                    'SELECT 1 FROM overview_embeddings WHERE media_parent_id = ? LIMIT 1'
+                );
                 const needsEmbedding = parents.filter(p => {
                     const hash = contentHash(`${p.title}. ${p.overview}`);
                     p._hash = hash; // stash for later
-                    return !p.content_hash || p.content_hash !== hash;
+                    if (!p.content_hash || p.content_hash !== hash) return true;
+                    // Hash matches — verify the embedding actually exists in vec0
+                    try {
+                        return !checkVecExists.get(Number(p.id));
+                    } catch {
+                        return true; // if check fails, re-embed to be safe
+                    }
                 });
 
                 const staleCount = needsEmbedding.filter(p => p.content_hash).length;

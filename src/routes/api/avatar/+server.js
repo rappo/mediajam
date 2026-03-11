@@ -1,9 +1,11 @@
 import { json } from '@sveltejs/kit';
 import db from '$lib/server/db.js';
 import { writeFileSync, mkdirSync, existsSync } from 'fs';
-import { resolve, join } from 'path';
+import { resolve, join, dirname } from 'path';
 
-const UPLOAD_DIR = resolve(process.cwd(), 'uploads', 'avatars');
+// Store avatars in the same persistent directory as the database
+const DB_PATH = process.env.DATABASE_PATH || resolve(process.cwd(), 'mediajam.sqlite');
+const UPLOAD_DIR = resolve(dirname(DB_PATH), 'uploads', 'avatars');
 
 // Ensure upload directory exists
 if (!existsSync(UPLOAD_DIR)) {
