@@ -2,7 +2,7 @@
     /** @type {{ ollamaConfigured?: boolean }} */
     let { ollamaConfigured = false } = $props();
 
-    /** @typedef {{ role: 'user' | 'assistant', text: string, sql?: string, results?: any[], error?: string, loading?: boolean, type?: string }} ChatMessage */
+    /** @typedef {{ role: 'user' | 'assistant', text: string, sql?: string, results?: any[], sources?: any[], error?: string, loading?: boolean, type?: string }} ChatMessage */
 
     /** @type {ChatMessage[]} */
     let messages = $state([]);
@@ -122,6 +122,7 @@
                     text: summary,
                     sql: data.sql,
                     results: data.type === 'data' ? data.results?.slice(0, 10) : undefined,
+                    sources: data.sources,
                     type: data.type,
                 }];
             }
@@ -165,6 +166,57 @@
     }
 
     import { copyToClipboard } from '$lib/utils.js';
+
+    /**
+     * Escape HTML entities for safe {@html} rendering.
+     * @param {string} str
+     * @returns {string}
+     */
+    function escapeHtml(str) {
+        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    /**
+     * Convert media type to URL prefix.
+     * @param {string} type
+     * @returns {string}
+     */
+    function mediaTypeToPath(type) {
+        switch (type) {
+            case 'movie': return '/movies';
+            case 'show': return '/shows';
+            case 'artist': return '/music';
+            default: return '/movies';
+        }
+    }
+
+    /**
+     * Linkify title mentions in text using sources array.
+     * Returns HTML string safe for {@html}.
+     * @param {string} text
+     * @param {any[]} [sources]
+     * @returns {string}
+     */
+    function linkifyTitles(text, sources) {
+        let html = escapeHtml(text);
+        if (!sources || sources.length === 0) return html;
+
+        // Sort sources by title length descending to match longer titles first
+        const sorted = [...sources].sort((a, b) => (b.title?.length || 0) - (a.title?.length || 0));
+
+        for (const src of sorted) {
+            if (!src.title || !src.id) continue;
+            const path = mediaTypeToPath(src.type);
+            const url = `${path}/${src.id}`;
+            // Escape the title for use in regex (escape special regex chars)
+            const escapedTitle = escapeHtml(src.title).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            // Match the title as a whole word, case-insensitive, but only replace first occurrence
+            const regex = new RegExp(`("?)${escapedTitle}("?)`, 'i');
+            html = html.replace(regex, `$1<a href="${url}" class="link link-primary font-medium" data-sveltekit-preload-data>${escapeHtml(src.title)}</a>$2`);
+        }
+
+        return html;
+    }
 
     let copied = $state(false);
     function copyDebug() {
@@ -381,7 +433,11 @@
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
                         </div>
                         <div class="bg-base-200 rounded-2xl rounded-tl-sm px-3 py-2 text-sm max-w-[90%] whitespace-pre-wrap">
-                            {msg.text}
+                            {#if msg.sources && msg.sources.length > 0}
+                                {@html linkifyTitles(msg.text, msg.sources)}
+                            {:else}
+                                {msg.text}
+                            {/if}
                             {#if msg.sql}
                                 <button class="text-[11px] text-primary/50 hover:text-primary mt-1 block" onclick={() => toggleSql(String(i))}>
                                     {showSql[String(i)] ? '▾ Hide query' : '▸ Show query'}
