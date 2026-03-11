@@ -62,6 +62,9 @@ export async function POST({ locals }) {
                 send({ type: 'status', phase: 'overviews', total: needsEmbedding.length, new: newCount, stale: staleCount });
 
                 let done = 0;
+                let successCount = 0;
+                let failCount = 0;
+                let lastError = '';
                 for (const parent of needsEmbedding) {
                     const text = `${parent.title}. ${parent.overview}`;
                     const embedding = await embed(text);
@@ -73,20 +76,27 @@ export async function POST({ locals }) {
                             // Store the content hash
                             db.prepare(
                                 'INSERT OR REPLACE INTO embedding_hashes (media_parent_id, content_hash, embedded_at) VALUES (?, ?, datetime(\'now\'))'
-                            ).run(parent.id, parent._hash);
+                            ).run(Number(parent.id), parent._hash);
+                            successCount++;
                         } catch (insertErr) {
-                            if (done === 0) {
-                                const errMsg = insertErr instanceof Error ? insertErr.message : String(insertErr);
-                                send({ type: 'warning', message: `Embedding insert error (dim=${embedding.length}): ${errMsg}` });
-                                console.error(`[embeddings] INSERT failed (dim=${embedding.length}, expected 768):`, errMsg);
+                            failCount++;
+                            const errMsg = insertErr instanceof Error ? insertErr.message : String(insertErr);
+                            lastError = errMsg;
+                            if (failCount <= 5) {
+                                send({ type: 'warning', message: `Embedding insert error (id=${parent.id}, dim=${embedding.length}): ${errMsg}` });
+                                console.error(`[embeddings] INSERT failed for id=${parent.id} (dim=${embedding.length}):`, errMsg);
                             }
                         }
                     }
                     done++;
                     if (done % 10 === 0 || done === needsEmbedding.length) {
-                        send({ type: 'progress', phase: 'overviews', done, total: needsEmbedding.length });
+                        send({ type: 'progress', phase: 'overviews', done, total: needsEmbedding.length, ok: successCount, fail: failCount });
                     }
                 }
+                // Diagnostic: verify persistence
+                let verifyCount = 0;
+                try { verifyCount = /** @type {any} */ (db.prepare('SELECT COUNT(*) as c FROM overview_embeddings').get())?.c || 0; } catch {}
+                send({ type: 'diagnostic', phase: 'overviews', succeeded: successCount, failed: failCount, lastError, verifiedCount: Number(verifyCount) });
 
                 // Phase 2: Embed media_children titles (albums, episodes, tracks)
                 const children = /** @type {any[]} */ (db.prepare(
