@@ -135,13 +135,13 @@ function getLibraryStats() {
 async function retrieveContext(question, userId) {
     if (!isEmbeddingAvailable()) {
         logWarn('ask', 'RAG: isEmbeddingAvailable() returned false');
-        return null;
+        return 'isEmbeddingAvailable returned false';
     }
 
     const queryVec = await embed(question);
     if (!queryVec) {
         logWarn('ask', 'RAG: embed() returned null — Ollama embedding call failed');
-        return null;
+        return 'embed returned null';
     }
 
     // Semantic search: find 15 closest media by overview
@@ -155,16 +155,17 @@ async function retrieveContext(question, userId) {
                    vec_distance_cosine(oe.overview_embedding, ?) as distance
             FROM overview_embeddings oe
             JOIN media_parents mp ON oe.media_parent_id = mp.id
-            WHERE distance < 0.65
+            WHERE distance < 1.5
             ORDER BY distance
             LIMIT 15
         `).all(JSON.stringify(queryVec));
     } catch (e) {
-        logWarn('ask', `Semantic search failed: ${e instanceof Error ? e.message : e}`);
-        return null;
+        const msg = e instanceof Error ? e.message : String(e);
+        logWarn('ask', `Semantic search failed: ${msg}`);
+        return `search error: ${msg}`;
     }
 
-    if (candidates.length === 0) return null;
+    if (candidates.length === 0) return `0 candidates (vec=${queryVec.length} dims, table has rows but WHERE distance<1.5 matched nothing)`;
 
     // Enrich each candidate with tags and watch info
     const enriched = candidates.map(c => {
@@ -312,9 +313,10 @@ Message: ${question}`;
 
     // Step 2b: Discovery — RAG-powered recommendations and exploration
     if (isDiscovery) {
-        const ragContext = await retrieveContext(question, locals.user?.id);
+        const ragResult = await retrieveContext(question, locals.user?.id);
 
-        if (ragContext) {
+        if (ragResult && typeof ragResult === 'object' && 'context' in ragResult) {
+            const ragContext = ragResult;
             logInfo('ask', `RAG context: ${ragContext.sources.length} sources retrieved`);
 
             const discoveryPrompt = `${historyContext ? `Conversation so far:\n${historyContext}\n` : ''}User: "${question}"
@@ -337,13 +339,15 @@ Recommend 2-4 specific titles from the list above. For each, give a one-line rea
             });
         }
 
-        // Fallback: embeddings not available — return clear error, not filler
-        logWarn('ask', 'RAG context unavailable — embeddings missing or vec0 table not found');
+        // Fallback: RAG didn't return context
+        const failReason = typeof ragResult === 'string' ? ragResult : 'unknown';
+        logWarn('ask', `RAG context unavailable — reason: ${failReason}`);
 
         return json({
             question,
             type: 'discovery',
             error: true,
+            debugReason: failReason,
             summary: '⚠️ I can\'t provide personalized recommendations right now — there\'s a problem with my embedding system.\n\n' +
                 '**To diagnose:**\n' +
                 '1. Click the ⚙️ button in this chat header to check system status\n' +
