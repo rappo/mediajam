@@ -1,27 +1,26 @@
 import { json } from '@sveltejs/kit';
 import db from '$lib/server/db.js';
-import { isEmbeddingAvailable } from '$lib/server/ollama.js';
+import { isEmbeddingAvailable, healthCheck } from '$lib/server/ollama.js';
 
 /** @type {import('./$types').RequestHandler} */
 export async function GET({ locals }) {
     if (!locals.user) return json({ error: 'Unauthorized' }, { status: 401 });
 
-    // Check Ollama connectivity
-    let ollamaConnected = false;
+    // Read Ollama config from app_settings (same source as ollama.js)
     let chatModel = '';
     let embeddingModel = '';
+    let ollamaUrl = '';
     try {
-        const settings = /** @type {any[]} */ (db.prepare(
-            "SELECT key, value FROM settings WHERE key IN ('ollama_url', 'ollama_chat_model', 'ollama_embedding_model')"
-        ).all());
-        const map = Object.fromEntries(settings.map(/** @param {any} s */ s => [s.key, s.value]));
-        chatModel = map.ollama_chat_model || '';
-        embeddingModel = map.ollama_embedding_model || '';
-        if (map.ollama_url) {
-            const res = await fetch(`${map.ollama_url}/api/tags`, { signal: AbortSignal.timeout(3000) });
-            ollamaConnected = res.ok;
-        }
+        const settings = /** @type {any} */ (db.prepare(
+            'SELECT ollama_url, ollama_embed_model, ollama_chat_model FROM app_settings WHERE id = 1'
+        ).get());
+        ollamaUrl = settings?.ollama_url || '';
+        chatModel = settings?.ollama_chat_model || '';
+        embeddingModel = settings?.ollama_embed_model || '';
     } catch { /* ignore */ }
+
+    // Check Ollama connectivity using the shared healthCheck
+    const health = await healthCheck();
 
     // Embedding stats
     const ragAvailable = isEmbeddingAvailable();
@@ -33,7 +32,8 @@ export async function GET({ locals }) {
     } catch { /* table may not exist */ }
 
     return json({
-        ollamaConnected,
+        ollamaConnected: health.ok,
+        ollamaError: health.error || null,
         chatModel,
         embeddingModel,
         ragAvailable,
