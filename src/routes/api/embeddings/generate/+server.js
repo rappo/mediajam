@@ -32,6 +32,11 @@ export async function POST({ locals }) {
     if (!testEmbed) {
         return json({ error: 'Ollama not available or embedding model not loaded' }, { status: 503 });
     }
+    const embedDim = testEmbed.length;
+    console.log(`[embeddings] Test embed OK — dimension=${embedDim}, expected=768`);
+    if (embedDim !== 768) {
+        return json({ error: `Embedding dimension mismatch: got ${embedDim}, expected 768. Check your embed model.` }, { status: 400 });
+    }
 
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
@@ -70,14 +75,30 @@ export async function POST({ locals }) {
                     const embedding = await embed(text);
                     if (embedding) {
                         try {
-                            db.prepare(
-                                'INSERT OR REPLACE INTO overview_embeddings (media_parent_id, overview_embedding) VALUES (?, ?)'
-                            ).run(Number(parent.id), JSON.stringify(embedding));
+                            const pid = Number(parent.id);
+                            const vecJson = JSON.stringify(embedding);
+                            // vec0 doesn't support OR REPLACE — use DELETE + INSERT
+                            try { db.prepare('DELETE FROM overview_embeddings WHERE media_parent_id = ?').run(pid); } catch { /* may not exist */ }
+                            const result = db.prepare(
+                                'INSERT INTO overview_embeddings (media_parent_id, overview_embedding) VALUES (?, ?)'
+                            ).run(pid, vecJson);
                             // Store the content hash
                             db.prepare(
                                 'INSERT OR REPLACE INTO embedding_hashes (media_parent_id, content_hash, embedded_at) VALUES (?, ?, datetime(\'now\'))'
-                            ).run(Number(parent.id), parent._hash);
+                            ).run(pid, parent._hash);
                             successCount++;
+
+                            // Verify first insert actually persisted
+                            if (successCount === 1) {
+                                let readBack = null;
+                                try { readBack = db.prepare('SELECT media_parent_id FROM overview_embeddings WHERE media_parent_id = ?').get(pid); } catch (rbErr) {
+                                    const rbMsg = rbErr instanceof Error ? rbErr.message : String(rbErr);
+                                    send({ type: 'warning', message: `Read-back SELECT failed: ${rbMsg}` });
+                                    console.error('[embeddings] Read-back failed:', rbMsg);
+                                }
+                                send({ type: 'diagnostic', phase: 'first-insert', id: pid, changes: result.changes, readBack: readBack ? 'found' : 'NOT_FOUND', dim: embedding.length });
+                                console.log(`[embeddings] First insert: id=${pid}, changes=${result.changes}, readBack=${readBack ? 'found' : 'NOT_FOUND'}`);
+                            }
                         } catch (insertErr) {
                             failCount++;
                             const errMsg = insertErr instanceof Error ? insertErr.message : String(insertErr);
@@ -86,6 +107,11 @@ export async function POST({ locals }) {
                                 send({ type: 'warning', message: `Embedding insert error (id=${parent.id}, dim=${embedding.length}): ${errMsg}` });
                                 console.error(`[embeddings] INSERT failed for id=${parent.id} (dim=${embedding.length}):`, errMsg);
                             }
+                        }
+                    } else {
+                        // Track when embed() returns null
+                        if (done === 0) {
+                            send({ type: 'warning', message: `embed() returned null for first item (id=${parent.id})` });
                         }
                     }
                     done++;
@@ -114,9 +140,12 @@ export async function POST({ locals }) {
                     const embedding = await embed(text);
                     if (embedding) {
                         try {
+                            const cid = Number(child.id);
+                            // vec0 doesn't support OR REPLACE — use DELETE + INSERT
+                            try { db.prepare('DELETE FROM media_embeddings WHERE media_id = ?').run(cid); } catch { /* may not exist */ }
                             db.prepare(
-                                'INSERT OR REPLACE INTO media_embeddings (media_id, title_embedding) VALUES (?, ?)'
-                            ).run(Number(child.id), JSON.stringify(embedding));
+                                'INSERT INTO media_embeddings (media_id, title_embedding) VALUES (?, ?)'
+                            ).run(cid, JSON.stringify(embedding));
                         } catch (insertErr) {
                             if (done === 0) {
                                 const errMsg = insertErr instanceof Error ? insertErr.message : String(insertErr);

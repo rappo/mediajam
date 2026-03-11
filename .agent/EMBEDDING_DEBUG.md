@@ -50,6 +50,23 @@ timeout 60 curl -s -X POST -H "Authorization: Bearer $API" \
   "http://192.168.1.50:7331/api/embeddings/generate" 2>&1 | grep -E 'warning|diagnostic'
 ```
 
+### Fix Applied (2026-03-11 11:49)
+
+**Root cause (most likely): `INSERT OR REPLACE` silently fails on vec0 virtual tables.**
+
+vec0 is a virtual table implementation that doesn't properly support SQLite's conflict resolution. `INSERT OR REPLACE` triggers a DELETE (which may silently fail or no-op on the shadow tables) followed by an INSERT that never executes because the conflict resolution already consumed the statement.
+
+**Changes made to `+server.js`:**
+1. **DELETE + INSERT** instead of `INSERT OR REPLACE` for both `overview_embeddings` and `media_embeddings` vec0 tables
+2. **Dimension validation** — upfront check that embedding model returns exactly 768 dimensions, returns 400 if mismatched
+3. **First-insert read-back** — after the very first successful INSERT, immediately SELECTs back to confirm persistence. Sends a `diagnostic` SSE event with `phase: 'first-insert'` showing `changes`, `readBack` status, and `dim`
+4. **Null-embed tracking** — warns if `embed()` returns null for the first item
+
+**To test:** Deploy, trigger "Generate Embeddings", and watch for these SSE events:
+- `diagnostic` with `phase: 'first-insert'` → confirms if INSERT actually persists
+- `diagnostic` with `phase: 'overviews'` → shows `verifiedCount` (should match `succeeded`)
+- Any `warning` events → shows specific error messages
+
 ### Files Changed
 - `src/lib/server/db.js` — added `embedding_hashes` table
 - `src/routes/api/embeddings/generate/+server.js` — content-hash detection, Number() cast, diagnostic logging
