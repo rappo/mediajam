@@ -53,15 +53,16 @@ export async function POST({ request, locals }) {
         const item = items[0];
         const providerIds = item.ProviderIds || {};
 
-        // Update the parent record
-        db.prepare(`
+        // Update the parent record — handle UNIQUE constraint conflicts on external IDs
+        const updateParentSql = `
             UPDATE media_parents SET
                 title = ?, tvdb_id = ?, tmdb_id = ?, imdb_id = ?,
                 musicbrainz_id = ?, release_year = ?, poster_url = ?,
                 overview = ?,
                 date_last_modified = ?, jellyfin_child_count = ?
             WHERE id = ?
-        `).run(
+        `;
+        const updateParentParams = [
             item.Name,
             providerIds.Tvdb || null,
             providerIds.Tmdb || null,
@@ -73,7 +74,54 @@ export async function POST({ request, locals }) {
             item.DateLastMediaAdded || item.DateModified || null,
             item.ChildCount || 0,
             parent.id
-        );
+        ];
+
+        try {
+            db.prepare(updateParentSql).run(...updateParentParams);
+        } catch (updateErr) {
+            const errStr = String(updateErr);
+            if (errStr.includes('UNIQUE constraint')) {
+                // Another row owns one of the external IDs — resolve by clearing conflicting ID
+                const conflictFields = [
+                    { field: 'imdb_id', value: providerIds.Imdb, paramIndex: 3 },
+                    { field: 'tmdb_id', value: providerIds.Tmdb, paramIndex: 2 },
+                    { field: 'musicbrainz_id', value: providerIds.MusicBrainzArtist || providerIds.MusicBrainzAlbum, paramIndex: 4 },
+                ];
+                for (const { field, value, paramIndex } of conflictFields) {
+                    if (value && errStr.includes(field)) {
+                        // Find the conflicting row
+                        const conflicting = /** @type {any} */ (db.prepare(
+                            `SELECT id, jellyfin_id FROM media_parents WHERE ${field} = ? AND id != ?`
+                        ).get(value, parent.id));
+                        if (conflicting && !conflicting.jellyfin_id) {
+                            // External-only row — merge: migrate children, delete it
+                            db.prepare('UPDATE media_children SET parent_id = ? WHERE parent_id = ?')
+                                .run(parent.id, conflicting.id);
+                            db.prepare('UPDATE person_credits SET media_parent_id = ? WHERE media_parent_id = ?')
+                                .run(parent.id, conflicting.id);
+                            db.prepare('DELETE FROM media_parents WHERE id = ?').run(conflicting.id);
+                            console.log(`[item-sync] 🔀 Auto-merged external ${field} duplicate (id=${conflicting.id})`);
+                        } else if (conflicting) {
+                            // Another Jellyfin item — clear the conflicting ID from the other row
+                            db.prepare(`UPDATE media_parents SET ${field} = NULL WHERE id = ?`).run(conflicting.id);
+                            console.log(`[item-sync] ⚠ Cleared ${field} from id=${conflicting.id} to resolve conflict`);
+                        }
+                        // Retry the update
+                        try {
+                            db.prepare(updateParentSql).run(...updateParentParams);
+                        } catch (retryErr) {
+                            // If it still fails, null out the problematic field and retry
+                            updateParentParams[paramIndex] = null;
+                            db.prepare(updateParentSql).run(...updateParentParams);
+                            console.warn(`[item-sync] ⚠ ${item.Name}: synced without ${field} due to unresolvable conflict`);
+                        }
+                        break;
+                    }
+                }
+            } else {
+                throw updateErr;
+            }
+        }
 
         let childCount = 0;
         let results = { parent: item.Name, type: parent.media_type };

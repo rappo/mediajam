@@ -873,20 +873,47 @@ export async function startSync(libraryId = null, force = false) {
                                 const existing = /** @type {any} */ (db.prepare(
                                     'SELECT id, title, jellyfin_id FROM media_parents WHERE imdb_id = ? LIMIT 1'
                                 ).get(parentParams.imdbId));
+
+                                // Find/create the current Jellyfin row (without imdb_id)
                                 retryParams.imdbId = null;
                                 upsertParent.run(retryParams);
-                                const secondaryRow = /** @type {any} */ (db.prepare(
-                                    'SELECT id FROM media_parents WHERE jellyfin_id = ?'
+                                const currentRow = /** @type {any} */ (db.prepare(
+                                    'SELECT id, title FROM media_parents WHERE jellyfin_id = ?'
                                 ).get(item.Id));
-                                if (existing && secondaryRow) {
-                                    try {
-                                        db.prepare(
-                                            `INSERT OR IGNORE INTO sync_conflicts (conflict_type, primary_id, secondary_id, external_id, status)
-                                             VALUES ('shared_imdb_id', ?, ?, ?, 'pending')`
-                                        ).run(existing.id, secondaryRow.id, parentParams.imdbId);
-                                    } catch { /* ignore duplicate */ }
+                                const currentId = currentRow?.id;
+
+                                if (existing && currentId && existing.id !== currentId) {
+                                    if (!existing.jellyfin_id) {
+                                        // External-only row holds imdb_id — auto-merge
+                                        try {
+                                            db.prepare('UPDATE media_children SET parent_id = ? WHERE parent_id = ?')
+                                                .run(currentId, existing.id);
+                                            db.prepare('UPDATE person_credits SET media_parent_id = ? WHERE media_parent_id = ?')
+                                                .run(currentId, existing.id);
+                                            db.prepare('DELETE FROM media_parents WHERE id = ?').run(existing.id);
+                                            db.prepare('UPDATE media_parents SET imdb_id = ? WHERE id = ?')
+                                                .run(parentParams.imdbId, currentId);
+
+                                            broadcast({ type: 'progress', log: `  🔀 ${item.Name}: auto-merged external IMDb entry (adopted imdb_id from id=${existing.id})`, logType: 'info' });
+                                            logInfo('sync', `Auto-merged IMDb entry: ${item.Name} (${parentParams.imdbId}), deleted external id=${existing.id}`);
+                                        } catch (mergeErr) {
+                                            const mergeErrStr = mergeErr instanceof Error ? mergeErr.message : String(mergeErr);
+                                            broadcast({ type: 'progress', log: `  ❌ ${item.Name}: IMDb auto-merge failed: ${mergeErrStr}`, logType: 'error' });
+                                            logWarn('sync', `IMDb auto-merge failed for ${item.Name}: ${mergeErrStr}`);
+                                        }
+                                    } else {
+                                        // Both rows have jellyfin_ids
+                                        try {
+                                            db.prepare(
+                                                `INSERT OR IGNORE INTO sync_conflicts (conflict_type, primary_id, secondary_id, external_id, status)
+                                                 VALUES ('shared_imdb_id', ?, ?, ?, 'pending')`
+                                            ).run(existing.id, currentId, parentParams.imdbId);
+                                        } catch { /* ignore duplicate */ }
+                                        broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: two Jellyfin items share IMDb ID with "${existing.title}" — resolve in Settings`, logType: 'warning' });
+                                    }
+                                } else {
+                                    broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: unresolved IMDb conflict, synced without IMDb ID`, logType: 'warning' });
                                 }
-                                broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: shares IMDb ID ${parentParams.imdbId} with "${existing?.title || 'unknown'}" — synced without IMDb ID`, logType: 'warning' });
 
                             } else {
                                 throw upsertErr;
