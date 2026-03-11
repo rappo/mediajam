@@ -695,10 +695,9 @@ export async function startSync(libraryId = null, force = false) {
                                             const moved = db.prepare(
                                                 'UPDATE media_children SET parent_id = ? WHERE parent_id = ?'
                                             ).run(currentId, existing.id);
-                                            // Migrate playback history
-                                            const movedHistory = db.prepare(
-                                                'UPDATE person_credits SET media_parent_id = ? WHERE media_parent_id = ?'
-                                            ).run(currentId, existing.id);
+                                            // Delete source person_credits (target will re-sync its own)
+                                            db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?')
+                                                .run(existing.id);
                                             // Delete the external parent
                                             db.prepare('DELETE FROM media_parents WHERE id = ?').run(existing.id);
                                             // Apply the correct musicbrainz_id to the Jellyfin entry
@@ -888,8 +887,9 @@ export async function startSync(libraryId = null, force = false) {
                                         try {
                                             db.prepare('UPDATE media_children SET parent_id = ? WHERE parent_id = ?')
                                                 .run(currentId, existing.id);
-                                            db.prepare('UPDATE person_credits SET media_parent_id = ? WHERE media_parent_id = ?')
-                                                .run(currentId, existing.id);
+                                            // Delete source person_credits (target will re-sync its own)
+                                            db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?')
+                                                .run(existing.id);
                                             db.prepare('DELETE FROM media_parents WHERE id = ?').run(existing.id);
                                             db.prepare('UPDATE media_parents SET imdb_id = ? WHERE id = ?')
                                                 .run(parentParams.imdbId, currentId);

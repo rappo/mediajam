@@ -97,8 +97,9 @@ export async function POST({ request, locals }) {
                             // External-only row — merge: migrate children, delete it
                             db.prepare('UPDATE media_children SET parent_id = ? WHERE parent_id = ?')
                                 .run(parent.id, conflicting.id);
-                            db.prepare('UPDATE person_credits SET media_parent_id = ? WHERE media_parent_id = ?')
-                                .run(parent.id, conflicting.id);
+                            // Delete source person_credits (target will re-sync its own)
+                            db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?')
+                                .run(conflicting.id);
                             db.prepare('DELETE FROM media_parents WHERE id = ?').run(conflicting.id);
                             console.log(`[item-sync] 🔀 Auto-merged external ${field} duplicate (id=${conflicting.id})`);
                         } else if (conflicting) {
