@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import db from '$lib/server/db.js';
-import { embed, isEmbeddingAvailable } from '$lib/server/ollama.js';
+import { embed, isEmbeddingAvailable } from '$lib/server/llm.js';
 
 /**
  * GET /api/search?q=... — Global search across media and history.

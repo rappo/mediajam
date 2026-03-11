@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import db from '$lib/server/db.js';
-import { generate, embed, isEmbeddingAvailable } from '$lib/server/ollama.js';
+import { generate, embed, isEmbeddingAvailable } from '$lib/server/llm.js';
 import { logInfo, logWarn } from '$lib/server/logger.js';
 
 /** Tables that are safe to query */

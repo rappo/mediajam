@@ -96,6 +96,13 @@
     let ollamaChatModel = $state(
         data.settings.ollamaChatModel || "llama3.2:3b",
     );
+    // Multi-provider LLM
+    let llmProvider = $state(data.settings.llmProvider || 'ollama');
+    let llmApiKey = $state(data.settings.llmApiKey || '');
+    let llmApiUrl = $state(data.settings.llmApiUrl || '');
+    let llmChatModel = $state(data.settings.llmChatModel || '');
+    let llmEmbedProvider = $state(data.settings.llmEmbedProvider || 'ollama');
+    let llmEmbedModel = $state(data.settings.llmEmbedModel || '');
 
     // *arr Integration
     /** @type {Array<{service: string, label: string, defaultPort: number}>} */
@@ -259,6 +266,12 @@
         ollamaUrl: data.settings.ollamaUrl || "",
         ollamaEmbedModel: data.settings.ollamaEmbedModel || "nomic-embed-text",
         ollamaChatModel: data.settings.ollamaChatModel || "llama3.2:3b",
+        llmProvider: data.settings.llmProvider || 'ollama',
+        llmApiKey: data.settings.llmApiKey || '',
+        llmApiUrl: data.settings.llmApiUrl || '',
+        llmChatModel: data.settings.llmChatModel || '',
+        llmEmbedProvider: data.settings.llmEmbedProvider || 'ollama',
+        llmEmbedModel: data.settings.llmEmbedModel || '',
         omdbApiKey: "",
         discogsToken: "",
         fanartApiKey: "",
@@ -282,6 +295,12 @@
             ollamaUrl !== initialValues.ollamaUrl ||
             ollamaEmbedModel !== initialValues.ollamaEmbedModel ||
             ollamaChatModel !== initialValues.ollamaChatModel ||
+            llmProvider !== initialValues.llmProvider ||
+            llmApiKey !== initialValues.llmApiKey ||
+            llmApiUrl !== initialValues.llmApiUrl ||
+            llmChatModel !== initialValues.llmChatModel ||
+            llmEmbedProvider !== initialValues.llmEmbedProvider ||
+            llmEmbedModel !== initialValues.llmEmbedModel ||
             omdbApiKey !== initialValues.omdbApiKey ||
             discogsToken !== initialValues.discogsToken ||
             fanartApiKey !== initialValues.fanartApiKey,
@@ -515,6 +534,12 @@
             payload.ollama_url = ollamaUrl || null;
             payload.ollama_embed_model = ollamaEmbedModel || "nomic-embed-text";
             payload.ollama_chat_model = ollamaChatModel || "llama3.2:3b";
+            payload.llm_provider = llmProvider;
+            if (llmApiKey && llmApiKey !== '••••••••') payload.llm_api_key = llmApiKey;
+            payload.llm_api_url = llmApiUrl || null;
+            payload.llm_chat_model = llmChatModel || null;
+            payload.llm_embed_provider = llmEmbedProvider;
+            payload.llm_embed_model = llmEmbedModel || null;
             if (omdbApiKey && omdbApiKey !== "••••••••")
                 payload.omdb_api_key = omdbApiKey;
             if (discogsToken && discogsToken !== "••••••••")
@@ -2877,11 +2902,128 @@
             </p>
 
             <div class="grid gap-3 mt-4">
-                <!-- Ollama URL -->
+                <!-- LLM Provider Selector -->
+                <label class="form-control w-full">
+                    <div class="label pb-1">
+                        <span class="label-text text-xs font-medium">Chat Provider</span>
+                    </div>
+                    <select
+                        bind:value={llmProvider}
+                        class="select select-bordered select-sm"
+                    >
+                        <option value="ollama">🤖 Ollama (local)</option>
+                        <option value="openai">🟢 OpenAI</option>
+                        <option value="gemini">🔵 Google Gemini</option>
+                        <option value="claude">🟣 Claude (Anthropic)</option>
+                        <option value="kimi">🌙 Kimi (Moonshot)</option>
+                    </select>
+                </label>
+
+                <!-- Cloud Provider Config (OpenAI / Gemini / Claude / Kimi) -->
+                {#if llmProvider !== 'ollama'}
+                    <div class="p-3 rounded-lg border border-base-300 bg-base-200/30 space-y-3">
+                        <!-- API Key -->
+                        <label class="form-control w-full">
+                            <div class="label pb-1">
+                                <span class="label-text text-xs font-medium">API Key</span>
+                            </div>
+                            <div class="flex gap-2">
+                                <input
+                                    type="password"
+                                    bind:value={llmApiKey}
+                                    placeholder="sk-... or API key"
+                                    class="input input-bordered input-sm flex-1 font-mono"
+                                />
+                                {#if llmProvider === 'openai' && data.settings.hasOpenaiClientId}
+                                    <a href="/api/llm/openai/auth" class="btn btn-sm btn-outline gap-1">
+                                        🔑 Sign in with OpenAI
+                                    </a>
+                                {/if}
+                                {#if llmProvider === 'gemini' && data.settings.hasGeminiClientId}
+                                    <a href="/api/llm/gemini/auth" class="btn btn-sm btn-outline gap-1">
+                                        🔑 Sign in with Google
+                                    </a>
+                                {/if}
+                            </div>
+                            <p class="text-[10px] text-base-content/40 mt-1">
+                                {#if llmProvider === 'openai'}
+                                    Get your key at <a href="https://platform.openai.com/api-keys" target="_blank" class="link">platform.openai.com</a>
+                                {:else if llmProvider === 'gemini'}
+                                    Get your key at <a href="https://aistudio.google.com/apikey" target="_blank" class="link">aistudio.google.com</a>
+                                {:else if llmProvider === 'claude'}
+                                    Get your key at <a href="https://console.anthropic.com/" target="_blank" class="link">console.anthropic.com</a>
+                                {:else if llmProvider === 'kimi'}
+                                    Get your key at <a href="https://platform.moonshot.cn/" target="_blank" class="link">platform.moonshot.cn</a>
+                                {/if}
+                            </p>
+                        </label>
+
+                        <!-- Custom API URL (for Kimi or self-hosted) -->
+                        {#if llmProvider === 'kimi' || llmProvider === 'openai'}
+                            <label class="form-control w-full">
+                                <div class="label pb-1">
+                                    <span class="label-text text-xs font-medium">API Base URL <span class="text-base-content/40">(optional)</span></span>
+                                </div>
+                                <input
+                                    type="url"
+                                    bind:value={llmApiUrl}
+                                    placeholder={llmProvider === 'kimi' ? 'https://api.moonshot.cn' : 'https://api.openai.com'}
+                                    class="input input-bordered input-sm font-mono"
+                                />
+                            </label>
+                        {/if}
+
+                        <!-- Chat Model -->
+                        <label class="form-control w-full">
+                            <div class="label pb-1">
+                                <span class="label-text text-xs font-medium">Chat Model</span>
+                            </div>
+                            <input
+                                type="text"
+                                bind:value={llmChatModel}
+                                placeholder={llmProvider === 'openai' ? 'gpt-4o-mini' : llmProvider === 'gemini' ? 'gemini-2.5-flash' : llmProvider === 'claude' ? 'claude-sonnet-4-5-20250514' : 'kimi-k2-0711-preview'}
+                                class="input input-bordered input-sm font-mono"
+                            />
+                        </label>
+
+                        <!-- Embed Provider -->
+                        <label class="form-control w-full">
+                            <div class="label pb-1">
+                                <span class="label-text text-xs font-medium">Embedding Provider</span>
+                            </div>
+                            <select
+                                bind:value={llmEmbedProvider}
+                                class="select select-bordered select-sm"
+                            >
+                                <option value="ollama">🤖 Ollama (local) — keep existing embeddings</option>
+                                {#if llmProvider === 'openai'}
+                                    <option value="openai">🟢 OpenAI (text-embedding-3-small)</option>
+                                {/if}
+                                {#if llmProvider === 'gemini'}
+                                    <option value="gemini">🔵 Google Gemini (768d — matches Ollama)</option>
+                                {/if}
+                            </select>
+                            {#if llmEmbedProvider !== 'ollama'}
+                                <p class="text-[10px] text-warning mt-1">
+                                    ⚠️ Switching embed providers requires re-embedding all items
+                                </p>
+                            {/if}
+                        </label>
+
+                        {#if llmProvider === 'claude'}
+                            <div class="alert alert-warning alert-sm">
+                                <span class="text-xs">Claude has no embedding API — embeddings will use the embedding provider above (default: Ollama)</span>
+                            </div>
+                        {/if}
+                    </div>
+                {/if}
+
+                <!-- Ollama URL (shown when provider is Ollama, OR always for embed config) -->
+                {#if llmProvider === 'ollama' || llmEmbedProvider === 'ollama'}
                 <label class="form-control w-full">
                     <div class="label pb-1">
                         <span class="label-text text-xs font-medium"
-                            >Ollama URL</span
+                            >Ollama URL {#if llmProvider !== 'ollama'}<span class="text-base-content/40">(for embeddings)</span>{/if}</span
                         >
                     </div>
                     <div class="flex gap-2">
@@ -3052,6 +3194,7 @@
                         </p>
                     </label>
                 </div>
+                {/if}
 
                 <!-- Actions -->
                 {#if ollamaUrl}

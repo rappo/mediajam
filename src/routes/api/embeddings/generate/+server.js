@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import db, { sqliteVecLoaded } from '$lib/server/db.js';
-import { embed, isEmbeddingAvailable } from '$lib/server/ollama.js';
+import { embed, isEmbeddingAvailable } from '$lib/server/llm.js';
 import crypto from 'crypto';
 
 /** Compute a content hash for a given text

@@ -104,6 +104,15 @@ export function load() {
             ollamaUrl: settings?.ollama_url || '',
             ollamaEmbedModel: settings?.ollama_embed_model || 'nomic-embed-text',
             ollamaChatModel: settings?.ollama_chat_model || 'llama3.2:3b',
+            // LLM provider
+            llmProvider: settings?.llm_provider || 'ollama',
+            llmApiKey: settings?.llm_api_key ? '••••••••' : '',
+            llmApiUrl: settings?.llm_api_url || '',
+            llmChatModel: settings?.llm_chat_model || '',
+            llmEmbedProvider: settings?.llm_embed_provider || 'ollama',
+            llmEmbedModel: settings?.llm_embed_model || '',
+            hasOpenaiClientId: !!settings?.openai_client_id,
+            hasGeminiClientId: !!settings?.gemini_client_id,
             // *arr integration
             radarrUrl: settings?.radarr_url || '',
             radarrApiKey: settings?.radarr_api_key ? '••••••••' : '',

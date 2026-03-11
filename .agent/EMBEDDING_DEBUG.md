@@ -12,7 +12,14 @@
 - **Number() cast** — vec0 requires strict int, `better-sqlite3` returns BigInt
 
 ### What's NOT Working ❌
-**Embeddings don't persist despite no errors.**
+~~**Embeddings don't persist despite no errors.**~~
+
+### ✅ RESOLVED (2026-03-11 12:22)
+**Root cause:** `better-sqlite3` binds JavaScript `Number` values as REAL/double at the SQLite C layer. vec0 virtual tables strictly require INTEGER type for primary keys → silent rejection with "Only integers are allows for primary key values".
+
+**Fix:** `CAST(? AS INTEGER)` in all vec0 SQL statements. Also switched from `INSERT OR REPLACE` to `DELETE + INSERT` (vec0 doesn't support conflict resolution properly).
+
+**Confirmed:** `changes=1, readBack=found` after first INSERT.
 
 #### Facts:
 1. `sqliteVecLoaded: true` — the extension loads

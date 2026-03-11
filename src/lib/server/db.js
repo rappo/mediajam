@@ -383,6 +383,18 @@ const newAppCols = [
     ['fanart_api_key', 'TEXT'],
     // Database backups
     ['db_backup_count', 'INTEGER DEFAULT 2'],
+    // LLM provider support
+    ['llm_provider', "TEXT DEFAULT 'ollama'"],      // 'ollama'|'openai'|'gemini'|'claude'|'kimi'
+    ['llm_api_key', 'TEXT'],                         // API key for cloud providers
+    ['llm_api_url', 'TEXT'],                         // Custom base URL (e.g. Kimi endpoint)
+    ['llm_chat_model', 'TEXT'],                      // Cloud chat model name
+    ['llm_embed_provider', "TEXT DEFAULT 'ollama'"], // Separate embed provider
+    ['llm_embed_model', 'TEXT'],                     // Cloud embed model name
+    // OAuth client IDs for LLM providers
+    ['openai_client_id', 'TEXT'],
+    ['openai_client_secret', 'TEXT'],
+    ['gemini_client_id', 'TEXT'],
+    ['gemini_client_secret', 'TEXT'],
 ];
 for (const [col, type] of newAppCols) {
     if (!existingCols.has(col)) {

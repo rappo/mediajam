@@ -1,26 +1,36 @@
 import { json } from '@sveltejs/kit';
 import db from '$lib/server/db.js';
-import { isEmbeddingAvailable, healthCheck, embed } from '$lib/server/ollama.js';
+import { isEmbeddingAvailable, healthCheck, embed, getProviderLabels } from '$lib/server/llm.js';
 
 /** @type {import('./$types').RequestHandler} */
 export async function GET({ locals }) {
     if (!locals.user) return json({ error: 'Unauthorized' }, { status: 401 });
 
-    // Read Ollama config from app_settings (same source as ollama.js)
+    // Read provider config from app_settings
     let chatModel = '';
     let embeddingModel = '';
+    let providerName = 'ollama';
     let ollamaUrl = '';
     try {
         const settings = /** @type {any} */ (db.prepare(
-            'SELECT ollama_url, ollama_embed_model, ollama_chat_model FROM app_settings WHERE id = 1'
+            'SELECT llm_provider, llm_chat_model, llm_embed_provider, llm_embed_model, ollama_url, ollama_embed_model, ollama_chat_model FROM app_settings WHERE id = 1'
         ).get());
+        providerName = settings?.llm_provider || 'ollama';
         ollamaUrl = settings?.ollama_url || '';
-        chatModel = settings?.ollama_chat_model || (ollamaUrl ? 'llama3.2:3b' : '');
-        embeddingModel = settings?.ollama_embed_model || (ollamaUrl ? 'nomic-embed-text' : '');
+
+        // Use provider-specific model names, falling back to Ollama
+        if (providerName === 'ollama') {
+            chatModel = settings?.ollama_chat_model || (ollamaUrl ? 'llama3.2:3b' : '');
+            embeddingModel = settings?.ollama_embed_model || (ollamaUrl ? 'nomic-embed-text' : '');
+        } else {
+            chatModel = settings?.llm_chat_model || '';
+            embeddingModel = settings?.llm_embed_model || settings?.ollama_embed_model || '';
+        }
     } catch { /* ignore */ }
 
-    // Check Ollama connectivity
+    // Check provider connectivity
     const health = await healthCheck();
+    const labels = getProviderLabels();
 
     // Quick embed test
     let embedTest = 'not tested';
@@ -46,6 +56,9 @@ export async function GET({ locals }) {
     } catch { /* table may not exist */ }
 
     return json({
+        provider: providerName,
+        providerLabel: labels.chat,
+        embedProviderLabel: labels.embed,
         ollamaConnected: health.ok,
         ollamaUrl: ollamaUrl || null,
         ollamaError: health.error || null,

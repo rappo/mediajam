@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import db from '$lib/server/db.js';
-import { generate } from '$lib/server/ollama.js';
+import { generate } from '$lib/server/llm.js';
 
 /**
  * POST /api/tags/generate — Generate LLM tags for all media_parents with overviews
