@@ -145,17 +145,15 @@ async function retrieveContext(question, userId) {
     }
 
     // Semantic search: find 15 closest media by overview
+    // NOTE: sqlite-vec has a bug where complex JOINs with many columns return 0 results.
+    //       Work around by doing a simple vec0 search first, then enriching with a separate query.
     /** @type {any[]} */
-    let candidates = [];
+    let matches = [];
     try {
-        candidates = db.prepare(`
-            SELECT mp.id, mp.title, mp.media_type, mp.release_year, mp.overview,
-                   mp.watched_children, mp.collected_children, mp.total_released_children,
-                   mp.is_favorite,
-                   vec_distance_cosine(oe.overview_embedding, ?) as distance
+        matches = db.prepare(`
+            SELECT oe.media_parent_id, vec_distance_cosine(oe.overview_embedding, ?) as distance
             FROM overview_embeddings oe
-            JOIN media_parents mp ON oe.media_parent_id = mp.id
-            WHERE distance < 1.5
+            WHERE distance < 1.0
             ORDER BY distance
             LIMIT 15
         `).all(JSON.stringify(queryVec));
@@ -165,7 +163,32 @@ async function retrieveContext(question, userId) {
         return `search error: ${msg}`;
     }
 
-    if (candidates.length === 0) return `0 candidates (vec=${queryVec.length} dims, table has rows but WHERE distance<1.5 matched nothing)`;
+    if (matches.length === 0) return `0 matches from vec0 (vec=${queryVec.length} dims)`;
+
+    // Enrich matches with full media details
+    const matchIds = matches.map(m => m.media_parent_id);
+    const distanceMap = Object.fromEntries(matches.map(m => [m.media_parent_id, m.distance]));
+
+    /** @type {any[]} */
+    let candidates;
+    try {
+        const placeholders = matchIds.map(() => '?').join(',');
+        candidates = db.prepare(`
+            SELECT id, title, media_type, release_year, overview,
+                   watched_children, collected_children, total_released_children,
+                   is_favorite
+            FROM media_parents
+            WHERE id IN (${placeholders})
+        `).all(...matchIds);
+    } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        logWarn('ask', `Media enrichment failed: ${msg}`);
+        return `enrichment error: ${msg}`;
+    }
+
+    // Attach distances and sort
+    candidates = candidates.map(c => ({ ...c, distance: distanceMap[c.id] || 1.0 }));
+    candidates.sort((a, b) => a.distance - b.distance);
 
     // Enrich each candidate with tags and watch info
     const enriched = candidates.map(c => {
