@@ -61,18 +61,29 @@ favorites: id, user_id, media_parent_id, person_id, created_at
 
 libraries: jellyfin_id, name, type, total_items
 
-EXAMPLE QUERIES (follow these patterns):
+EXAMPLE QUERIES — FOLLOW THESE PATTERNS EXACTLY:
 -- How many movies: SELECT COUNT(*) as count FROM media_parents WHERE media_type = 'movie'
 -- How many albums: SELECT COUNT(*) as count FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.media_type = 'artist'
 -- Total runtime of a show in hours: SELECT ROUND(SUM(mc.runtime_ticks) / 36000000000.0, 1) as hours FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.title LIKE '%Simpsons%' AND mp.media_type = 'show'
 -- Unwatched episodes remaining (hours): SELECT ROUND(SUM(mc.runtime_ticks) / 36000000000.0, 1) as hours_remaining, COUNT(*) as episodes FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.title LIKE '%Simpsons%' AND mc.watch_status != 'watched'
+-- What movies did I watch this week (RETURN TITLES, not just count): SELECT DISTINCT mp.title, mp.release_year, ph.timestamp FROM playback_history ph JOIN media_children mc ON ph.media_id = mc.id JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.media_type = 'movie' AND ph.timestamp > datetime('now', '-7 days') ORDER BY ph.timestamp DESC LIMIT 20
 -- Recently watched movies: SELECT DISTINCT mp.title, mp.release_year, ph.timestamp FROM playback_history ph JOIN media_children mc ON ph.media_id = mc.id JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.media_type = 'movie' AND ph.timestamp > datetime('now', '-30 days') ORDER BY ph.timestamp DESC LIMIT 20
 -- Movies by director: SELECT mp.title, mp.release_year FROM person_credits pc JOIN persons p ON pc.person_id = p.id JOIN media_parents mp ON pc.media_parent_id = mp.id WHERE p.name LIKE '%Spielberg%' AND pc.role_type = 'director'
--- Unwatched movies by director: SELECT mp.title, mp.release_year, mc.watch_status FROM person_credits pc JOIN persons p ON pc.person_id = p.id JOIN media_parents mp ON pc.media_parent_id = mp.id JOIN media_children mc ON mc.parent_id = mp.id WHERE p.name LIKE '%Kurosawa%' AND pc.role_type = 'director' AND mc.watch_status != 'watched'
+-- Unwatched movies by director ("haven't I seen", "not watched"): SELECT mp.title, mp.release_year, mc.watch_status FROM person_credits pc JOIN persons p ON pc.person_id = p.id JOIN media_parents mp ON pc.media_parent_id = mp.id JOIN media_children mc ON mc.parent_id = mp.id WHERE p.name LIKE '%Kurosawa%' AND pc.role_type = 'director' AND mc.watch_status != 'watched'
+-- All movies by director with watch status: SELECT mp.title, mp.release_year, mc.watch_status FROM person_credits pc JOIN persons p ON pc.person_id = p.id JOIN media_parents mp ON pc.media_parent_id = mp.id JOIN media_children mc ON mc.parent_id = mp.id WHERE p.name LIKE '%Kurosawa%' AND pc.role_type = 'director' ORDER BY mp.release_year
 -- Who stars in a director's films: SELECT p2.name, COUNT(*) as appearances FROM person_credits pc1 JOIN persons p1 ON pc1.person_id = p1.id JOIN person_credits pc2 ON pc2.media_parent_id = pc1.media_parent_id JOIN persons p2 ON pc2.person_id = p2.id WHERE p1.name LIKE '%Kurosawa%' AND pc1.role_type = 'director' AND pc2.role_type = 'actor' GROUP BY p2.id ORDER BY appearances DESC LIMIT 10
 -- Genres for a type: SELECT mt.tag_value, COUNT(*) as cnt FROM media_tags mt JOIN media_parents mp ON mt.media_parent_id = mp.id WHERE mp.media_type = 'movie' AND mt.tag_type = 'genre' GROUP BY mt.tag_value ORDER BY cnt DESC
 -- Most watched artists: SELECT mp.title, SUM(mc.play_count) as plays FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.media_type = 'artist' GROUP BY mp.id ORDER BY plays DESC LIMIT 10
--- Hours of music listened: SELECT ROUND(SUM(ph.duration_consumed_seconds) / 3600.0, 1) as hours FROM playback_history ph JOIN media_children mc ON ph.media_id = mc.id JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.media_type = 'artist'`;
+-- Hours of music listened: SELECT ROUND(SUM(ph.duration_consumed_seconds) / 3600.0, 1) as hours FROM playback_history ph JOIN media_children mc ON ph.media_id = mc.id JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.media_type = 'artist'
+-- What is a movie about / tell me about X: SELECT mp.title, mp.release_year, mp.overview, mp.media_type FROM media_parents mp WHERE mp.title LIKE '%Ran%' LIMIT 5
+
+COMMON MISTAKES — NEVER DO THESE:
+❌ WRONG: ... JOIN persons p ON pc.person_id = p.id ... (using 'pc' before defining it)
+✅ RIGHT: ... FROM person_credits pc JOIN persons p ON pc.person_id = p.id ...
+❌ WRONG: SELECT COUNT(*) when user asks "what", "which", "list" (they want names/titles!)
+✅ RIGHT: SELECT mp.title, mp.release_year ... when user asks "what did I watch"
+❌ WRONG: Using playback_history to check if something is watched/unwatched
+✅ RIGHT: Use media_children.watch_status = 'watched' or != 'watched'`;
 }
 
 /**
@@ -359,13 +370,13 @@ export async function POST({ request, locals }) {
 
     // Step 1: Ask the LLM to classify the question
     const classifyPrompt = `Classify this user message into one of three categories:
-- "data" — requires querying a database (counts, lists, lookups, statistics, viewing specific watch history, who stars in X, filmography queries, movies by a director, do I have more from X)
+- "data" — requires querying a database (counts, lists, lookups, statistics, viewing specific watch history, who stars in X, filmography queries, movies by a director, do I have more from X, "what is X about", "tell me about X")
 - "discovery" — recommendations, suggestions, mood-based picks, similarity, exploration, wanting picks BASED ON history, or conversational follow-ups about recommendations
 - "chat" — greeting, thanks, general conversation, non-library question
 
-IMPORTANT: If the conversation has been about recommendations and the user is continuing that thread (corrections, follow-ups, refinements), classify as "discovery". But factual lookups about people/directors/actors are always "data".
+IMPORTANT: If the conversation has been about recommendations and the user is continuing that thread (corrections, follow-ups, refinements), classify as "discovery". But factual lookups about people/directors/actors/specific titles are always "data".
 
-Examples: "how many movies?" → data | "recommend something dark" → discovery | "something like Breaking Bad" → discovery | "what should I watch?" → discovery | "hello" → chat | "what did I watch today?" → data | "tell me about Inception" → discovery | "thanks!" → chat | "what's a good movie based on my history?" → discovery | "suggest something like what I've been watching" → discovery | "list my recently watched" → data | "two of those aren't movies" → discovery | "why did you pick those?" → discovery | "only movies please" → discovery | "who stars in kurosawa films?" → data | "do I have more movies from Nolan?" → data | "what else has that actor been in?" → data | "movies directed by Spielberg" → data
+Examples: "how many movies?" → data | "recommend something dark" → discovery | "something like Breaking Bad" → discovery | "what should I watch?" → discovery | "hello" → chat | "what did I watch today?" → data | "tell me about Inception" → data | "what is Ran about?" → data | "thanks!" → chat | "what's a good movie based on my history?" → discovery | "suggest something like what I've been watching" → discovery | "list my recently watched" → data | "two of those aren't movies" → discovery | "why did you pick those?" → discovery | "only movies please" → discovery | "who stars in kurosawa films?" → data | "do I have more movies from Nolan?" → data | "what else has that actor been in?" → data | "movies directed by Spielberg" → data | "what movies did I watch this week?" → data
 
 ${historyContext ? `Recent conversation:\n${historyContext}\n` : ''}Reply with ONLY the word "data", "discovery", or "chat".
 
@@ -416,12 +427,12 @@ Message: ${question}`;
 
 ${ragContext.context}
 
-${typeInstruction}Recommend 2-4 specific titles from the list above. For each, give a one-line reason. Note watched/unwatched status. Be conversational and brief — no more than 4-5 sentences total.`;
+${typeInstruction}CRITICAL: Only recommend UNWATCHED items. Never recommend something the user has already watched — if it says "watched" or has a play count, skip it. Recommend 2-4 specific UNWATCHED titles from the list above. For each, give a one-line reason why it matches. Be conversational and brief — no more than 4-5 sentences total.`;
 
             const discoveryResponse = await generate(discoveryPrompt, {
                 temperature: 0.4,
                 num_predict: 250,
-                system: 'You are Mediajam, a media library assistant. You recommend items ONLY from the user\'s actual library (provided in context). Be specific and concise — no filler, no questions back, no lists of suggestions for "how to explore." Just give the picks with brief reasons. Pay close attention to the type of media the user is asking for (movies vs shows vs music).',
+                system: 'You are Mediajam, a media library assistant. You recommend ONLY UNWATCHED items from the user\'s actual library (provided in context). NEVER recommend something they already watched. Be specific and concise — no filler, no questions back. Just give the picks with brief reasons. Pay close attention to the type of media the user is asking for (movies vs shows vs music).',
             });
 
             return json({
@@ -464,11 +475,14 @@ RULES:
 3. media_parents has NO user_id column — do not filter it by user.
 4. To check watched/unwatched/in-progress status: use media_children.watch_status directly (values: 'watched', 'unwatched', 'in_progress'). Do NOT use playback_history for this.
 5. playback_history is ONLY for: play timestamps, duration consumed, listening history, "recently played". playback_history.media_id → media_children.id.
-6. "recently" means last 30 days. Use: timestamp > datetime('now', '-30 days')
+6. "recently" means last 30 days. "this week" means last 7 days. "past week" means last 7 days. Use: timestamp > datetime('now', '-7 days') or '-30 days'.
 7. For counting movies: SELECT COUNT(*) FROM media_parents WHERE media_type = 'movie'
 8. Limit results to 50 rows.
-9. Always use table aliases for JOINs.
-10. IMPORTANT: When the question mentions a director, actor, writer, or any person by name, ALWAYS search the "persons" table by name and JOIN through "person_credits". NEVER search media_parents.title for a person's name — directors and actors are NOT in the title field.
+9. Always use table aliases for JOINs. Define every alias BEFORE referencing it.
+10. IMPORTANT: When the question mentions a director, actor, writer, or any person by name, ALWAYS start FROM person_credits and JOIN to persons and media_parents. Pattern: FROM person_credits pc JOIN persons p ON pc.person_id = p.id JOIN media_parents mp ON pc.media_parent_id = mp.id. NEVER reference an alias (like 'pc') before defining it in a FROM or JOIN clause.
+11. "haven't seen", "haven't watched", "not watched", "unwatched" = mc.watch_status != 'watched'. Always JOIN media_children mc ON mc.parent_id = mp.id to check this.
+12. When the user asks "what" or "which" or "list" — ALWAYS return titles and details (mp.title, mp.release_year, etc.), NOT just COUNT(*). Only use COUNT(*) when the user explicitly asks "how many".
+13. When the user asks "what did I watch" — SELECT DISTINCT mp.title, mp.release_year, ph.timestamp FROM playback_history ph JOIN media_children mc ON ph.media_id = mc.id JOIN media_parents mp ON mc.parent_id = mp.id WHERE ... ORDER BY ph.timestamp DESC.
 
 Question: ${question}`;
 
