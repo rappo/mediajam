@@ -57,8 +57,9 @@ export async function POST({ request, locals }) {
         const updateParentSql = `
             UPDATE media_parents SET
                 title = ?, tvdb_id = ?, tmdb_id = ?, imdb_id = ?,
-                musicbrainz_id = ?, release_year = ?, poster_url = ?,
-                overview = ?,
+                musicbrainz_id = ?, release_year = ?,
+                poster_url = COALESCE(?, poster_url),
+                overview = COALESCE(?, overview),
                 date_last_modified = ?, jellyfin_child_count = ?
             WHERE id = ?
         `;

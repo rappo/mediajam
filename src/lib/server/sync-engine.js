@@ -760,7 +760,7 @@ export async function startSync(libraryId = null, force = false) {
 
                                         // Now update the existing entry with fresh metadata and the current jellyfin_id
                                         db.prepare(`UPDATE media_parents SET
-                                            jellyfin_id = ?, title = ?, poster_url = ?, overview = ?,
+                                            jellyfin_id = ?, title = ?, poster_url = COALESCE(?, poster_url), overview = COALESCE(?, overview),
                                             release_year = ?, jellyfin_user_rating = ?,
                                             date_last_modified = ?, jellyfin_child_count = ?,
                                             unplayed_count = ?, is_favorite = ?,
@@ -793,7 +793,7 @@ export async function startSync(libraryId = null, force = false) {
                                     // Adopt it: set jellyfin_id and update metadata on the existing row.
                                     try {
                                         db.prepare(`UPDATE media_parents SET
-                                            jellyfin_id = ?, library_id = ?, title = ?, poster_url = ?, overview = ?,
+                                            jellyfin_id = ?, library_id = ?, title = ?, poster_url = COALESCE(?, poster_url), overview = COALESCE(?, overview),
                                             release_year = ?, jellyfin_user_rating = ?,
                                             date_last_modified = ?, jellyfin_child_count = ?,
                                             unplayed_count = ?, is_favorite = ?,
@@ -834,7 +834,7 @@ export async function startSync(libraryId = null, force = false) {
                                     try {
                                         const oldJellyfinId = existing.jellyfin_id;
                                         db.prepare(`UPDATE media_parents SET
-                                            jellyfin_id = ?, library_id = ?, title = ?, poster_url = ?, overview = ?,
+                                            jellyfin_id = ?, library_id = ?, title = ?, poster_url = COALESCE(?, poster_url), overview = COALESCE(?, overview),
                                             release_year = ?, jellyfin_user_rating = ?,
                                             date_last_modified = ?, jellyfin_child_count = ?,
                                             unplayed_count = ?, is_favorite = ?,
