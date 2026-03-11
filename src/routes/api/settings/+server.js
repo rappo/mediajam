@@ -33,6 +33,18 @@ export async function GET() {
         fanartApiKey: settings?.fanart_api_key ? '••••••••' : '',
         // Database backups
         dbBackupCount: settings?.db_backup_count ?? 2,
+        // LLM provider
+        llmProvider: settings?.llm_provider || 'ollama',
+        llmApiKey: settings?.llm_api_key ? '••••••••' : '',
+        llmApiUrl: settings?.llm_api_url || '',
+        llmChatModel: settings?.llm_chat_model || '',
+        llmEmbedProvider: settings?.llm_embed_provider || 'ollama',
+        llmEmbedModel: settings?.llm_embed_model || '',
+        // Per-provider key indicators
+        hasOpenaiKey: !!settings?.openai_api_key,
+        hasGeminiKey: !!settings?.gemini_api_key,
+        hasClaudeKey: !!settings?.claude_api_key,
+        hasKimiKey: !!settings?.kimi_api_key,
     });
 }
 
@@ -83,7 +95,24 @@ export async function PUT({ request }) {
             // Database backups
             db_backup_count: 'db_backup_count',
             // Welcome flow
-            welcome_complete: 'welcome_complete'
+            welcome_complete: 'welcome_complete',
+            // LLM provider
+            llm_provider: 'llm_provider',
+            llm_api_key: 'llm_api_key',
+            llm_api_url: 'llm_api_url',
+            llm_chat_model: 'llm_chat_model',
+            llm_embed_provider: 'llm_embed_provider',
+            llm_embed_model: 'llm_embed_model',
+            // Per-provider API keys
+            openai_api_key: 'openai_api_key',
+            gemini_api_key: 'gemini_api_key',
+            claude_api_key: 'claude_api_key',
+            kimi_api_key: 'kimi_api_key',
+            // OAuth client IDs
+            openai_client_id: 'openai_client_id',
+            openai_client_secret: 'openai_client_secret',
+            gemini_client_id: 'gemini_client_id',
+            gemini_client_secret: 'gemini_client_secret',
         };
 
         for (const [key, column] of Object.entries(allowedFields)) {

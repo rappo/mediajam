@@ -18,7 +18,7 @@ const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
  */
 export function getConfig(userId) {
     const settings = /** @type {any} */ (db.prepare(
-        'SELECT llm_api_key, llm_chat_model, llm_embed_model FROM app_settings WHERE id = 1'
+        'SELECT llm_api_key, llm_chat_model, llm_embed_model, gemini_api_key FROM app_settings WHERE id = 1'
     ).get());
 
     // Try OAuth token first
@@ -35,8 +35,8 @@ export function getConfig(userId) {
         }
     }
 
-    // Fall back to API key
-    const apiKey = settings?.llm_api_key || null;
+    // Fall back to per-provider key, then shared key
+    const apiKey = settings?.gemini_api_key || settings?.llm_api_key || null;
 
     if (!accessToken && !apiKey) return null;
 

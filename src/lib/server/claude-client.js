@@ -18,11 +18,12 @@ const API_VERSION = '2023-06-01';
  */
 export function getConfig() {
     const settings = /** @type {any} */ (db.prepare(
-        'SELECT llm_api_key, llm_chat_model FROM app_settings WHERE id = 1'
+        'SELECT llm_api_key, llm_chat_model, claude_api_key FROM app_settings WHERE id = 1'
     ).get());
-    if (!settings?.llm_api_key) return null;
+    const apiKey = settings?.claude_api_key || settings?.llm_api_key;
+    if (!apiKey) return null;
     return {
-        apiKey: settings.llm_api_key,
+        apiKey,
         chatModel: settings.llm_chat_model || 'claude-sonnet-4-5-20250514',
     };
 }

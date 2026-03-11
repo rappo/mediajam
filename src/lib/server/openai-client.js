@@ -13,11 +13,15 @@ import db from '$lib/server/db.js';
  */
 export function getConfig() {
     const settings = /** @type {any} */ (db.prepare(
-        'SELECT llm_provider, llm_api_key, llm_api_url, llm_chat_model, llm_embed_model FROM app_settings WHERE id = 1'
+        'SELECT llm_provider, llm_api_key, llm_api_url, llm_chat_model, llm_embed_model, openai_api_key, kimi_api_key FROM app_settings WHERE id = 1'
     ).get());
-    if (!settings?.llm_api_key) return null;
 
-    const provider = settings.llm_provider || 'openai';
+    const provider = settings?.llm_provider || 'openai';
+
+    // Use per-provider key first, fallback to shared llm_api_key
+    const providerKey = provider === 'kimi' ? settings?.kimi_api_key : settings?.openai_api_key;
+    const apiKey = providerKey || settings?.llm_api_key;
+    if (!apiKey) return null;
 
     /** @type {Record<string, { url: string, model: string, embedModel: string }>} */
     const defaults = {
@@ -28,7 +32,7 @@ export function getConfig() {
 
     return {
         provider,
-        apiKey: settings.llm_api_key,
+        apiKey,
         apiUrl: (settings.llm_api_url || d.url).replace(/\/+$/, ''),
         chatModel: settings.llm_chat_model || d.model,
         embedModel: settings.llm_embed_model || d.embedModel,

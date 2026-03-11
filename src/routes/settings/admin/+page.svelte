@@ -417,6 +417,12 @@
             ollamaUrl,
             ollamaEmbedModel,
             ollamaChatModel,
+            llmProvider,
+            llmApiKey,
+            llmApiUrl,
+            llmChatModel,
+            llmEmbedProvider,
+            llmEmbedModel,
             omdbApiKey,
             discogsToken,
             fanartApiKey,
@@ -437,6 +443,12 @@
         ollamaUrl = snapshot.ollamaUrl;
         ollamaEmbedModel = snapshot.ollamaEmbedModel;
         ollamaChatModel = snapshot.ollamaChatModel;
+        llmProvider = snapshot.llmProvider;
+        llmApiKey = snapshot.llmApiKey;
+        llmApiUrl = snapshot.llmApiUrl;
+        llmChatModel = snapshot.llmChatModel;
+        llmEmbedProvider = snapshot.llmEmbedProvider;
+        llmEmbedModel = snapshot.llmEmbedModel;
         omdbApiKey = snapshot.omdbApiKey;
         discogsToken = snapshot.discogsToken;
         fanartApiKey = snapshot.fanartApiKey;
@@ -535,7 +547,21 @@
             payload.ollama_embed_model = ollamaEmbedModel || "nomic-embed-text";
             payload.ollama_chat_model = ollamaChatModel || "llama3.2:3b";
             payload.llm_provider = llmProvider;
-            if (llmApiKey && llmApiKey !== '••••••••') payload.llm_api_key = llmApiKey;
+            // Store API key in per-provider column so switching providers doesn't lose keys
+            if (llmApiKey && llmApiKey !== '••••••••') {
+                const providerKeyMap = /** @type {Record<string, string>} */ ({
+                    openai: 'openai_api_key',
+                    gemini: 'gemini_api_key',
+                    claude: 'claude_api_key',
+                    kimi: 'kimi_api_key',
+                });
+                const keyCol = providerKeyMap[llmProvider];
+                if (keyCol) {
+                    payload[keyCol] = llmApiKey;
+                }
+                // Also store in shared column for backward compat
+                payload.llm_api_key = llmApiKey;
+            }
             payload.llm_api_url = llmApiUrl || null;
             payload.llm_chat_model = llmChatModel || null;
             payload.llm_embed_provider = llmEmbedProvider;

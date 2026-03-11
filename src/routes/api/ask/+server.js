@@ -512,6 +512,20 @@ Question: ${question}`;
     // Remove trailing semicolons
     cleanSql = cleanSql.replace(/;\s*$/, '').trim();
 
+    // Post-processing: detect COUNT-only queries when user asked for specifics
+    const wantsDetails = /\b(which|what|list|show me|name|tell me)\b/i.test(question) && !/\b(how many|how much|count|total|number of)\b/i.test(question);
+    if (wantsDetails && /^\s*SELECT\s+COUNT\s*\(/i.test(cleanSql)) {
+        logInfo('ask', `SQL fix: user asked "${question}" but LLM generated COUNT — rewriting to return titles`);
+        // Rewrite: replace "SELECT COUNT(*)" with "SELECT DISTINCT mp.title, mp.release_year"
+        // and remove any GROUP BY that would break it
+        cleanSql = cleanSql
+            .replace(/SELECT\s+COUNT\s*\([^)]*\)\s*(as\s+\w+)?/i, 'SELECT DISTINCT mp.title, mp.release_year, mc.watch_status')
+            .replace(/\s+GROUP\s+BY\s+[^\s]+(?:\s*,\s*[^\s]+)*/i, '');
+        // Ensure LIMIT exists
+        if (!/LIMIT/i.test(cleanSql)) cleanSql += ' LIMIT 50';
+        logInfo('ask', `SQL rewritten: ${cleanSql}`);
+    }
+
     logInfo('ask', `SQL: ${cleanSql}`);
 
     // Validate
@@ -539,16 +553,22 @@ Question: ${question}`;
         let summary = null;
         if (sliced.length > 0) {
             try {
+                const dataPreview = JSON.stringify(sliced.slice(0, 15), null, 2);
                 const summaryPrompt = `The user asked: "${question}"
 
-The query returned ${results.length} result(s). Here is the data (JSON):
-${JSON.stringify(sliced.slice(0, 15), null, 2)}
+The database query returned ${results.length} result(s)${results.length > 15 ? ` (showing first 15)` : ''}. Here is the data (JSON):
+${dataPreview}
 
-Provide a brief, friendly, conversational answer to the user's question based on this data. Be concise (2-3 sentences max). Use specific names, numbers, and facts from the data. Do NOT mention SQL or databases.`;
+CRITICAL RULES:
+- Answer ONLY based on the data above. Do NOT invent or fabricate any facts.
+- If the data shows titles, LIST them by name. Do not say "I don't have information" when the data clearly contains it.
+- If the data shows a count, state the exact number.
+- If a COUNT(*) is 28, that means 28 items were found — say that, don't say "none" or "zero".
+- Be concise (2-3 sentences max). Be conversational. Do NOT mention SQL or databases.`;
 
                 summary = await generate(summaryPrompt, {
-                    temperature: 0.3,
-                    system: 'You are a helpful media library assistant. Answer naturally and conversationally. Be concise and specific.',
+                    temperature: 0.2,
+                    system: 'You are a helpful media library assistant. Answer ONLY based on the data provided. Never contradict the data. List specific titles when available. Be concise and specific.',
                 });
             } catch { /* ok */ }
         } else {
