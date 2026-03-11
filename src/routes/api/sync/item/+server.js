@@ -333,7 +333,7 @@ export async function POST({ request, locals }) {
                             ).get(personId, parent.id, roleType);
                             if (!existingCredit) {
                                 db.prepare(
-                                    'INSERT INTO person_credits (person_id, media_parent_id, role_type, character_name, sort_order) VALUES (?, ?, ?, ?, ?)'
+                                    'INSERT OR IGNORE INTO person_credits (person_id, media_parent_id, role_type, character_name, sort_order) VALUES (?, ?, ?, ?, ?)'
                                 ).run(personId, parent.id, roleType, person.Role || null, idx);
                             }
                             peopleSynced++;

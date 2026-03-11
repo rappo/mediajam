@@ -166,8 +166,9 @@
 
     // Auto-enrich: silently sync when key data is missing
     let enriching = $state(false);
+    let enrichFailed = $state(false);
     $effect(() => {
-        if (data.show.needsEnrichment && !enriching && data.show.jellyfin_id) {
+        if (data.show.needsEnrichment && !enriching && !enrichFailed && data.show.jellyfin_id) {
             enriching = true;
             fetch('/api/sync/item', {
                 method: 'POST',
@@ -175,8 +176,8 @@
                 body: JSON.stringify({ jellyfinId: data.show.jellyfin_id }),
             })
                 .then(r => r.json())
-                .then(d => { if (d.success) invalidateAll(); })
-                .catch(() => {})
+                .then(d => { if (d.success) invalidateAll(); else enrichFailed = true; })
+                .catch(() => { enrichFailed = true; })
                 .finally(() => { enriching = false; });
         }
     });

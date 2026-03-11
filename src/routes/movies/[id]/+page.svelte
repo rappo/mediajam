@@ -278,8 +278,9 @@
 
     // Auto-enrich: silently sync when key data is missing
     let enriching = $state(false);
+    let enrichFailed = $state(false);
     $effect(() => {
-        if (data.movie.needsEnrichment && !enriching) {
+        if (data.movie.needsEnrichment && !enriching && !enrichFailed) {
             enriching = true;
             const body = data.movie.jellyfin_id
                 ? { jellyfinId: data.movie.jellyfin_id }
@@ -290,8 +291,8 @@
                 body: JSON.stringify(body),
             })
                 .then(r => r.json())
-                .then(d => { if (d.success) invalidateAll(); })
-                .catch(() => {})
+                .then(d => { if (d.success) invalidateAll(); else enrichFailed = true; })
+                .catch(() => { enrichFailed = true; })
                 .finally(() => { enriching = false; });
         }
     });
