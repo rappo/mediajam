@@ -57,10 +57,12 @@ db.pragma('foreign_keys = ON');
 const bootWarnings = [];
 
 // Load sqlite-vec extension for vector search (optional — graceful fallback)
+let sqliteVecLoaded = false;
 try {
     const sqliteVec = await import('sqlite-vec');
     const loader = sqliteVec.default ?? sqliteVec;
     loader.load(db);
+    sqliteVecLoaded = true;
     console.log('[db] sqlite-vec extension loaded');
 } catch (e) {
     const msg = /** @type {Error} */(e).message;
@@ -71,6 +73,8 @@ try {
         detail: `${msg}. Run "npm install" to install native dependencies.`
     });
 }
+
+export { sqliteVecLoaded };
 
 /** Get any boot warnings/errors that occurred during startup */
 export function getBootWarnings() { return bootWarnings; }

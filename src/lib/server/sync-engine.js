@@ -675,40 +675,54 @@ export async function startSync(libraryId = null, force = false) {
                             if (errStr.includes('musicbrainz_id') && parentParams.musicbrainzId) {
                                 conflictField = 'MusicBrainz ID';
                                 const existing = /** @type {any} */ (db.prepare(
-                                    'SELECT id, title FROM media_parents WHERE musicbrainz_id = ? AND media_type = ? LIMIT 1'
+                                    'SELECT id, title, jellyfin_id FROM media_parents WHERE musicbrainz_id = ? AND media_type = ? LIMIT 1'
                                 ).get(parentParams.musicbrainzId, parentParams.mediaType));
+
+                                // Find/create the current Jellyfin row (without musicbrainz_id)
                                 retryParams.musicbrainzId = null;
-
-                                // Try to insert without the conflicting ID
                                 upsertParent.run(retryParams);
-                                const secondaryRow = /** @type {any} */ (db.prepare(
-                                    'SELECT id FROM media_parents WHERE jellyfin_id = ?'
+                                const currentRow = /** @type {any} */ (db.prepare(
+                                    'SELECT id, title, musicbrainz_id FROM media_parents WHERE jellyfin_id = ?'
                                 ).get(item.Id));
-                                const secondaryId = secondaryRow?.id;
+                                const currentId = currentRow?.id;
 
-                                if (existing && secondaryId) {
-                                    const priorResolution = /** @type {any} */ (db.prepare(
-                                        `SELECT resolution FROM sync_conflicts 
-                                         WHERE conflict_type = 'shared_musicbrainz_id' 
-                                           AND external_id = ? AND status = 'resolved' LIMIT 1`
-                                    ).get(parentParams.musicbrainzId));
+                                if (existing && currentId && existing.id !== currentId) {
+                                    if (!existing.jellyfin_id) {
+                                        // External-only row holds musicbrainz_id — auto-merge:
+                                        // Move musicbrainz_id to the Jellyfin entry, migrate children, delete external
+                                        try {
+                                            // Migrate children from external to Jellyfin entry
+                                            const moved = db.prepare(
+                                                'UPDATE media_children SET parent_id = ? WHERE parent_id = ?'
+                                            ).run(currentId, existing.id);
+                                            // Migrate playback history
+                                            const movedHistory = db.prepare(
+                                                'UPDATE person_credits SET media_parent_id = ? WHERE media_parent_id = ?'
+                                            ).run(currentId, existing.id);
+                                            // Delete the external parent
+                                            db.prepare('DELETE FROM media_parents WHERE id = ?').run(existing.id);
+                                            // Apply the correct musicbrainz_id to the Jellyfin entry
+                                            db.prepare('UPDATE media_parents SET musicbrainz_id = ? WHERE id = ?')
+                                                .run(parentParams.musicbrainzId, currentId);
 
-                                    if (priorResolution?.resolution === 'merge') {
-                                        const moved = db.prepare(
-                                            'UPDATE media_children SET parent_id = ? WHERE parent_id = ?'
-                                        ).run(existing.id, secondaryId);
-                                        broadcast({ type: 'progress', log: `  🔀 ${item.Name}: auto-merged ${moved.changes} albums under ${existing.title}`, logType: 'info' });
+                                            broadcast({ type: 'progress', log: `  🔀 ${item.Name}: auto-merged external MusicBrainz entry (moved ${moved.changes} children, adopted musicbrainz_id from id=${existing.id})`, logType: 'info' });
+                                            logInfo('sync', `Auto-merged MusicBrainz entry: ${item.Name} (${parentParams.musicbrainzId}), deleted external id=${existing.id}`);
+                                        } catch (mergeErr) {
+                                            const mergeErrStr = mergeErr instanceof Error ? mergeErr.message : String(mergeErr);
+                                            broadcast({ type: 'progress', log: `  ❌ ${item.Name}: MusicBrainz auto-merge failed: ${mergeErrStr}`, logType: 'error' });
+                                            logWarn('sync', `MusicBrainz auto-merge failed for ${item.Name}: ${mergeErrStr}`);
+                                        }
                                     } else {
+                                        // Both rows have jellyfin_ids — genuinely two Jellyfin items sharing musicbrainz_id
                                         try {
                                             db.prepare(
                                                 `INSERT OR IGNORE INTO sync_conflicts (conflict_type, primary_id, secondary_id, external_id, status)
                                                  VALUES ('shared_musicbrainz_id', ?, ?, ?, 'pending')`
-                                            ).run(existing.id, secondaryId, parentParams.musicbrainzId);
+                                            ).run(existing.id, currentId, parentParams.musicbrainzId);
                                         } catch { /* ignore duplicate */ }
-                                        broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: shared MusicBrainz ID with ${existing.title} — resolve in Settings`, logType: 'warning' });
-                                        logActivity({ category: 'conflict', action: 'conflict_detected', title: `Merge conflict: ${item.Name} ↔ ${existing.title}`, detail: { externalId: parentParams.musicbrainzId, type: 'shared_musicbrainz_id' }, icon: '⚠️', status: 'warning', actionable: true, actionType: 'open_conflict' });
+                                        broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: two Jellyfin items share MusicBrainz ID with ${existing.title} — resolve in Settings`, logType: 'warning' });
                                     }
-                                } else {
+                                } else if (!existing) {
                                     broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: shared MusicBrainz ID, syncing without it`, logType: 'warning' });
                                 }
                             } else if (errStr.includes('tmdb_id') && parentParams.tmdbId) {
@@ -815,12 +829,44 @@ export async function startSync(libraryId = null, force = false) {
                                         broadcast({ type: 'progress', log: `  ❌ ${item.Name}: adopt failed: ${adoptErrStr}`, logType: 'error' });
                                         logWarn('sync', `TMDB adopt failed for ${item.Name}: ${adoptErrStr}`);
                                     }
+                                } else if (existing && !currentRow && existing.jellyfin_id) {
+                                    // Existing row has a different jellyfin_id — the old Jellyfin item
+                                    // was removed/re-added. Update existing to point to the new item.
+                                    try {
+                                        const oldJellyfinId = existing.jellyfin_id;
+                                        db.prepare(`UPDATE media_parents SET
+                                            jellyfin_id = ?, library_id = ?, title = ?, poster_url = ?, overview = ?,
+                                            release_year = ?, jellyfin_user_rating = ?,
+                                            date_last_modified = ?, jellyfin_child_count = ?,
+                                            unplayed_count = ?, is_favorite = ?,
+                                            imdb_id = COALESCE(?, imdb_id),
+                                            tvdb_id = COALESCE(?, tvdb_id)
+                                        WHERE id = ?`).run(
+                                            item.Id, parentParams.libraryId, parentParams.title, parentParams.posterUrl, parentParams.overview,
+                                            parentParams.releaseYear, parentParams.userRating,
+                                            parentParams.dateLastModified, parentParams.jellyfinChildCount,
+                                            parentParams.unplayedCount, parentParams.isFavorite,
+                                            parentParams.imdbId, parentParams.tvdbId,
+                                            existing.id
+                                        );
+
+                                        // Update movie child jellyfin_id
+                                        if (parentParams.mediaType === 'movie' && oldJellyfinId) {
+                                            db.prepare('UPDATE media_children SET jellyfin_id = ? WHERE jellyfin_id = ?')
+                                                .run(item.Id + '_child', oldJellyfinId + '_child');
+                                        }
+
+                                        broadcast({ type: 'progress', log: `  🔗 ${item.Name}: Jellyfin ID updated on existing TMDB entry (${oldJellyfinId?.slice(0,8)}… → ${item.Id.slice(0,8)}…)`, logType: 'info' });
+                                        logInfo('sync', `Re-linked TMDB entry: ${item.Name} (${parentParams.tmdbId}), jellyfin_id ${oldJellyfinId} → ${item.Id}`);
+                                    } catch (relinkErr) {
+                                        const relinkErrStr = relinkErr instanceof Error ? relinkErr.message : String(relinkErr);
+                                        broadcast({ type: 'progress', log: `  ❌ ${item.Name}: re-link failed: ${relinkErrStr}`, logType: 'error' });
+                                        logWarn('sync', `TMDB re-link failed for ${item.Name}: ${relinkErrStr}`);
+                                    }
                                 } else {
-                                    // Genuine duplicate: two Jellyfin items share the same TMDB ID,
-                                    // or existing row already has a jellyfin_id — sync without tmdb_id
-                                    retryParams.tmdbId = null;
-                                    upsertParent.run(retryParams);
-                                    broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: shares TMDB ID ${parentParams.tmdbId} with "${existing?.title || 'unknown'}" — synced without tmdb_id`, logType: 'warning' });
+                                    // Truly unresolvable: existing has same jellyfin_id as incoming
+                                    // (should not happen, but handle gracefully)
+                                    broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: TMDB conflict could not be resolved — existing: id=${existing?.id}, tmdb=${parentParams.tmdbId}`, logType: 'warning' });
                                 }
                             } else if (errStr.includes('imdb_id') && parentParams.imdbId) {
                                 conflictField = 'IMDb ID';

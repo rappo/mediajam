@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import db from '$lib/server/db.js';
+import db, { sqliteVecLoaded } from '$lib/server/db.js';
 import { embed, isEmbeddingAvailable } from '$lib/server/ollama.js';
 
 /**
@@ -140,6 +140,7 @@ export async function GET({ locals }) {
 
     return json({
         available,
+        sqliteVecLoaded,
         overviewEmbeddings: overviewCount,
         titleEmbeddings: titleCount,
         totalParentsWithOverview: totalParents,
