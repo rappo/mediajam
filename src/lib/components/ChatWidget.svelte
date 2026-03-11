@@ -13,7 +13,7 @@
     /** @type {Record<string, boolean>} */
     let showSql = $state({});
     let showStatus = $state(false);
-    /** @type {{ ollamaConnected?: boolean, chatModel?: string, embeddingModel?: string, ragAvailable?: boolean, embeddingsTotal?: number, overviewsTotal?: number, embeddingsPct?: number } | null} */
+    /** @type {{ ollamaConnected?: boolean, ollamaUrl?: string, ollamaError?: string, chatModel?: string, embeddingModel?: string, ragAvailable?: boolean, embeddingsTotal?: number, overviewsTotal?: number, embeddingsPct?: number } | null} */
     let statusData = $state(null);
     let statusLoading = $state(false);
 
@@ -306,7 +306,13 @@
                 <div class="flex items-center gap-2">
                     <span class="w-2 h-2 rounded-full {statusData.ollamaConnected ? 'bg-success' : 'bg-error'}"></span>
                     Ollama: {statusData.ollamaConnected ? 'connected' : 'disconnected'}
+                    {#if statusData.ollamaUrl}
+                        <span class="text-base-content/40">({statusData.ollamaUrl})</span>
+                    {/if}
                 </div>
+                {#if statusData.ollamaError}
+                    <div class="text-error/70 pl-4">{statusData.ollamaError}</div>
+                {/if}
                 <div class="text-base-content/60 pl-4">
                     Chat: {statusData.chatModel || '—'} · Embed: {statusData.embeddingModel || '—'}
                 </div>

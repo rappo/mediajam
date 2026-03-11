@@ -7,6 +7,7 @@ export async function GET({ locals }) {
     if (!locals.user) return json({ error: 'Unauthorized' }, { status: 401 });
 
     // Read Ollama config from app_settings (same source as ollama.js)
+    // Apply same defaults as ollama.js getSettings()
     let chatModel = '';
     let embeddingModel = '';
     let ollamaUrl = '';
@@ -15,8 +16,8 @@ export async function GET({ locals }) {
             'SELECT ollama_url, ollama_embed_model, ollama_chat_model FROM app_settings WHERE id = 1'
         ).get());
         ollamaUrl = settings?.ollama_url || '';
-        chatModel = settings?.ollama_chat_model || '';
-        embeddingModel = settings?.ollama_embed_model || '';
+        chatModel = settings?.ollama_chat_model || (ollamaUrl ? 'llama3.2:3b' : '');
+        embeddingModel = settings?.ollama_embed_model || (ollamaUrl ? 'nomic-embed-text' : '');
     } catch { /* ignore */ }
 
     // Check Ollama connectivity using the shared healthCheck
@@ -33,6 +34,7 @@ export async function GET({ locals }) {
 
     return json({
         ollamaConnected: health.ok,
+        ollamaUrl: ollamaUrl || null,
         ollamaError: health.error || null,
         chatModel,
         embeddingModel,
