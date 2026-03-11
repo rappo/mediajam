@@ -130,7 +130,7 @@ function getLibraryStats() {
  * Embeds the query, searches vec0, enriches with tags/status/history.
  * @param {string} question
  * @param {number} [userId]
- * @returns {Promise<{ context: string, sources: any[] } | null>}
+ * @returns {Promise<{ context: string, sources: any[], mediaTypeLabel: string } | null>}
  */
 async function retrieveContext(question, userId) {
     if (!isEmbeddingAvailable()) {
@@ -142,6 +142,21 @@ async function retrieveContext(question, userId) {
     if (!queryVec) {
         logWarn('ask', 'RAG: embed() returned null — Ollama embedding call failed');
         return null;
+    }
+
+    // Detect media type preference from the question
+    const qLower = question.toLowerCase();
+    let mediaTypeFilter = '';
+    let mediaTypeLabel = '';
+    if (/\b(movie|movies|film|films)\b/.test(qLower)) {
+        mediaTypeFilter = "AND mp.media_type = 'movie'";
+        mediaTypeLabel = 'movie';
+    } else if (/\b(show|shows|series|tv)\b/.test(qLower)) {
+        mediaTypeFilter = "AND mp.media_type = 'show'";
+        mediaTypeLabel = 'show';
+    } else if (/\b(album|albums|music|artist|artists|song|songs)\b/.test(qLower)) {
+        mediaTypeFilter = "AND mp.media_type = 'artist'";
+        mediaTypeLabel = 'music';
     }
 
     // Semantic search: find closest media by overview embedding
@@ -177,8 +192,8 @@ async function retrieveContext(question, userId) {
             SELECT id, title, media_type, release_year, overview,
                    watched_children, collected_children, total_released_children,
                    is_favorite
-            FROM media_parents
-            WHERE id IN (${placeholders})
+            FROM media_parents mp
+            WHERE id IN (${placeholders}) ${mediaTypeFilter}
         `).all(...matchIds);
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -271,7 +286,7 @@ async function retrieveContext(question, userId) {
 
     const context = `Items from the user's library that match their request:\n${lines.join('\n')}${recentWatches}`;
 
-    return { context, sources: enriched };
+    return { context, sources: enriched, mediaTypeLabel };
 }
 
 /**
@@ -295,10 +310,12 @@ export async function POST({ request, locals }) {
     // Step 1: Ask the LLM to classify the question
     const classifyPrompt = `Classify this user message into one of three categories:
 - "data" — requires querying a database (counts, lists, lookups, statistics, viewing specific watch history)
-- "discovery" — recommendations, suggestions, mood-based picks, similarity, exploration, asking about specific media, or wanting picks BASED ON history
+- "discovery" — recommendations, suggestions, mood-based picks, similarity, exploration, asking about specific media, wanting picks BASED ON history, or conversational follow-ups about recommendations
 - "chat" — greeting, thanks, general conversation, non-library question
 
-Examples: "how many movies?" → data | "recommend something dark" → discovery | "something like Breaking Bad" → discovery | "what should I watch?" → discovery | "hello" → chat | "what did I watch today?" → data | "tell me about Inception" → discovery | "thanks!" → chat | "what's a good movie based on my history?" → discovery | "suggest something like what I've been watching" → discovery | "list my recently watched" → data
+IMPORTANT: If the conversation has been about recommendations and the user is continuing that thread (corrections, follow-ups, refinements), classify as "discovery".
+
+Examples: "how many movies?" → data | "recommend something dark" → discovery | "something like Breaking Bad" → discovery | "what should I watch?" → discovery | "hello" → chat | "what did I watch today?" → data | "tell me about Inception" → discovery | "thanks!" → chat | "what's a good movie based on my history?" → discovery | "suggest something like what I've been watching" → discovery | "list my recently watched" → data | "two of those aren't movies" → discovery | "why did you pick those?" → discovery | "only movies please" → discovery
 
 ${historyContext ? `Recent conversation:\n${historyContext}\n` : ''}Reply with ONLY the word "data", "discovery", or "chat".
 
@@ -341,16 +358,20 @@ Message: ${question}`;
         if (ragContext) {
             logInfo('ask', `RAG context: ${ragContext.sources.length} sources retrieved`);
 
+            const typeInstruction = ragContext.mediaTypeLabel
+                ? `IMPORTANT: The user specifically asked for ${ragContext.mediaTypeLabel}s. Only recommend ${ragContext.mediaTypeLabel}s from the list — do NOT suggest shows, series, or other types unless they specifically asked for them.\n\n`
+                : '';
+
             const discoveryPrompt = `${historyContext ? `Conversation so far:\n${historyContext}\n` : ''}User: "${question}"
 
 ${ragContext.context}
 
-Recommend 2-4 specific titles from the list above. For each, give a one-line reason. Note watched/unwatched status. Be conversational and brief — no more than 4-5 sentences total.`;
+${typeInstruction}Recommend 2-4 specific titles from the list above. For each, give a one-line reason. Note watched/unwatched status. Be conversational and brief — no more than 4-5 sentences total.`;
 
             const discoveryResponse = await generate(discoveryPrompt, {
                 temperature: 0.4,
                 num_predict: 250,
-                system: 'You are Mediajam, a media library assistant. You recommend items ONLY from the user\'s actual library (provided in context). Be specific and concise — no filler, no questions back, no lists of suggestions for "how to explore." Just give the picks with brief reasons.',
+                system: 'You are Mediajam, a media library assistant. You recommend items ONLY from the user\'s actual library (provided in context). Be specific and concise — no filler, no questions back, no lists of suggestions for "how to explore." Just give the picks with brief reasons. Pay close attention to the type of media the user is asking for (movies vs shows vs music).',
             });
 
             return json({
