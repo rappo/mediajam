@@ -331,22 +331,20 @@ Recommend 2-4 specific titles from the list above. For each, give a one-line rea
             });
         }
 
-        // Fallback: embeddings not available, use basic chat with stats
-        logWarn('ask', 'RAG context unavailable — falling back to basic discovery');
-        const stats = getLibraryStats();
-        const fallbackResponse = await generate(
-            `${stats ? `Context: ${stats}\n` : ''}${historyContext ? `Conversation so far:\n${historyContext}\n` : ''}User asks: "${question}". You can't see their specific media, but you know their library stats. Suggest they ask a data question like "show me my unwatched movies" so you can give better recommendations.`,
-            {
-                temperature: 0.5,
-                num_predict: 150,
-                system: 'You are Mediajam, a media library assistant. Be concise — 2-3 sentences max. Don\'t ask questions back. Suggest a specific follow-up query they could try.',
-            }
-        );
+        // Fallback: embeddings not available — return clear error, not filler
+        logWarn('ask', 'RAG context unavailable — embeddings missing or vec0 table not found');
 
         return json({
             question,
             type: 'discovery',
-            summary: fallbackResponse || 'I need embeddings generated to make recommendations. Try running "Generate Embeddings" in Settings, then ask again.',
+            error: true,
+            summary: '⚠️ I can\'t provide personalized recommendations right now — there\'s a problem with my embedding system.\n\n' +
+                '**To diagnose:**\n' +
+                '1. Click the ⚙️ button in this chat header to check system status\n' +
+                '2. Verify Ollama is connected and the embedding model is configured\n' +
+                '3. Go to Settings → Server → "Generate Embeddings" and run it\n' +
+                '4. If embeddings show 0%, the vec0 module may not be loaded\n\n' +
+                'In the meantime, try a data question like "what movies did I watch this week?" — those don\'t need embeddings.',
         });
     }
 

@@ -50,6 +50,7 @@
             if (res.ok) {
                 avatarUrl = `icon:${icon}`;
                 showAvatarPicker = false;
+                await invalidateAll();
             }
         } finally {
             avatarSaving = false;
@@ -71,6 +72,7 @@
                 const result = await res.json();
                 avatarUrl = result.avatarUrl;
                 showAvatarPicker = false;
+                await invalidateAll();
             }
         } finally {
             avatarSaving = false;
@@ -84,6 +86,7 @@
             if (res.ok) {
                 avatarUrl = null;
                 showAvatarPicker = false;
+                await invalidateAll();
             }
         } finally {
             avatarSaving = false;
