@@ -1,10 +1,19 @@
 import { json } from '@sveltejs/kit';
 import db, { sqliteVecLoaded } from '$lib/server/db.js';
 import { embed, isEmbeddingAvailable } from '$lib/server/ollama.js';
+import crypto from 'crypto';
+
+/** Compute a content hash for a given text
+ * @param {string} text
+ */
+function contentHash(text) {
+    return crypto.createHash('sha256').update(text).digest('hex');
+}
 
 /**
  * POST /api/embeddings/generate — Start batch embedding generation
  * Generates embeddings for all media_parents (overviews) and media_children (titles).
+ * Uses content hashes to detect stale embeddings that need re-generation.
  * Returns SSE progress stream.
  * @type {import('./$types').RequestHandler}
  */
@@ -33,16 +42,27 @@ export async function POST({ locals }) {
 
             try {
                 // Phase 1: Embed media_parents overviews
+                // Get all parents with overviews, along with their stored content hash
                 const parents = /** @type {any[]} */ (db.prepare(
-                    `SELECT id, title, overview FROM media_parents
-                     WHERE overview IS NOT NULL AND overview != ''
-                     AND id NOT IN (SELECT media_parent_id FROM overview_embeddings)`
+                    `SELECT mp.id, mp.title, mp.overview, eh.content_hash
+                     FROM media_parents mp
+                     LEFT JOIN embedding_hashes eh ON eh.media_parent_id = mp.id
+                     WHERE mp.overview IS NOT NULL AND mp.overview != ''`
                 ).all());
 
-                send({ type: 'status', phase: 'overviews', total: parents.length });
+                // Filter to items needing embedding: no hash (new) or hash mismatch (stale)
+                const needsEmbedding = parents.filter(p => {
+                    const hash = contentHash(`${p.title}. ${p.overview}`);
+                    p._hash = hash; // stash for later
+                    return !p.content_hash || p.content_hash !== hash;
+                });
+
+                const staleCount = needsEmbedding.filter(p => p.content_hash).length;
+                const newCount = needsEmbedding.length - staleCount;
+                send({ type: 'status', phase: 'overviews', total: needsEmbedding.length, new: newCount, stale: staleCount });
 
                 let done = 0;
-                for (const parent of parents) {
+                for (const parent of needsEmbedding) {
                     const text = `${parent.title}. ${parent.overview}`;
                     const embedding = await embed(text);
                     if (embedding) {
@@ -50,8 +70,12 @@ export async function POST({ locals }) {
                             db.prepare(
                                 'INSERT OR REPLACE INTO overview_embeddings (media_parent_id, overview_embedding) VALUES (?, ?)'
                             ).run(parent.id, JSON.stringify(embedding));
+                            // Store the content hash
+                            db.prepare(
+                                'INSERT OR REPLACE INTO embedding_hashes (media_parent_id, content_hash, embedded_at) VALUES (?, ?, datetime(\'now\'))'
+                            ).run(parent.id, parent._hash);
                         } catch (insertErr) {
-                            if (done === 1) {
+                            if (done === 0) {
                                 const errMsg = insertErr instanceof Error ? insertErr.message : String(insertErr);
                                 send({ type: 'warning', message: `Embedding insert error (dim=${embedding.length}): ${errMsg}` });
                                 console.error(`[embeddings] INSERT failed (dim=${embedding.length}, expected 768):`, errMsg);
@@ -59,8 +83,8 @@ export async function POST({ locals }) {
                         }
                     }
                     done++;
-                    if (done % 10 === 0 || done === parents.length) {
-                        send({ type: 'progress', phase: 'overviews', done, total: parents.length });
+                    if (done % 10 === 0 || done === needsEmbedding.length) {
+                        send({ type: 'progress', phase: 'overviews', done, total: needsEmbedding.length });
                     }
                 }
 
@@ -84,7 +108,7 @@ export async function POST({ locals }) {
                                 'INSERT OR REPLACE INTO media_embeddings (media_id, title_embedding) VALUES (?, ?)'
                             ).run(child.id, JSON.stringify(embedding));
                         } catch (insertErr) {
-                            if (done === 1) {
+                            if (done === 0) {
                                 const errMsg = insertErr instanceof Error ? insertErr.message : String(insertErr);
                                 send({ type: 'warning', message: `Title embedding insert error (dim=${embedding.length}): ${errMsg}` });
                                 console.error(`[embeddings] Title INSERT failed (dim=${embedding.length}, expected 768):`, errMsg);
@@ -97,7 +121,7 @@ export async function POST({ locals }) {
                     }
                 }
 
-                send({ type: 'complete', overviews: parents.length, titles: children.length });
+                send({ type: 'complete', overviews: needsEmbedding.length, titles: children.length, staleRefreshed: staleCount });
             } catch (e) {
                 send({ type: 'error', message: e instanceof Error ? e.message : String(e) });
             }

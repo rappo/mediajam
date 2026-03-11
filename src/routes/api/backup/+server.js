@@ -93,6 +93,7 @@ export async function GET({ url, locals }) {
     tables['external_ratings'] = db.prepare('SELECT * FROM external_ratings').all();
     tables['watchlist'] = db.prepare('SELECT * FROM watchlist').all();
     tables['activity_log'] = db.prepare('SELECT * FROM activity_log').all();
+    try { tables['embedding_hashes'] = db.prepare('SELECT * FROM embedding_hashes').all(); } catch { tables['embedding_hashes'] = []; }
 
     // Build manifest
     const manifest = {

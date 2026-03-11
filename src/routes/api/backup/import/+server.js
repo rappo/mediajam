@@ -82,7 +82,8 @@ export async function POST({ request, url, locals }) {
             'discovered_credits',
             'external_ratings',
             'watchlist',
-            'activity_log'
+            'activity_log',
+            'embedding_hashes'
         ];
 
         // In overwrite mode, clear tables in reverse order

@@ -748,6 +748,16 @@ try {
     console.warn('[db] Could not create vec0 tables (sqlite-vec not loaded):', /** @type {Error} */(e).message);
 }
 
+// -- Embedding content hashes (for stale embedding detection) --
+db.exec(`
+    CREATE TABLE IF NOT EXISTS embedding_hashes (
+        media_parent_id INTEGER PRIMARY KEY,
+        content_hash TEXT NOT NULL,
+        embedded_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY(media_parent_id) REFERENCES media_parents(id) ON DELETE CASCADE
+    )
+`);
+
 // -- Media Tags table (for LLM auto-tagging) --
 db.exec(`
     CREATE TABLE IF NOT EXISTS media_tags (
