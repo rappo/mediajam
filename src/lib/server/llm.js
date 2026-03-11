@@ -143,13 +143,22 @@ export function isEmbeddingAvailable() {
         return ollama.isEmbeddingAvailable();
     }
 
-    // For cloud providers, just check that an embed model is configured
-    // and that the vec0 table exists
+    // For cloud providers, check per-provider key or shared key or OAuth
     try {
         const settings = /** @type {any} */ (db.prepare(
-            'SELECT llm_api_key, llm_embed_model FROM app_settings WHERE id = 1'
+            'SELECT llm_api_key, llm_embed_model, openai_api_key, gemini_api_key, claude_api_key, kimi_api_key FROM app_settings WHERE id = 1'
         ).get());
-        if (!settings?.llm_api_key || !settings?.llm_embed_model) return false;
+        if (!settings?.llm_embed_model) return false;
+
+        // Check if any API key is available for the embed provider
+        const hasKey = settings.openai_api_key || settings.gemini_api_key || settings.claude_api_key || settings.kimi_api_key || settings.llm_api_key;
+        if (!hasKey) {
+            // Check for OAuth token
+            const identity = /** @type {any} */ (db.prepare(
+                "SELECT access_token FROM user_identities WHERE provider = 'openai' LIMIT 1"
+            ).get());
+            if (!identity?.access_token) return false;
+        }
 
         // Check vec0 table exists
         db.prepare('SELECT COUNT(*) FROM overview_embeddings LIMIT 0').get();

@@ -2974,20 +2974,34 @@
                                     placeholder="sk-... or API key"
                                     class="input input-bordered input-sm flex-1 font-mono"
                                 />
-                                {#if llmProvider === 'openai' && data.settings.hasOpenaiClientId}
-                                    <a href="/api/llm/openai/auth" class="btn btn-sm btn-outline gap-1">
-                                        🔑 Sign in with OpenAI
-                                    </a>
-                                {/if}
-                                {#if llmProvider === 'gemini' && data.settings.hasGeminiClientId}
-                                    <a href="/api/llm/gemini/auth" class="btn btn-sm btn-outline gap-1">
-                                        🔑 Sign in with Google
-                                    </a>
-                                {/if}
                             </div>
+                            {#if llmProvider === 'openai'}
+                                <div class="flex items-center gap-2 mt-2">
+                                    {#if data.settings.hasOpenaiOAuth}
+                                        <span class="badge badge-success badge-sm gap-1">✓ OAuth connected</span>
+                                    {/if}
+                                    {#if data.settings.hasOpenaiClientId}
+                                        <a href="/api/llm/openai/auth" class="btn btn-sm btn-outline gap-1">
+                                            <ServiceIcon service="openai" size="w-3.5 h-3.5" />
+                                            {data.settings.hasOpenaiOAuth ? 'Re-authorize' : 'Sign in with OpenAI'}
+                                        </a>
+                                    {/if}
+                                    {#if data.settings.hasOpenaiKey}
+                                        <span class="badge badge-info badge-sm gap-1">✓ API key saved</span>
+                                    {/if}
+                                </div>
+                            {/if}
+                            {#if llmProvider === 'gemini' && data.settings.hasGeminiClientId}
+                                <div class="flex items-center gap-2 mt-2">
+                                    <a href="/api/llm/gemini/auth" class="btn btn-sm btn-outline gap-1">
+                                        <ServiceIcon service="gemini" size="w-3.5 h-3.5" />
+                                        Sign in with Google
+                                    </a>
+                                </div>
+                            {/if}
                             <p class="text-[10px] text-base-content/40 mt-1">
                                 {#if llmProvider === 'openai'}
-                                    Get your key at <a href="https://platform.openai.com/api-keys" target="_blank" class="link">platform.openai.com</a>
+                                    Use an API key from <a href="https://platform.openai.com/api-keys" target="_blank" class="link">platform.openai.com</a> or sign in with OAuth below
                                 {:else if llmProvider === 'gemini'}
                                     Get your key at <a href="https://aistudio.google.com/apikey" target="_blank" class="link">aistudio.google.com</a>
                                 {:else if llmProvider === 'claude'}

@@ -2,25 +2,116 @@ import db from '$lib/server/db.js';
 
 /**
  * OpenAI-compatible API client.
+ * Supports OAuth tokens (Codex), per-provider API keys, and shared keys.
  * Works with OpenAI, Kimi (Moonshot), and any OpenAI-format provider.
  */
 
 /** @typedef {{ provider: string, apiKey: string, apiUrl: string, chatModel: string, embedModel: string }} OpenAIConfig */
 
 /**
- * Get OpenAI-compatible config from app_settings.
- * @returns {OpenAIConfig | null}
+ * Try to refresh an expired OAuth token.
+ * @param {any} identity - The user_identities row
+ * @returns {Promise<string | null>} New access token, or null
  */
-export function getConfig() {
+async function refreshOAuthToken(identity) {
+    if (!identity?.refresh_token) return null;
+
+    try {
+        const settings = /** @type {any} */ (db.prepare(
+            'SELECT openai_client_id, openai_client_secret FROM app_settings WHERE id = 1'
+        ).get());
+        if (!settings?.openai_client_id || !settings?.openai_client_secret) return null;
+
+        const res = await fetch('https://auth.openai.com/oauth/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                client_id: settings.openai_client_id,
+                client_secret: settings.openai_client_secret,
+                refresh_token: identity.refresh_token,
+                grant_type: 'refresh_token',
+            }),
+            signal: AbortSignal.timeout(15000),
+        });
+
+        if (!res.ok) {
+            console.warn(`[openai-client] Token refresh failed: HTTP ${res.status}`);
+            return null;
+        }
+
+        const data = await res.json();
+        const newAccess = data.access_token;
+        const newRefresh = data.refresh_token || identity.refresh_token;
+        const expiresAt = data.expires_in
+            ? new Date(Date.now() + data.expires_in * 1000).toISOString()
+            : null;
+
+        // Update stored tokens
+        db.prepare(`
+            UPDATE user_identities
+            SET access_token = ?, refresh_token = ?, token_expires_at = ?
+            WHERE id = ?
+        `).run(newAccess, newRefresh, expiresAt, identity.id);
+
+        console.log('[openai-client] OAuth token refreshed successfully');
+        return newAccess;
+    } catch (e) {
+        console.warn(`[openai-client] Token refresh error: ${e instanceof Error ? e.message : e}`);
+        return null;
+    }
+}
+
+/**
+ * Get OAuth access token from user_identities (if available).
+ * @returns {Promise<string | null>}
+ */
+async function getOAuthToken() {
+    try {
+        const identity = /** @type {any} */ (db.prepare(
+            "SELECT id, access_token, refresh_token, token_expires_at FROM user_identities WHERE provider = 'openai' ORDER BY id DESC LIMIT 1"
+        ).get());
+
+        if (!identity?.access_token) return null;
+
+        // Check if expired
+        if (identity.token_expires_at) {
+            const expiresAt = new Date(identity.token_expires_at);
+            if (expiresAt <= new Date()) {
+                // Token expired — try to refresh
+                return await refreshOAuthToken(identity);
+            }
+        }
+
+        return identity.access_token;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Get OpenAI-compatible config from app_settings + OAuth.
+ * Priority: OAuth token > per-provider API key > shared llm_api_key
+ * @returns {Promise<OpenAIConfig | null>}
+ */
+export async function getConfig() {
     const settings = /** @type {any} */ (db.prepare(
         'SELECT llm_provider, llm_api_key, llm_api_url, llm_chat_model, llm_embed_model, openai_api_key, kimi_api_key FROM app_settings WHERE id = 1'
     ).get());
 
     const provider = settings?.llm_provider || 'openai';
 
-    // Use per-provider key first, fallback to shared llm_api_key
-    const providerKey = provider === 'kimi' ? settings?.kimi_api_key : settings?.openai_api_key;
-    const apiKey = providerKey || settings?.llm_api_key;
+    // For OpenAI: try OAuth token first
+    let apiKey = null;
+    if (provider === 'openai') {
+        apiKey = await getOAuthToken();
+    }
+
+    // Fall back to per-provider key, then shared key
+    if (!apiKey) {
+        const providerKey = provider === 'kimi' ? settings?.kimi_api_key : settings?.openai_api_key;
+        apiKey = providerKey || settings?.llm_api_key;
+    }
+
     if (!apiKey) return null;
 
     /** @type {Record<string, { url: string, model: string, embedModel: string }>} */
@@ -45,8 +136,8 @@ export function getConfig() {
  * @returns {Promise<{ ok: boolean, models?: string[], error?: string }>}
  */
 export async function healthCheck(cfg) {
-    cfg = cfg || /** @type {any} */ (getConfig());
-    if (!cfg) return { ok: false, error: 'API key not configured' };
+    cfg = cfg || /** @type {any} */ (await getConfig());
+    if (!cfg) return { ok: false, error: 'No API key or OAuth token configured' };
 
     try {
         const res = await fetch(`${cfg.apiUrl}/v1/models`, {
@@ -70,7 +161,7 @@ export async function healthCheck(cfg) {
  * @returns {Promise<string | null>}
  */
 export async function generate(prompt, options = {}, cfg) {
-    cfg = cfg || /** @type {any} */ (getConfig());
+    cfg = cfg || /** @type {any} */ (await getConfig());
     if (!cfg) return null;
 
     /** @type {any[]} */
@@ -116,7 +207,7 @@ export async function generate(prompt, options = {}, cfg) {
  * @returns {Promise<number[] | null>}
  */
 export async function embed(text, model, cfg) {
-    cfg = cfg || /** @type {any} */ (getConfig());
+    cfg = cfg || /** @type {any} */ (await getConfig());
     if (!cfg || !cfg.embedModel) return null;
 
     try {
