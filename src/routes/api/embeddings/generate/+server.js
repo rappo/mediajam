@@ -75,12 +75,13 @@ export async function POST({ locals }) {
                     const embedding = await embed(text);
                     if (embedding) {
                         try {
-                            const pid = Number(parent.id);
+                            const pid = parent.id;
                             const vecJson = JSON.stringify(embedding);
                             // vec0 doesn't support OR REPLACE — use DELETE + INSERT
-                            try { db.prepare('DELETE FROM overview_embeddings WHERE media_parent_id = ?').run(pid); } catch { /* may not exist */ }
+                            // CAST ensures vec0 sees INTEGER type (better-sqlite3 may bind Number as REAL)
+                            try { db.prepare('DELETE FROM overview_embeddings WHERE media_parent_id = CAST(? AS INTEGER)').run(pid); } catch { /* may not exist */ }
                             const result = db.prepare(
-                                'INSERT INTO overview_embeddings (media_parent_id, overview_embedding) VALUES (?, ?)'
+                                'INSERT INTO overview_embeddings (media_parent_id, overview_embedding) VALUES (CAST(? AS INTEGER), ?)'
                             ).run(pid, vecJson);
                             // Store the content hash
                             db.prepare(
@@ -91,7 +92,7 @@ export async function POST({ locals }) {
                             // Verify first insert actually persisted
                             if (successCount === 1) {
                                 let readBack = null;
-                                try { readBack = db.prepare('SELECT media_parent_id FROM overview_embeddings WHERE media_parent_id = ?').get(pid); } catch (rbErr) {
+                                try { readBack = db.prepare('SELECT media_parent_id FROM overview_embeddings WHERE media_parent_id = CAST(? AS INTEGER)').get(pid); } catch (rbErr) {
                                     const rbMsg = rbErr instanceof Error ? rbErr.message : String(rbErr);
                                     send({ type: 'warning', message: `Read-back SELECT failed: ${rbMsg}` });
                                     console.error('[embeddings] Read-back failed:', rbMsg);
@@ -140,11 +141,12 @@ export async function POST({ locals }) {
                     const embedding = await embed(text);
                     if (embedding) {
                         try {
-                            const cid = Number(child.id);
+                            const cid = child.id;
                             // vec0 doesn't support OR REPLACE — use DELETE + INSERT
-                            try { db.prepare('DELETE FROM media_embeddings WHERE media_id = ?').run(cid); } catch { /* may not exist */ }
+                            // CAST ensures vec0 sees INTEGER type
+                            try { db.prepare('DELETE FROM media_embeddings WHERE media_id = CAST(? AS INTEGER)').run(cid); } catch { /* may not exist */ }
                             db.prepare(
-                                'INSERT INTO media_embeddings (media_id, title_embedding) VALUES (?, ?)'
+                                'INSERT INTO media_embeddings (media_id, title_embedding) VALUES (CAST(? AS INTEGER), ?)'
                             ).run(cid, JSON.stringify(embedding));
                         } catch (insertErr) {
                             if (done === 0) {
