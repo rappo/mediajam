@@ -108,6 +108,7 @@
                 messages = [...messages, { role: 'assistant', text: `⚠️ Server returned ${res.status}`, error: 'Invalid response' }];
                 sending = false;
                 scrollToBottom();
+                requestAnimationFrame(() => inputEl?.focus());
                 return;
             }
 
@@ -133,6 +134,7 @@
 
         sending = false;
         scrollToBottom();
+        requestAnimationFrame(() => inputEl?.focus());
     }
 
     /**

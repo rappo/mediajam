@@ -408,7 +408,7 @@ Message: ${question}`;
         return json({
             question,
             type: 'chat',
-            summary: chatResponse || "Try asking something like \"What did I watch this month?\" or \"Recommend a dark movie.\"",
+            summary: chatResponse || "I tried to respond but couldn't reach the LLM. Check your Settings → LLM configuration — make sure a provider is connected and working.",
         });
     }
 
