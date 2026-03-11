@@ -138,12 +138,6 @@ async function retrieveContext(question, userId) {
         return null;
     }
 
-    const queryVec = await embed(question);
-    if (!queryVec) {
-        logWarn('ask', 'RAG: embed() returned null — Ollama embedding call failed');
-        return null;
-    }
-
     // Detect media type preference from the question
     const qLower = question.toLowerCase();
     let mediaTypeFilter = '';
@@ -159,6 +153,54 @@ async function retrieveContext(question, userId) {
         mediaTypeLabel = 'music';
     }
 
+    // Detect if the user is asking for history-based recommendations
+    const isHistoryBased = /\b(my history|my watch|i'?ve been watch|i'?ve watched|i watched|been watching|watched recently|watched lately|recent watches|past week|past month|past few)\b/i.test(question);
+
+    /** @type {number[] | null} */
+    let queryVec = null;
+
+    if (isHistoryBased && userId) {
+        // Use average of recently-watched item embeddings for better personalization
+        try {
+            const recentEmbeddings = /** @type {any[]} */ (db.prepare(`
+                SELECT oe.overview_embedding
+                FROM playback_history ph
+                JOIN media_children mc ON ph.media_id = mc.id
+                JOIN media_parents mp ON mc.parent_id = mp.id
+                JOIN overview_embeddings oe ON oe.media_parent_id = mp.id
+                WHERE ph.user_id = ? AND ph.timestamp > datetime('now', '-14 days')
+                GROUP BY mp.id
+                ORDER BY MAX(ph.timestamp) DESC
+                LIMIT 10
+            `).all(userId));
+
+            if (recentEmbeddings.length > 0) {
+                // Average the embeddings
+                const dim = 768;
+                const avg = new Float32Array(dim);
+                for (const row of recentEmbeddings) {
+                    const buf = row.overview_embedding;
+                    const vec = new Float32Array(buf.buffer || buf);
+                    for (let i = 0; i < dim; i++) avg[i] += vec[i];
+                }
+                for (let i = 0; i < dim; i++) avg[i] /= recentEmbeddings.length;
+                queryVec = Array.from(avg);
+                logInfo('ask', `RAG: using averaged embedding from ${recentEmbeddings.length} recent watches`);
+            }
+        } catch (e) {
+            logWarn('ask', `RAG: history embedding failed: ${e instanceof Error ? e.message : e}`);
+        }
+    }
+
+    // Fall back to embedding the question text
+    if (!queryVec) {
+        queryVec = await embed(question);
+        if (!queryVec) {
+            logWarn('ask', 'RAG: embed() returned null — Ollama embedding call failed');
+            return null;
+        }
+    }
+
     // Semantic search: find closest media by overview embedding
     // NOTE: sqlite-vec does NOT support WHERE on computed distance columns (silently returns 0).
     //       Use ORDER BY + LIMIT, then filter in JS.
@@ -169,7 +211,7 @@ async function retrieveContext(question, userId) {
             SELECT oe.media_parent_id, vec_distance_cosine(oe.overview_embedding, ?) as distance
             FROM overview_embeddings oe
             ORDER BY distance
-            LIMIT 20
+            LIMIT 30
         `).all(JSON.stringify(queryVec));
         // Post-filter: keep only reasonable matches (cosine distance < 0.75)
         matches = rawMatches.filter((/** @type {any} */ m) => m.distance < 0.75);
