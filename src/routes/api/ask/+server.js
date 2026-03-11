@@ -68,6 +68,8 @@ EXAMPLE QUERIES (follow these patterns):
 -- Unwatched episodes remaining (hours): SELECT ROUND(SUM(mc.runtime_ticks) / 36000000000.0, 1) as hours_remaining, COUNT(*) as episodes FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.title LIKE '%Simpsons%' AND mc.watch_status != 'watched'
 -- Recently watched movies: SELECT DISTINCT mp.title, mp.release_year, ph.timestamp FROM playback_history ph JOIN media_children mc ON ph.media_id = mc.id JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.media_type = 'movie' AND ph.timestamp > datetime('now', '-30 days') ORDER BY ph.timestamp DESC LIMIT 20
 -- Movies by director: SELECT mp.title, mp.release_year FROM person_credits pc JOIN persons p ON pc.person_id = p.id JOIN media_parents mp ON pc.media_parent_id = mp.id WHERE p.name LIKE '%Spielberg%' AND pc.role_type = 'director'
+-- Unwatched movies by director: SELECT mp.title, mp.release_year, mc.watch_status FROM person_credits pc JOIN persons p ON pc.person_id = p.id JOIN media_parents mp ON pc.media_parent_id = mp.id JOIN media_children mc ON mc.parent_id = mp.id WHERE p.name LIKE '%Kurosawa%' AND pc.role_type = 'director' AND mc.watch_status != 'watched'
+-- Who stars in a director's films: SELECT p2.name, COUNT(*) as appearances FROM person_credits pc1 JOIN persons p1 ON pc1.person_id = p1.id JOIN person_credits pc2 ON pc2.media_parent_id = pc1.media_parent_id JOIN persons p2 ON pc2.person_id = p2.id WHERE p1.name LIKE '%Kurosawa%' AND pc1.role_type = 'director' AND pc2.role_type = 'actor' GROUP BY p2.id ORDER BY appearances DESC LIMIT 10
 -- Genres for a type: SELECT mt.tag_value, COUNT(*) as cnt FROM media_tags mt JOIN media_parents mp ON mt.media_parent_id = mp.id WHERE mp.media_type = 'movie' AND mt.tag_type = 'genre' GROUP BY mt.tag_value ORDER BY cnt DESC
 -- Most watched artists: SELECT mp.title, SUM(mc.play_count) as plays FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.media_type = 'artist' GROUP BY mp.id ORDER BY plays DESC LIMIT 10
 -- Hours of music listened: SELECT ROUND(SUM(ph.duration_consumed_seconds) / 3600.0, 1) as hours FROM playback_history ph JOIN media_children mc ON ph.media_id = mc.id JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.media_type = 'artist'`;
@@ -357,13 +359,13 @@ export async function POST({ request, locals }) {
 
     // Step 1: Ask the LLM to classify the question
     const classifyPrompt = `Classify this user message into one of three categories:
-- "data" — requires querying a database (counts, lists, lookups, statistics, viewing specific watch history)
-- "discovery" — recommendations, suggestions, mood-based picks, similarity, exploration, asking about specific media, wanting picks BASED ON history, or conversational follow-ups about recommendations
+- "data" — requires querying a database (counts, lists, lookups, statistics, viewing specific watch history, who stars in X, filmography queries, movies by a director, do I have more from X)
+- "discovery" — recommendations, suggestions, mood-based picks, similarity, exploration, wanting picks BASED ON history, or conversational follow-ups about recommendations
 - "chat" — greeting, thanks, general conversation, non-library question
 
-IMPORTANT: If the conversation has been about recommendations and the user is continuing that thread (corrections, follow-ups, refinements), classify as "discovery".
+IMPORTANT: If the conversation has been about recommendations and the user is continuing that thread (corrections, follow-ups, refinements), classify as "discovery". But factual lookups about people/directors/actors are always "data".
 
-Examples: "how many movies?" → data | "recommend something dark" → discovery | "something like Breaking Bad" → discovery | "what should I watch?" → discovery | "hello" → chat | "what did I watch today?" → data | "tell me about Inception" → discovery | "thanks!" → chat | "what's a good movie based on my history?" → discovery | "suggest something like what I've been watching" → discovery | "list my recently watched" → data | "two of those aren't movies" → discovery | "why did you pick those?" → discovery | "only movies please" → discovery
+Examples: "how many movies?" → data | "recommend something dark" → discovery | "something like Breaking Bad" → discovery | "what should I watch?" → discovery | "hello" → chat | "what did I watch today?" → data | "tell me about Inception" → discovery | "thanks!" → chat | "what's a good movie based on my history?" → discovery | "suggest something like what I've been watching" → discovery | "list my recently watched" → data | "two of those aren't movies" → discovery | "why did you pick those?" → discovery | "only movies please" → discovery | "who stars in kurosawa films?" → data | "do I have more movies from Nolan?" → data | "what else has that actor been in?" → data | "movies directed by Spielberg" → data
 
 ${historyContext ? `Recent conversation:\n${historyContext}\n` : ''}Reply with ONLY the word "data", "discovery", or "chat".
 
@@ -466,6 +468,7 @@ RULES:
 7. For counting movies: SELECT COUNT(*) FROM media_parents WHERE media_type = 'movie'
 8. Limit results to 50 rows.
 9. Always use table aliases for JOINs.
+10. IMPORTANT: When the question mentions a director, actor, writer, or any person by name, ALWAYS search the "persons" table by name and JOIN through "person_credits". NEVER search media_parents.title for a person's name — directors and actors are NOT in the title field.
 
 Question: ${question}`;
 

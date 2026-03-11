@@ -476,15 +476,16 @@
     .hero-overview-wrap {
         margin-top: 0.375rem;
         padding: 0.5rem 0.75rem;
-        background: oklch(var(--b1) / 0.6);
-        backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
+        background: oklch(var(--b1) / 0.75);
+        backdrop-filter: blur(12px) brightness(0.8);
+        -webkit-backdrop-filter: blur(12px) brightness(0.8);
         border-radius: 0.5rem;
         max-width: 42rem;
+        border: 1px solid oklch(var(--bc) / 0.08);
     }
     .hero-overview {
         font-size: 0.875rem;
-        color: oklch(var(--bc) / 0.7);
+        color: oklch(var(--bc) / 0.8);
         line-height: 1.5;
         display: -webkit-box;
         -webkit-line-clamp: 3;
@@ -492,6 +493,7 @@
         -webkit-box-orient: vertical;
         overflow: hidden;
         margin: 0;
+        text-shadow: 0 1px 3px oklch(var(--b1) / 0.8);
     }
     .overview-source {
         font-size: 0.7rem;
