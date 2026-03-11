@@ -400,6 +400,9 @@ const newAppCols = [
     ['openai_client_secret', 'TEXT'],
     ['gemini_client_id', 'TEXT'],
     ['gemini_client_secret', 'TEXT'],
+    // Codex CLI OAuth tokens (pasted from ~/.codex/auth.json)
+    ['codex_access_token', 'TEXT'],
+    ['codex_refresh_token', 'TEXT'],
 ];
 for (const [col, type] of newAppCols) {
     if (!existingCols.has(col)) {

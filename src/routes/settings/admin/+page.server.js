@@ -113,7 +113,7 @@ export function load() {
             llmEmbedModel: settings?.llm_embed_model || '',
             hasOpenaiClientId: !!settings?.openai_client_id,
             hasGeminiClientId: !!settings?.gemini_client_id,
-            hasOpenaiOAuth: !!(/** @type {any} */ (db.prepare("SELECT access_token FROM user_identities WHERE provider = 'openai' LIMIT 1").get()))?.access_token,
+            hasCodexAuth: !!settings?.codex_access_token,
             // *arr integration
             radarrUrl: settings?.radarr_url || '',
             radarrApiKey: settings?.radarr_api_key ? '••••••••' : '',

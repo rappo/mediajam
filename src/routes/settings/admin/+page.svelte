@@ -2976,14 +2976,70 @@
                                 />
                             </div>
                             {#if llmProvider === 'openai'}
-                                <div class="flex items-center gap-2 mt-2">
-                                    {#if data.settings.hasOpenaiOAuth}
-                                        <span class="badge badge-success badge-sm gap-1">✓ ChatGPT linked</span>
+                                <div class="mt-2 space-y-2">
+                                    {#if data.settings.hasCodexAuth}
+                                        <div class="flex items-center gap-2">
+                                            <span class="badge badge-success badge-sm gap-1">✓ Codex linked</span>
+                                            <button 
+                                                type="button"
+                                                class="btn btn-xs btn-ghost text-error"
+                                                onclick={async () => {
+                                                    if (!confirm('Remove Codex token?')) return;
+                                                    await fetch('/api/llm/openai/codex-token', { method: 'DELETE' });
+                                                    location.reload();
+                                                }}
+                                            >Unlink</button>
+                                        </div>
                                     {/if}
-                                    <a href="/api/llm/openai/auth" class="btn btn-sm btn-outline gap-1">
-                                        <ServiceIcon service="openai" size="w-3.5 h-3.5" />
-                                        {data.settings.hasOpenaiOAuth ? 'Re-authorize' : 'Sign in with ChatGPT'}
-                                    </a>
+                                    <details class="collapse collapse-arrow bg-base-200/50 border border-base-300">
+                                        <summary class="collapse-title text-xs font-medium min-h-0 py-2 px-3">
+                                            <ServiceIcon service="openai" size="w-3.5 h-3.5" />
+                                            {data.settings.hasCodexAuth ? 'Update Codex Token' : 'Link Codex (ChatGPT subscription)'}
+                                        </summary>
+                                        <div class="collapse-content px-3 pb-3 space-y-2">
+                                            <p class="text-[10px] text-base-content/60 leading-relaxed">
+                                                Install <a href="https://github.com/openai/codex" target="_blank" class="link">OpenAI Codex CLI</a>, then run:
+                                            </p>
+                                            <pre class="text-[10px] bg-base-300 p-2 rounded font-mono select-all">codex login
+cat ~/.codex/auth.json</pre>
+                                            <p class="text-[10px] text-base-content/60">Paste the full JSON output below:</p>
+                                            <textarea
+                                                id="codex-paste"
+                                                class="textarea textarea-bordered textarea-sm w-full font-mono text-[10px] leading-tight"
+                                                rows="4"
+                                                placeholder="Paste the output of: cat ~/.codex/auth.json"
+                                            ></textarea>
+                                            <button
+                                                type="button"
+                                                class="btn btn-sm btn-primary gap-1"
+                                                onclick={async () => {
+                                                    const el = /** @type {HTMLTextAreaElement} */ (document.getElementById('codex-paste'));
+                                                    const text = el?.value?.trim();
+                                                    if (!text) return;
+                                                    try {
+                                                        const parsed = JSON.parse(text);
+                                                        const res = await fetch('/api/llm/openai/codex-token', {
+                                                            method: 'POST',
+                                                            headers: { 'Content-Type': 'application/json' },
+                                                            body: JSON.stringify(parsed),
+                                                        });
+                                                        const data = await res.json();
+                                                        if (data.success) {
+                                                            el.value = '';
+                                                            location.reload();
+                                                        } else {
+                                                            alert(data.error || 'Failed to save token');
+                                                        }
+                                                    } catch {
+                                                        alert('Invalid JSON. Paste the full output of: cat ~/.codex/auth.json');
+                                                    }
+                                                }}
+                                            >
+                                                <ServiceIcon service="openai" size="w-3.5 h-3.5" />
+                                                Save Codex Token
+                                            </button>
+                                        </div>
+                                    </details>
                                     {#if data.settings.hasOpenaiKey}
                                         <span class="badge badge-info badge-sm gap-1">✓ API key saved</span>
                                     {/if}
@@ -2999,7 +3055,7 @@
                             {/if}
                             <p class="text-[10px] text-base-content/40 mt-1">
                                 {#if llmProvider === 'openai'}
-                                    Sign in with your ChatGPT account, or use an API key from <a href="https://platform.openai.com/api-keys" target="_blank" class="link">platform.openai.com</a>
+                                    Use <a href="https://github.com/openai/codex" target="_blank" class="link">Codex CLI</a> to sign in with ChatGPT, or enter an API key from <a href="https://platform.openai.com/api-keys" target="_blank" class="link">platform.openai.com</a>
                                 {:else if llmProvider === 'gemini'}
                                     Get your key at <a href="https://aistudio.google.com/apikey" target="_blank" class="link">aistudio.google.com</a>
                                 {:else if llmProvider === 'claude'}
