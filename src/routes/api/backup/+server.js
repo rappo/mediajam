@@ -94,6 +94,14 @@ export async function GET({ url, locals }) {
     tables['watchlist'] = db.prepare('SELECT * FROM watchlist').all();
     tables['activity_log'] = db.prepare('SELECT * FROM activity_log').all();
     try { tables['embedding_hashes'] = db.prepare('SELECT * FROM embedding_hashes').all(); } catch { tables['embedding_hashes'] = []; }
+    // vec0 virtual table — export embeddings as JSON arrays for portability
+    try {
+        const rows = /** @type {any[]} */ (db.prepare('SELECT media_parent_id, overview_embedding FROM overview_embeddings').all());
+        tables['overview_embeddings'] = rows.map(r => ({
+            media_parent_id: r.media_parent_id,
+            overview_embedding: JSON.stringify(Array.from(new Float32Array(r.overview_embedding.buffer || r.overview_embedding)))
+        }));
+    } catch { tables['overview_embeddings'] = []; }
 
     // Build manifest
     const manifest = {

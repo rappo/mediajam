@@ -83,7 +83,8 @@ export async function POST({ request, url, locals }) {
             'external_ratings',
             'watchlist',
             'activity_log',
-            'embedding_hashes'
+            'embedding_hashes',
+            'overview_embeddings'
         ];
 
         // In overwrite mode, clear tables in reverse order
@@ -93,6 +94,11 @@ export async function POST({ request, url, locals }) {
                 try {
                     if (table === 'app_settings') {
                         // Don't delete app_settings, we'll update it
+                        continue;
+                    }
+                    if (table === 'overview_embeddings') {
+                        // vec0 virtual table — delete all rows
+                        try { db.prepare('DELETE FROM overview_embeddings WHERE media_parent_id > 0').run(); } catch { /* table may not exist */ }
                         continue;
                     }
                     db.prepare(`DELETE FROM ${table}`).run();
@@ -118,6 +124,24 @@ export async function POST({ request, url, locals }) {
                 }
 
                 let count = 0;
+
+                // Special handling for vec0 virtual table
+                if (tableName === 'overview_embeddings') {
+                    const deleteStmt = db.prepare('DELETE FROM overview_embeddings WHERE media_parent_id = CAST(? AS INTEGER)');
+                    const insertStmt = db.prepare('INSERT INTO overview_embeddings (media_parent_id, overview_embedding) VALUES (CAST(? AS INTEGER), ?)');
+                    const importEmbeddings = db.transaction((/** @type {any[]} */ items) => {
+                        for (const row of items) {
+                            try {
+                                try { deleteStmt.run(row.media_parent_id); } catch { /* may not exist */ }
+                                insertStmt.run(row.media_parent_id, row.overview_embedding);
+                                count++;
+                            } catch { /* skip bad rows */ }
+                        }
+                    });
+                    importEmbeddings(rows);
+                    results.imported[tableName] = count;
+                    continue;
+                }
 
                 if (tableName === 'app_settings') {
                     // Special handling: update the single settings row

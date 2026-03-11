@@ -58,7 +58,8 @@ export async function GET({ locals }) {
     let embeddingsTotal = 0;
     let overviewsTotal = 0;
     try {
-        embeddingsTotal = /** @type {any} */ (db.prepare('SELECT COUNT(*) as c FROM overview_embeddings').get())?.c || 0;
+        // vec0 COUNT(*) is unreliable — use a subquery with rowid
+        embeddingsTotal = /** @type {any} */ (db.prepare('SELECT COUNT(*) as c FROM (SELECT media_parent_id FROM overview_embeddings)').get())?.c || 0;
         overviewsTotal = /** @type {any} */ (db.prepare("SELECT COUNT(*) as c FROM media_parents WHERE overview IS NOT NULL AND overview != ''").get())?.c || 0;
     } catch { /* table may not exist */ }
 

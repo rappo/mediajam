@@ -132,7 +132,7 @@ export async function POST({ locals }) {
                 }
                 // Diagnostic: verify persistence
                 let verifyCount = 0;
-                try { verifyCount = /** @type {any} */ (db.prepare('SELECT COUNT(*) as c FROM overview_embeddings').get())?.c || 0; } catch {}
+                try { verifyCount = /** @type {any} */ (db.prepare('SELECT COUNT(*) as c FROM (SELECT media_parent_id FROM overview_embeddings)').get())?.c || 0; } catch {}
                 send({ type: 'diagnostic', phase: 'overviews', succeeded: successCount, failed: failCount, lastError, verifiedCount: Number(verifyCount) });
 
                 // Phase 2: Embed media_children titles (albums, episodes, tracks)
@@ -204,7 +204,7 @@ export async function GET({ locals }) {
     let totalChildren = 0;
 
     try {
-        overviewCount = /** @type {any} */ (db.prepare('SELECT COUNT(*) as c FROM overview_embeddings').get())?.c || 0;
+        overviewCount = /** @type {any} */ (db.prepare('SELECT COUNT(*) as c FROM (SELECT media_parent_id FROM overview_embeddings)').get())?.c || 0;
         titleCount = /** @type {any} */ (db.prepare('SELECT COUNT(*) as c FROM media_embeddings').get())?.c || 0;
     } catch { /* vec0 tables don't exist */ }
 
