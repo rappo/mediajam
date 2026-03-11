@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import db from '$lib/server/db.js';
-import { generate } from '$lib/server/ollama.js';
+import { generate, embed, isEmbeddingAvailable } from '$lib/server/ollama.js';
 import { logInfo, logWarn } from '$lib/server/logger.js';
 
 /** Tables that are safe to query */
@@ -126,6 +126,125 @@ function getLibraryStats() {
 }
 
 /**
+ * Retrieve semantically similar media for RAG context.
+ * Embeds the query, searches vec0, enriches with tags/status/history.
+ * @param {string} question
+ * @param {number} [userId]
+ * @returns {Promise<{ context: string, sources: any[] } | null>}
+ */
+async function retrieveContext(question, userId) {
+    if (!isEmbeddingAvailable()) return null;
+
+    const queryVec = await embed(question);
+    if (!queryVec) return null;
+
+    // Semantic search: find 15 closest media by overview
+    /** @type {any[]} */
+    let candidates = [];
+    try {
+        candidates = db.prepare(`
+            SELECT mp.id, mp.title, mp.media_type, mp.release_year, mp.overview,
+                   mp.watched_children, mp.collected_children, mp.total_released_children,
+                   mp.is_favorite,
+                   vec_distance_cosine(oe.overview_embedding, ?) as distance
+            FROM overview_embeddings oe
+            JOIN media_parents mp ON oe.media_parent_id = mp.id
+            WHERE distance < 0.65
+            ORDER BY distance
+            LIMIT 15
+        `).all(JSON.stringify(queryVec));
+    } catch (e) {
+        logWarn('ask', `Semantic search failed: ${e instanceof Error ? e.message : e}`);
+        return null;
+    }
+
+    if (candidates.length === 0) return null;
+
+    // Enrich each candidate with tags and watch info
+    const enriched = candidates.map(c => {
+        // Get tags
+        /** @type {any[]} */
+        let tags = [];
+        try {
+            tags = db.prepare(
+                'SELECT tag_type, tag_value FROM media_tags WHERE media_parent_id = ?'
+            ).all(c.id);
+        } catch { /* no tags */ }
+
+        // Get watch status summary (for shows/artists with children)
+        let watchInfo = '';
+        if (c.media_type === 'show') {
+            const watched = c.watched_children || 0;
+            const total = c.collected_children || c.total_released_children || 0;
+            if (total > 0) {
+                watchInfo = watched === total ? '(fully watched)' :
+                    watched === 0 ? `(unwatched — ${total} episodes)` :
+                    `(${watched}/${total} episodes watched)`;
+            }
+        } else if (c.media_type === 'movie') {
+            try {
+                const child = /** @type {any} */ (db.prepare(
+                    'SELECT watch_status FROM media_children WHERE parent_id = ? LIMIT 1'
+                ).get(c.id));
+                if (child) watchInfo = child.watch_status === 'watched' ? '(watched)' : '(unwatched)';
+            } catch { /* ok */ }
+        }
+
+        const genreTags = tags.filter(t => t.tag_type === 'genre').map(t => t.tag_value);
+        const moodTags = tags.filter(t => t.tag_type === 'mood').map(t => t.tag_value);
+
+        return {
+            id: c.id,
+            title: c.title,
+            type: c.media_type,
+            year: c.release_year,
+            overview: c.overview?.slice(0, 200),
+            genres: genreTags,
+            moods: moodTags,
+            watchInfo,
+            distance: Math.round(c.distance * 1000) / 1000,
+            favorite: c.is_favorite === 1,
+        };
+    });
+
+    // Get recent watch history for personalization
+    let recentWatches = '';
+    if (userId) {
+        try {
+            const recent = /** @type {any[]} */ (db.prepare(`
+                SELECT DISTINCT mp.title, mp.media_type
+                FROM playback_history ph
+                JOIN media_children mc ON ph.media_id = mc.id
+                JOIN media_parents mp ON mc.parent_id = mp.id
+                WHERE ph.user_id = ? AND ph.timestamp > datetime('now', '-30 days')
+                ORDER BY ph.timestamp DESC
+                LIMIT 10
+            `).all(userId));
+            if (recent.length > 0) {
+                recentWatches = `\nRecently watched/listened: ${recent.map(r => r.title).join(', ')}`;
+            }
+        } catch { /* ok */ }
+    }
+
+    // Build context string
+    const lines = enriched.map((item, i) => {
+        let line = `${i + 1}. ${item.title}`;
+        if (item.year) line += ` (${item.year})`;
+        line += ` [${item.type}]`;
+        if (item.watchInfo) line += ` ${item.watchInfo}`;
+        if (item.favorite) line += ' ⭐';
+        if (item.genres.length) line += ` — ${item.genres.join(', ')}`;
+        if (item.moods.length) line += ` | mood: ${item.moods.join(', ')}`;
+        if (item.overview) line += `\n   ${item.overview}...`;
+        return line;
+    });
+
+    const context = `Items from the user's library that match their request:\n${lines.join('\n')}${recentWatches}`;
+
+    return { context, sources: enriched };
+}
+
+/**
  * POST /api/ask — Chat with your media library
  * Handles both conversational questions and data queries (text-to-SQL).
  * @type {import('./$types').RequestHandler}
@@ -138,33 +257,44 @@ export async function POST({ request, locals }) {
     if (!question) return json({ error: 'No question provided' }, { status: 400 });
 
     // Step 1: Ask the LLM to classify the question
-    const classifyPrompt = `Classify this user message as either "data" (requires querying a media library database) or "chat" (general conversation, greeting, opinion, recommendation, or non-data question).
+    const classifyPrompt = `Classify this user message into one of three categories:
+- "data" — requires querying a media library database (counts, lists, lookups, statistics, history)
+- "discovery" — asking for recommendations, suggestions, mood-based picks, "what should I watch/listen to", similarity queries, or content exploration
+- "chat" — general conversation, greeting, opinion, or non-library question
 
 Examples:
 - "hello" → chat
 - "what movies do I have?" → data
 - "how many shows did I watch?" → data
-- "recommend a good movie" → chat
+- "recommend a good movie" → discovery
+- "something like Breaking Bad" → discovery
+- "I'm in the mood for something dark" → discovery
+- "what should I watch tonight?" → discovery
 - "what's the weather?" → chat
 - "who directed the most movies in my library?" → data
 - "thanks!" → chat
 - "what did I listen to today?" → data
+- "suggest some chill music" → discovery
+- "tell me about Inception" → discovery
+- "what are my highest rated unwatched movies?" → data
 
-Reply with ONLY the word "data" or "chat".
+Reply with ONLY the word "data", "discovery", or "chat".
 
 Message: ${question}`;
 
     const classification = await generate(classifyPrompt, {
         temperature: 0,
-        system: 'You classify messages. Reply with exactly one word: "data" or "chat".',
+        system: 'You classify messages. Reply with exactly one word: "data", "discovery", or "chat".',
     });
 
-    const isDataQuery = classification?.trim().toLowerCase().startsWith('data');
+    const classWord = classification?.trim().toLowerCase().replace(/[^a-z]/g, '') || 'chat';
+    const isDataQuery = classWord.startsWith('data');
+    const isDiscovery = classWord.startsWith('discover');
 
-    logInfo('ask', `Question: "${question}" → classified as ${isDataQuery ? 'data' : 'chat'}`);
+    logInfo('ask', `Question: "${question}" → classified as ${isDataQuery ? 'data' : isDiscovery ? 'discovery' : 'chat'}`);
 
     // Step 2a: For chat/conversational questions, just answer directly
-    if (!isDataQuery) {
+    if (!isDataQuery && !isDiscovery) {
         const stats = getLibraryStats();
         const chatResponse = await generate(
             `${stats ? `Context: ${stats}\n\n` : ''}User says: "${question}"`,
@@ -178,6 +308,57 @@ Message: ${question}`;
             question,
             type: 'chat',
             summary: chatResponse || "I'm here to help with your media library! Try asking something like \"What movies did I watch this month?\" or \"How many albums do I have?\"",
+        });
+    }
+
+    // Step 2b: Discovery — RAG-powered recommendations and exploration
+    if (isDiscovery) {
+        const ragContext = await retrieveContext(question, locals.user?.id);
+
+        if (ragContext) {
+            logInfo('ask', `RAG context: ${ragContext.sources.length} sources retrieved`);
+
+            const discoveryPrompt = `The user asked: "${question}"
+
+${ragContext.context}
+
+Based on the items above from their personal media library, give a helpful, personalized response. Consider what they've watched vs. what's unwatched, their favorites, and genres/moods.
+
+Rules:
+- Only recommend items that appear in the list above (they're from the user's actual library)
+- Mention specific titles with brief reasons why they'd enjoy them
+- If they asked about a specific item, share details from its overview and tags
+- Be conversational and concise (3-5 sentences)
+- Note watched/unwatched status when relevant
+- Don't list everything — curate the best 2-4 picks`;
+
+            const discoveryResponse = await generate(discoveryPrompt, {
+                temperature: 0.5,
+                system: 'You are Mediajam, a media library assistant with deep knowledge of the user\'s personal collection. You make personalized recommendations based on their library, watch history, and preferences. Be specific, concise, and enthusiastic.',
+            });
+
+            return json({
+                question,
+                type: 'discovery',
+                summary: discoveryResponse || 'I found some matches but couldn\'t generate a recommendation. Try rephrasing your question.',
+                sources: ragContext.sources.slice(0, 8),
+            });
+        }
+
+        // Fallback: embeddings not available, use basic chat with stats
+        const stats = getLibraryStats();
+        const fallbackResponse = await generate(
+            `${stats ? `Context: ${stats}\n\n` : ''}The user is asking for a recommendation: "${question}". You don't have access to their specific media details, but you know their library stats. Help them as best you can and suggest they ask specific data questions.`,
+            {
+                temperature: 0.7,
+                system: 'You are Mediajam, a friendly media library assistant. Be helpful and suggest ways to explore their library.',
+            }
+        );
+
+        return json({
+            question,
+            type: 'discovery',
+            summary: fallbackResponse || 'I don\'t have enough context to make a recommendation. Try asking "what movies do I have?" or "show me my unwatched shows."',
         });
     }
 
