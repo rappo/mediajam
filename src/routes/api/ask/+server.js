@@ -145,25 +145,26 @@ async function retrieveContext(question, userId) {
     }
 
     // Semantic search: find 15 closest media by overview
-    // NOTE: sqlite-vec has a bug where complex JOINs with many columns return 0 results.
-    //       Work around by doing a simple vec0 search first, then enriching with a separate query.
+    // NOTE: sqlite-vec does NOT support WHERE on computed distance columns (silently returns 0).
+    //       Use ORDER BY + LIMIT, then filter in JS.
     /** @type {any[]} */
     let matches = [];
     try {
-        matches = db.prepare(`
+        const rawMatches = db.prepare(`
             SELECT oe.media_parent_id, vec_distance_cosine(oe.overview_embedding, ?) as distance
             FROM overview_embeddings oe
-            WHERE distance < 1.0
             ORDER BY distance
-            LIMIT 15
+            LIMIT 20
         `).all(JSON.stringify(queryVec));
+        // Post-filter: keep only reasonable matches (cosine distance < 0.75)
+        matches = rawMatches.filter((/** @type {any} */ m) => m.distance < 0.75);
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         logWarn('ask', `Semantic search failed: ${msg}`);
         return `search error: ${msg}`;
     }
 
-    if (matches.length === 0) return `0 matches from vec0 (vec=${queryVec.length} dims)`;
+    if (matches.length === 0) return `0 matches after filtering (top distance: ${matches.length})`.slice(0, 100);
 
     // Enrich matches with full media details
     const matchIds = matches.map(m => m.media_parent_id);
