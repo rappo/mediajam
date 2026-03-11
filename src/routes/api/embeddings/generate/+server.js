@@ -69,7 +69,7 @@ export async function POST({ locals }) {
                         try {
                             db.prepare(
                                 'INSERT OR REPLACE INTO overview_embeddings (media_parent_id, overview_embedding) VALUES (?, ?)'
-                            ).run(parent.id, JSON.stringify(embedding));
+                            ).run(Number(parent.id), JSON.stringify(embedding));
                             // Store the content hash
                             db.prepare(
                                 'INSERT OR REPLACE INTO embedding_hashes (media_parent_id, content_hash, embedded_at) VALUES (?, ?, datetime(\'now\'))'
@@ -106,7 +106,7 @@ export async function POST({ locals }) {
                         try {
                             db.prepare(
                                 'INSERT OR REPLACE INTO media_embeddings (media_id, title_embedding) VALUES (?, ?)'
-                            ).run(child.id, JSON.stringify(embedding));
+                            ).run(Number(child.id), JSON.stringify(embedding));
                         } catch (insertErr) {
                             if (done === 0) {
                                 const errMsg = insertErr instanceof Error ? insertErr.message : String(insertErr);
