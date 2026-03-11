@@ -12,6 +12,10 @@
     let sending = $state(false);
     /** @type {Record<string, boolean>} */
     let showSql = $state({});
+    let showStatus = $state(false);
+    /** @type {{ ollamaConnected?: boolean, chatModel?: string, embeddingModel?: string, ragAvailable?: boolean, embeddingsTotal?: number, overviewsTotal?: number, embeddingsPct?: number } | null} */
+    let statusData = $state(null);
+    let statusLoading = $state(false);
 
     /** @type {HTMLDivElement | undefined} */
     let messagesContainer = $state();
@@ -52,6 +56,18 @@
     function clearChat() {
         messages = [];
         showSql = {};
+    }
+
+    async function fetchStatus() {
+        if (statusLoading) return;
+        showStatus = !showStatus;
+        if (!showStatus) return;
+        statusLoading = true;
+        try {
+            const res = await fetch('/api/ask/status');
+            if (res.ok) statusData = await res.json();
+        } catch { /* ignore */ }
+        statusLoading = false;
     }
 
     /** @param {string} idx */
@@ -153,12 +169,21 @@
     let copied = $state(false);
     function copyDebug() {
         const lines = [`=== Mediajam Chat Debug ===`, `Time: ${new Date().toISOString()}`, ''];
+        // Include status info if available
+        if (statusData) {
+            lines.push(`Ollama: ${statusData.ollamaConnected ? '✓ connected' : '✗ disconnected'}`);
+            lines.push(`Chat model: ${statusData.chatModel || 'none'}`);
+            lines.push(`Embedding model: ${statusData.embeddingModel || 'none'}`);
+            lines.push(`RAG: ${statusData.ragAvailable ? '✓ available' : '✗ unavailable'}`);
+            lines.push(`Embeddings: ${statusData.embeddingsTotal}/${statusData.overviewsTotal} (${statusData.embeddingsPct}%)`);
+            lines.push('');
+        }
         for (const msg of messages) {
             if (msg.loading) continue;
             if (msg.role === 'user') {
                 lines.push(`USER: ${msg.text}`);
             } else {
-                lines.push(`ASSISTANT: ${msg.text}`);
+                lines.push(`A: ${msg.text}`);
                 if (msg.sql) lines.push(`SQL: ${msg.sql}`);
                 if (msg.type) lines.push(`Type: ${msg.type}`);
                 if (msg.error) lines.push(`Error: ${msg.error}`);
@@ -213,7 +238,7 @@
 
 <!-- Docked Sidebar -->
 {#if mode === 'docked'}
-    <div class="fixed top-0 right-0 z-[200] flex flex-col h-full border-l border-base-300 bg-base-100 shadow-2xl" style="width: 380px;">
+    <div class="fixed top-16 right-0 z-[200] flex flex-col border-l border-base-300 bg-base-100 shadow-2xl" style="width: 380px; height: calc(100vh - 4rem);">
         {@render chatContent()}
     </div>
 {/if}
@@ -235,6 +260,10 @@
             </div>
         </div>
         <div class="flex items-center gap-0.5">
+            <!-- Status -->
+            <button class="btn btn-ghost btn-xs btn-square opacity-50 hover:opacity-100" onclick={fetchStatus} title="System status" class:text-primary={showStatus}>
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+            </button>
             {#if messages.length > 0}
                 <button class="btn btn-ghost btn-xs btn-square opacity-50 hover:opacity-100" onclick={copyDebug} title="Copy debug info">
                     {#if copied}
@@ -267,6 +296,32 @@
             </button>
         </div>
     </div>
+
+    <!-- Status Panel -->
+    {#if showStatus}
+        <div class="px-3 py-2 bg-base-200/50 border-b border-base-300 text-xs space-y-1 shrink-0">
+            {#if statusLoading}
+                <div class="text-base-content/40">Loading...</div>
+            {:else if statusData}
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full {statusData.ollamaConnected ? 'bg-success' : 'bg-error'}"></span>
+                    Ollama: {statusData.ollamaConnected ? 'connected' : 'disconnected'}
+                </div>
+                <div class="text-base-content/60 pl-4">
+                    Chat: {statusData.chatModel || '—'} · Embed: {statusData.embeddingModel || '—'}
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full {statusData.ragAvailable ? 'bg-success' : 'bg-warning'}"></span>
+                    RAG: {statusData.ragAvailable ? 'available' : 'unavailable'}
+                </div>
+                <div class="text-base-content/60 pl-4">
+                    Embeddings: {statusData.embeddingsTotal}/{statusData.overviewsTotal} ({statusData.embeddingsPct}%)
+                </div>
+            {:else}
+                <div class="text-base-content/40">Could not fetch status</div>
+            {/if}
+        </div>
+    {/if}
 
     <!-- Messages -->
     <div class="flex-1 overflow-y-auto p-3 space-y-3" bind:this={messagesContainer}>
