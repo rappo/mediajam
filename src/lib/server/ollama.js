@@ -48,7 +48,10 @@ export async function healthCheck() {
  */
 export async function embed(text, model) {
     const cfg = getSettings();
-    if (!cfg) return null;
+    if (!cfg) {
+        console.warn('[ollama] embed(): no settings configured');
+        return null;
+    }
 
     try {
         const res = await fetch(`${cfg.url}/api/embeddings`, {
@@ -60,10 +63,15 @@ export async function embed(text, model) {
             }),
             signal: AbortSignal.timeout(30000),
         });
-        if (!res.ok) return null;
+        if (!res.ok) {
+            const errorText = await res.text().catch(() => '');
+            console.warn(`[ollama] embed() HTTP ${res.status}: ${errorText.slice(0, 200)}`);
+            return null;
+        }
         const data = await res.json();
         return data.embedding || null;
-    } catch {
+    } catch (e) {
+        console.warn(`[ollama] embed() error: ${e instanceof Error ? e.message : e}`);
         return null;
     }
 }

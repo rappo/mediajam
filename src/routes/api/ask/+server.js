@@ -133,10 +133,16 @@ function getLibraryStats() {
  * @returns {Promise<{ context: string, sources: any[] } | null>}
  */
 async function retrieveContext(question, userId) {
-    if (!isEmbeddingAvailable()) return null;
+    if (!isEmbeddingAvailable()) {
+        logWarn('ask', 'RAG: isEmbeddingAvailable() returned false');
+        return null;
+    }
 
     const queryVec = await embed(question);
-    if (!queryVec) return null;
+    if (!queryVec) {
+        logWarn('ask', 'RAG: embed() returned null — Ollama embedding call failed');
+        return null;
+    }
 
     // Semantic search: find 15 closest media by overview
     /** @type {any[]} */
