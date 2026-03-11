@@ -339,15 +339,35 @@ Recommend 2-4 specific titles from the list above. For each, give a one-line rea
             });
         }
 
-        // Fallback: RAG didn't return context
+        // Fallback: RAG didn't return context — add inline test for diagnostics
         const failReason = typeof ragResult === 'string' ? ragResult : 'unknown';
         logWarn('ask', `RAG context unavailable — reason: ${failReason}`);
+
+        // Inline vec0 test (same db, same code path)
+        let inlineTest = 'not run';
+        try {
+            const testVec = await embed(question);
+            if (testVec) {
+                const testResults = /** @type {any[]} */ (db.prepare(`
+                    SELECT mp.title, vec_distance_cosine(oe.overview_embedding, ?) as distance
+                    FROM overview_embeddings oe
+                    JOIN media_parents mp ON oe.media_parent_id = mp.id
+                    ORDER BY distance LIMIT 3
+                `).all(JSON.stringify(testVec)));
+                inlineTest = `${testResults.length} results (${testResults.map(r => `${r.title}:${Number(r.distance).toFixed(3)}`).join(', ')})`;
+            } else {
+                inlineTest = 'embed returned null';
+            }
+        } catch (e) {
+            inlineTest = `error: ${e instanceof Error ? e.message : e}`;
+        }
 
         return json({
             question,
             type: 'discovery',
             error: true,
             debugReason: failReason,
+            inlineTest,
             summary: '⚠️ I can\'t provide personalized recommendations right now — there\'s a problem with my embedding system.\n\n' +
                 '**To diagnose:**\n' +
                 '1. Click the ⚙️ button in this chat header to check system status\n' +
