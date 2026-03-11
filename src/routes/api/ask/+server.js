@@ -135,16 +135,16 @@ function getLibraryStats() {
 async function retrieveContext(question, userId) {
     if (!isEmbeddingAvailable()) {
         logWarn('ask', 'RAG: isEmbeddingAvailable() returned false');
-        return 'isEmbeddingAvailable returned false';
+        return null;
     }
 
     const queryVec = await embed(question);
     if (!queryVec) {
         logWarn('ask', 'RAG: embed() returned null — Ollama embedding call failed');
-        return 'embed returned null';
+        return null;
     }
 
-    // Semantic search: find 15 closest media by overview
+    // Semantic search: find closest media by overview embedding
     // NOTE: sqlite-vec does NOT support WHERE on computed distance columns (silently returns 0).
     //       Use ORDER BY + LIMIT, then filter in JS.
     /** @type {any[]} */
@@ -159,12 +159,11 @@ async function retrieveContext(question, userId) {
         // Post-filter: keep only reasonable matches (cosine distance < 0.75)
         matches = rawMatches.filter((/** @type {any} */ m) => m.distance < 0.75);
     } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        logWarn('ask', `Semantic search failed: ${msg}`);
-        return `search error: ${msg}`;
+        logWarn('ask', `Semantic search failed: ${e instanceof Error ? e.message : e}`);
+        return null;
     }
 
-    if (matches.length === 0) return `0 matches after filtering (top distance: ${matches.length})`.slice(0, 100);
+    if (matches.length === 0) return null;
 
     // Enrich matches with full media details
     const matchIds = matches.map(m => m.media_parent_id);
@@ -184,7 +183,7 @@ async function retrieveContext(question, userId) {
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         logWarn('ask', `Media enrichment failed: ${msg}`);
-        return `enrichment error: ${msg}`;
+        return null;
     }
 
     // Attach distances and sort
@@ -295,11 +294,11 @@ export async function POST({ request, locals }) {
 
     // Step 1: Ask the LLM to classify the question
     const classifyPrompt = `Classify this user message into one of three categories:
-- "data" — requires querying a database (counts, lists, lookups, statistics, watch history)
-- "discovery" — recommendations, suggestions, mood-based picks, similarity, exploration, or asking about specific media
+- "data" — requires querying a database (counts, lists, lookups, statistics, viewing specific watch history)
+- "discovery" — recommendations, suggestions, mood-based picks, similarity, exploration, asking about specific media, or wanting picks BASED ON history
 - "chat" — greeting, thanks, general conversation, non-library question
 
-Examples: "how many movies?" → data | "recommend something dark" → discovery | "something like Breaking Bad" → discovery | "what should I watch?" → discovery | "hello" → chat | "what did I watch today?" → data | "tell me about Inception" → discovery | "thanks!" → chat
+Examples: "how many movies?" → data | "recommend something dark" → discovery | "something like Breaking Bad" → discovery | "what should I watch?" → discovery | "hello" → chat | "what did I watch today?" → data | "tell me about Inception" → discovery | "thanks!" → chat | "what's a good movie based on my history?" → discovery | "suggest something like what I've been watching" → discovery | "list my recently watched" → data
 
 ${historyContext ? `Recent conversation:\n${historyContext}\n` : ''}Reply with ONLY the word "data", "discovery", or "chat".
 
@@ -337,10 +336,9 @@ Message: ${question}`;
 
     // Step 2b: Discovery — RAG-powered recommendations and exploration
     if (isDiscovery) {
-        const ragResult = await retrieveContext(question, locals.user?.id);
+        const ragContext = await retrieveContext(question, locals.user?.id);
 
-        if (ragResult && typeof ragResult === 'object' && 'context' in ragResult) {
-            const ragContext = ragResult;
+        if (ragContext) {
             logInfo('ask', `RAG context: ${ragContext.sources.length} sources retrieved`);
 
             const discoveryPrompt = `${historyContext ? `Conversation so far:\n${historyContext}\n` : ''}User: "${question}"
@@ -363,35 +361,13 @@ Recommend 2-4 specific titles from the list above. For each, give a one-line rea
             });
         }
 
-        // Fallback: RAG didn't return context — add inline test for diagnostics
-        const failReason = typeof ragResult === 'string' ? ragResult : 'unknown';
-        logWarn('ask', `RAG context unavailable — reason: ${failReason}`);
-
-        // Inline vec0 test (same db, same code path)
-        let inlineTest = 'not run';
-        try {
-            const testVec = await embed(question);
-            if (testVec) {
-                const testResults = /** @type {any[]} */ (db.prepare(`
-                    SELECT mp.title, vec_distance_cosine(oe.overview_embedding, ?) as distance
-                    FROM overview_embeddings oe
-                    JOIN media_parents mp ON oe.media_parent_id = mp.id
-                    ORDER BY distance LIMIT 3
-                `).all(JSON.stringify(testVec)));
-                inlineTest = `${testResults.length} results (${testResults.map(r => `${r.title}:${Number(r.distance).toFixed(3)}`).join(', ')})`;
-            } else {
-                inlineTest = 'embed returned null';
-            }
-        } catch (e) {
-            inlineTest = `error: ${e instanceof Error ? e.message : e}`;
-        }
+        // Fallback: RAG context unavailable
+        logWarn('ask', 'RAG context unavailable — embeddings missing or embed failed');
 
         return json({
             question,
             type: 'discovery',
             error: true,
-            debugReason: failReason,
-            inlineTest,
             summary: '⚠️ I can\'t provide personalized recommendations right now — there\'s a problem with my embedding system.\n\n' +
                 '**To diagnose:**\n' +
                 '1. Click the ⚙️ button in this chat header to check system status\n' +
