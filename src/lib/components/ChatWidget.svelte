@@ -72,10 +72,16 @@
         scrollToBottom();
 
         try {
+            // Send last 10 turns of conversation for context
+            const history = messages
+                .filter(m => !m.loading && m.text)
+                .slice(-10)
+                .map(m => ({ role: m.role, text: m.text }));
+
             const res = await fetch('/api/ask', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ question }),
+                body: JSON.stringify({ question, history }),
             });
 
             let data;

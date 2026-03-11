@@ -254,31 +254,23 @@ export async function POST({ request, locals }) {
 
     const body = await request.json();
     const question = body.question?.trim();
+    const history = Array.isArray(body.history) ? body.history.slice(-10) : [];
     if (!question) return json({ error: 'No question provided' }, { status: 400 });
+
+    // Format conversation history for context
+    const historyContext = history.length > 0
+        ? history.map(/** @param {{ role: string, text: string }} m */ m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.text}`).join('\n') + '\n'
+        : '';
 
     // Step 1: Ask the LLM to classify the question
     const classifyPrompt = `Classify this user message into one of three categories:
-- "data" — requires querying a media library database (counts, lists, lookups, statistics, history)
-- "discovery" — asking for recommendations, suggestions, mood-based picks, "what should I watch/listen to", similarity queries, or content exploration
-- "chat" — general conversation, greeting, opinion, or non-library question
+- "data" — requires querying a database (counts, lists, lookups, statistics, watch history)
+- "discovery" — recommendations, suggestions, mood-based picks, similarity, exploration, or asking about specific media
+- "chat" — greeting, thanks, general conversation, non-library question
 
-Examples:
-- "hello" → chat
-- "what movies do I have?" → data
-- "how many shows did I watch?" → data
-- "recommend a good movie" → discovery
-- "something like Breaking Bad" → discovery
-- "I'm in the mood for something dark" → discovery
-- "what should I watch tonight?" → discovery
-- "what's the weather?" → chat
-- "who directed the most movies in my library?" → data
-- "thanks!" → chat
-- "what did I listen to today?" → data
-- "suggest some chill music" → discovery
-- "tell me about Inception" → discovery
-- "what are my highest rated unwatched movies?" → data
+Examples: "how many movies?" → data | "recommend something dark" → discovery | "something like Breaking Bad" → discovery | "what should I watch?" → discovery | "hello" → chat | "what did I watch today?" → data | "tell me about Inception" → discovery | "thanks!" → chat
 
-Reply with ONLY the word "data", "discovery", or "chat".
+${historyContext ? `Recent conversation:\n${historyContext}\n` : ''}Reply with ONLY the word "data", "discovery", or "chat".
 
 Message: ${question}`;
 
@@ -297,17 +289,18 @@ Message: ${question}`;
     if (!isDataQuery && !isDiscovery) {
         const stats = getLibraryStats();
         const chatResponse = await generate(
-            `${stats ? `Context: ${stats}\n\n` : ''}User says: "${question}"`,
+            `${stats ? `Context: ${stats}\n` : ''}${historyContext ? `Conversation so far:\n${historyContext}\n` : ''}User: ${question}`,
             {
-                temperature: 0.7,
-                system: `You are Mediajam, a friendly media library assistant. You help users with their movie, TV, and music collection. Be concise and helpful. If the user asks something you can't answer without database access, suggest they ask a specific data question like "how many movies do I have?" or "what did I watch this week?"`,
+                temperature: 0.5,
+                num_predict: 150,
+                system: 'You are Mediajam, a media library assistant. Be concise — answer in 1-3 sentences max. Never use bullet lists or numbered lists in casual chat. Be warm but brief.',
             }
         );
 
         return json({
             question,
             type: 'chat',
-            summary: chatResponse || "I'm here to help with your media library! Try asking something like \"What movies did I watch this month?\" or \"How many albums do I have?\"",
+            summary: chatResponse || "Try asking something like \"What did I watch this month?\" or \"Recommend a dark movie.\"",
         });
     }
 
@@ -318,23 +311,16 @@ Message: ${question}`;
         if (ragContext) {
             logInfo('ask', `RAG context: ${ragContext.sources.length} sources retrieved`);
 
-            const discoveryPrompt = `The user asked: "${question}"
+            const discoveryPrompt = `${historyContext ? `Conversation so far:\n${historyContext}\n` : ''}User: "${question}"
 
 ${ragContext.context}
 
-Based on the items above from their personal media library, give a helpful, personalized response. Consider what they've watched vs. what's unwatched, their favorites, and genres/moods.
-
-Rules:
-- Only recommend items that appear in the list above (they're from the user's actual library)
-- Mention specific titles with brief reasons why they'd enjoy them
-- If they asked about a specific item, share details from its overview and tags
-- Be conversational and concise (3-5 sentences)
-- Note watched/unwatched status when relevant
-- Don't list everything — curate the best 2-4 picks`;
+Recommend 2-4 specific titles from the list above. For each, give a one-line reason. Note watched/unwatched status. Be conversational and brief — no more than 4-5 sentences total.`;
 
             const discoveryResponse = await generate(discoveryPrompt, {
-                temperature: 0.5,
-                system: 'You are Mediajam, a media library assistant with deep knowledge of the user\'s personal collection. You make personalized recommendations based on their library, watch history, and preferences. Be specific, concise, and enthusiastic.',
+                temperature: 0.4,
+                num_predict: 250,
+                system: 'You are Mediajam, a media library assistant. You recommend items ONLY from the user\'s actual library (provided in context). Be specific and concise — no filler, no questions back, no lists of suggestions for "how to explore." Just give the picks with brief reasons.',
             });
 
             return json({
@@ -346,19 +332,21 @@ Rules:
         }
 
         // Fallback: embeddings not available, use basic chat with stats
+        logWarn('ask', 'RAG context unavailable — falling back to basic discovery');
         const stats = getLibraryStats();
         const fallbackResponse = await generate(
-            `${stats ? `Context: ${stats}\n\n` : ''}The user is asking for a recommendation: "${question}". You don't have access to their specific media details, but you know their library stats. Help them as best you can and suggest they ask specific data questions.`,
+            `${stats ? `Context: ${stats}\n` : ''}${historyContext ? `Conversation so far:\n${historyContext}\n` : ''}User asks: "${question}". You can't see their specific media, but you know their library stats. Suggest they ask a data question like "show me my unwatched movies" so you can give better recommendations.`,
             {
-                temperature: 0.7,
-                system: 'You are Mediajam, a friendly media library assistant. Be helpful and suggest ways to explore their library.',
+                temperature: 0.5,
+                num_predict: 150,
+                system: 'You are Mediajam, a media library assistant. Be concise — 2-3 sentences max. Don\'t ask questions back. Suggest a specific follow-up query they could try.',
             }
         );
 
         return json({
             question,
             type: 'discovery',
-            summary: fallbackResponse || 'I don\'t have enough context to make a recommendation. Try asking "what movies do I have?" or "show me my unwatched shows."',
+            summary: fallbackResponse || 'I need embeddings generated to make recommendations. Try running "Generate Embeddings" in Settings, then ask again.',
         });
     }
 

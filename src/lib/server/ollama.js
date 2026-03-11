@@ -87,7 +87,7 @@ export async function embedBatch(texts, model, onProgress) {
 /**
  * Generate text via Ollama chat/generate API.
  * @param {string} prompt
- * @param {{ model?: string, system?: string, format?: string, temperature?: number }} [options]
+ * @param {{ model?: string, system?: string, format?: string, temperature?: number, num_predict?: number }} [options]
  * @returns {Promise<string | null>}
  */
 export async function generate(prompt, options = {}) {
@@ -95,6 +95,12 @@ export async function generate(prompt, options = {}) {
     if (!cfg) return null;
 
     try {
+        /** @type {Record<string, any>} */
+        const ollamaOptions = {
+            temperature: options.temperature ?? 0.1,
+        };
+        if (options.num_predict) ollamaOptions.num_predict = options.num_predict;
+
         const res = await fetch(`${cfg.url}/api/generate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -104,9 +110,7 @@ export async function generate(prompt, options = {}) {
                 system: options.system || '',
                 format: options.format || undefined,
                 stream: false,
-                options: {
-                    temperature: options.temperature ?? 0.1,
-                },
+                options: ollamaOptions,
             }),
             signal: AbortSignal.timeout(120000), // 2 min for generation
         });
@@ -126,7 +130,7 @@ export function isEmbeddingAvailable() {
     const cfg = getSettings();
     if (!cfg) return false;
     try {
-        db.prepare('SELECT COUNT(*) FROM media_embeddings LIMIT 0').get();
+        db.prepare('SELECT COUNT(*) FROM overview_embeddings LIMIT 0').get();
         return true;
     } catch {
         return false;
