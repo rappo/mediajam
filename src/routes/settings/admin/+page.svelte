@@ -2907,16 +2907,30 @@
                     <div class="label pb-1">
                         <span class="label-text text-xs font-medium">Chat Provider</span>
                     </div>
-                    <select
-                        bind:value={llmProvider}
-                        class="select select-bordered select-sm"
-                    >
-                        <option value="ollama">🤖 Ollama (local)</option>
-                        <option value="openai">🟢 OpenAI</option>
-                        <option value="gemini">🔵 Google Gemini</option>
-                        <option value="claude">🟣 Claude (Anthropic)</option>
-                        <option value="kimi">🌙 Kimi (Moonshot)</option>
-                    </select>
+                    <div class="grid grid-cols-5 gap-1.5">
+                        {#each [
+                            { value: 'ollama', icon: 'ollama', label: 'Ollama', sub: 'local' },
+                            { value: 'openai', icon: 'openai', label: 'OpenAI', sub: '' },
+                            { value: 'gemini', icon: 'gemini', label: 'Gemini', sub: '' },
+                            { value: 'claude', icon: 'claude', label: 'Claude', sub: '' },
+                            { value: 'kimi', icon: 'kimi', label: 'Kimi', sub: '' },
+                        ] as provider}
+                            <button
+                                type="button"
+                                class="flex flex-col items-center gap-1 p-2 rounded-lg border transition-all duration-150 cursor-pointer text-center
+                                    {llmProvider === provider.value
+                                        ? 'border-primary bg-primary/10 ring-1 ring-primary/30 shadow-sm'
+                                        : 'border-base-300 hover:border-base-content/20 hover:bg-base-200/50'}"
+                                onclick={() => { llmProvider = provider.value; }}
+                            >
+                                <ServiceIcon service={provider.icon} size="w-5 h-5" />
+                                <span class="text-[11px] font-medium leading-tight {llmProvider === provider.value ? 'text-primary' : 'text-base-content/70'}">{provider.label}</span>
+                                {#if provider.sub}
+                                    <span class="text-[9px] text-base-content/40 -mt-0.5">{provider.sub}</span>
+                                {/if}
+                            </button>
+                        {/each}
+                    </div>
                 </label>
 
                 <!-- Cloud Provider Config (OpenAI / Gemini / Claude / Kimi) -->
@@ -2995,12 +3009,12 @@
                                 bind:value={llmEmbedProvider}
                                 class="select select-bordered select-sm"
                             >
-                                <option value="ollama">🤖 Ollama (local) — keep existing embeddings</option>
+                                <option value="ollama">Ollama (local) — keep existing embeddings</option>
                                 {#if llmProvider === 'openai'}
-                                    <option value="openai">🟢 OpenAI (text-embedding-3-small)</option>
+                                    <option value="openai">OpenAI (text-embedding-3-small)</option>
                                 {/if}
                                 {#if llmProvider === 'gemini'}
-                                    <option value="gemini">🔵 Google Gemini (768d — matches Ollama)</option>
+                                    <option value="gemini">Google Gemini (768d — matches Ollama)</option>
                                 {/if}
                             </select>
                             {#if llmEmbedProvider !== 'ollama'}
