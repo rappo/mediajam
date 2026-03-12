@@ -617,7 +617,7 @@ export async function startSync(libraryId = null, force = false) {
                                 ).get(parentParams.tmdbId, parentParams.mediaType));
                                 if (count?.c === 1) {
                                     staleParent = /** @type {any} */ (db.prepare(
-                                        'SELECT id, jellyfin_id FROM media_parents WHERE tmdb_id = ? AND media_type = ? AND jellyfin_id != ? LIMIT 1'
+                                        'SELECT id, jellyfin_id FROM media_parents WHERE tmdb_id = ? AND media_type = ? AND (jellyfin_id IS NULL OR jellyfin_id != ?) LIMIT 1'
                                     ).get(parentParams.tmdbId, parentParams.mediaType, item.Id));
                                 }
                             }
@@ -627,7 +627,7 @@ export async function startSync(libraryId = null, force = false) {
                                 ).get(parentParams.imdbId, parentParams.mediaType));
                                 if (count?.c === 1) {
                                     staleParent = /** @type {any} */ (db.prepare(
-                                        'SELECT id, jellyfin_id FROM media_parents WHERE imdb_id = ? AND media_type = ? AND jellyfin_id != ? LIMIT 1'
+                                        'SELECT id, jellyfin_id FROM media_parents WHERE imdb_id = ? AND media_type = ? AND (jellyfin_id IS NULL OR jellyfin_id != ?) LIMIT 1'
                                     ).get(parentParams.imdbId, parentParams.mediaType, item.Id));
                                 }
                             }
@@ -637,7 +637,7 @@ export async function startSync(libraryId = null, force = false) {
                                 ).get(parentParams.tvdbId, parentParams.mediaType));
                                 if (count?.c === 1) {
                                     staleParent = /** @type {any} */ (db.prepare(
-                                        'SELECT id, jellyfin_id FROM media_parents WHERE tvdb_id = ? AND media_type = ? AND jellyfin_id != ? LIMIT 1'
+                                        'SELECT id, jellyfin_id FROM media_parents WHERE tvdb_id = ? AND media_type = ? AND (jellyfin_id IS NULL OR jellyfin_id != ?) LIMIT 1'
                                     ).get(parentParams.tvdbId, parentParams.mediaType, item.Id));
                                 }
                             }
@@ -646,21 +646,31 @@ export async function startSync(libraryId = null, force = false) {
                                 const oldJellyfinId = staleParent.jellyfin_id;
                                 // Update parent jellyfin_id to new one
                                 db.prepare('UPDATE media_parents SET jellyfin_id = ? WHERE id = ?').run(item.Id, staleParent.id);
-                                // Update movie child jellyfin_id (movies use Id + '_child')
-                                if (parentParams.mediaType === 'movie') {
-                                    db.prepare('UPDATE media_children SET jellyfin_id = ? WHERE jellyfin_id = ?')
-                                        .run(item.Id + '_child', oldJellyfinId + '_child');
-                                }
-                                // Update any children that reference the old ID directly
-                                db.prepare('UPDATE media_children SET jellyfin_id = ? WHERE jellyfin_id = ?')
-                                    .run(item.Id, oldJellyfinId);
 
-                                broadcast({
-                                    type: 'progress',
-                                    log: `🔄 ${item.Name}: Jellyfin ID changed (${oldJellyfinId.slice(0, 8)}… → ${item.Id.slice(0, 8)}…), re-linked`,
-                                    logType: 'info'
-                                });
-                                logInfo('sync', `Re-linked ${item.Name}: jellyfin_id ${oldJellyfinId} → ${item.Id}`);
+                                if (oldJellyfinId) {
+                                    // Re-link: item moved in Jellyfin (old ID → new ID)
+                                    if (parentParams.mediaType === 'movie') {
+                                        db.prepare('UPDATE media_children SET jellyfin_id = ? WHERE jellyfin_id = ?')
+                                            .run(item.Id + '_child', oldJellyfinId + '_child');
+                                    }
+                                    db.prepare('UPDATE media_children SET jellyfin_id = ? WHERE jellyfin_id = ?')
+                                        .run(item.Id, oldJellyfinId);
+
+                                    broadcast({
+                                        type: 'progress',
+                                        log: `🔄 ${item.Name}: Jellyfin ID changed (${oldJellyfinId.slice(0, 8)}… → ${item.Id.slice(0, 8)}…), re-linked`,
+                                        logType: 'info'
+                                    });
+                                    logInfo('sync', `Re-linked ${item.Name}: jellyfin_id ${oldJellyfinId} → ${item.Id}`);
+                                } else {
+                                    // Merge: external-only entry (from TMDb backfill) linked to Jellyfin
+                                    broadcast({
+                                        type: 'progress',
+                                        log: `🔗 ${item.Name}: linked external-only entry to Jellyfin`,
+                                        logType: 'info'
+                                    });
+                                    logInfo('sync', `Merged external-only entry for ${item.Name} (DB id=${staleParent.id}) with Jellyfin ${item.Id}`);
+                                }
                             }
                         }
 
