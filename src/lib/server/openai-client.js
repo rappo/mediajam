@@ -128,7 +128,7 @@ export async function getConfig() {
     /** @type {Record<string, { url: string, model: string, embedModel: string }>} */
     const defaults = {
         openai: { url: 'https://api.openai.com', model: 'gpt-5.4', embedModel: 'text-embedding-3-small' },
-        kimi:   { url: 'https://api.moonshot.cn', model: 'kimi-k2-0711-preview', embedModel: '' },
+        kimi:   { url: 'https://api.moonshot.ai', model: 'kimi-k2-0711-preview', embedModel: '' },
     };
     const d = defaults[provider] || defaults.openai;
 
