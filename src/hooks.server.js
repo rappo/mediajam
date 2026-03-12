@@ -2,6 +2,7 @@ import { redirect } from '@sveltejs/kit';
 import db from '$lib/server/db.js';
 import { verifySession, SESSION_COOKIE } from '$lib/server/session.js';
 import { startAutoSyncScheduler } from '$lib/server/auto-sync.js';
+import { startPrPoller } from '$lib/server/pr-poller.js';
 import { logError } from '$lib/server/logger.js';
 import { prefetchIcons } from '$lib/server/icon-cache.js';
 
@@ -30,6 +31,7 @@ export async function handle({ event, resolve }) {
     // Start auto-sync scheduler once setup is complete
     if (isSetupComplete) {
         startAutoSyncScheduler();
+        startPrPoller();
     }
 
     event.locals.isSetupComplete = isSetupComplete;
