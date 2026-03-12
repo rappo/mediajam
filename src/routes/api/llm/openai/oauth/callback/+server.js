@@ -1,99 +1,113 @@
-import { redirect } from '@sveltejs/kit';
-import db from '$lib/server/db.js';
-import { logInfo, logError } from '$lib/server/logger.js';
-
-const OPENAI_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
-const OPENAI_TOKEN_URL = 'https://auth.openai.com/oauth/token';
-
 /**
- * GET /api/llm/openai/oauth/callback
- * Receives the authorization code from OpenAI, exchanges it for tokens,
- * stores them in app_settings, and redirects to Settings with a success message.
- * @type {import('./$types').RequestHandler}
+ * POST /api/llm/openai/oauth/callback
+ * 
+ * Polls for device code completion. Called by the Settings UI on an interval.
+ * Body: { user_code }
+ * 
+ * Returns:
+ *   { status: 'pending' }  — user hasn't entered the code yet
+ *   { status: 'complete' } — tokens saved, provider switched to openai
+ *   { status: 'error', error: '...' } — something went wrong
  */
-export async function GET({ url, cookies }) {
-    const code = url.searchParams.get('code');
-    const state = url.searchParams.get('state');
-    const error = url.searchParams.get('error');
+import { json } from '@sveltejs/kit';
+import { logInfo, logError } from '$lib/server/logger.js';
+import db from '$lib/server/db.js';
+import { activeSessions, OPENAI_CLIENT_ID, OPENAI_ISSUER } from '../authorize/+server.js';
 
-    if (error) {
-        const desc = url.searchParams.get('error_description') || error;
-        logError('openai-oauth', `Authorization denied: ${desc}`);
-        throw redirect(302, `/settings/admin?chatgpt_error=${encodeURIComponent(desc)}`);
+/** @type {import('./$types').RequestHandler} */
+export async function POST({ request }) {
+    const { user_code } = await request.json();
+    if (!user_code) {
+        return json({ status: 'error', error: 'Missing user_code' }, { status: 400 });
     }
 
-    if (!code || !state) {
-        throw redirect(302, '/settings/admin?chatgpt_error=Missing+authorization+code');
+    const session = activeSessions.get(user_code);
+    if (!session) {
+        return json({ status: 'error', error: 'Session expired or not found. Please start over.' }, { status: 404 });
     }
-
-    // Retrieve PKCE verifier from cookie
-    const cookieVal = cookies.get('openai_oauth');
-    if (!cookieVal) {
-        throw redirect(302, '/settings/admin?chatgpt_error=Session+expired.+Please+try+again.');
-    }
-
-    let oauthData;
-    try {
-        oauthData = JSON.parse(cookieVal);
-    } catch {
-        throw redirect(302, '/settings/admin?chatgpt_error=Invalid+session+data');
-    }
-
-    // Verify state matches (CSRF protection)
-    if (oauthData.state !== state) {
-        throw redirect(302, '/settings/admin?chatgpt_error=State+mismatch.+Please+try+again.');
-    }
-
-    // Clear the cookie
-    cookies.delete('openai_oauth', { path: '/' });
-
-    // Exchange authorization code for tokens
-    const redirectUri = `${url.origin}/api/llm/openai/oauth/callback`;
 
     try {
-        const tokenRes = await fetch(OPENAI_TOKEN_URL, {
+        // Poll OpenAI's device auth token endpoint
+        const resp = await fetch(`${OPENAI_ISSUER}/api/accounts/deviceauth/token`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({
-                grant_type: 'authorization_code',
-                client_id: OPENAI_CLIENT_ID,
-                code,
-                redirect_uri: redirectUri,
-                code_verifier: oauthData.codeVerifier,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                device_auth_id: session.device_auth_id,
+                user_code: session.user_code,
             }),
-            signal: AbortSignal.timeout(15000),
         });
 
-        if (!tokenRes.ok) {
-            const errText = await tokenRes.text().catch(() => '');
-            logError('openai-oauth', `Token exchange failed: HTTP ${tokenRes.status} — ${errText.slice(0, 200)}`);
-            throw redirect(302, `/settings/admin?chatgpt_error=${encodeURIComponent(`Token exchange failed: HTTP ${tokenRes.status}`)}`);
+        // 403/404 = user hasn't authorized yet
+        if (resp.status === 403 || resp.status === 404) {
+            // Check timeout (15 minutes)
+            if (Date.now() - session.started > 15 * 60 * 1000) {
+                activeSessions.delete(user_code);
+                return json({ status: 'error', error: 'Device code expired. Please start over.' });
+            }
+            return json({ status: 'pending' });
         }
 
-        const tokens = await tokenRes.json();
-        const accessToken = tokens.access_token;
-        const refreshToken = tokens.refresh_token || null;
-
-        if (!accessToken) {
-            throw redirect(302, '/settings/admin?chatgpt_error=No+access+token+returned');
+        if (!resp.ok) {
+            const text = await resp.text();
+            logError('chatgpt-oauth', `Device token poll failed: ${resp.status} ${text}`);
+            activeSessions.delete(user_code);
+            return json({ status: 'error', error: `OpenAI returned ${resp.status}` });
         }
 
-        // Store tokens and set provider to OpenAI
-        db.prepare(`
-            UPDATE app_settings
-            SET codex_access_token = ?,
-                codex_refresh_token = ?,
-                llm_provider = 'openai'
-            WHERE id = 1
-        `).run(accessToken, refreshToken);
+        // Success — we get an authorization_code + PKCE codes
+        const data = await resp.json();
+        const { authorization_code, code_challenge, code_verifier } = data;
 
-        logInfo('openai-oauth', 'ChatGPT OAuth tokens saved successfully');
-        throw redirect(302, '/settings/admin?chatgpt_success=1');
-    } catch (e) {
-        // Re-throw redirects
-        if (e && typeof e === 'object' && 'status' in e) throw e;
+        if (!authorization_code) {
+            logError('chatgpt-oauth', `No authorization_code in response: ${JSON.stringify(data)}`);
+            activeSessions.delete(user_code);
+            return json({ status: 'error', error: 'No authorization_code returned' });
+        }
 
-        logError('openai-oauth', `Token exchange error: ${e instanceof Error ? e.message : e}`);
-        throw redirect(302, `/settings/admin?chatgpt_error=${encodeURIComponent('Token exchange failed')}`);
+        logInfo('chatgpt-oauth', 'Device code authorized, exchanging for tokens...');
+
+        // Step 2: Exchange authorization code for tokens
+        const redirect_uri = `${OPENAI_ISSUER}/deviceauth/callback`;
+        const tokenResp = await fetch(`${OPENAI_ISSUER}/api/accounts/oauth/token`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                grant_type: 'authorization_code',
+                client_id: OPENAI_CLIENT_ID,
+                code: authorization_code,
+                redirect_uri,
+                code_verifier: code_verifier || '',
+            }),
+        });
+
+        if (!tokenResp.ok) {
+            const text = await tokenResp.text();
+            logError('chatgpt-oauth', `Token exchange failed: ${tokenResp.status} ${text}`);
+            activeSessions.delete(user_code);
+            return json({ status: 'error', error: `Token exchange failed: ${tokenResp.status}` });
+        }
+
+        const tokens = await tokenResp.json();
+        const { access_token, refresh_token } = tokens;
+
+        if (!access_token) {
+            logError('chatgpt-oauth', `No access_token in response: ${JSON.stringify(Object.keys(tokens))}`);
+            activeSessions.delete(user_code);
+            return json({ status: 'error', error: 'No access_token returned' });
+        }
+
+        // Step 3: Save to database
+        db.prepare('UPDATE app_settings SET codex_access_token = ?, codex_refresh_token = ?, llm_provider = ? WHERE id = 1')
+            .run(access_token, refresh_token || '', 'openai');
+
+        logInfo('chatgpt-oauth', 'ChatGPT tokens saved successfully, provider set to openai');
+        activeSessions.delete(user_code);
+
+        return json({ status: 'complete' });
+
+    } catch (err) {
+        logError('chatgpt-oauth', `Poll error: ${err}`);
+        activeSessions.delete(user_code);
+        return json({ status: 'error', error: String(err) });
     }
 }

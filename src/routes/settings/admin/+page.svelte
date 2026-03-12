@@ -104,24 +104,61 @@
     let llmEmbedProvider = $state(data.settings.llmEmbedProvider || 'ollama');
     let llmEmbedModel = $state(data.settings.llmEmbedModel || '');
 
-    // Handle OAuth callback query params (chatgpt_success / chatgpt_error)
-    $effect(() => {
-        const params = new URLSearchParams(window.location.search);
-        const success = params.get('chatgpt_success');
-        const error = params.get('chatgpt_error');
-        if (success) {
-            // Clean URL and show success
-            const clean = new URL(window.location.href);
-            clean.searchParams.delete('chatgpt_success');
-            history.replaceState(null, '', clean.pathname);
-            setTimeout(() => alert('✓ ChatGPT account linked successfully! OpenAI is now your chat provider.'), 100);
-        } else if (error) {
-            const clean = new URL(window.location.href);
-            clean.searchParams.delete('chatgpt_error');
-            history.replaceState(null, '', clean.pathname);
-            setTimeout(() => alert(`ChatGPT sign-in failed: ${error}`), 100);
+    // ChatGPT device code auth state
+    /** @type {{ user_code: string, verification_url: string } | null} */
+    let deviceCode = $state(null);
+    let deviceCodeLoading = $state(false);
+    let deviceCodeError = $state('');
+    /** @type {ReturnType<typeof setInterval> | null} */
+    let deviceCodePollTimer = $state(null);
+
+    async function startDeviceCodeAuth() {
+        deviceCodeLoading = true;
+        deviceCodeError = '';
+        deviceCode = null;
+        try {
+            const res = await fetch('/api/llm/openai/oauth/authorize');
+            const data = await res.json();
+            if (data.error) {
+                deviceCodeError = data.error;
+                return;
+            }
+            deviceCode = { user_code: data.user_code, verification_url: data.verification_url };
+            // Start polling
+            const interval = (data.interval || 5) * 1000;
+            deviceCodePollTimer = setInterval(() => pollDeviceCode(data.user_code), Math.max(interval, 3000));
+        } catch (err) {
+            deviceCodeError = String(err);
+        } finally {
+            deviceCodeLoading = false;
         }
-    });
+    }
+
+    async function pollDeviceCode(/** @type {string} */ userCode) {
+        try {
+            const res = await fetch('/api/llm/openai/oauth/callback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_code: userCode }),
+            });
+            const data = await res.json();
+            if (data.status === 'complete') {
+                if (deviceCodePollTimer) clearInterval(deviceCodePollTimer);
+                deviceCode = null;
+                deviceCodePollTimer = null;
+                alert('✓ ChatGPT account linked successfully! OpenAI is now your chat provider.');
+                location.reload();
+            } else if (data.status === 'error') {
+                if (deviceCodePollTimer) clearInterval(deviceCodePollTimer);
+                deviceCode = null;
+                deviceCodePollTimer = null;
+                deviceCodeError = data.error || 'Unknown error';
+            }
+            // 'pending' — keep polling
+        } catch {
+            // Network error — keep polling
+        }
+    }
 
     // *arr Integration
     /** @type {Array<{service: string, label: string, defaultPort: number}>} */
@@ -3010,11 +3047,44 @@
                                             >Unlink</button>
                                         </div>
                                     {/if}
-                                    <!-- Primary: OAuth Sign-in -->
-                                    <a href="/api/llm/openai/oauth/authorize" class="btn btn-sm btn-primary gap-1.5 w-full">
-                                        <ServiceIcon service="openai" size="w-4 h-4" />
-                                        {data.settings.hasCodexAuth ? 'Re-link ChatGPT Account' : 'Sign in with ChatGPT'}
-                                    </a>
+                                    <!-- Primary: Device Code Sign-in -->
+                                    {#if deviceCode}
+                                        <div class="p-3 rounded-lg border border-primary/30 bg-primary/5 space-y-2">
+                                            <p class="text-xs font-medium">Sign in with ChatGPT:</p>
+                                            <p class="text-[11px] text-base-content/70">1. Open <a href={deviceCode.verification_url} target="_blank" class="link link-primary font-medium">{deviceCode.verification_url}</a></p>
+                                            <p class="text-[11px] text-base-content/70">2. Enter this code:</p>
+                                            <div class="flex items-center gap-2">
+                                                <code class="text-lg font-bold font-mono tracking-widest bg-base-300 px-3 py-1 rounded select-all">{deviceCode.user_code}</code>
+                                                <button type="button" class="btn btn-xs btn-ghost" onclick={() => { navigator.clipboard.writeText(deviceCode?.user_code || ''); }}>Copy</button>
+                                            </div>
+                                            <p class="text-[10px] text-base-content/40 flex items-center gap-1">
+                                                <span class="loading loading-spinner loading-xs"></span>
+                                                Waiting for authorization…
+                                            </p>
+                                            <button type="button" class="btn btn-xs btn-ghost" onclick={() => {
+                                                if (deviceCodePollTimer) clearInterval(deviceCodePollTimer);
+                                                deviceCode = null;
+                                                deviceCodePollTimer = null;
+                                            }}>Cancel</button>
+                                        </div>
+                                    {:else}
+                                        <button
+                                            type="button"
+                                            class="btn btn-sm btn-primary gap-1.5 w-full"
+                                            disabled={deviceCodeLoading}
+                                            onclick={startDeviceCodeAuth}
+                                        >
+                                            {#if deviceCodeLoading}
+                                                <span class="loading loading-spinner loading-xs"></span>
+                                            {:else}
+                                                <ServiceIcon service="openai" size="w-4 h-4" />
+                                            {/if}
+                                            {data.settings.hasCodexAuth ? 'Re-link ChatGPT Account' : 'Sign in with ChatGPT'}
+                                        </button>
+                                    {/if}
+                                    {#if deviceCodeError}
+                                        <p class="text-xs text-error">{deviceCodeError}</p>
+                                    {/if}
                                     <p class="text-[10px] text-base-content/40">Use your ChatGPT Plus/Pro/Team subscription for API access — no API key needed</p>
                                     <!-- Fallback: paste auth.json -->
                                     <details class="collapse collapse-arrow bg-base-200/50 border border-base-300">

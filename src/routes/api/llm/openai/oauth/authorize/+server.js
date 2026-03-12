@@ -1,51 +1,79 @@
-import { redirect } from '@sveltejs/kit';
-import { randomBytes, createHash } from 'crypto';
-import db from '$lib/server/db.js';
-
 /**
- * OpenAI OAuth constants — uses the Codex CLI's public client_id.
- * This allows ChatGPT subscription holders to use their plan for API access.
+ * POST /api/llm/openai/oauth/authorize
+ * 
+ * Starts the ChatGPT device code auth flow.
+ * Returns { user_code, verification_url } for the UI to display.
+ * Stores the device_auth_id in a server-side map for later polling.
  */
+import { json } from '@sveltejs/kit';
+import { logInfo, logError } from '$lib/server/logger.js';
+
 const OPENAI_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
-const OPENAI_AUTH_URL = 'https://auth.openai.com/oauth/authorize';
-const OPENAI_SCOPES = 'openid profile email offline_access model.request api.responses.write';
+const OPENAI_ISSUER = 'https://auth.openai.com';
 
-/**
- * GET /api/llm/openai/oauth/authorize
- * Generates PKCE challenge and redirects to OpenAI's consent page.
- * @type {import('./$types').RequestHandler}
- */
-export async function GET({ locals, url, cookies }) {
-    if (!locals.user) return new Response('Unauthorized', { status: 401 });
+// Server-side store for active device auth sessions (keyed by user_code)
+/** @type {Map<string, {device_auth_id: string, user_code: string, interval: number, started: number}>} */
+const activeSessions = new Map();
 
-    // Generate PKCE code_verifier (43-128 chars, URL-safe)
-    const codeVerifier = randomBytes(32).toString('base64url');
-    // S256 challenge = BASE64URL(SHA256(code_verifier))
-    const codeChallenge = createHash('sha256').update(codeVerifier).digest('base64url');
-    // Random state for CSRF protection
-    const state = randomBytes(16).toString('hex');
-
-    // Store verifier + state in a secure httpOnly cookie (needed for callback)
-    cookies.set('openai_oauth', JSON.stringify({ codeVerifier, state }), {
-        path: '/',
-        httpOnly: true,
-        sameSite: 'lax',
-        secure: false, // local-only deployment
-        maxAge: 600,   // 10 minutes
-    });
-
-    // Build the redirect URI from the current request origin
-    const redirectUri = `${url.origin}/api/llm/openai/oauth/callback`;
-
-    // Build authorization URL
-    const authUrl = new URL(OPENAI_AUTH_URL);
-    authUrl.searchParams.set('client_id', OPENAI_CLIENT_ID);
-    authUrl.searchParams.set('response_type', 'code');
-    authUrl.searchParams.set('redirect_uri', redirectUri);
-    authUrl.searchParams.set('scope', OPENAI_SCOPES);
-    authUrl.searchParams.set('code_challenge', codeChallenge);
-    authUrl.searchParams.set('code_challenge_method', 'S256');
-    authUrl.searchParams.set('state', state);
-
-    throw redirect(302, authUrl.toString());
+// Clean up stale sessions older than 20 minutes
+function cleanupStaleSessions() {
+    const now = Date.now();
+    for (const [key, session] of activeSessions) {
+        if (now - session.started > 20 * 60 * 1000) {
+            activeSessions.delete(key);
+        }
+    }
 }
+
+/** @type {import('./$types').RequestHandler} */
+export async function GET() {
+    cleanupStaleSessions();
+
+    try {
+        // Step 1: Request a user code from OpenAI
+        const resp = await fetch(`${OPENAI_ISSUER}/api/accounts/deviceauth/usercode`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ client_id: OPENAI_CLIENT_ID }),
+        });
+
+        if (!resp.ok) {
+            const text = await resp.text();
+            logError('chatgpt-oauth', `Device code request failed: ${resp.status} ${text}`);
+            return json({ error: `OpenAI returned ${resp.status}: ${text}` }, { status: 502 });
+        }
+
+        const data = await resp.json();
+        const { device_auth_id, user_code, interval } = data;
+
+        if (!device_auth_id || !user_code) {
+            logError('chatgpt-oauth', `Invalid device code response: ${JSON.stringify(data)}`);
+            return json({ error: 'Invalid response from OpenAI' }, { status: 502 });
+        }
+
+        // Store session for polling
+        activeSessions.set(user_code, {
+            device_auth_id,
+            user_code,
+            interval: parseInt(interval) || 5,
+            started: Date.now(),
+        });
+
+        const verification_url = `${OPENAI_ISSUER}/codex/device`;
+
+        logInfo('chatgpt-oauth', `Device code issued: ${user_code}, poll interval: ${interval}s`);
+
+        return json({
+            user_code,
+            verification_url,
+            interval: parseInt(interval) || 5,
+            expires_in: 900, // 15 minutes
+        });
+    } catch (err) {
+        logError('chatgpt-oauth', `Device code request error: ${err}`);
+        return json({ error: String(err) }, { status: 500 });
+    }
+}
+
+// Export for the poll endpoint
+export { activeSessions, OPENAI_CLIENT_ID, OPENAI_ISSUER };
