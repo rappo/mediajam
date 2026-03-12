@@ -64,11 +64,19 @@ function pollForNewPlays() {
         const user = /** @type {any} */ (db.prepare('SELECT id FROM users LIMIT 1').get());
         if (!user) return;
 
+        // Minimum play duration to record a history entry (filters out brief previews)
+        const MIN_PLAY_SECONDS = 300; // 5 minutes
+        // Minimum completion percentage to mark as "watched"
+        const WATCHED_THRESHOLD_PCT = 80;
+
         const findChild = db.prepare('SELECT id FROM media_children WHERE jellyfin_id = ?');
+        const findChildRuntime = db.prepare(
+            'SELECT mc.runtime_ticks, mp.media_type FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mc.id = ?'
+        );
         const insertHistory = db.prepare(`
             INSERT OR IGNORE INTO playback_history
                 (user_id, media_id, source, timestamp, duration_consumed_seconds, completion_pct, external_event_id)
-            VALUES (@userId, @mediaId, 'jellyfin_pr', @timestamp, @durationSeconds, 100, @externalEventId)
+            VALUES (@userId, @mediaId, 'jellyfin_pr', @timestamp, @durationSeconds, @completionPct, @externalEventId)
         `);
         const updateWatchStatus = db.prepare(
             "UPDATE media_children SET watch_status = 'watched', play_count = play_count + 1 WHERE id = ? AND watch_status != 'watched'"
@@ -99,6 +107,22 @@ function pollForNewPlays() {
                 if (!child) { skipped++; continue; }
 
                 const durationSeconds = event.PlayDuration ? Math.round(event.PlayDuration) : null;
+
+                // Skip brief previews — opening a movie for a few seconds shouldn't count
+                if (!durationSeconds || durationSeconds < MIN_PLAY_SECONDS) {
+                    skipped++;
+                    if (event.rowid > maxRowid) maxRowid = event.rowid; // still advance cursor
+                    continue;
+                }
+
+                // Calculate actual completion percentage from play duration vs runtime
+                const childInfo = /** @type {any} */ (findChildRuntime.get(child.id));
+                const runtimeSeconds = childInfo?.runtime_ticks ? Math.round(childInfo.runtime_ticks / 10000000) : 0;
+                let completionPct = 100;
+                if (runtimeSeconds > 0) {
+                    completionPct = Math.min(100, Math.round((durationSeconds / runtimeSeconds) * 100));
+                }
+
                 const timestamp = event.DateCreated || new Date().toISOString();
                 const eventId = `jellyfin_pr:${event.rowid}`;
 
@@ -107,18 +131,22 @@ function pollForNewPlays() {
                     mediaId: child.id,
                     timestamp,
                     durationSeconds,
+                    completionPct,
                     externalEventId: eventId
                 });
 
                 if (result.changes > 0) {
                     imported++;
-                    // Mark as watched + update parent counts
-                    const statusResult = updateWatchStatus.run(child.id);
-                    if (statusResult.changes === 0) {
-                        // Already watched — just bump play_count
-                        bumpPlayCount.run(child.id);
+                    // Only mark as watched if completion is meaningful
+                    // For music: always count as played (5 min threshold already passed)
+                    const isMusic = childInfo?.media_type === 'artist';
+                    if (completionPct >= WATCHED_THRESHOLD_PCT || isMusic) {
+                        const statusResult = updateWatchStatus.run(child.id);
+                        if (statusResult.changes === 0) {
+                            bumpPlayCount.run(child.id);
+                        }
+                        updateParentCounts.run(child.id);
                     }
-                    updateParentCounts.run(child.id);
                 } else {
                     skipped++;
                 }
