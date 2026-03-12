@@ -447,5 +447,3 @@
         }
     }
 </style>
-</script>
-<parameter name="Description">Rewrote the download search dialog to use native `<dialog>` element which renders in the browser's top-layer, completely immune to parent `overflow: hidden` on MediaDetailHeader. Also made it much wider (80rem), stopped truncating release names, and shows full rejection reasons.
