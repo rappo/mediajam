@@ -154,8 +154,8 @@ export async function healthCheck(cfg) {
             signal: AbortSignal.timeout(10000),
         });
         if (!res.ok) {
-            // If 401 and we have a refresh token, try refreshing
-            if (res.status === 401 && cfg.authSource === 'codex') {
+            // If 401/403 and we have a refresh token, try refreshing
+            if ((res.status === 401 || res.status === 403) && cfg.authSource === 'codex') {
                 const newToken = await refreshCodexToken();
                 if (newToken) {
                     cfg.apiKey = newToken;
@@ -214,8 +214,8 @@ export async function generate(prompt, options = {}, cfg) {
             signal: AbortSignal.timeout(120000),
         });
 
-        // Auto-refresh on 401 for Codex tokens
-        if (res.status === 401 && cfg.authSource === 'codex') {
+        // Auto-refresh on 401/403 for Codex tokens
+        if ((res.status === 401 || res.status === 403) && cfg.authSource === 'codex') {
             const newToken = await refreshCodexToken();
             if (newToken) {
                 res = await fetch(`${cfg.apiUrl}/v1/chat/completions`, {
