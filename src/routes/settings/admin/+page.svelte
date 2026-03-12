@@ -134,11 +134,11 @@
     let arrSyncLogs = $state([]);
 
     // ─── Tab Navigation ─────────────────────────────────────────────────────────
-    const VALID_TABS = /** @type {const} */ (['server', 'credentials', 'sync', 'cleanup', 'import-export', 'api-keys']);
-    /** @type {'server' | 'credentials' | 'sync' | 'cleanup' | 'import-export' | 'api-keys'} */
+    const VALID_TABS = /** @type {const} */ (['server', 'creds-local', 'creds-metadata', 'creds-scrobblers', 'sync', 'cleanup', 'import-export', 'api-keys']);
+    /** @type {string} */
     let activeTab = $state(
         VALID_TABS.includes(/** @type {any} */ ($page.url.searchParams.get('tab')))
-            ? /** @type {typeof VALID_TABS[number]} */ ($page.url.searchParams.get('tab'))
+            ? /** @type {string} */ ($page.url.searchParams.get('tab'))
             : 'server'
     );
 
@@ -146,7 +146,7 @@
     $effect(() => {
         const urlTab = $page.url.searchParams.get('tab');
         if (urlTab && VALID_TABS.includes(/** @type {any} */ (urlTab)) && urlTab !== activeTab) {
-            activeTab = /** @type {typeof activeTab} */ (urlTab);
+            activeTab = /** @type {string} */ (urlTab);
         }
     });
 
@@ -162,14 +162,8 @@
             loadConflicts();
         }
     });
-    const TABS = [
-        { id: 'server', label: 'Server', icon: 'M5 12H3l9-9 9 9h-2M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7' },
-        { id: 'credentials', label: 'Credentials', icon: 'M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z' },
-        { id: 'sync', label: 'Data Sync', icon: 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15' },
-        { id: 'cleanup', label: 'Data Clean-up', icon: 'M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.414 3.414H4.828c-1.78 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z' },
-        { id: 'import-export', label: 'Import / Export', icon: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12' },
-        { id: 'api-keys', label: 'API Keys', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z' },
-    ];
+    // Tab bar is hidden — navigation is via the sidebar subsections
+    const TABS = [];
 
     // ─── API Keys State ──────────────────────────────────────────────────────────
     let apiKeysList = $state(data.apiKeys || []);
@@ -2229,21 +2223,10 @@
         </div>
     {/if}
 
-    <!-- Tab Navigation -->
-    <div class="tabs tabs-boxed bg-base-200/50 border border-base-300 p-1 gap-1">
-        {#each TABS as tab}
-            <button
-                class="tab {activeTab === tab.id ? 'tab-active !bg-primary !text-primary-content' : 'hover:bg-base-300/50'} gap-1.5 transition-all"
-                onclick={() => switchTab(/** @type {typeof activeTab} */ (tab.id))}
-            >
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d={tab.icon} /></svg>
-                {tab.label}
-            </button>
-        {/each}
-    </div>
+    <!-- Tab bar hidden — navigation handled by sidebar subsections -->
 
-    <!-- ═══════════════════════ TAB: SERVER ═══════════════════════ -->
-    {#if activeTab === 'server'}
+    <!-- ═══════════════════════ TAB: CREDS-LOCAL ═══════════════════════ -->
+    {#if activeTab === 'creds-local'}
     <!-- Jellyfin Connection -->
     <div
         id="jellyfin"
@@ -2343,8 +2326,8 @@
 
     {/if}
 
-    <!-- ═══════════════════════ TAB: CREDENTIALS ═══════════════════════ -->
-    {#if activeTab === 'credentials'}
+    <!-- ═══════════════════════ TAB: CREDS-METADATA ═══════════════════════ -->
+    {#if activeTab === 'creds-metadata'}
     <p class="text-sm text-base-content/50 -mb-2">External service credentials for metadata, ratings, and tracking.</p>
     <!-- Metadata API Keys -->
     <div
@@ -2506,6 +2489,9 @@
         </div>
     </div>
 
+    {/if}
+    <!-- ═══════════════════════ TAB: CREDS-SCROBBLERS ═══════════════════════ -->
+    {#if activeTab === 'creds-scrobblers'}
     <!-- Tracker App Credentials -->
     <div
         id="trackers"
@@ -2772,8 +2758,8 @@
 
     {/if}
 
-    <!-- ═══════════════════════ TAB: SERVER (continued) ═══════════════════════ -->
-    {#if activeTab === 'server'}
+    <!-- ═══════════════════════ TAB: CREDS-LOCAL (continued: *arr) ═══════════════════════ -->
+    {#if activeTab === 'creds-local'}
     <!-- *arr Media Management -->
     <div
         id="arr"
@@ -2977,6 +2963,10 @@
         </div>
     </div>
 
+    {/if}
+
+    <!-- ═══════════════════════ TAB: SERVER ═══════════════════════ -->
+    {#if activeTab === 'server'}
     <!-- LLM Integration -->
     <div
         id="llm"
@@ -4934,7 +4924,7 @@ cat ~/.codex/auth.json</pre>
     {/if}
 
     <!-- Save Button (visible on server + credentials tabs) -->
-    {#if activeTab === 'server' || activeTab === 'credentials'}
+    {#if activeTab === 'server' || activeTab === 'creds-local' || activeTab === 'creds-metadata' || activeTab === 'creds-scrobblers'}
     <div class="flex items-center gap-3">
         <button
             class="btn {isDirty
