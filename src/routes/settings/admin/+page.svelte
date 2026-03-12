@@ -3089,7 +3089,7 @@ cat ~/.codex/auth.json</pre>
                             <input
                                 type="text"
                                 bind:value={llmChatModel}
-                                placeholder={llmProvider === 'openai' ? 'gpt-4o-mini' : llmProvider === 'gemini' ? 'gemini-2.5-flash' : llmProvider === 'claude' ? 'claude-sonnet-4-5-20250514' : 'kimi-k2-0711-preview'}
+                                placeholder={llmProvider === 'openai' ? 'gpt-5.4' : llmProvider === 'gemini' ? 'gemini-2.5-flash' : llmProvider === 'claude' ? 'claude-sonnet-4-5-20250514' : 'kimi-k2-0711-preview'}
                                 class="input input-bordered input-sm font-mono"
                             />
                         </label>
