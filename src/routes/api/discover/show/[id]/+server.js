@@ -49,6 +49,7 @@ export async function GET({ params, locals }) {
                     overview: item.overview || '',
                     popularity: item.popularity || 0,
                     vote_average: item.vote_average || 0,
+                    genre_ids: item.genre_ids || [],
                     in_library: false,
                     library_id: null,
                 });

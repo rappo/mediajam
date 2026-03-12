@@ -10,6 +10,9 @@
     let results = $state(null);
     let loading = $state(false);
     let selectedIndex = $state(-1);
+    /** @type {any} */
+    let externalResults = $state(null);
+    let externalLoading = $state(false);
     /** @type {ReturnType<typeof setTimeout> | null} */
     let debounceTimer = null;
     /** @type {HTMLInputElement | null} */
@@ -64,7 +67,35 @@
         open = false;
         query = "";
         results = null;
+        externalResults = null;
+        externalLoading = false;
         selectedIndex = -1;
+    }
+
+    async function searchExternal() {
+        if (query.length < 2) return;
+        externalLoading = true;
+        try {
+            const res = await fetch(`/api/search/external?q=${encodeURIComponent(query)}`);
+            if (res.ok) {
+                externalResults = await res.json();
+            }
+        } catch (/** @type {any} */ err) {
+            addToast({ type: 'error', message: 'External search failed', detail: err?.message || String(err) });
+        }
+        externalLoading = false;
+    }
+
+    /** @param {any} item */
+    function navigateToExternalResult(item) {
+        close();
+        if (item.type === 'movie' && item.tmdb_id) {
+            window.open(`https://www.themoviedb.org/movie/${item.tmdb_id}`, '_blank');
+        } else if (item.type === 'show' && item.tmdb_id) {
+            window.open(`https://www.themoviedb.org/tv/${item.tmdb_id}`, '_blank');
+        } else if (item.type === 'artist' && item.musicbrainz_id) {
+            window.open(`https://musicbrainz.org/artist/${item.musicbrainz_id}`, '_blank');
+        }
     }
 
     function handleInput() {
@@ -427,10 +458,10 @@
                 {:else if results && results.totalCount === 0 && query.length >= 2}
                     <div class="search-empty">
                         <p style="font-size:1.1rem;margin-bottom:0.25rem">
-                            No results
+                            No results in library
                         </p>
                         <p style="font-size:0.85rem">
-                            Nothing found for "<strong>{query}</strong>"
+                            Nothing found for "<strong>{query}</strong>" in your library
                         </p>
                     </div>
                 {:else if !results && query.length < 2}
@@ -439,6 +470,84 @@
                             Type to search across your library...
                         </p>
                     </div>
+                {/if}
+
+                <!-- External search section -->
+                {#if query.length >= 2}
+                    <div class="search-external-divider">
+                        <span class="search-external-line"></span>
+                        <span class="search-external-label">External Search</span>
+                        <span class="search-external-line"></span>
+                    </div>
+
+                    {#if !externalResults && !externalLoading}
+                        <div style="padding: 0.5rem 1rem 0.75rem;">
+                            <button class="btn btn-sm btn-ghost gap-2 w-full" onclick={searchExternal}>
+                                🌐 Search TMDb & MusicBrainz
+                            </button>
+                        </div>
+                    {:else if externalLoading}
+                        <div style="padding: 1rem; text-align: center;">
+                            <span class="loading loading-spinner loading-sm"></span>
+                            <span style="font-size: 0.8rem; opacity: 0.5; margin-left: 0.5rem;">Searching externally...</span>
+                        </div>
+                    {:else if externalResults}
+                        {#if externalResults.movies?.length > 0}
+                            <div class="search-category-label">🎬 Movies (TMDb)</div>
+                            {#each externalResults.movies as item}
+                                <button class="search-result-item" onclick={() => navigateToExternalResult(item)}>
+                                    {#if item.poster_url}
+                                        <img src={item.poster_url} alt="" class="search-thumb" />
+                                    {:else}
+                                        <span class="search-thumb-placeholder">🎬</span>
+                                    {/if}
+                                    <div class="search-result-text">
+                                        <div class="search-result-title">{item.title}</div>
+                                        <div class="search-result-sub">{item.release_year || ''}{item.overview ? ` · ${item.overview}` : ''}</div>
+                                    </div>
+                                    <span class="search-ext-badge">TMDb</span>
+                                </button>
+                            {/each}
+                        {/if}
+                        {#if externalResults.shows?.length > 0}
+                            <div class="search-category-label">📺 TV Shows (TMDb)</div>
+                            {#each externalResults.shows as item}
+                                <button class="search-result-item" onclick={() => navigateToExternalResult(item)}>
+                                    {#if item.poster_url}
+                                        <img src={item.poster_url} alt="" class="search-thumb" />
+                                    {:else}
+                                        <span class="search-thumb-placeholder">📺</span>
+                                    {/if}
+                                    <div class="search-result-text">
+                                        <div class="search-result-title">{item.title}</div>
+                                        <div class="search-result-sub">{item.release_year || ''}{item.overview ? ` · ${item.overview}` : ''}</div>
+                                    </div>
+                                    <span class="search-ext-badge">TMDb</span>
+                                </button>
+                            {/each}
+                        {/if}
+                        {#if externalResults.artists?.length > 0}
+                            <div class="search-category-label">🎵 Artists (MusicBrainz)</div>
+                            {#each externalResults.artists as item}
+                                <button class="search-result-item" onclick={() => navigateToExternalResult(item)}>
+                                    <span class="search-thumb-placeholder">🎵</span>
+                                    <div class="search-result-text">
+                                        <div class="search-result-title">{item.title}</div>
+                                        <div class="search-result-sub">
+                                            {item.disambiguation || ''}
+                                            {item.country ? ` · ${item.country}` : ''}
+                                        </div>
+                                    </div>
+                                    <span class="search-ext-badge ext-mb">MB</span>
+                                </button>
+                            {/each}
+                        {/if}
+                        {#if externalResults.totalCount === 0}
+                            <div class="search-empty" style="padding: 1rem;">
+                                <p style="font-size: 0.85rem;">No external results found</p>
+                            </div>
+                        {/if}
+                    {/if}
                 {/if}
             </div>
 
@@ -591,5 +700,37 @@
             opacity: 1;
             transform: scale(1) translateY(0);
         }
+    }
+    .search-external-divider {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem 0;
+    }
+    .search-external-line {
+        flex: 1;
+        height: 1px;
+        background: oklch(var(--bc) / 0.1);
+    }
+    .search-external-label {
+        font-size: 0.65rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        opacity: 0.3;
+    }
+    .search-ext-badge {
+        font-size: 0.6rem;
+        font-weight: 700;
+        padding: 0.15rem 0.4rem;
+        border-radius: 0.25rem;
+        background: oklch(var(--p) / 0.15);
+        color: oklch(var(--p));
+        flex-shrink: 0;
+        letter-spacing: 0.03em;
+    }
+    .search-ext-badge.ext-mb {
+        background: oklch(var(--su) / 0.15);
+        color: oklch(var(--su));
     }
 </style>

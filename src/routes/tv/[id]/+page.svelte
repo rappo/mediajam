@@ -218,6 +218,21 @@
     let discAddingToArr = $state(/** @type {string|null} */ (null));
     let discAddedToArr = $state(/** @type {Set<string>} */ (new Set()));
     let discAddError = $state("");
+    let hideDocumentaries = $state(true);
+
+    // TMDb genre ID 99 = Documentary, 10770 = TV Movie (often making-of)
+    const DOC_GENRE_IDS = [99, 10770];
+    const DOC_TITLE_PATTERNS = /\b(making of|behind the scenes|the making)\b/i;
+
+    /** @param {any[]} items */
+    function filteredDiscoveryItems(items) {
+        if (!hideDocumentaries) return items;
+        return items.filter(item => {
+            const isDocGenre = item.genre_ids?.some(id => DOC_GENRE_IDS.includes(id));
+            const isDocTitle = DOC_TITLE_PATTERNS.test(item.title || '');
+            return !isDocGenre && !isDocTitle;
+        });
+    }
 
     // Quality profile dialog state for discovery
     let discShowProfileDialog = $state(false);
@@ -251,6 +266,7 @@
 
     /** @param {any} item */
     async function addDiscoveryToArr(item) {
+        discAddingToArr = item.tmdb_id;
         try {
             const res = await fetch("/api/arr/profiles");
             if (!res.ok) throw new Error("Failed to fetch profiles");
@@ -262,8 +278,10 @@
             discSelectedProfileId = discAvailableProfiles[0]?.id || null;
             discSelectedRootFolder = discAvailableRootFolders[0]?.path || null;
             discPendingItem = item;
+            discAddingToArr = null;
             discShowProfileDialog = true;
         } catch (e) {
+            discAddingToArr = null;
             discAddError = e instanceof Error ? e.message : "Failed";
             setTimeout(() => (discAddError = ""), 5000);
         }
@@ -771,25 +789,31 @@
                 <div class="flex items-center justify-between mb-3">
                     <h2 class="text-lg font-bold flex items-center gap-2">
                         🔍 Related Shows
-                        <span class="badge badge-sm badge-ghost">{discoveryItems.length} not in library</span>
+                        <span class="badge badge-sm badge-ghost">{filteredDiscoveryItems(discoveryItems).length} not in library</span>
                     </h2>
-                    {#if discoveryInLibrary.length > 0}
-                        <button
-                            class="btn btn-ghost btn-xs"
-                            onclick={() => showDiscoverInLib = !showDiscoverInLib}
-                        >
-                            {showDiscoverInLib ? 'Hide' : 'Show'} {discoveryInLibrary.length} in library
-                        </button>
-                    {/if}
+                    <div class="flex items-center gap-2">
+                        <label class="flex items-center gap-1.5 cursor-pointer text-xs text-base-content/60">
+                            <input type="checkbox" class="toggle toggle-xs toggle-primary" bind:checked={hideDocumentaries} />
+                            Hide docs/making-of
+                        </label>
+                        {#if discoveryInLibrary.length > 0}
+                            <button
+                                class="btn btn-ghost btn-xs"
+                                onclick={() => showDiscoverInLib = !showDiscoverInLib}
+                            >
+                                {showDiscoverInLib ? 'Hide' : 'Show'} {discoveryInLibrary.length} in library
+                            </button>
+                        {/if}
+                    </div>
                 </div>
 
-                {#if discoveryItems.length === 0 && !showDiscoverInLib}
+                {#if filteredDiscoveryItems(discoveryItems).length === 0 && !showDiscoverInLib}
                     <div class="text-center py-4 text-base-content/40">
                         <p>🎉 You have all the related shows!</p>
                     </div>
                 {:else}
                     <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                        {#each discoveryItems.slice(0, discoveryLimit) as item}
+                        {#each filteredDiscoveryItems(discoveryItems).slice(0, discoveryLimit) as item}
                             <div class="card bg-base-300/30 card-compact overflow-hidden group">
                                 {#if item.poster_url}
                                     <figure class="aspect-[2/3] relative">

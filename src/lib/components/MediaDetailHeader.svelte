@@ -69,6 +69,7 @@
     const hasBackdrop = !!effectiveBackdrop;
 
     let gearOpen = $state(false);
+    let posterBroken = $state(false);
 
     // Internal services (self-hosted)
     const INTERNAL_SERVICES = new Set(['jellyfin', 'radarr', 'sonarr', 'lidarr']);
@@ -172,8 +173,8 @@
         <!-- Poster / Portrait -->
         <div class="poster-wrap">
             <HeartBorder show={isFavorite && heartBorderEnabled} class="rounded-xl">
-                {#if posterUrl}
-                    <img src={imgUrl(posterUrl)} alt={title} class="poster-img" />
+                {#if posterUrl && !posterBroken}
+                    <img src={imgUrl(posterUrl)} alt={title} class="poster-img" onerror={() => posterBroken = true} />
                 {:else}
                     <div class="poster-placeholder">
                         {#if mediaType === 'movie'}🎬{:else if mediaType === 'show'}📺{:else if mediaType === 'artist'}🎵{:else}👤{/if}

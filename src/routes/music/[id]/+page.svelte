@@ -135,6 +135,8 @@
 
     let showDeleteConfirm = $state(false);
     let deleting = $state(false);
+    let showAllMembers = $state(false);
+    let showAllCrew = $state(false);
 
     async function deleteItem() {
         deleting = true;
@@ -710,6 +712,103 @@
             </div>
         {/if}
     </div>
+
+    <!-- Band Members & Credits -->
+    {#if data.members.length > 0 || data.crew.length > 0}
+        {@const MEMBER_LIMIT = 16}
+        {@const CREW_LIMIT = 16}
+        <div class="card bg-base-200/50 border border-base-300">
+            <div class="card-body">
+                <h2 class="card-title text-lg">🎸 Members & Credits</h2>
+
+                {#if data.members.length > 0}
+                    <h3 class="text-sm font-semibold text-base-content/60 mt-2">Members</h3>
+                    <div class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-3">
+                        {#each (showAllMembers ? data.members : data.members.slice(0, MEMBER_LIMIT)) as person}
+                            <a
+                                href="/people/{person.id}"
+                                class="flex flex-col items-center gap-1 group"
+                            >
+                                {#if person.photo_url}
+                                    <img
+                                        src={person.photo_url}
+                                        alt={person.name}
+                                        class="w-20 h-20 rounded-full object-cover border-2 border-base-300 group-hover:border-primary transition-colors"
+                                    />
+                                {:else}
+                                    <div
+                                        class="w-20 h-20 rounded-full bg-base-300 flex items-center justify-center text-2xl"
+                                    >
+                                        👤
+                                    </div>
+                                {/if}
+                                <span
+                                    class="text-xs font-medium text-center leading-tight truncate w-full group-hover:text-primary transition-colors"
+                                    >{person.name}</span
+                                >
+                                {#if person.character_name}
+                                    <span
+                                        class="text-[10px] text-base-content/40 text-center leading-tight truncate w-full"
+                                        >{person.character_name}</span
+                                    >
+                                {/if}
+                            </a>
+                        {/each}
+                    </div>
+                    {#if data.members.length > MEMBER_LIMIT}
+                        <button
+                            class="text-xs text-primary/70 hover:text-primary mt-1 self-start"
+                            onclick={() => showAllMembers = !showAllMembers}
+                        >
+                            {showAllMembers ? '← Show less' : `Show all ${data.members.length} →`}
+                        </button>
+                    {/if}
+                {/if}
+
+                {#if data.crew.length > 0}
+                    <h3 class="text-sm font-semibold text-base-content/60 mt-3">Credits</h3>
+                    <div class="flex flex-wrap gap-2 mt-1">
+                        {#each (showAllCrew ? data.crew : data.crew.slice(0, CREW_LIMIT)) as person}
+                            <a
+                                href="/people/{person.id}"
+                                class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-base-300/50 hover:bg-base-300 transition-colors text-sm group"
+                            >
+                                {#if person.photo_url}
+                                    <img
+                                        src={person.photo_url}
+                                        alt={person.name}
+                                        class="w-6 h-6 rounded-full object-cover"
+                                    />
+                                {:else}
+                                    <div
+                                        class="w-6 h-6 rounded-full bg-base-300 flex items-center justify-center text-xs"
+                                    >
+                                        👤
+                                    </div>
+                                {/if}
+                                <span
+                                    class="group-hover:text-primary transition-colors"
+                                    >{person.name}</span
+                                >
+                                <span
+                                    class="badge badge-ghost badge-xs capitalize"
+                                    >{person.role_type}</span
+                                >
+                            </a>
+                        {/each}
+                    </div>
+                    {#if data.crew.length > CREW_LIMIT}
+                        <button
+                            class="text-xs text-primary/70 hover:text-primary mt-1 self-start"
+                            onclick={() => showAllCrew = !showAllCrew}
+                        >
+                            {showAllCrew ? '← Show less' : `Show all ${data.crew.length} →`}
+                        </button>
+                    {/if}
+                {/if}
+            </div>
+        </div>
+    {/if}
 </div>
 
 <!-- Discovery: Full Discography from MusicBrainz -->

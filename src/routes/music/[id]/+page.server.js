@@ -134,6 +134,25 @@ export async function load({ params, locals }) {
         resolveBackdrop(artistId).catch(() => {});
     }
 
+    // Band members / credits (same pattern as movie cast/crew)
+    const members = /** @type {any[]} */ (db.prepare(`
+        SELECT p.id, p.name, p.photo_url, p.tmdb_person_id, p.musicbrainz_artist_id,
+               pc.role_type, pc.character_name, pc.sort_order
+        FROM person_credits pc
+        JOIN persons p ON pc.person_id = p.id
+        WHERE pc.media_parent_id = ? AND pc.role_type IN ('member', 'artist', 'actor')
+        ORDER BY pc.sort_order ASC
+    `).all(artistId));
+
+    const crew = /** @type {any[]} */ (db.prepare(`
+        SELECT p.id, p.name, p.photo_url, p.tmdb_person_id, p.musicbrainz_artist_id,
+               pc.role_type, pc.character_name, pc.sort_order
+        FROM person_credits pc
+        JOIN persons p ON pc.person_id = p.id
+        WHERE pc.media_parent_id = ? AND pc.role_type NOT IN ('member', 'artist', 'actor')
+        ORDER BY pc.sort_order ASC
+    `).all(artistId));
+
     return {
         artist: { ...artist, is_favorite: liveFavorite ?? artist.is_favorite, total_plays: totalPlays, imageUrl: artistImageUrl, backdropUrl },
         albums: albumsWithRatings,
@@ -141,6 +160,8 @@ export async function load({ params, locals }) {
         arrUrl: (settings?.lidarr_external_url || settings?.lidarr_url || '').replace(/\/+$/, ''),
         arrService: 'lidarr',
         totalPlayed,
-        totalRuntimeMinutes: Math.round(totalRuntime / 600000000)
+        totalRuntimeMinutes: Math.round(totalRuntime / 600000000),
+        members,
+        crew
     };
 }
