@@ -58,6 +58,24 @@ export async function GET({ locals }) {
     // Get the resolved config for debug info
     const activeCfg = await getActiveConfig();
 
+    // TEMPORARY DEBUG: show key preview for troubleshooting (REMOVE AFTER DEBUGGING)
+    let _debugKeyPreview = null;
+    let _debugKeyLen = 0;
+    try {
+        const keyRow = /** @type {any} */ (db.prepare(
+            'SELECT kimi_api_key, openai_api_key, llm_api_key, codex_access_token FROM app_settings WHERE id = 1'
+        ).get());
+        const activeKey = providerName === 'kimi' ? keyRow?.kimi_api_key
+            : providerName === 'openai' ? (keyRow?.codex_access_token || keyRow?.openai_api_key)
+            : keyRow?.llm_api_key;
+        if (activeKey && typeof activeKey === 'string') {
+            _debugKeyLen = activeKey.length;
+            _debugKeyPreview = activeKey.length > 12
+                ? `${activeKey.slice(0, 8)}...${activeKey.slice(-4)}`
+                : `[${activeKey.length} chars]`;
+        }
+    } catch { /* ignore */ }
+
     return json({
         provider: providerName,
         providerLabel: labels.chat,
@@ -77,6 +95,9 @@ export async function GET({ locals }) {
         embeddingsTotal,
         overviewsTotal,
         embeddingsPct: overviewsTotal > 0 ? Math.round((embeddingsTotal / overviewsTotal) * 100) : 0,
+        // TEMPORARY DEBUG — REMOVE AFTER FIXING
+        _debugKeyPreview,
+        _debugKeyLen,
     });
 }
 
