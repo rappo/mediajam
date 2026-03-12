@@ -41,6 +41,43 @@
     let includeSpecials = $state(data.settings.includeSpecials || false);
     let savingSpecials = $state(false);
 
+    // Timezone
+    const TIMEZONES = [
+        'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+        'America/Anchorage', 'America/Phoenix', 'Pacific/Honolulu',
+        'America/Toronto', 'America/Vancouver', 'America/Halifax',
+        'America/Mexico_City', 'America/Bogota', 'America/Lima', 'America/Sao_Paulo', 'America/Argentina/Buenos_Aires',
+        'Europe/London', 'Europe/Dublin', 'Europe/Paris', 'Europe/Berlin', 'Europe/Rome',
+        'Europe/Madrid', 'Europe/Amsterdam', 'Europe/Brussels', 'Europe/Zurich', 'Europe/Vienna',
+        'Europe/Stockholm', 'Europe/Oslo', 'Europe/Copenhagen', 'Europe/Helsinki',
+        'Europe/Warsaw', 'Europe/Prague', 'Europe/Budapest', 'Europe/Bucharest',
+        'Europe/Athens', 'Europe/Istanbul', 'Europe/Moscow', 'Europe/Kiev',
+        'Asia/Dubai', 'Asia/Karachi', 'Asia/Kolkata', 'Asia/Dhaka',
+        'Asia/Bangkok', 'Asia/Singapore', 'Asia/Hong_Kong', 'Asia/Shanghai', 'Asia/Taipei',
+        'Asia/Seoul', 'Asia/Tokyo',
+        'Australia/Sydney', 'Australia/Melbourne', 'Australia/Brisbane', 'Australia/Perth', 'Australia/Adelaide',
+        'Pacific/Auckland', 'Pacific/Fiji',
+        'Africa/Cairo', 'Africa/Lagos', 'Africa/Johannesburg', 'Africa/Nairobi',
+        'UTC',
+    ];
+    const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    let timezone = $state(data.userPreferences?.timezone || browserTz || 'UTC');
+    let savingTimezone = $state(false);
+    let tzSaved = $state(false);
+
+    async function saveTimezone() {
+        savingTimezone = true;
+        tzSaved = false;
+        await fetch('/api/user/preferences', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ timezone }),
+        });
+        savingTimezone = false;
+        tzSaved = true;
+        setTimeout(() => tzSaved = false, 2000);
+    }
+
     // Heart border toggles
     let heartBorderMovies = $state(data.settings.heartBorderMovies ?? true);
     let heartBorderShows = $state(data.settings.heartBorderShows ?? true);
@@ -198,6 +235,45 @@
                     </div>
                 </label>
             </div>
+        </div>
+    </div>
+
+    <!-- Timezone -->
+    <div class="card bg-base-200/50 border border-base-300">
+        <div class="card-body">
+            <h2 class="card-title text-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-warning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+                </svg>
+                Timezone
+            </h2>
+            <p class="text-sm text-base-content/60 mb-2">
+                Timestamps on the history page and elsewhere will be displayed in this timezone.
+            </p>
+            <div class="flex items-center gap-2">
+                <select
+                    class="select select-bordered select-sm flex-1 font-mono text-xs"
+                    bind:value={timezone}
+                    onchange={saveTimezone}
+                    disabled={savingTimezone}
+                >
+                    {#each TIMEZONES as tz}
+                        <option value={tz}>{tz.replace(/_/g, ' ')}</option>
+                    {/each}
+                    {#if !TIMEZONES.includes(timezone)}
+                        <option value={timezone}>{timezone.replace(/_/g, ' ')}</option>
+                    {/if}
+                </select>
+                {#if tzSaved}
+                    <span class="badge badge-success badge-sm gap-1">✓ Saved</span>
+                {/if}
+            </div>
+            {#if data.userPreferences?.timezone && data.userPreferences.timezone !== browserTz}
+                <p class="text-[11px] text-warning/80 mt-1">
+                    ⚠ Your browser reports <strong>{browserTz}</strong> but your setting is <strong>{timezone}</strong>.
+                    <button class="link link-primary text-[11px]" onclick={() => { timezone = browserTz; saveTimezone(); }}>Update to browser timezone</button>
+                </p>
+            {/if}
         </div>
     </div>
 

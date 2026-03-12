@@ -205,7 +205,17 @@ export function load({ locals, url }) {
         ORDER BY year DESC
     `).all(userId)) : [];
 
-    // Group history by date
+    // Load user's timezone preference
+    let userTimezone = 'UTC';
+    if (userId) {
+        try {
+            const userRow = /** @type {any} */ (db.prepare('SELECT preferences FROM users WHERE id = ?').get(userId));
+            const prefs = userRow?.preferences ? JSON.parse(userRow.preferences) : {};
+            if (prefs.timezone) userTimezone = prefs.timezone;
+        } catch { /* use default */ }
+    }
+
+    // Group history by date (using user's timezone)
     /** @type {Record<string, any[]>} */
     const grouped = {};
     for (const entry of history) {
@@ -215,7 +225,8 @@ export function load({ locals, url }) {
             date = 'Unknown Date';
         } else {
             date = new Date(ts).toLocaleDateString('en-US', {
-                weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+                weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+                timeZone: userTimezone,
             });
         }
         if (!grouped[date]) grouped[date] = [];
@@ -230,6 +241,7 @@ export function load({ locals, url }) {
         timeline,
         jellyfinUrl,
         yearMap,
+        userTimezone,
         filters: { from: fromDate, to: toDate, search, mediaType },
         stats: {
             totalPlays: stats?.total_plays || 0,
