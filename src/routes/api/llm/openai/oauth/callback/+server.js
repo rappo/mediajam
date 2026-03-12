@@ -12,7 +12,7 @@
 import { json } from '@sveltejs/kit';
 import { logInfo, logError } from '$lib/server/logger.js';
 import db from '$lib/server/db.js';
-import { activeSessions, OPENAI_CLIENT_ID, OPENAI_ISSUER } from '../authorize/+server.js';
+import { activeSessions, OPENAI_CLIENT_ID, OPENAI_ISSUER } from '$lib/server/openai-device-auth.js';
 
 /** @type {import('./$types').RequestHandler} */
 export async function POST({ request }) {

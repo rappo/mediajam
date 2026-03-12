@@ -1,36 +1,19 @@
 /**
- * POST /api/llm/openai/oauth/authorize
+ * GET /api/llm/openai/oauth/authorize
  * 
  * Starts the ChatGPT device code auth flow.
  * Returns { user_code, verification_url } for the UI to display.
- * Stores the device_auth_id in a server-side map for later polling.
  */
 import { json } from '@sveltejs/kit';
 import { logInfo, logError } from '$lib/server/logger.js';
-
-const OPENAI_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
-const OPENAI_ISSUER = 'https://auth.openai.com';
-
-// Server-side store for active device auth sessions (keyed by user_code)
-/** @type {Map<string, {device_auth_id: string, user_code: string, interval: number, started: number}>} */
-const activeSessions = new Map();
-
-// Clean up stale sessions older than 20 minutes
-function cleanupStaleSessions() {
-    const now = Date.now();
-    for (const [key, session] of activeSessions) {
-        if (now - session.started > 20 * 60 * 1000) {
-            activeSessions.delete(key);
-        }
-    }
-}
+import { OPENAI_CLIENT_ID, OPENAI_ISSUER, activeSessions, cleanupStaleSessions } from '$lib/server/openai-device-auth.js';
 
 /** @type {import('./$types').RequestHandler} */
 export async function GET() {
     cleanupStaleSessions();
 
     try {
-        // Step 1: Request a user code from OpenAI
+        // Request a user code from OpenAI
         const resp = await fetch(`${OPENAI_ISSUER}/api/accounts/deviceauth/usercode`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -74,6 +57,3 @@ export async function GET() {
         return json({ error: String(err) }, { status: 500 });
     }
 }
-
-// Export for the poll endpoint
-export { activeSessions, OPENAI_CLIENT_ID, OPENAI_ISSUER };
