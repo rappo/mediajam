@@ -484,7 +484,8 @@ RULES:
 12. When the user asks "what" or "which" or "list" — ALWAYS return titles and details (mp.title, mp.release_year, etc.), NOT just COUNT(*). Only use COUNT(*) when the user explicitly asks "how many".
 13. When the user asks "what did I watch" — SELECT DISTINCT mp.title, mp.release_year, ph.timestamp FROM playback_history ph JOIN media_children mc ON ph.media_id = mc.id JOIN media_parents mp ON mc.parent_id = mp.id WHERE ... ORDER BY ph.timestamp DESC.
 
-Question: ${question}`;
+Question: ${question}
+${historyContext ? `\nConversation context (use this to resolve pronouns like "them", "those", "it", references to previous results):\n${historyContext}` : ''}`;
 
     const sql = await generate(prompt, {
         temperature: 0.1,
