@@ -36,7 +36,7 @@ export function load({ locals, url }) {
     const whereClause = conditions.join(' AND ');
 
     // Get playback history with filters applied
-    const history = userId ? /** @type {any[]} */ (db.prepare(`
+    const rawHistory = userId ? /** @type {any[]} */ (db.prepare(`
         SELECT
             ph.id,
             ph.timestamp,
@@ -62,6 +62,39 @@ export function load({ locals, url }) {
         ORDER BY ph.timestamp DESC
         LIMIT 500
     `).all(...params)) : [];
+
+    // Dedup: merge plays of the same media_id within a 12-hour window from different sources.
+    // Trakt uses UTC, Jellyfin uses local time, so the same viewing event can appear ~7-8 hours apart.
+    // Keep the entry with more data (duration/completion), combine sources.
+    const DEDUP_WINDOW_MS = 12 * 60 * 60 * 1000; // 12 hours
+    /** @type {any[]} */
+    const history = [];
+    /** @type {Map<number, any>} */
+    const recentByMediaId = new Map();
+
+    for (const entry of rawHistory) {
+        const existing = recentByMediaId.get(entry.media_id);
+        if (existing) {
+            const existingTime = new Date(existing.timestamp).getTime();
+            const entryTime = new Date(entry.timestamp).getTime();
+            if (Math.abs(existingTime - entryTime) <= DEDUP_WINDOW_MS) {
+                // Merge: keep the one with more data, combine sources
+                const sources = new Set((existing.source || '').split(' + '));
+                sources.add(entry.source);
+                existing.source = [...sources].join(' + ');
+                // Prefer the entry with duration/completion data
+                if (!existing.duration_consumed_seconds && entry.duration_consumed_seconds) {
+                    existing.duration_consumed_seconds = entry.duration_consumed_seconds;
+                }
+                if (!existing.completion_pct && entry.completion_pct) {
+                    existing.completion_pct = entry.completion_pct;
+                }
+                continue; // Skip this duplicate
+            }
+        }
+        history.push(entry);
+        recentByMediaId.set(entry.media_id, entry);
+    }
 
     // Build album art URLs for music entries
     for (const entry of history) {
