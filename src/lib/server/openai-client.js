@@ -148,28 +148,18 @@ export async function healthCheck(cfg) {
     cfg = cfg || /** @type {any} */ (await getConfig());
     if (!cfg) return { ok: false, error: 'No API key or Codex token configured' };
 
+    // Codex consumer tokens can't access /v1/models (403), so use a minimal
+    // chat completion as the health probe instead.
+    if (cfg.authSource === 'codex') {
+        return _healthCheckViaChat(cfg);
+    }
+
     try {
         const res = await fetch(`${cfg.apiUrl}/v1/models`, {
             headers: { 'Authorization': `Bearer ${cfg.apiKey}` },
             signal: AbortSignal.timeout(10000),
         });
         if (!res.ok) {
-            // If 401/403 and we have a refresh token, try refreshing
-            if ((res.status === 401 || res.status === 403) && cfg.authSource === 'codex') {
-                const newToken = await refreshCodexToken();
-                if (newToken) {
-                    cfg.apiKey = newToken;
-                    const retry = await fetch(`${cfg.apiUrl}/v1/models`, {
-                        headers: { 'Authorization': `Bearer ${newToken}` },
-                        signal: AbortSignal.timeout(10000),
-                    });
-                    if (retry.ok) {
-                        const data = await retry.json();
-                        const models = (data.data || []).map((/** @type {any} */ m) => m.id);
-                        return { ok: true, models, authSource: 'codex' };
-                    }
-                }
-            }
             return { ok: false, error: `HTTP ${res.status}` };
         }
         const data = await res.json();
@@ -177,6 +167,53 @@ export async function healthCheck(cfg) {
         return { ok: true, models, authSource: cfg.authSource };
     } catch (e) {
         return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+}
+
+/**
+ * Health check via a minimal chat completion (for Codex tokens).
+ * @param {OpenAIConfig} cfg
+ * @returns {Promise<{ ok: boolean, models?: string[], error?: string, authSource?: string }>}
+ */
+async function _healthCheckViaChat(cfg) {
+    /**
+     * @param {string} token
+     * @returns {Promise<Response>}
+     */
+    const doProbe = (token) => fetch(`${cfg.apiUrl}/v1/chat/completions`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+            model: cfg.chatModel || 'gpt-4o-mini',
+            messages: [{ role: 'user', content: 'hi' }],
+            max_tokens: 1,
+        }),
+        signal: AbortSignal.timeout(15000),
+    });
+
+    try {
+        let res = await doProbe(cfg.apiKey);
+
+        // If 401/403, attempt token refresh
+        if ((res.status === 401 || res.status === 403)) {
+            const newToken = await refreshCodexToken();
+            if (newToken) {
+                cfg.apiKey = newToken;
+                res = await doProbe(newToken);
+            }
+        }
+
+        if (!res.ok) {
+            const errText = await res.text().catch(() => '');
+            return { ok: false, error: `HTTP ${res.status}: ${errText.slice(0, 100)}`, authSource: 'codex' };
+        }
+
+        return { ok: true, authSource: 'codex' };
+    } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e), authSource: 'codex' };
     }
 }
 
