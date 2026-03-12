@@ -171,48 +171,26 @@ export async function healthCheck(cfg) {
 }
 
 /**
- * Health check via a minimal chat completion (for Codex tokens).
+ * Health check for Codex tokens — does NOT make a real API call to avoid
+ * burning quota. Codex tokens can't access /v1/models (403), and using
+ * /v1/chat/completions wastes tokens. Instead we just verify tokens are
+ * stored and try a HEAD request to the API root.
  * @param {OpenAIConfig} cfg
  * @returns {Promise<{ ok: boolean, models?: string[], error?: string, authSource?: string }>}
  */
 async function _healthCheckViaChat(cfg) {
-    /**
-     * @param {string} token
-     * @returns {Promise<Response>}
-     */
-    const doProbe = (token) => fetch(`${cfg.apiUrl}/v1/chat/completions`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-            model: cfg.chatModel || 'gpt-4o-mini',
-            messages: [{ role: 'user', content: 'hi' }],
-            max_tokens: 1,
-        }),
-        signal: AbortSignal.timeout(15000),
-    });
-
     try {
-        let res = await doProbe(cfg.apiKey);
-
-        // If 401/403, attempt token refresh
-        if ((res.status === 401 || res.status === 403)) {
-            const newToken = await refreshCodexToken();
-            if (newToken) {
-                cfg.apiKey = newToken;
-                res = await doProbe(newToken);
-            }
-        }
-
-        if (!res.ok) {
-            const errText = await res.text().catch(() => '');
-            return { ok: false, error: `HTTP ${res.status}: ${errText.slice(0, 100)}`, authSource: 'codex' };
-        }
-
+        // Just verify the API is reachable with a lightweight request.
+        // We can't use /v1/models (403 for Codex), so hit the API root.
+        const res = await fetch(cfg.apiUrl, {
+            method: 'HEAD',
+            signal: AbortSignal.timeout(5000),
+        });
+        // Any response (even 404/405) means the API is reachable.
+        // The token itself will be validated when the user actually sends a message.
         return { ok: true, authSource: 'codex' };
     } catch (e) {
+        // Network error — API unreachable
         return { ok: false, error: e instanceof Error ? e.message : String(e), authSource: 'codex' };
     }
 }

@@ -13,7 +13,7 @@
     /** @type {Record<string, boolean>} */
     let showSql = $state({});
     let showStatus = $state(false);
-    /** @type {{ provider?: string, providerLabel?: string, providerConnected?: boolean, providerError?: string, ollamaConnected?: boolean, ollamaUrl?: string, ollamaError?: string, chatModel?: string, embeddingModel?: string, embedTest?: string, ragAvailable?: boolean, embeddingsTotal?: number, overviewsTotal?: number, embeddingsPct?: number } | null} */
+    /** @type {{ provider?: string, providerLabel?: string, providerConnected?: boolean, providerError?: string, authSource?: string, chatModelId?: string, ollamaConnected?: boolean, ollamaUrl?: string, ollamaError?: string, chatModel?: string, embeddingModel?: string, embedTest?: string, ragAvailable?: boolean, embeddingsTotal?: number, overviewsTotal?: number, embeddingsPct?: number } | null} */
     let statusData = $state(null);
     let statusLoading = $state(false);
 
@@ -227,6 +227,8 @@
         if (statusData) {
             const label = statusData.providerLabel || statusData.provider || 'LLM';
             lines.push(`Provider: ${label} ${statusData.providerConnected ? '✓ connected' : '✗ disconnected'}`);
+            if (statusData.authSource) lines.push(`Auth: ${statusData.authSource}`);
+            if (statusData.chatModelId) lines.push(`Model: ${statusData.chatModelId}`);
             if (statusData.providerError) lines.push(`Error: ${statusData.providerError}`);
             lines.push(`Chat model: ${statusData.chatModel || 'none'}`);
             lines.push(`Embedding model: ${statusData.embeddingModel || 'none'}`);

@@ -188,3 +188,16 @@ export function getProviderLabels() {
         embed: labels[embd] || embd,
     };
 }
+
+/**
+ * Get the active chat provider's resolved config (for debug/status).
+ * @returns {Promise<{ provider: string, chatModel: string, authSource: string } | null>}
+ */
+export async function getActiveConfig() {
+    const provider = getChatProvider();
+    if (provider === 'openai' || provider === 'kimi') {
+        const cfg = await openaiClient.getConfig();
+        return cfg ? { provider: cfg.provider, chatModel: cfg.chatModel, authSource: cfg.authSource || 'api-key' } : null;
+    }
+    return { provider, chatModel: '', authSource: 'local' };
+}

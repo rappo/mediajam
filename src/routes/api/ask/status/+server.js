@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import db from '$lib/server/db.js';
-import { isEmbeddingAvailable, healthCheck, embed, getProviderLabels } from '$lib/server/llm.js';
+import { isEmbeddingAvailable, healthCheck, embed, getProviderLabels, getActiveConfig } from '$lib/server/llm.js';
 
 /** @type {import('./$types').RequestHandler} */
 export async function GET({ locals }) {
@@ -55,12 +55,17 @@ export async function GET({ locals }) {
         overviewsTotal = /** @type {any} */ (db.prepare("SELECT COUNT(*) as c FROM media_parents WHERE overview IS NOT NULL AND overview != ''").get())?.c || 0;
     } catch { /* table may not exist */ }
 
+    // Get the resolved config for debug info
+    const activeCfg = await getActiveConfig();
+
     return json({
         provider: providerName,
         providerLabel: labels.chat,
         embedProviderLabel: labels.embed,
         providerConnected: health.ok,
         providerError: health.error || null,
+        authSource: health.authSource || activeCfg?.authSource || null,
+        chatModelId: activeCfg?.chatModel || chatModel || null,
         // Keep ollamaConnected for backward compatibility but also include provider-level status
         ollamaConnected: providerName === 'ollama' ? health.ok : null,
         ollamaUrl: providerName === 'ollama' ? (ollamaUrl || null) : null,
