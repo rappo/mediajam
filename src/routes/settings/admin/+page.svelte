@@ -85,8 +85,7 @@
     let discogsToken = $state("");
     // Fanart.tv
     let fanartApiKey = $state("");
-    // Database backups
-    let dbBackupCount = $state(data.settings.dbBackupCount ?? 2);
+
 
     // LLM Integration
     let ollamaUrl = $state(data.settings.ollamaUrl || "");
@@ -573,7 +572,7 @@
                 payload.discogs_token = discogsToken;
             if (fanartApiKey && fanartApiKey !== "••••••••")
                 payload.fanart_api_key = fanartApiKey;
-            payload.db_backup_count = dbBackupCount;
+
 
             const res = await fetch("/api/settings", {
                 method: "PUT",
@@ -4833,35 +4832,21 @@ cat ~/.codex/auth.json</pre>
         </div>
     </div>
 
-    <!-- Database Backups -->
+    <!-- Database Backups — moved to Settings > Backups -->
     <div class="card bg-base-200/50 border border-base-300 mt-6">
-        <div class="card-body">
-            <h2 class="card-title text-lg">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 12a9 9 0 11-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
-                    <polyline points="21 3 21 8 16 8" />
-                </svg>
-                Database Backups
-            </h2>
-            <p class="text-xs text-base-content/50">
-                Automatically back up the database on each server boot, before any migrations run.
-                Backups are stored alongside the database file.
-            </p>
-            <div class="flex items-center gap-3 mt-2">
-                <label class="text-sm" for="db-backup-count">Keep</label>
-                <input
-                    id="db-backup-count"
-                    type="number"
-                    min="0"
-                    max="50"
-                    class="input input-bordered input-sm w-20 text-center"
-                    bind:value={dbBackupCount}
-                />
-                <span class="text-sm text-base-content/60">backups <span class="text-xs">(0 = disabled)</span></span>
+        <div class="card-body py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                    <span class="text-sm font-medium">Database Backups</span>
+                </div>
+                <a href="/settings/backups" class="btn btn-ghost btn-sm gap-1">
+                    Manage Backups
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                </a>
             </div>
-            {#if dbBackupCount === 0}
-                <div class="text-xs text-warning/70 mt-1">⚠ Automatic backups are disabled. The database will not be backed up on boot.</div>
-            {/if}
         </div>
     </div>
 

@@ -32,3 +32,4 @@ cache/
 *.log
 tmp-backup/
 *.sqlite.bak.*
+backups/

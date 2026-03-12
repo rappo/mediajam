@@ -1,48 +1,81 @@
 import Database from 'better-sqlite3';
-import { resolve, dirname } from 'path';
-import { mkdirSync, existsSync, copyFileSync, unlinkSync, renameSync } from 'fs';
+import { resolve, dirname, join, basename } from 'path';
+import { mkdirSync, existsSync, copyFileSync, unlinkSync, renameSync, readdirSync, statSync } from 'fs';
 
 const DB_PATH = process.env.DATABASE_PATH || resolve(process.cwd(), 'mediajam.sqlite');
+export { DB_PATH };
 
 // Ensure the directory exists (important for /app/data/ in Docker)
 mkdirSync(dirname(DB_PATH), { recursive: true });
 
-// ── Auto-backup BEFORE opening the database ──────────────────────────────
-// Read backup count from existing DB (if it exists) using a throwaway connection.
-// Default to 2 backups. 0 = disabled.
-let backupCount = 2;
+// ── Boot backup into backups/ directory ──────────────────────────────────
+// Read backup settings from existing DB using a throwaway connection.
+let bootBackupEnabled = true;
+let bootBackupKeepCount = 3;
 if (existsSync(DB_PATH)) {
     try {
         const probe = new Database(DB_PATH, { readonly: true, fileMustExist: true });
         try {
             const row = /** @type {any} */ (probe.prepare(
-                'SELECT db_backup_count FROM app_settings WHERE id = 1'
+                'SELECT backup_on_boot, boot_backup_keep_count, db_backup_count FROM app_settings WHERE id = 1'
             ).get());
-            if (row && typeof row.db_backup_count === 'number') {
-                backupCount = row.db_backup_count;
+            if (row) {
+                // New columns take precedence; fall back to old db_backup_count
+                if (typeof row.backup_on_boot === 'number') {
+                    bootBackupEnabled = row.backup_on_boot !== 0;
+                } else if (typeof row.db_backup_count === 'number') {
+                    bootBackupEnabled = row.db_backup_count > 0;
+                }
+                if (typeof row.boot_backup_keep_count === 'number') {
+                    bootBackupKeepCount = row.boot_backup_keep_count;
+                } else if (typeof row.db_backup_count === 'number' && row.db_backup_count > 0) {
+                    bootBackupKeepCount = row.db_backup_count;
+                }
             }
-        } catch { /* column doesn't exist yet — use default */ }
+        } catch { /* columns don't exist yet — use defaults */ }
         probe.close();
     } catch { /* DB unreadable — skip backup */ }
 
-    if (backupCount > 0) {
+    const backupDir = join(dirname(DB_PATH), 'backups');
+    mkdirSync(backupDir, { recursive: true });
+
+    // Migrate old .bak.N files into backups/ dir (one-time)
+    try {
+        for (let i = 1; i <= 10; i++) {
+            const oldBak = `${DB_PATH}.bak.${i}`;
+            if (existsSync(oldBak)) {
+                const stat = statSync(oldBak);
+                const ts = stat.mtime.toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
+                const dest = join(backupDir, `mediajam-boot-${ts}-migrated${i}.sqlite`);
+                renameSync(oldBak, dest);
+                console.log(`[db] Migrated old backup ${basename(oldBak)} → ${basename(dest)}`);
+            }
+        }
+    } catch (e) {
+        console.warn(`[db] Old backup migration warning:`, e instanceof Error ? e.message : e);
+    }
+
+    if (bootBackupEnabled && bootBackupKeepCount > 0) {
         try {
-            // Rotate existing backups: .bak.2 → .bak.3, .bak.1 → .bak.2, etc.
-            for (let i = backupCount; i >= 1; i--) {
-                const src = i === 1 ? `${DB_PATH}.bak.1` : `${DB_PATH}.bak.${i - 1}`;
-                const dest = `${DB_PATH}.bak.${i}`;
-                if (i === backupCount && existsSync(dest)) {
-                    unlinkSync(dest); // Remove oldest beyond retention
-                }
-                if (i > 1 && existsSync(src)) {
-                    renameSync(src, dest);
+            const now = new Date();
+            const ts = now.toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
+            const backupFile = join(backupDir, `mediajam-boot-${ts}.sqlite`);
+            copyFileSync(DB_PATH, backupFile);
+            console.log(`[db] Boot backup created: ${basename(backupFile)}`);
+
+            // Prune old boot backups beyond keep count
+            const bootFiles = readdirSync(backupDir)
+                .filter(f => f.startsWith('mediajam-boot-') && f.endsWith('.sqlite'))
+                .sort()
+                .reverse(); // newest first
+            if (bootFiles.length > bootBackupKeepCount) {
+                for (const old of bootFiles.slice(bootBackupKeepCount)) {
+                    unlinkSync(join(backupDir, old));
+                    console.log(`[db] Pruned old boot backup: ${old}`);
                 }
             }
-            // Copy current DB to .bak.1
-            copyFileSync(DB_PATH, `${DB_PATH}.bak.1`);
-            console.log(`[db] Backup created: ${DB_PATH}.bak.1 (keeping ${backupCount})`);
         } catch (e) {
-            console.error(`[db] Backup failed:`, e instanceof Error ? e.message : e);
+            console.error(`[db] Boot backup failed:`, e instanceof Error ? e.message : e);
         }
     }
 }
@@ -383,6 +416,13 @@ const newAppCols = [
     ['fanart_api_key', 'TEXT'],
     // Database backups
     ['db_backup_count', 'INTEGER DEFAULT 2'],
+    ['backup_enabled', 'INTEGER DEFAULT 1'],
+    ['backup_frequency', "TEXT DEFAULT 'daily'"],
+    ['backup_time', "TEXT DEFAULT '05:00'"],
+    ['backup_keep_count', 'INTEGER DEFAULT 7'],
+    ['backup_on_boot', 'INTEGER DEFAULT 1'],
+    ['boot_backup_keep_count', 'INTEGER DEFAULT 3'],
+    ['backup_timeline_epoch', 'TEXT'],
     // LLM provider support
     ['llm_provider', "TEXT DEFAULT 'ollama'"],      // 'ollama'|'openai'|'gemini'|'claude'|'kimi'
     ['llm_api_key', 'TEXT'],                         // Legacy shared key (backward compat)
