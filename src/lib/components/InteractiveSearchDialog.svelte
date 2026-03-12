@@ -20,6 +20,84 @@
     /** @type {HTMLDialogElement|null} */
     let dialogEl = $state(null);
 
+    // ── Sorting ──
+    /** @type {string} */
+    let sortCol = $state('score');
+    /** @type {'asc'|'desc'} */
+    let sortDir = $state('desc');
+
+    /** @param {string} col */
+    function toggleSort(col) {
+        if (sortCol === col) {
+            sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+            sortCol = col;
+            // Default direction per column
+            sortDir = ['score', 'size', 'peers'].includes(col) ? 'desc' : 'asc';
+        }
+    }
+
+    /** @type {string} Sort indicator: ▲ or ▼ */
+    function sortArrow(col) {
+        if (sortCol !== col) return '';
+        return sortDir === 'asc' ? ' ▲' : ' ▼';
+    }
+
+    /** Sort releases based on current sort state */
+    function sortedReleases() {
+        const arr = [...releases];
+
+        // Smart default: if sortCol is 'score' and all scores are <= 0, auto-switch to quality
+        if (sortCol === 'score') {
+            const hasPositiveScore = arr.some(r => (r.customFormatScore || 0) > 0);
+            if (!hasPositiveScore) {
+                // Sort by quality tier instead
+                return arr.sort((a, b) => {
+                    const qa = qualityTier(a.quality);
+                    const qb = qualityTier(b.quality);
+                    return sortDir === 'desc' ? qb - qa : qa - qb;
+                });
+            }
+        }
+
+        return arr.sort((a, b) => {
+            let va, vb;
+            switch (sortCol) {
+                case 'score': va = a.customFormatScore || 0; vb = b.customFormatScore || 0; break;
+                case 'age': va = a.age ?? 999999; vb = b.age ?? 999999; break;
+                case 'size': va = a.size || 0; vb = b.size || 0; break;
+                case 'peers': va = a.seeders ?? -1; vb = b.seeders ?? -1; break;
+                case 'quality': va = qualityTier(a.quality); vb = qualityTier(b.quality); break;
+                case 'title': return sortDir === 'asc'
+                    ? (a.title || '').localeCompare(b.title || '')
+                    : (b.title || '').localeCompare(a.title || '');
+                case 'indexer': return sortDir === 'asc'
+                    ? (a.indexer || '').localeCompare(b.indexer || '')
+                    : (b.indexer || '').localeCompare(a.indexer || '');
+                case 'lang':
+                    va = (a.languages || []).join(',');
+                    vb = (b.languages || []).join(',');
+                    return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+                case 'src':
+                    va = a.protocol === 'usenet' ? 0 : 1;
+                    vb = b.protocol === 'usenet' ? 0 : 1;
+                    break;
+                default: va = 0; vb = 0;
+            }
+            return sortDir === 'desc' ? vb - va : va - vb;
+        });
+    }
+
+    /** Map quality string to numeric tier for sorting */
+    function qualityTier(q) {
+        if (!q) return 0;
+        if (q.includes('2160') || q.includes('4K')) return 4;
+        if (q.includes('1080')) return 3;
+        if (q.includes('720')) return 2;
+        if (q.includes('480') || q.includes('SD')) return 1;
+        return 0;
+    }
+
     export function show() {
         dialogEl?.showModal();
         search();
@@ -106,7 +184,7 @@
     class="modal-dialog"
     onclick={(e) => { if (e.target === dialogEl) close(); }}
 >
-    <div class="dialog-content">
+    <div class="dialog-content" class:expanded={loading}>
         <!-- Header -->
         <div class="dialog-header">
             <div>
@@ -149,19 +227,19 @@
                     <thead>
                         <tr>
                             <th class="col-action"></th>
-                            <th class="col-src">Src</th>
-                            <th class="col-age">Age</th>
-                            <th class="col-title">Release Name</th>
-                            <th class="col-indexer">Indexer</th>
-                            <th class="col-size">Size</th>
-                            <th class="col-peers">Peers</th>
-                            <th class="col-lang">Lang</th>
-                            <th class="col-quality">Quality</th>
-                            <th class="col-score">Score</th>
+                            <th class="col-src sortable" onclick={() => toggleSort('src')}>Src{sortArrow('src')}</th>
+                            <th class="col-age sortable" onclick={() => toggleSort('age')}>Age{sortArrow('age')}</th>
+                            <th class="col-title sortable" onclick={() => toggleSort('title')}>Release Name{sortArrow('title')}</th>
+                            <th class="col-indexer sortable" onclick={() => toggleSort('indexer')}>Indexer{sortArrow('indexer')}</th>
+                            <th class="col-size sortable" onclick={() => toggleSort('size')}>Size{sortArrow('size')}</th>
+                            <th class="col-peers sortable" onclick={() => toggleSort('peers')}>Peers{sortArrow('peers')}</th>
+                            <th class="col-lang sortable" onclick={() => toggleSort('lang')}>Lang{sortArrow('lang')}</th>
+                            <th class="col-quality sortable" onclick={() => toggleSort('quality')}>Quality{sortArrow('quality')}</th>
+                            <th class="col-score sortable" onclick={() => toggleSort('score')}>Score{sortArrow('score')}</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {#each releases as release}
+                        {#each sortedReleases() as release}
                             <tr class:rejected={release.rejected}>
                                 <!-- Download button -->
                                 <td class="col-action">
@@ -280,8 +358,7 @@
     }
 
     .modal-dialog::backdrop {
-        background: rgba(0, 0, 0, 0.7);
-        backdrop-filter: blur(4px);
+        background: rgba(0, 0, 0, 0.92);
     }
 
     /* Hide when not open */
@@ -300,6 +377,13 @@
         display: flex;
         flex-direction: column;
         overflow: hidden;
+        transition: max-height 0.3s ease;
+    }
+
+    /* Expanded state while loading — taller box */
+    .dialog-content.expanded {
+        max-height: 95vh;
+        min-height: 50vh;
     }
 
     /* ── Header ── */
@@ -367,6 +451,16 @@
         opacity: 0.5;
         white-space: nowrap;
         border-bottom: 1px solid oklch(var(--b3));
+    }
+
+    .release-table th.sortable {
+        cursor: pointer;
+        user-select: none;
+        transition: opacity 0.15s;
+    }
+
+    .release-table th.sortable:hover {
+        opacity: 0.8;
     }
 
     .release-table td {

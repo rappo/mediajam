@@ -698,6 +698,82 @@
     let peopleSseRetries = $state(0);
     /** @type {HTMLDivElement | null} */
     let peopleSyncCopyFeedback = $state(false);
+
+    // ── Ratings Sync State ──
+    let ratingsSyncStatus = $state("idle"); // idle | syncing | complete | error
+    let ratingsSyncProgress = $state(0);
+    let ratingsSyncCurrent = $state("");
+    let ratingsSyncTotal = $state(0);
+    let ratingsSyncFetched = $state(0);
+    let ratingsSyncErrors = $state(0);
+    let ratingsSyncLogs = $state(/** @type {string[]} */ ([]));
+
+    async function triggerRatingsSync(force = false) {
+        ratingsSyncStatus = "syncing";
+        ratingsSyncProgress = 0;
+        ratingsSyncCurrent = "";
+        ratingsSyncFetched = 0;
+        ratingsSyncErrors = 0;
+        ratingsSyncLogs = ["Starting batch ratings fetch..."];
+
+        try {
+            const res = await fetch('/api/sync/ratings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ force })
+            });
+
+            if (!res.ok) {
+                const err = await res.json();
+                ratingsSyncLogs = [...ratingsSyncLogs, `Error: ${err.error}`];
+                ratingsSyncStatus = "error";
+                return;
+            }
+
+            const reader = res.body?.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (reader) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    try {
+                        const d = JSON.parse(line.slice(6));
+                        if (d.type === 'ratings_start') {
+                            ratingsSyncTotal = d.total;
+                            ratingsSyncLogs = [...ratingsSyncLogs, `Found ${d.total} items to process`];
+                        } else if (d.type === 'ratings_progress') {
+                            ratingsSyncProgress = Math.round((d.current / d.total) * 100);
+                            ratingsSyncCurrent = d.title;
+                            ratingsSyncFetched = d.fetched || 0;
+                            ratingsSyncErrors = d.errorCount || 0;
+                            if (!d.skipped && d.sources?.length) {
+                                ratingsSyncLogs = [...ratingsSyncLogs, `${d.title}: ${d.sources.join(', ')}`];
+                            }
+                        } else if (d.type === 'ratings_done') {
+                            ratingsSyncLogs = [...ratingsSyncLogs, `Done! ${d.fetched} items updated, ${d.errors} errors`];
+                            ratingsSyncStatus = "complete";
+                        } else if (d.type === 'ratings_error') {
+                            ratingsSyncLogs = [...ratingsSyncLogs, `Error: ${d.error}`];
+                            ratingsSyncStatus = "error";
+                        }
+                    } catch { /* skip malformed */ }
+                }
+            }
+
+            if (ratingsSyncStatus === "syncing") ratingsSyncStatus = "complete";
+        } catch (e) {
+            ratingsSyncLogs = [...ratingsSyncLogs, `Network error: ${e instanceof Error ? e.message : String(e)}`];
+            ratingsSyncStatus = "error";
+        }
+    }
     let externalIdsSyncing = $state(false);
 
     function addPeopleSyncLog(message, type = "info") {
@@ -3691,10 +3767,18 @@ cat ~/.codex/auth.json</pre>
                                         <div class="flex-1 min-w-0">
                                             <span class="badge badge-xs badge-outline mb-1">{conflict.conflict_label}</span>
                                             <div class="font-medium">
-                                                "{conflict.primary_title}"
+                                                {#if conflict.primary_jellyfin_url}
+                                                    <a href={conflict.primary_jellyfin_url} target="_blank" rel="noopener" class="link link-primary hover:underline">"{conflict.primary_title}"</a>
+                                                {:else}
+                                                    "{conflict.primary_title}"
+                                                {/if}
                                                 {#if conflict.primary_year}<span class="text-base-content/40">({conflict.primary_year})</span>{/if}
                                                 <span class="text-warning">⇔</span>
-                                                "{conflict.secondary_title}"
+                                                {#if conflict.secondary_jellyfin_url}
+                                                    <a href={conflict.secondary_jellyfin_url} target="_blank" rel="noopener" class="link link-primary hover:underline">"{conflict.secondary_title}"</a>
+                                                {:else}
+                                                    "{conflict.secondary_title}"
+                                                {/if}
                                                 {#if conflict.secondary_year}<span class="text-base-content/40">({conflict.secondary_year})</span>{/if}
                                             </div>
                                             <div class="text-xs text-base-content/50 mt-1 flex flex-wrap gap-2">
@@ -3702,14 +3786,7 @@ cat ~/.codex/auth.json</pre>
                                                 {#if conflict.external_url}
                                                     <a href={conflict.external_url} target="_blank" rel="noopener" class="link link-info">View on {conflict.conflict_type.includes('tmdb') ? 'TMDb' : conflict.conflict_type.includes('imdb') ? 'IMDb' : 'MusicBrainz'} ↗</a>
                                                 {/if}
-                                            </div>
-                                            <div class="text-xs mt-1 flex flex-wrap gap-2">
-                                                {#if conflict.primary_jellyfin_url}
-                                                    <a href={conflict.primary_jellyfin_url} target="_blank" rel="noopener" class="link link-primary">Fix "{conflict.primary_title}" in Jellyfin ↗</a>
-                                                {/if}
-                                                {#if conflict.secondary_jellyfin_url}
-                                                    <a href={conflict.secondary_jellyfin_url} target="_blank" rel="noopener" class="link link-primary">Fix "{conflict.secondary_title}" in Jellyfin ↗</a>
-                                                {/if}
+                                                <span class="text-base-content/40">Click a title to fix in Jellyfin</span>
                                             </div>
                                         </div>
                                         <button class="btn btn-ghost btn-xs" onclick={() => dismissConflict(conflict.id)} title="Dismiss">✕</button>
@@ -3897,6 +3974,123 @@ cat ~/.codex/auth.json</pre>
                                         {peopleSyncResult.totalCredits} credits
                                     </p>
                                 {/if}
+                            {/if}
+                        </div>
+                    {/if}
+                </div>
+
+                <!-- Ratings Sync Row -->
+                <div
+                    id="sync-ratings"
+                    class="rounded-lg border border-base-content/10 overflow-hidden"
+                >
+                    <button
+                        class="w-full flex items-center gap-3 px-4 py-3 hover:bg-base-300/50 transition-colors text-left"
+                        onclick={() =>
+                            (expandedSync =
+                                expandedSync === "ratings" ? null : "ratings")}
+                    >
+                        <span class="text-lg">⭐</span>
+                        <div class="flex-1 min-w-0">
+                            <span class="font-medium text-sm">Fetch Ratings</span>
+                            <span class="text-xs text-base-content/40 block">OMDb, TMDB, Discogs, MusicBrainz → all media</span>
+                        </div>
+                        {#if ratingsSyncStatus === "syncing"}
+                            <span
+                                class="loading loading-spinner loading-xs text-info"
+                            ></span>
+                            <span class="badge badge-info badge-sm gap-1"
+                                >syncing</span
+                            >
+                        {:else if ratingsSyncStatus === "complete"}
+                            <span class="badge badge-success badge-sm">done</span>
+                        {:else if ratingsSyncStatus === "error"}
+                            <span class="badge badge-error badge-sm">error</span>
+                        {/if}
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            class="h-4 w-4 text-base-content/30 transition-transform"
+                            class:rotate-180={expandedSync === "ratings"}
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            ><polyline points="6 9 12 15 18 9"></polyline></svg
+                        >
+                    </button>
+
+                    {#if expandedSync === "ratings" || ratingsSyncStatus === "syncing"}
+                        <div class="text-xs text-base-content/50 px-4 pt-2 pb-1 space-y-1">
+                            <ul class="list-disc list-inside space-y-0.5">
+                                <li>Fetches <strong>IMDb, Rotten Tomatoes, Metacritic</strong> (via OMDb), <strong>TMDB</strong>, <strong>Discogs</strong>, and <strong>MusicBrainz</strong> ratings for all movies, TV shows, and music</li>
+                                <li>Skips items that already have fresh ratings (within 6 months)</li>
+                                <li>Requires an <strong>OMDb API key</strong> for movie/TV ratings and a <strong>Discogs token</strong> for music ratings (configured above)</li>
+                            </ul>
+                        </div>
+
+                        <div class="px-4 pb-3 pt-2 space-y-2">
+                            <div
+                                class:hidden={ratingsSyncStatus !== "idle" && ratingsSyncStatus !== "complete" && ratingsSyncStatus !== "error"}
+                            >
+                                {#if ratingsSyncStatus === "idle" || ratingsSyncStatus === "complete" || ratingsSyncStatus === "error"}
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <button
+                                            class="btn btn-info btn-sm"
+                                            onclick={() => triggerRatingsSync(false)}
+                                            disabled={ratingsSyncStatus === "syncing"}
+                                        >⭐ Fetch Missing Ratings</button>
+                                        <button
+                                            class="btn btn-sm btn-outline"
+                                            onclick={() => triggerRatingsSync(true)}
+                                            disabled={ratingsSyncStatus === "syncing"}
+                                        >🔄 Re-fetch All</button>
+                                    </div>
+                                {/if}
+                            </div>
+
+                            {#if ratingsSyncStatus !== "idle"}
+                                <div class="space-y-2">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs font-medium">
+                                            {#if ratingsSyncStatus === "complete"}✅
+                                                Ratings fetch complete!{:else if ratingsSyncStatus === "error"}❌
+                                                Ratings fetch error{:else}
+                                                Fetching: {ratingsSyncCurrent}
+                                            {/if}
+                                        </span>
+                                        <span class="text-xs text-base-content/40">
+                                            {ratingsSyncFetched} updated · {ratingsSyncErrors} errors
+                                        </span>
+                                    </div>
+                                    {#if ratingsSyncStatus === "syncing"}
+                                        <progress
+                                            class="progress progress-info w-full"
+                                            value={ratingsSyncProgress}
+                                            max="100"
+                                        ></progress>
+                                    {/if}
+                                    <LogConsole
+                                        logs={ratingsSyncLogs}
+                                        running={ratingsSyncStatus === "syncing"}
+                                        title="Ratings Fetch Log"
+                                        height="h-36"
+                                    />
+                                    {#if ratingsSyncStatus === "complete" || ratingsSyncStatus === "error"}
+                                        <div class="flex gap-2">
+                                            <button
+                                                class="btn btn-sm btn-info"
+                                                onclick={() => {
+                                                    ratingsSyncStatus = "idle";
+                                                }}>Done</button
+                                            >
+                                            <button
+                                                class="btn btn-sm btn-ghost"
+                                                onclick={() => triggerRatingsSync(false)}
+                                                >Fetch Again</button
+                                            >
+                                        </div>
+                                    {/if}
+                                </div>
                             {/if}
                         </div>
                     {/if}

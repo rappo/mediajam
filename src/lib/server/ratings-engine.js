@@ -459,3 +459,75 @@ export function areRatingsStale(mediaParentId) {
     const fetchedAt = new Date(oldest.oldest).getTime();
     return Date.now() - fetchedAt > STALE_MS;
 }
+
+/**
+ * Batch-fetch ratings for ALL media parents that don't have ratings yet.
+ * Streams progress via the onProgress callback.
+ * @param {{ force?: boolean, onProgress?: (data: any) => void, signal?: AbortSignal }} options
+ * @returns {Promise<{ total: number, fetched: number, errors: number }>}
+ */
+export async function fetchAllRatings({ force = false, onProgress, signal } = {}) {
+    const parents = /** @type {Array<{id: number, title: string, media_type: string}>} */ (
+        db.prepare(`SELECT id, title, media_type FROM media_parents ORDER BY title`).all()
+    );
+
+    const total = parents.length;
+    let fetched = 0;
+    let errorCount = 0;
+
+    onProgress?.({ type: 'ratings_start', total });
+
+    for (let i = 0; i < parents.length; i++) {
+        if (signal?.aborted) break;
+
+        const parent = parents[i];
+
+        // Skip if already has non-stale ratings (unless force)
+        if (!force && !areRatingsStale(parent.id)) {
+            onProgress?.({
+                type: 'ratings_progress',
+                current: i + 1,
+                total,
+                title: parent.title,
+                skipped: true,
+                fetched,
+                errors: errorCount
+            });
+            continue;
+        }
+
+        try {
+            const result = await fetchRatingsForParent(parent.id, { force });
+            if (result.fetched.length > 0) fetched++;
+            if (result.errors.length > 0) errorCount++;
+
+            onProgress?.({
+                type: 'ratings_progress',
+                current: i + 1,
+                total,
+                title: parent.title,
+                sources: result.fetched,
+                errors: result.errors,
+                fetched,
+                errorCount
+            });
+        } catch (e) {
+            errorCount++;
+            onProgress?.({
+                type: 'ratings_progress',
+                current: i + 1,
+                total,
+                title: parent.title,
+                errors: [e instanceof Error ? e.message : String(e)],
+                fetched,
+                errorCount
+            });
+        }
+
+        // Rate limit between items (OMDb: 1000/day, TMDB is lenient, Discogs: 60/min)
+        await sleep(300);
+    }
+
+    onProgress?.({ type: 'ratings_done', total, fetched, errors: errorCount });
+    return { total, fetched, errors: errorCount };
+}
