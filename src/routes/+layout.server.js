@@ -48,6 +48,6 @@ export function load({ locals }) {
         showWelcome: (settings?.setup_complete === 1 && !settings?.welcome_complete),
         jellyfinAuthInvalid: settings?.jellyfin_auth_status === 'invalid',
         activityUnread: getUnreadCount(),
-        ollamaConfigured: !!settings?.ollama_url,
+        llmConfigured: !!(settings?.ollama_url || settings?.codex_access_token || settings?.openai_api_key || settings?.gemini_api_key || settings?.claude_api_key || settings?.kimi_api_key || settings?.llm_api_key),
     };
 }

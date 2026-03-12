@@ -1,6 +1,6 @@
 <script>
-    /** @type {{ ollamaConfigured?: boolean }} */
-    let { ollamaConfigured = false } = $props();
+    /** @type {{ llmConfigured?: boolean }} */
+    let { llmConfigured = false } = $props();
 
     /** @typedef {{ role: 'user' | 'assistant', text: string, sql?: string, results?: any[], sources?: any[], error?: string, loading?: boolean, type?: string }} ChatMessage */
 
@@ -13,7 +13,7 @@
     /** @type {Record<string, boolean>} */
     let showSql = $state({});
     let showStatus = $state(false);
-    /** @type {{ ollamaConnected?: boolean, ollamaUrl?: string, ollamaError?: string, chatModel?: string, embeddingModel?: string, embedTest?: string, ragAvailable?: boolean, embeddingsTotal?: number, overviewsTotal?: number, embeddingsPct?: number } | null} */
+    /** @type {{ provider?: string, providerLabel?: string, providerConnected?: boolean, providerError?: string, ollamaConnected?: boolean, ollamaUrl?: string, ollamaError?: string, chatModel?: string, embeddingModel?: string, embedTest?: string, ragAvailable?: boolean, embeddingsTotal?: number, overviewsTotal?: number, embeddingsPct?: number } | null} */
     let statusData = $state(null);
     let statusLoading = $state(false);
 
@@ -225,7 +225,9 @@
         const lines = [`=== Mediajam Chat Debug ===`, `Time: ${new Date().toISOString()}`, ''];
         // Include status info if available
         if (statusData) {
-            lines.push(`Ollama: ${statusData.ollamaConnected ? '✓ connected' : '✗ disconnected'}`);
+            const label = statusData.providerLabel || statusData.provider || 'LLM';
+            lines.push(`Provider: ${label} ${statusData.providerConnected ? '✓ connected' : '✗ disconnected'}`);
+            if (statusData.providerError) lines.push(`Error: ${statusData.providerError}`);
             lines.push(`Chat model: ${statusData.chatModel || 'none'}`);
             lines.push(`Embedding model: ${statusData.embeddingModel || 'none'}`);
             lines.push(`RAG: ${statusData.ragAvailable ? '✓ available' : '✗ unavailable'}`);
@@ -309,7 +311,7 @@
             </div>
             <div>
                 <span class="font-semibold text-sm">Ask Mediajam</span>
-                {#if !ollamaConfigured}
+                {#if !llmConfigured}
                     <span class="badge badge-warning badge-xs ml-1">No LLM</span>
                 {/if}
             </div>
@@ -359,14 +361,14 @@
                 <div class="text-base-content/40">Loading...</div>
             {:else if statusData}
                 <div class="flex items-center gap-2">
-                    <span class="w-2 h-2 rounded-full {statusData.ollamaConnected ? 'bg-success' : 'bg-error'}"></span>
-                    Ollama: {statusData.ollamaConnected ? 'connected' : 'disconnected'}
-                    {#if statusData.ollamaUrl}
+                    <span class="w-2 h-2 rounded-full {statusData.providerConnected ? 'bg-success' : 'bg-error'}"></span>
+                    {statusData.providerLabel || statusData.provider || 'LLM'}: {statusData.providerConnected ? 'connected' : 'disconnected'}
+                    {#if statusData.provider === 'ollama' && statusData.ollamaUrl}
                         <span class="text-base-content/40">({statusData.ollamaUrl})</span>
                     {/if}
                 </div>
-                {#if statusData.ollamaError}
-                    <div class="text-error/70 pl-4">{statusData.ollamaError}</div>
+                {#if statusData.providerError}
+                    <div class="text-error/70 pl-4">{statusData.providerError}</div>
                 {/if}
                 <div class="text-base-content/60 pl-4">
                     Chat: {statusData.chatModel || '—'} · Embed: {statusData.embeddingModel || '—'}
@@ -485,14 +487,14 @@
                 bind:value={input}
                 type="text"
                 class="input input-sm input-bordered flex-1 text-sm rounded-full"
-                placeholder={ollamaConfigured ? 'Ask anything...' : 'Ollama not configured'}
-                disabled={!ollamaConfigured || sending}
+                placeholder={llmConfigured ? 'Ask anything...' : 'No LLM configured'}
+                disabled={!llmConfigured || sending}
                 onkeydown={handleKeydown}
             />
             <button
                 type="submit"
                 class="btn btn-sm btn-primary btn-circle"
-                disabled={!input.trim() || sending || !ollamaConfigured}
+                disabled={!input.trim() || sending || !llmConfigured}
             >
                 {#if sending}
                     <span class="loading loading-spinner loading-xs"></span>

@@ -486,7 +486,7 @@
 		<SyncFooter />
 		<NowPlayingBar remoteControlEnabled={$page.data.remoteControlEnabled} />
 		<ToastContainer />
-		<ChatWidget ollamaConfigured={data.ollamaConfigured} />
+		<ChatWidget llmConfigured={data.llmConfigured} />
 		<ConflictDialog bind:this={conflictDialog} />
 	</div>
 {:else}

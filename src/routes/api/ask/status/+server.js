@@ -28,7 +28,7 @@ export async function GET({ locals }) {
         }
     } catch { /* ignore */ }
 
-    // Check provider connectivity
+    // Check provider connectivity — healthCheck() routes to the active provider
     const health = await healthCheck();
     const labels = getProviderLabels();
 
@@ -59,10 +59,13 @@ export async function GET({ locals }) {
         provider: providerName,
         providerLabel: labels.chat,
         embedProviderLabel: labels.embed,
-        ollamaConnected: health.ok,
-        ollamaUrl: ollamaUrl || null,
-        ollamaError: health.error || null,
-        chatModel,
+        providerConnected: health.ok,
+        providerError: health.error || null,
+        // Keep ollamaConnected for backward compatibility but also include provider-level status
+        ollamaConnected: providerName === 'ollama' ? health.ok : null,
+        ollamaUrl: providerName === 'ollama' ? (ollamaUrl || null) : null,
+        ollamaError: providerName === 'ollama' ? (health.error || null) : null,
+        chatModel: chatModel || (providerName !== 'ollama' ? labels.chat : ''),
         embeddingModel,
         embedTest,
         ragAvailable,
@@ -71,3 +74,4 @@ export async function GET({ locals }) {
         embeddingsPct: overviewsTotal > 0 ? Math.round((embeddingsTotal / overviewsTotal) * 100) : 0,
     });
 }
+
