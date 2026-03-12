@@ -136,7 +136,25 @@ export async function POST({ params, request, locals }) {
         db.prepare(`UPDATE media_parents SET ${idColumn} = ?, arr_monitored = 1, arr_slug = ?, arr_quality_profile = ? WHERE id = ?`)
             .run(result.id, slug, qpName || null, mediaParentId);
 
-        logActivity({ category: 'arr', action: 'arr_item_added', title: `Added "${media.title}" to ${service}`, detail: qpName ? `Quality: ${qpName}` : undefined, icon: '📥', status: 'success' });
+        const mediaRoute = media.media_type === 'movie' ? 'movies' : media.media_type === 'show' ? 'tv' : 'music';
+        const arrEndpoint = service === 'radarr' ? 'movie' : service === 'sonarr' ? 'series' : 'artist';
+        const arrUrl = `${String(settings.url).replace(/\/+$/, '')}/${arrEndpoint}/${slug}`;
+        logActivity({
+            category: 'arr',
+            action: 'arr_item_added',
+            title: `Added "${media.title}" to ${service}`,
+            detail: qpName ? `Quality: ${qpName}` : undefined,
+            icon: '📥',
+            status: 'success',
+            actionable: true,
+            actionType: 'navigate',
+            actionData: {
+                href: `/${mediaRoute}/${mediaParentId}`,
+                arrUrl,
+                arrService: service,
+                mediaTitle: media.title,
+            }
+        });
         return json({ success: true, arrId: result.id, title: result.title || media.title });
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);

@@ -21,7 +21,7 @@ export async function GET({ params }) {
         JOIN media_parents mp ON mc.parent_id = mp.id
     `).get());
 
-    // Playback stats from history
+    // Playback stats from history (deduplicated by 12-hour window)
     const playback = /** @type {any} */ (db.prepare(`
         SELECT
             COUNT(*) as total_plays,
@@ -29,22 +29,32 @@ export async function GET({ params }) {
             SUM(duration_consumed_seconds) as total_seconds_played,
             MIN(timestamp) as first_play,
             MAX(timestamp) as last_play
-        FROM playback_history
-        WHERE user_id = ?
+        FROM (
+            SELECT DISTINCT media_id,
+                   CAST(strftime('%s', timestamp) / 43200 AS INTEGER) as time_bucket,
+                   MAX(timestamp) as timestamp,
+                   MAX(duration_consumed_seconds) as duration_consumed_seconds
+            FROM playback_history
+            WHERE user_id = ?
+            GROUP BY media_id, time_bucket
+        )
     `).get(userId));
 
-    // Top items by play count
+    // Top items by play count (deduplicated)
     const topItems = db.prepare(`
         SELECT
             mp.title as parent_title,
             mc.title as item_title,
             mp.media_type,
             COUNT(*) as play_count
-        FROM playback_history ph
-        JOIN media_children mc ON ph.media_id = mc.id
+        FROM (
+            SELECT DISTINCT media_id, CAST(strftime('%s', timestamp) / 43200 AS INTEGER) as time_bucket
+            FROM playback_history WHERE user_id = ?
+            GROUP BY media_id, time_bucket
+        ) deduped
+        JOIN media_children mc ON deduped.media_id = mc.id
         JOIN media_parents mp ON mc.parent_id = mp.id
-        WHERE ph.user_id = ?
-        GROUP BY ph.media_id
+        GROUP BY deduped.media_id
         ORDER BY play_count DESC
         LIMIT 10
     `).all(userId);

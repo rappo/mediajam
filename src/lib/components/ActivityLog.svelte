@@ -262,7 +262,20 @@
                                         ? ''
                                         : 'font-medium'}"
                                 >
-                                    {activity.title}
+                                    {#if activity.action === 'arr_item_added'}
+                                        {@const ad = getActionData(activity)}
+                                        {#if ad?.href}
+                                            <a
+                                                href={ad.href}
+                                                class="hover:text-primary transition-colors"
+                                                onclick={(e) => { e.stopPropagation(); close(); }}
+                                            >{activity.title}</a>
+                                        {:else}
+                                            {activity.title}
+                                        {/if}
+                                    {:else}
+                                        {activity.title}
+                                    {/if}
                                 </div>
                                 {#if activity.detail}
                                     <div
@@ -271,7 +284,27 @@
                                         {formatDetail(activity.detail)}
                                     </div>
                                 {/if}
-                                {#if activity.actionable}
+                                {#if activity.action === 'arr_item_added'}
+                                    {@const ad = getActionData(activity)}
+                                    <div class="flex gap-2 mt-1">
+                                        {#if ad?.href}
+                                            <a
+                                                href={ad.href}
+                                                class="text-xs text-primary/70 hover:text-primary"
+                                                onclick={(e) => { e.stopPropagation(); close(); }}
+                                            >View in Mediajam →</a>
+                                        {/if}
+                                        {#if ad?.arrUrl}
+                                            <a
+                                                href={ad.arrUrl}
+                                                class="text-xs text-base-content/40 hover:text-base-content/70"
+                                                onclick={(e) => { e.stopPropagation(); }}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                            >Open in {ad.arrService || 'arr'} ↗</a>
+                                        {/if}
+                                    </div>
+                                {:else if activity.actionable}
                                     {@const ad = getActionData(activity)}
                                     <div class="text-xs text-primary/60 mt-0.5">
                                         {ad?.errors?.length > 0 ? (expandedActivity[activity.id] ? '▾ Hide errors' : '▸ Show errors') : 'Click to view →'}

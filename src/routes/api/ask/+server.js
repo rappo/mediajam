@@ -33,6 +33,7 @@ CRITICAL RULES — violating these will produce errors:
 9. watch_status values: 'watched', 'unwatched', 'in_progress'
 10. "unwatched" or "remaining" episodes = watch_status = 'unwatched' OR watch_status = 'in_progress'
 11. duration_consumed_seconds in playback_history IS already in seconds (no conversion needed).
+12. DEDUP RULE: playback_history may contain duplicate entries from different sources (Jellyfin + Trakt) for the SAME viewing event. When counting plays, ALWAYS deduplicate using: SELECT COUNT(*) FROM (SELECT DISTINCT media_id, CAST(strftime('%s', timestamp) / 43200 AS INTEGER) as time_bucket FROM playback_history GROUP BY media_id, time_bucket). The 43200 seconds = 12-hour window merges multi-source plays of the same item.
 
 Tables:
 
@@ -131,7 +132,7 @@ function getLibraryStats() {
         const movies = /** @type {any} */ (db.prepare("SELECT COUNT(*) as c FROM media_parents WHERE media_type='movie'").get())?.c || 0;
         const shows = /** @type {any} */ (db.prepare("SELECT COUNT(*) as c FROM media_parents WHERE media_type='show'").get())?.c || 0;
         const artists = /** @type {any} */ (db.prepare("SELECT COUNT(*) as c FROM media_parents WHERE media_type='artist'").get())?.c || 0;
-        const plays = /** @type {any} */ (db.prepare("SELECT COUNT(*) as c FROM playback_history").get())?.c || 0;
+        const plays = /** @type {any} */ (db.prepare("SELECT COUNT(*) as c FROM (SELECT DISTINCT media_id, CAST(strftime('%s', timestamp) / 43200 AS INTEGER) as tb FROM playback_history GROUP BY media_id, tb)").get())?.c || 0;
         return `Library: ${movies} movies, ${shows} TV shows, ${artists} music artists, ${plays} play history entries.`;
     } catch {
         return '';

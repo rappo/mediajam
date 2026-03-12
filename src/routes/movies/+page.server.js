@@ -13,7 +13,12 @@ export function load({ locals }) {
             SUM(mc.runtime_ticks) as total_runtime
         FROM media_children mc
         JOIN media_parents mp ON mc.parent_id = mp.id
-        LEFT JOIN (SELECT media_id, COUNT(*) as c FROM playback_history GROUP BY media_id) ph_count ON ph_count.media_id = mc.id
+        LEFT JOIN (
+            SELECT media_id, COUNT(*) as c FROM (
+                SELECT DISTINCT media_id, CAST(strftime('%s', timestamp) / 43200 AS INTEGER) as time_bucket
+                FROM playback_history
+            ) GROUP BY media_id
+        ) ph_count ON ph_count.media_id = mc.id
         WHERE mp.media_type = 'movie'
     `).get());
 
@@ -23,8 +28,16 @@ export function load({ locals }) {
     const userId = locals.user?.id || 0;
     const movies = db.prepare(`
         WITH play_stats AS (
-            SELECT media_id, COUNT(*) as watch_count, MAX(timestamp) as last_watched
-            FROM playback_history WHERE user_id = ?
+            SELECT media_id,
+                   COUNT(*) as watch_count,
+                   MAX(timestamp) as last_watched
+            FROM (
+                SELECT DISTINCT media_id,
+                       CAST(strftime('%s', timestamp) / 43200 AS INTEGER) as time_bucket,
+                       MAX(timestamp) as timestamp
+                FROM playback_history WHERE user_id = ?
+                GROUP BY media_id, time_bucket
+            )
             GROUP BY media_id
         )
         SELECT
@@ -75,15 +88,18 @@ export function load({ locals }) {
         ORDER BY release_year
     `).all();
 
-    // Most re-watched
+    // Most re-watched (deduplicated by 12-hour window)
     const mostRewatched = db.prepare(`
-        SELECT mp.title, COUNT(ph.id) as play_count
+        SELECT mp.title, COUNT(*) as play_count
         FROM media_parents mp
         JOIN media_children mc ON mc.parent_id = mp.id
-        JOIN playback_history ph ON ph.media_id = mc.id
+        JOIN (
+            SELECT DISTINCT media_id, CAST(strftime('%s', timestamp) / 43200 AS INTEGER) as time_bucket
+            FROM playback_history
+        ) deduped ON deduped.media_id = mc.id
         WHERE mp.media_type = 'movie'
         GROUP BY mp.id
-        HAVING COUNT(ph.id) > 1
+        HAVING COUNT(*) > 1
         ORDER BY play_count DESC
         LIMIT 10
     `).all();

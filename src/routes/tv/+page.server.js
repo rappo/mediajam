@@ -23,10 +23,19 @@ export function load({ locals }) {
     const userId = locals.user?.id || 0;
     const shows = db.prepare(`
         WITH play_stats AS (
-            SELECT mc2.parent_id, COUNT(*) as watch_count, MAX(ph.timestamp) as last_watched
-            FROM playback_history ph
-            JOIN media_children mc2 ON ph.media_id = mc2.id
-            WHERE ph.user_id = ?
+            SELECT mc2.parent_id,
+                   COUNT(*) as watch_count,
+                   MAX(timestamp) as last_watched
+            FROM (
+                SELECT DISTINCT ph.media_id,
+                       CAST(strftime('%s', ph.timestamp) / 43200 AS INTEGER) as time_bucket,
+                       MAX(ph.timestamp) as timestamp
+                FROM playback_history ph
+                JOIN media_children mc2 ON ph.media_id = mc2.id
+                WHERE ph.user_id = ?
+                GROUP BY ph.media_id, time_bucket
+            ) deduped
+            JOIN media_children mc2 ON deduped.media_id = mc2.id
             GROUP BY mc2.parent_id
         )
         SELECT
@@ -57,12 +66,15 @@ export function load({ locals }) {
         ORDER BY mp.collected_children DESC
     `).all(userId);
 
-    // Top 15 shows by watch count (total plays from history)
+    // Top 15 shows by watch count (deduplicated by 12-hour window)
     const topShowsByWatchCount = /** @type {any[]} */ (db.prepare(`
-        SELECT mp.title, COUNT(ph.id) as total_plays
+        SELECT mp.title, COUNT(*) as total_plays
         FROM media_parents mp
         JOIN media_children mc ON mc.parent_id = mp.id
-        JOIN playback_history ph ON ph.media_id = mc.id AND ph.user_id = ?
+        JOIN (
+            SELECT DISTINCT media_id, CAST(strftime('%s', timestamp) / 43200 AS INTEGER) as time_bucket
+            FROM playback_history WHERE user_id = ?
+        ) deduped ON deduped.media_id = mc.id
         WHERE mp.media_type = 'show'
         GROUP BY mp.id
         ORDER BY total_plays DESC

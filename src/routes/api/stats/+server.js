@@ -25,26 +25,42 @@ export function GET({ url, locals }) {
     let stats = null;
 
     if (type === 'track' || type === 'album') {
-        // media_children.id — direct match on media_id
+        // media_children.id — direct match on media_id (deduplicated by 12-hour window)
         stats = db.prepare(`
             SELECT
                 COUNT(*) as play_count,
                 MAX(timestamp) as last_played,
                 MIN(timestamp) as first_played
-            FROM playback_history
-            WHERE media_id = ? AND user_id = ?
+            FROM (
+                SELECT DISTINCT media_id, CAST(strftime('%s', timestamp) / 43200 AS INTEGER) as time_bucket,
+                       MAX(timestamp) as timestamp, MIN(timestamp) as min_ts
+                FROM playback_history
+                WHERE media_id = ? AND user_id = ?
+                GROUP BY media_id, time_bucket
+            )
         `).get(id, userId);
+        if (stats) {
+            stats.first_played = stats.min_ts || stats.first_played;
+        }
     } else if (type === 'artist' || type === 'show' || type === 'movie') {
-        // media_parents.id — aggregate across all children
+        // media_parents.id — aggregate across all children (deduplicated by 12-hour window)
         stats = db.prepare(`
             SELECT
                 COUNT(*) as play_count,
-                MAX(ph.timestamp) as last_played,
-                MIN(ph.timestamp) as first_played
-            FROM playback_history ph
-            JOIN media_children mc ON ph.media_id = mc.id
-            WHERE mc.parent_id = ? AND ph.user_id = ?
+                MAX(timestamp) as last_played,
+                MIN(timestamp) as first_played
+            FROM (
+                SELECT DISTINCT ph.media_id, CAST(strftime('%s', ph.timestamp) / 43200 AS INTEGER) as time_bucket,
+                       MAX(ph.timestamp) as timestamp, MIN(ph.timestamp) as min_ts
+                FROM playback_history ph
+                JOIN media_children mc ON ph.media_id = mc.id
+                WHERE mc.parent_id = ? AND ph.user_id = ?
+                GROUP BY ph.media_id, time_bucket
+            )
         `).get(id, userId);
+        if (stats) {
+            stats.first_played = stats.min_ts || stats.first_played;
+        }
     } else {
         return json({ error: 'Invalid type. Use: track, album, artist, movie, show' }, { status: 400 });
     }

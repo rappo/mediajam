@@ -107,7 +107,7 @@ export function load({ locals, url }) {
     db.prepare("DELETE FROM active_sessions WHERE last_update < datetime('now', '-30 minutes')").run();
     const activeSessions = db.prepare('SELECT * FROM active_sessions ORDER BY last_update DESC').all();
 
-    // Summary stats (unfiltered — always show totals)
+    // Summary stats (unfiltered — always show totals, deduplicated by 12-hour window)
     const stats = userId ? /** @type {any} */ (db.prepare(`
         SELECT
             COUNT(*) as total_plays,
@@ -115,8 +115,15 @@ export function load({ locals, url }) {
             COUNT(DISTINCT DATE(timestamp)) as active_days,
             SUM(duration_consumed_seconds) as total_seconds,
             MIN(CASE WHEN timestamp > '1900-01-02' THEN timestamp END) as first_checkin
-        FROM playback_history
-        WHERE user_id = ?
+        FROM (
+            SELECT DISTINCT media_id,
+                   CAST(strftime('%s', timestamp) / 43200 AS INTEGER) as time_bucket,
+                   MAX(timestamp) as timestamp,
+                   MAX(duration_consumed_seconds) as duration_consumed_seconds
+            FROM playback_history
+            WHERE user_id = ?
+            GROUP BY media_id, time_bucket
+        )
     `).get(userId)) : {};
 
     // Estimate total time from runtime_ticks if duration_consumed_seconds isn't tracked
@@ -190,17 +197,26 @@ export function load({ locals, url }) {
         if (playDates.length === 0) longestStreak = 0;
     }
 
-    // Today's scrobbles
+    // Today's scrobbles (deduplicated)
     const todayCount = userId ? /** @type {any} */ (db.prepare(`
-        SELECT COUNT(*) as count FROM playback_history
-        WHERE user_id = ? AND DATE(timestamp) = DATE('now')
+        SELECT COUNT(*) as count FROM (
+            SELECT DISTINCT media_id, CAST(strftime('%s', timestamp) / 43200 AS INTEGER) as time_bucket
+            FROM playback_history
+            WHERE user_id = ? AND DATE(timestamp) = DATE('now')
+            GROUP BY media_id, time_bucket
+        )
     `).get(userId))?.count || 0 : 0;
 
-    // Year map for scrubber (year → count)
+    // Year map for scrubber (year → count, deduplicated)
     const yearMap = userId ? /** @type {any[]} */ (db.prepare(`
         SELECT strftime('%Y', timestamp) as year, COUNT(*) as count
-        FROM playback_history
-        WHERE user_id = ? AND timestamp > '1900-01-02'
+        FROM (
+            SELECT DISTINCT media_id, CAST(strftime('%s', timestamp) / 43200 AS INTEGER) as time_bucket,
+                   MAX(timestamp) as timestamp
+            FROM playback_history
+            WHERE user_id = ? AND timestamp > '1900-01-02'
+            GROUP BY media_id, time_bucket
+        )
         GROUP BY year
         ORDER BY year DESC
     `).all(userId)) : [];

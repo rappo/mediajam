@@ -49,12 +49,41 @@ export async function load({ params, locals }) {
     if (!movie) throw error(404, 'Movie not found');
 
     // Playback history for this movie
-    const history = /** @type {any[]} */ (db.prepare(`
+    const rawHistory = /** @type {any[]} */ (db.prepare(`
         SELECT ph.id, ph.timestamp, ph.source, ph.duration_consumed_seconds, ph.completion_pct
         FROM playback_history ph
         WHERE ph.media_id = ? AND ph.user_id = ?
         ORDER BY ph.timestamp IS NULL, ph.timestamp DESC
     `).all(movie.child_id || 0, userId));
+
+    // Dedup: merge plays of the same item within a 12-hour window from different sources
+    const DEDUP_WINDOW_MS = 12 * 60 * 60 * 1000;
+    /** @type {any[]} */
+    const history = [];
+    /** @type {any|null} */
+    let lastEntry = null;
+
+    for (const entry of rawHistory) {
+        if (lastEntry) {
+            const lastTime = new Date(lastEntry.timestamp).getTime();
+            const entryTime = new Date(entry.timestamp).getTime();
+            if (Math.abs(lastTime - entryTime) <= DEDUP_WINDOW_MS) {
+                // Merge sources
+                const sources = new Set((lastEntry.source || '').split(' + '));
+                sources.add(entry.source);
+                lastEntry.source = [...sources].join(' + ');
+                if (!lastEntry.duration_consumed_seconds && entry.duration_consumed_seconds) {
+                    lastEntry.duration_consumed_seconds = entry.duration_consumed_seconds;
+                }
+                if (!lastEntry.completion_pct && entry.completion_pct) {
+                    lastEntry.completion_pct = entry.completion_pct;
+                }
+                continue;
+            }
+        }
+        history.push(entry);
+        lastEntry = entry;
+    }
 
     const totalPlays = history.length;
     const datedHistory = history.filter(h => h.timestamp);
