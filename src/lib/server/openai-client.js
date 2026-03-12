@@ -253,13 +253,15 @@ export async function generate(prompt, options = {}, cfg) {
 
         if (!res.ok) {
             const errText = await res.text().catch(() => '');
-            console.warn(`[openai-client] generate() HTTP ${res.status}: ${errText.slice(0, 200)}`);
+            console.warn(`[openai-client] generate() HTTP ${res.status}: ${errText.slice(0, 500)}`);
+            console.warn(`[openai-client] generate() URL: ${cfg.apiUrl}/v1/chat/completions, model: ${options.model || cfg.chatModel}, authSource: ${cfg.authSource}`);
             return null;
         }
         const data = await res.json();
         return data.choices?.[0]?.message?.content || null;
     } catch (e) {
         console.warn(`[openai-client] generate() error: ${e instanceof Error ? e.message : e}`);
+        console.warn(`[openai-client] generate() URL: ${cfg.apiUrl}/v1/chat/completions, model: ${options.model || cfg.chatModel}, authSource: ${cfg.authSource}`);
         return null;
     }
 }
