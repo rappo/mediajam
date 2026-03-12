@@ -152,10 +152,48 @@ export async function syncBandMembers(mediaParentId, opts) {
         return { members: [], errors: ['Failed to fetch from MusicBrainz'] };
     }
 
-    // Check if this is a Group (bands have members, solo artists don't)
+    // Handle solo artists (type=Person): link the artist to their person record
     if (data.type !== 'Group') {
-        onProgress(`"${artist.title}" is a ${data.type || 'Person'}, not a Group — skipping member sync`);
-        return { members: [], errors: [] };
+        onProgress(`"${artist.title}" is a ${data.type || 'Person'} — linking as solo artist`);
+
+        // Find or create the person record
+        const personId = findOrCreatePerson(data.name || artist.title, artist.musicbrainz_id);
+        if (!personId) return { members: [], errors: ['Failed to create person record'] };
+
+        // Create an 'artist' credit linking the person to the media_parents artist
+        const { upsertCredit, upsertExtId, updatePersonImdb } = getStatements();
+        try {
+            upsertCredit.run(personId, mediaParentId, 'artist', null, 0);
+        } catch { /* already exists */ }
+
+        // Fetch external IDs from URL relationships
+        let fetchedExtIds = 0;
+        const urlRels = (data.relations || []).filter(
+            /** @param {any} r */ (r) => r['target-type'] === 'url' && r.url?.resource
+        );
+        for (const rel of urlRels) {
+            const url = rel.url.resource;
+            if (rel.type === 'IMDb') {
+                const imdbId = extractImdbId(url);
+                if (imdbId) { updatePersonImdb.run(imdbId, personId); fetchedExtIds++; }
+            }
+            if (rel.type === 'wikidata') {
+                const wikidataId = extractWikidataId(url);
+                if (wikidataId) { try { upsertExtId.run(personId, 'wikidata', wikidataId); fetchedExtIds++; } catch { /* */ } }
+            }
+            if (rel.type === 'discogs') {
+                try { upsertExtId.run(personId, 'discogs', url); fetchedExtIds++; } catch { /* */ }
+            }
+        }
+
+        onProgress(`Linked "${artist.title}" as solo artist (person #${personId}, ${fetchedExtIds} ext IDs)`);
+        return {
+            members: [{
+                personId, name: data.name || artist.title, mbid: artist.musicbrainz_id,
+                instruments: '', isOriginal: true, isCurrent: true, begin: null, end: null
+            }],
+            errors: []
+        };
     }
 
     // 3. Extract "member of band" relationships (direction: "backward" = member belongs to this band)

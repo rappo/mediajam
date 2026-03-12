@@ -913,44 +913,121 @@
                     >{data.artists.length}</span
                 >
             </h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {#each data.artists as credit}
-                    <a
-                        href="/music/{credit.media_id}"
-                        class="flex gap-3 p-3 rounded-xl bg-base-200/50 border border-base-300 hover:border-primary/30 transition-colors group"
-                    >
-                        {#if credit.poster_url}
-                            <img
-                                src={imgUrl(credit.poster_url, 100)}
-                                alt={credit.title}
-                                class="w-12 h-12 rounded-lg object-cover shrink-0"
-                            />
-                        {:else}
-                            <div
-                                class="w-12 h-12 rounded-lg bg-base-300 flex items-center justify-center text-lg shrink-0"
-                            >
-                                🎵
-                            </div>
-                        {/if}
-                        <div class="min-w-0 flex-1">
-                            <span
-                                class="font-medium group-hover:text-primary transition-colors truncate"
-                                >{credit.title}</span
-                            >
-                            <div class="flex flex-wrap items-center gap-1 mt-1">
-                                {#each credit.roles as role}
-                                    <span
-                                        class="badge {roleBadge(
-                                            role.role_type,
-                                        )} badge-xs capitalize"
-                                        >{role.role_type}</span
+            {#if creditsView === "poster"}
+                <div
+                    class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3"
+                >
+                    {#each data.artists.filter(shouldShow) as credit}
+                        <a
+                            href="/music/{credit.media_id}"
+                            class="card bg-base-200 card-compact overflow-hidden group transition-colors {mediaBorderClass(
+                                credit,
+                            )}"
+                        >
+                            {#if credit.poster_url}
+                                <figure class="aspect-[2/3] relative">
+                                    <img
+                                        src={imgUrl(credit.poster_url, 300)}
+                                        alt={credit.title}
+                                        class="w-full h-full object-cover"
+                                    />
+                                    {#if mediaWatchIcon(credit)}
+                                        <div class="absolute top-1 left-1 text-sm">
+                                            {mediaWatchIcon(credit)}
+                                        </div>
+                                    {/if}
+
+                                </figure>
+                            {:else}
+                                <div
+                                    class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl relative"
+                                >
+                                    🎵
+                                    {#if mediaWatchIcon(credit)}
+                                        <div class="absolute top-1 left-1 text-sm">
+                                            {mediaWatchIcon(credit)}
+                                        </div>
+                                    {/if}
+
+                                </div>
+                            {/if}
+                            <div class="card-body !p-2 !gap-1">
+                                <h3
+                                    class="font-medium text-xs leading-tight line-clamp-2 group-hover:text-primary transition-colors"
+                                    title={credit.title}
+                                >
+                                    {credit.title}
+                                </h3>
+                                <div class="flex items-center gap-1 flex-wrap">
+                                    {#each credit.roles as role}
+                                        <span
+                                            class="badge {roleBadge(
+                                                role.role_type,
+                                            )} badge-xs capitalize"
+                                            >{role.role_type}</span
+                                        >
+                                    {/each}
+                                </div>
+                                {#if credit.roles.some((r) => r.character_name)}
+                                    <div
+                                        class="text-[10px] text-base-content/40 line-clamp-1"
                                     >
-                                {/each}
+                                        {credit.roles
+                                            .filter((r) => r.character_name)
+                                            .map((r) => r.character_name)
+                                            .join(", ")}
+                                    </div>
+                                {/if}
                             </div>
-                        </div>
-                    </a>
-                {/each}
-            </div>
+                        </a>
+                    {/each}
+                </div>
+            {:else}
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {#each data.artists.filter(shouldShow) as credit}
+                        <a
+                            href="/music/{credit.media_id}"
+                            class="flex gap-3 p-3 rounded-xl bg-base-200/50 border border-base-300 hover:border-primary/30 transition-colors group"
+                        >
+                            {#if credit.poster_url}
+                                <img
+                                    src={imgUrl(credit.poster_url, 100)}
+                                    alt={credit.title}
+                                    class="w-12 h-18 rounded-lg object-cover shrink-0"
+                                />
+                            {:else}
+                                <div
+                                    class="w-12 h-18 rounded-lg bg-base-300 flex items-center justify-center text-lg shrink-0"
+                                >
+                                    🎵
+                                </div>
+                            {/if}
+                            <div class="min-w-0 flex-1">
+                                <span
+                                    class="font-medium group-hover:text-primary transition-colors truncate"
+                                    >{credit.title}</span
+                                >
+                                <div class="flex flex-wrap items-center gap-1 mt-1">
+                                    {#each credit.roles as role}
+                                        <span
+                                            class="badge {roleBadge(
+                                                role.role_type,
+                                            )} badge-xs capitalize"
+                                            >{role.role_type}</span
+                                        >
+                                        {#if role.character_name}
+                                            <span
+                                                class="text-xs text-base-content/50"
+                                                >{role.character_name}</span
+                                            >
+                                        {/if}
+                                    {/each}
+                                </div>
+                            </div>
+                        </a>
+                    {/each}
+                </div>
+            {/if}
         </div>
     {/if}
 </div>
