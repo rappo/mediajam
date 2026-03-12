@@ -104,6 +104,25 @@
     let llmEmbedProvider = $state(data.settings.llmEmbedProvider || 'ollama');
     let llmEmbedModel = $state(data.settings.llmEmbedModel || '');
 
+    // Handle OAuth callback query params (chatgpt_success / chatgpt_error)
+    $effect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const success = params.get('chatgpt_success');
+        const error = params.get('chatgpt_error');
+        if (success) {
+            // Clean URL and show success
+            const clean = new URL(window.location.href);
+            clean.searchParams.delete('chatgpt_success');
+            history.replaceState(null, '', clean.pathname);
+            setTimeout(() => alert('✓ ChatGPT account linked successfully! OpenAI is now your chat provider.'), 100);
+        } else if (error) {
+            const clean = new URL(window.location.href);
+            clean.searchParams.delete('chatgpt_error');
+            history.replaceState(null, '', clean.pathname);
+            setTimeout(() => alert(`ChatGPT sign-in failed: ${error}`), 100);
+        }
+    });
+
     // *arr Integration
     /** @type {Array<{service: string, label: string, defaultPort: number}>} */
     const ARR_SERVICES = [
@@ -2979,26 +2998,32 @@
                                 <div class="mt-2 space-y-2">
                                     {#if data.settings.hasCodexAuth}
                                         <div class="flex items-center gap-2">
-                                            <span class="badge badge-success badge-sm gap-1">✓ Codex linked</span>
+                                            <span class="badge badge-success badge-sm gap-1">✓ ChatGPT linked</span>
                                             <button 
                                                 type="button"
                                                 class="btn btn-xs btn-ghost text-error"
                                                 onclick={async () => {
-                                                    if (!confirm('Remove Codex token?')) return;
+                                                    if (!confirm('Remove ChatGPT token?')) return;
                                                     await fetch('/api/llm/openai/codex-token', { method: 'DELETE' });
                                                     location.reload();
                                                 }}
                                             >Unlink</button>
                                         </div>
                                     {/if}
+                                    <!-- Primary: OAuth Sign-in -->
+                                    <a href="/api/llm/openai/oauth/authorize" class="btn btn-sm btn-primary gap-1.5 w-full">
+                                        <ServiceIcon service="openai" size="w-4 h-4" />
+                                        {data.settings.hasCodexAuth ? 'Re-link ChatGPT Account' : 'Sign in with ChatGPT'}
+                                    </a>
+                                    <p class="text-[10px] text-base-content/40">Use your ChatGPT Plus/Pro/Team subscription for API access — no API key needed</p>
+                                    <!-- Fallback: paste auth.json -->
                                     <details class="collapse collapse-arrow bg-base-200/50 border border-base-300">
                                         <summary class="collapse-title text-xs font-medium min-h-0 py-2 px-3">
-                                            <ServiceIcon service="openai" size="w-3.5 h-3.5" />
-                                            {data.settings.hasCodexAuth ? 'Update Codex Token' : 'Link Codex (ChatGPT subscription)'}
+                                            Manual: Paste Codex Auth Token
                                         </summary>
                                         <div class="collapse-content px-3 pb-3 space-y-2">
                                             <p class="text-[10px] text-base-content/60 leading-relaxed">
-                                                Install <a href="https://github.com/openai/codex" target="_blank" class="link">OpenAI Codex CLI</a>, then run:
+                                                Alternative: install <a href="https://github.com/openai/codex" target="_blank" class="link">Codex CLI</a>, then run:
                                             </p>
                                             <pre class="text-[10px] bg-base-300 p-2 rounded font-mono select-all">codex login
 cat ~/.codex/auth.json</pre>
@@ -3035,8 +3060,7 @@ cat ~/.codex/auth.json</pre>
                                                     }
                                                 }}
                                             >
-                                                <ServiceIcon service="openai" size="w-3.5 h-3.5" />
-                                                Save Codex Token
+                                                Save Token
                                             </button>
                                         </div>
                                     </details>
@@ -3055,13 +3079,13 @@ cat ~/.codex/auth.json</pre>
                             {/if}
                             <p class="text-[10px] text-base-content/40 mt-1">
                                 {#if llmProvider === 'openai'}
-                                    Use <a href="https://github.com/openai/codex" target="_blank" class="link">Codex CLI</a> to sign in with ChatGPT, or enter an API key from <a href="https://platform.openai.com/api-keys" target="_blank" class="link">platform.openai.com</a>
+                                    Or enter an API key from <a href="https://platform.openai.com/api-keys" target="_blank" class="link">platform.openai.com</a>
                                 {:else if llmProvider === 'gemini'}
                                     Get your key at <a href="https://aistudio.google.com/apikey" target="_blank" class="link">aistudio.google.com</a>
                                 {:else if llmProvider === 'claude'}
                                     Get your key at <a href="https://console.anthropic.com/" target="_blank" class="link">console.anthropic.com</a>
                                 {:else if llmProvider === 'kimi'}
-                                    Get your key at <a href="https://platform.moonshot.cn/" target="_blank" class="link">platform.moonshot.cn</a>
+                                    Get your key at <a href="https://platform.moonshot.ai/" target="_blank" class="link">platform.moonshot.ai</a>
                                 {/if}
                             </p>
                         </label>
@@ -3075,7 +3099,7 @@ cat ~/.codex/auth.json</pre>
                                 <input
                                     type="url"
                                     bind:value={llmApiUrl}
-                                    placeholder={llmProvider === 'kimi' ? 'https://api.moonshot.cn' : 'https://api.openai.com'}
+                                    placeholder={llmProvider === 'kimi' ? 'https://api.moonshot.ai' : 'https://api.openai.com'}
                                     class="input input-bordered input-sm font-mono"
                                 />
                             </label>

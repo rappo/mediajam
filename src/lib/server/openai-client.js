@@ -120,10 +120,7 @@ export async function getConfig() {
         apiKey = providerKey || settings?.llm_api_key;
     }
 
-    if (!apiKey) {
-        console.warn(`[openai-client] getConfig(): no API key found. provider=${provider}, codexToken=${!!await getCodexToken()}, providerKey=${provider === 'kimi' ? !!settings?.kimi_api_key : !!settings?.openai_api_key}, sharedKey=${!!settings?.llm_api_key}`);
-        return null;
-    }
+    if (!apiKey) return null;
 
     /** @type {Record<string, { url: string, model: string, embedModel: string }>} */
     const defaults = {
@@ -132,7 +129,6 @@ export async function getConfig() {
     };
     const d = defaults[provider] || defaults.openai;
 
-    console.log(`[openai-client] getConfig() resolved: provider=${provider}, authSource=${authSource}, apiUrl=${(settings.llm_api_url || d.url).replace(/\/+$/, '')}, model=${settings.llm_chat_model || d.model}, keyLen=${apiKey?.length}`);
 
     return {
         provider,
