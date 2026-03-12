@@ -137,6 +137,27 @@
     let deleting = $state(false);
     let showAllMembers = $state(false);
     let showAllCrew = $state(false);
+    let syncingMembers = $state(false);
+    let memberSyncResult = $state('');
+
+    async function syncMembers() {
+        syncingMembers = true;
+        memberSyncResult = '';
+        try {
+            const res = await fetch(`/api/music/${data.artist.id}/sync-members`, { method: 'POST' });
+            const result = await res.json();
+            if (result.success) {
+                memberSyncResult = `✅ Synced ${result.members} members`;
+                // Reload the page to show new member data
+                setTimeout(() => window.location.reload(), 1500);
+            } else {
+                memberSyncResult = `❌ ${result.error || 'Unknown error'}`;
+            }
+        } catch (e) {
+            memberSyncResult = `❌ ${e instanceof Error ? e.message : 'Network error'}`;
+        }
+        syncingMembers = false;
+    }
 
     async function deleteItem() {
         deleting = true;
@@ -714,12 +735,37 @@
     </div>
 
     <!-- Band Members & Credits -->
-    {#if data.members.length > 0 || data.crew.length > 0}
+    {#if data.members.length > 0 || data.crew.length > 0 || data.artist.musicbrainz_id}
         {@const MEMBER_LIMIT = 16}
         {@const CREW_LIMIT = 16}
         <div class="card bg-base-200/50 border border-base-300">
             <div class="card-body">
-                <h2 class="card-title text-lg">🎸 Members & Credits</h2>
+                <div class="flex items-center justify-between">
+                    <h2 class="card-title text-lg">🎸 Members & Credits</h2>
+                    {#if data.artist.musicbrainz_id}
+                        <button
+                            class="btn btn-ghost btn-xs gap-1"
+                            onclick={syncMembers}
+                            disabled={syncingMembers}
+                            title="Sync band members from MusicBrainz"
+                        >
+                            {#if syncingMembers}
+                                <span class="loading loading-spinner loading-xs"></span> Syncing…
+                            {:else}
+                                🔄 Sync Members
+                            {/if}
+                        </button>
+                    {/if}
+                </div>
+                {#if memberSyncResult}
+                    <div class="text-xs mt-1 {memberSyncResult.startsWith('✅') ? 'text-success' : 'text-error'}">
+                        {memberSyncResult}
+                    </div>
+                {/if}
+
+                {#if data.members.length === 0 && data.crew.length === 0}
+                    <p class="text-sm text-base-content/40 mt-2">No member data yet. Click "Sync Members" to fetch from MusicBrainz.</p>
+                {/if}
 
                 {#if data.members.length > 0}
                     <h3 class="text-sm font-semibold text-base-content/60 mt-2">Members</h3>

@@ -126,11 +126,88 @@ export async function POST({ locals }) {
                 }
 
                 send({
-                    type: 'enrich_complete',
-                    log: `🏁 Enrichment complete: ${found} MBIDs found, ${notFound} not found out of ${artists.length} artists`,
+                    type: 'enrich_progress',
+                    log: `🏁 MBID phase complete: ${found} MBIDs found, ${notFound} not found out of ${artists.length} artists`,
                     logType: 'success',
                     stats: { total: artists.length, found, notFound }
                 });
+
+                // ── Phase 2: Sync band members for artists with MBIDs ──
+                if (!enrichState.running) {
+                    send({ type: 'enrich_complete', log: '⏹️ Stopped by user', logType: 'warning' });
+                } else {
+                    const { syncBandMembers, getBandsWithoutMembers } = await import('$lib/server/musicbrainz-members.js');
+                    const bandsToSync = getBandsWithoutMembers();
+
+                    if (bandsToSync > 0) {
+                        send({ type: 'enrich_progress', log: `\n🎸 Phase 2: Syncing members for ${bandsToSync} bands...`, logType: 'info' });
+
+                        const bandsWithMbids = /** @type {any[]} */ (db.prepare(`
+                            SELECT mp.id, mp.title, mp.musicbrainz_id FROM media_parents mp
+                            WHERE mp.media_type = 'artist'
+                              AND mp.musicbrainz_id IS NOT NULL
+                              AND NOT EXISTS (
+                                  SELECT 1 FROM person_credits pc
+                                  WHERE pc.media_parent_id = mp.id AND pc.role_type = 'member'
+                              )
+                            ORDER BY mp.title
+                        `).all());
+
+                        let synced = 0, skipped = 0;
+                        for (let i = 0; i < bandsWithMbids.length; i++) {
+                            if (!enrichState.running) {
+                                send({ type: 'enrich_progress', log: '⏹️ Stopped by user', logType: 'warning' });
+                                break;
+                            }
+
+                            const band = bandsWithMbids[i];
+                            try {
+                                const result = await syncBandMembers(band.id);
+                                if (result.members.length > 0) {
+                                    synced++;
+                                    const memberNames = result.members.slice(0, 5).map((/** @type {any} */ m) => m.name).join(', ');
+                                    send({
+                                        type: 'enrich_progress',
+                                        log: `✅ ${band.title}: ${result.members.length} members (${memberNames}${result.members.length > 5 ? '…' : ''})`,
+                                        logType: 'success'
+                                    });
+                                } else {
+                                    skipped++;
+                                }
+                            } catch (e) {
+                                const msg = e instanceof Error ? e.message : String(e);
+                                send({ type: 'enrich_progress', log: `❌ ${band.title}: ${msg}`, logType: 'error' });
+                            }
+
+                            if ((i + 1) % 10 === 0) {
+                                send({
+                                    type: 'enrich_progress',
+                                    done: i + 1, total: bandsWithMbids.length,
+                                    log: `🎸 ${i + 1}/${bandsWithMbids.length} — ${synced} synced, ${skipped} solo/unknown`,
+                                    logType: 'info'
+                                });
+                            }
+
+                            // Rate limit: syncBandMembers has internal delays but we add a buffer
+                            await new Promise(r => setTimeout(r, 1100));
+                        }
+
+                        send({
+                            type: 'enrich_progress',
+                            log: `🏁 Member sync complete: ${synced} bands synced, ${skipped} solo/no members`,
+                            logType: 'success'
+                        });
+                    } else {
+                        send({ type: 'enrich_progress', log: '✅ All bands already have member data', logType: 'success' });
+                    }
+
+                    send({
+                        type: 'enrich_complete',
+                        log: `🎉 All enrichment phases complete`,
+                        logType: 'success',
+                        stats: { total: artists.length, found, notFound }
+                    });
+                }
             } catch (err) {
                 send({ type: 'enrich_error', error: String(err), logType: 'error' });
             } finally {
@@ -145,7 +222,6 @@ export async function POST({ locals }) {
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache, no-transform',
             'Connection': 'keep-alive',
-            'X-Accel-Buffering': 'no',
             'X-Accel-Buffering': 'no'
         }
     });
