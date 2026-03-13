@@ -423,6 +423,7 @@ const newAppCols = [
     ['backup_on_boot', 'INTEGER DEFAULT 1'],
     ['boot_backup_keep_count', 'INTEGER DEFAULT 3'],
     ['backup_timeline_epoch', 'TEXT'],
+    ['backup_include_images', 'INTEGER DEFAULT 0'],
     // LLM provider support
     ['llm_provider', "TEXT DEFAULT 'ollama'"],      // 'ollama'|'openai'|'gemini'|'claude'|'kimi'
     ['llm_api_key', 'TEXT'],                         // Legacy shared key (backward compat)

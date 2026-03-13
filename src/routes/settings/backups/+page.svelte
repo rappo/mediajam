@@ -20,6 +20,7 @@
     let backupKeepCount = $state(7);
     let backupOnBoot = $state(true);
     let bootBackupKeepCount = $state(3);
+    let backupIncludeImages = $state(false);
 
     // Restore modal
     let showRestoreModal = $state(false);
@@ -42,7 +43,7 @@
     // Initial settings snapshot for dirty detection
     let initialSettings = {};
     function snapshotSettings() {
-        return JSON.stringify({ backupEnabled, backupFrequency, backupTime, backupKeepCount, backupOnBoot, bootBackupKeepCount });
+        return JSON.stringify({ backupEnabled, backupFrequency, backupTime, backupKeepCount, backupOnBoot, bootBackupKeepCount, backupIncludeImages });
     }
     $effect(() => {
         const current = snapshotSettings();
@@ -66,6 +67,7 @@
                 backupKeepCount = data.settings.backupKeepCount;
                 backupOnBoot = data.settings.backupOnBoot;
                 bootBackupKeepCount = data.settings.bootBackupKeepCount;
+                backupIncludeImages = data.settings.backupIncludeImages ?? false;
                 initialSettings = JSON.parse(snapshotSettings());
             }
         } catch (e) {
@@ -99,7 +101,7 @@
             const res = await fetch('/api/backups/settings', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ backupEnabled, backupFrequency, backupTime, backupKeepCount, backupOnBoot, bootBackupKeepCount })
+                body: JSON.stringify({ backupEnabled, backupFrequency, backupTime, backupKeepCount, backupOnBoot, bootBackupKeepCount, backupIncludeImages })
             });
             const data = await res.json();
             if (data.success) {
@@ -269,6 +271,16 @@
                 <span class="text-xs text-base-content/50">boot backups</span>
             </div>
         {/if}
+
+        <div class="divider my-2 text-xs text-base-content/40">Storage</div>
+
+        <div class="flex items-center justify-between">
+            <div>
+                <div class="text-sm font-medium">Include Cached Images</div>
+                <div class="text-xs text-base-content/50">Include the image cache in backups (significantly increases backup size)</div>
+            </div>
+            <input type="checkbox" class="toggle toggle-warning toggle-sm" bind:checked={backupIncludeImages} />
+        </div>
 
         {#if settingsDirty}
             <div class="flex justify-end mt-4">

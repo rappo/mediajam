@@ -36,13 +36,15 @@ function ensureDir() {
  *   backupKeepCount: number,
  *   backupOnBoot: boolean,
  *   bootBackupKeepCount: number,
- *   backupTimelineEpoch: string | null
+ *   backupTimelineEpoch: string | null,
+ *   backupIncludeImages: boolean
  * }}
  */
 export function getBackupSettings() {
     const row = /** @type {any} */ (db.prepare(`
         SELECT backup_enabled, backup_frequency, backup_time, backup_keep_count,
-               backup_on_boot, boot_backup_keep_count, backup_timeline_epoch
+               backup_on_boot, boot_backup_keep_count, backup_timeline_epoch,
+               backup_include_images
         FROM app_settings WHERE id = 1
     `).get());
     return {
@@ -53,6 +55,7 @@ export function getBackupSettings() {
         backupOnBoot: (row?.backup_on_boot ?? 1) !== 0,
         bootBackupKeepCount: row?.boot_backup_keep_count ?? 3,
         backupTimelineEpoch: row?.backup_timeline_epoch || null,
+        backupIncludeImages: (row?.backup_include_images ?? 0) !== 0,
     };
 }
 
@@ -70,6 +73,7 @@ export function updateBackupSettings(settings) {
     if (settings.backupOnBoot !== undefined) { cols.push('backup_on_boot = ?'); vals.push(settings.backupOnBoot ? 1 : 0); }
     if (settings.bootBackupKeepCount !== undefined) { cols.push('boot_backup_keep_count = ?'); vals.push(settings.bootBackupKeepCount); }
     if (settings.backupTimelineEpoch !== undefined) { cols.push('backup_timeline_epoch = ?'); vals.push(settings.backupTimelineEpoch); }
+    if (settings.backupIncludeImages !== undefined) { cols.push('backup_include_images = ?'); vals.push(settings.backupIncludeImages ? 1 : 0); }
     if (cols.length === 0) return;
     db.prepare(`UPDATE app_settings SET ${cols.join(', ')} WHERE id = 1`).run(...vals);
 }
