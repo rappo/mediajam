@@ -66,7 +66,8 @@
     const isPerson = mediaType === 'person';
     // Use poster as backdrop fallback for pages without explicit backdrops (e.g. music)
     const effectiveBackdrop = (backdropUrl || posterUrl) ? imgUrl(backdropUrl || posterUrl) : null;
-    const hasBackdrop = !!effectiveBackdrop;
+    let backdropBroken = $state(false);
+    const hasBackdrop = $derived(!!effectiveBackdrop && !backdropBroken);
 
     let gearOpen = $state(false);
     let posterBroken = $state(false);
@@ -136,7 +137,7 @@
 <div class="detail-header" class:has-backdrop={hasBackdrop} class:no-backdrop={!hasBackdrop}>
     {#if hasBackdrop}
         <div class="backdrop-container">
-            <img src={effectiveBackdrop} alt="" class="backdrop-img" />
+            <img src={effectiveBackdrop} alt="" class="backdrop-img" onerror={() => backdropBroken = true} />
             <div class="backdrop-gradient"></div>
         </div>
     {/if}

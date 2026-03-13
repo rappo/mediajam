@@ -121,9 +121,11 @@ export async function load({ params, locals }) {
     // Broader: auto-enrich if any key data is missing
     const needsEnrichment = !displayBio || !person.birth_date || !person.tmdb_person_id;
 
-    // Backdrop: pick the best credit with a jellyfin_id (prefer watched, then newest)
-    const backdropCredit = [...movies, ...shows]
-        .filter(c => c.jellyfin_id)
+    // Backdrop: try multiple strategies in order
+    // 1. Check if any credit has a cached TMDB backdrop (reliable, no 404 risk)
+    // 2. Fall back to constructing Jellyfin backdrop URL (may 404 if item has no backdrop)
+    // 3. Use TMDB person profile as last resort
+    const creditsForBackdrop = [...movies, ...shows]
         .sort((a, b) => {
             // Prefer watched items
             const aWatched = (a.watch_status === 'watched' || a.play_count > 0) ? 1 : 0;
@@ -131,11 +133,32 @@ export async function load({ params, locals }) {
             if (bWatched !== aWatched) return bWatched - aWatched;
             // Then by release year (newest first)
             return (b.release_year || 0) - (a.release_year || 0);
-        })[0];
-    let backdropUrl = backdropCredit
-        ? `${jellyfinUrl}/Items/${backdropCredit.jellyfin_id}/Images/Backdrop?maxWidth=1200`
-        : null;
-    // Fallback: use TMDB person profile as backdrop (lazy-fetch)
+        });
+
+    let backdropUrl = null;
+
+    // Strategy 1: Use a cached TMDB backdrop from a credit
+    for (const credit of creditsForBackdrop) {
+        if (credit.tmdb_id) {
+            const cached = /** @type {any} */ (db.prepare(
+                'SELECT backdrop_url FROM media_parents WHERE id = ? AND backdrop_url IS NOT NULL'
+            ).get(credit.media_id));
+            if (cached?.backdrop_url) {
+                backdropUrl = cached.backdrop_url;
+                break;
+            }
+        }
+    }
+
+    // Strategy 2: Jellyfin backdrop from best credit (may fail, but onerror handles it)
+    if (!backdropUrl) {
+        const jellyfinCredit = creditsForBackdrop.find(c => c.jellyfin_id);
+        if (jellyfinCredit) {
+            backdropUrl = `${jellyfinUrl}/Items/${jellyfinCredit.jellyfin_id}/Images/Backdrop?maxWidth=1200`;
+        }
+    }
+
+    // Strategy 3: TMDB person profile as backdrop (portrait, not ideal but better than nothing)
     if (!backdropUrl && person.tmdb_person_id) {
         const { fetchTmdbPersonBackdrop } = await import('$lib/server/backdrop.js');
         const tmdbBackdrop = await fetchTmdbPersonBackdrop(person.tmdb_person_id);
