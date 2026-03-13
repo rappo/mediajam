@@ -95,15 +95,19 @@ export function load({ locals }) {
         ORDER BY play_count DESC LIMIT 10
     `).all();
 
-    // ── Smart Sections (graceful if DB schema differs or data is sparse) ──
+    // ── Smart Sections (each isolated so one failure doesn't block the rest) ──
     let hero = null, becauseYouLove = [], recentlyWatched = [], unwatched = [];
-    try {
-        hero = detectMoviePatterns(userId, prefs);
-        becauseYouLove = getBecauseYouLove(userId, prefs);
-        recentlyWatched = getRecentlyWatchedMovies(userId, prefs.maxItemsPerSection);
-        unwatched = getUnwatchedMovies(prefs.maxItemsPerSection);
-    } catch (e) {
-        console.error('[movies] Smart section error:', e instanceof Error ? e.message : e);
+    try { hero = detectMoviePatterns(userId, prefs); } catch (e) {
+        console.error('[movies] hero error:', e instanceof Error ? e.message : e);
+    }
+    try { becauseYouLove = getBecauseYouLove(userId, prefs); } catch (e) {
+        console.error('[movies] becauseYouLove error:', e instanceof Error ? e.message : e);
+    }
+    try { recentlyWatched = getRecentlyWatchedMovies(userId, prefs.maxItemsPerSection); } catch (e) {
+        console.error('[movies] recentlyWatched error:', e instanceof Error ? e.message : e);
+    }
+    try { unwatched = getUnwatchedMovies(prefs.maxItemsPerSection); } catch (e) {
+        console.error('[movies] unwatched error:', e instanceof Error ? e.message : e);
     }
 
     return {

@@ -106,15 +106,19 @@ export function load({ locals }) {
         else collectionBuckets.missing++;
     }
 
-    // ── Smart Sections (graceful degradation) ──
+    // ── Smart Sections (each isolated so one failure doesn't block the rest) ──
     let airingThisWeek = [], newUnwatched = [], behindOn = [], comingUp = [];
-    try {
-        airingThisWeek = getAiringThisWeek(prefs);
-        newUnwatched = getNewUnwatchedEpisodes(prefs, userId);
-        behindOn = getBehindOnShows(userId);
-        comingUp = getUpcomingEpisodes(prefs, userId);
-    } catch (e) {
-        console.error('[tv] Smart section error:', e instanceof Error ? e.message : e);
+    try { airingThisWeek = getAiringThisWeek(prefs); } catch (e) {
+        console.error('[tv] airingThisWeek error:', e instanceof Error ? e.message : e);
+    }
+    try { newUnwatched = getNewUnwatchedEpisodes(prefs, userId); } catch (e) {
+        console.error('[tv] newUnwatched error:', e instanceof Error ? e.message : e);
+    }
+    try { behindOn = getBehindOnShows(userId); } catch (e) {
+        console.error('[tv] behindOn error:', e instanceof Error ? e.message : e);
+    }
+    try { comingUp = getUpcomingEpisodes(prefs, userId); } catch (e) {
+        console.error('[tv] comingUp error:', e instanceof Error ? e.message : e);
     }
 
     return {
