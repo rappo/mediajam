@@ -24,6 +24,16 @@
     let saving = $state(false);
     let saveMsg = $state('');
 
+    /** Run history */
+    /** @type {any[]} */
+    let history = $state([]);
+    let historyLoading = $state(false);
+    /** @type {number|null} */
+    let expandedRunId = $state(null);
+    /** @type {any|null} */
+    let expandedRunDetail = $state(null);
+    let detailLoading = $state(false);
+
     const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
     /** Fetch current status + settings on mount */
@@ -43,6 +53,39 @@
             }
         } catch { /* ignore */ }
         loading = false;
+        loadHistory();
+    }
+
+    /** Fetch run history */
+    async function loadHistory() {
+        historyLoading = true;
+        try {
+            const res = await fetch('/api/pipeline/history');
+            if (res.ok) {
+                const data = await res.json();
+                history = data.history || [];
+            }
+        } catch { /* ignore */ }
+        historyLoading = false;
+    }
+
+    /** Load run detail (phase results) */
+    async function toggleRunDetail(/** @type {number} */ id) {
+        if (expandedRunId === id) {
+            expandedRunId = null;
+            expandedRunDetail = null;
+            return;
+        }
+        expandedRunId = id;
+        expandedRunDetail = null;
+        detailLoading = true;
+        try {
+            const res = await fetch(`/api/pipeline/history/${id}`);
+            if (res.ok) {
+                expandedRunDetail = await res.json();
+            }
+        } catch { /* ignore */ }
+        detailLoading = false;
     }
 
     // Initialize on mount
@@ -117,6 +160,8 @@
 
         running = false;
         currentPhase = '';
+        // Refresh history after run completes
+        loadHistory();
     }
 
     /** Stop a running pipeline */
@@ -128,7 +173,7 @@
     }
 
     /** Handle SSE pipeline events */
-    function handleEvent(event) {
+    function handleEvent(/** @type {any} */ event) {
         switch (event.type) {
             case 'pipeline_start':
                 addLog(`Pipeline started (${event.mode}, ${event.totalPhases} phases)`, 'info');
@@ -164,7 +209,7 @@
         }
     }
 
-    function addLog(message, type = 'info') {
+    function addLog(/** @type {string} */message, /** @type {string} */type = 'info') {
         logs = [...logs, { time: now(), message, type }];
     }
 
@@ -172,6 +217,10 @@
         return new Date().toLocaleTimeString();
     }
 
+    /**
+     * @param {number|null|undefined} ms
+     * @returns {string}
+     */
     function formatDuration(ms) {
         if (!ms) return '0s';
         if (ms < 1000) return `${ms}ms`;
@@ -180,9 +229,59 @@
         return `${Math.floor(s / 60)}m ${s % 60}s`;
     }
 
+    /**
+     * @param {string|null|undefined} dateStr
+     * @returns {string}
+     */
+    function formatDate(dateStr) {
+        if (!dateStr) return '—';
+        const d = new Date(dateStr + 'Z');
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
+            ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    }
+
+    /**
+     * @param {string|null|undefined} dateStr
+     * @returns {string}
+     */
+    function timeAgo(dateStr) {
+        if (!dateStr) return '';
+        const d = new Date(dateStr + 'Z');
+        const now = new Date();
+        const diffMs = now.getTime() - d.getTime();
+        const diffMin = Math.floor(diffMs / 60000);
+        if (diffMin < 1) return 'just now';
+        if (diffMin < 60) return `${diffMin}m ago`;
+        const diffHr = Math.floor(diffMin / 60);
+        if (diffHr < 24) return `${diffHr}h ago`;
+        const diffDay = Math.floor(diffHr / 24);
+        if (diffDay < 7) return `${diffDay}d ago`;
+        return `${Math.floor(diffDay / 7)}w ago`;
+    }
+
     /** Toggle a specific phase */
-    function togglePhase(id) {
+    function togglePhase(/** @type {string} */ id) {
         phaseFlags = { ...phaseFlags, [id]: !(phaseFlags[id] ?? true) };
+    }
+
+    /** Status badge styling */
+    function statusBadge(/** @type {string} */ status) {
+        switch (status) {
+            case 'completed': return { class: 'badge-success', label: '✓ Completed' };
+            case 'completed_with_errors': return { class: 'badge-warning', label: '⚠ Errors' };
+            case 'running': return { class: 'badge-info', label: '⟳ Running' };
+            default: return { class: 'badge-ghost', label: status };
+        }
+    }
+
+    /** Phase result icon */
+    function phaseIcon(/** @type {string} */ status) {
+        switch (status) {
+            case 'done': return { icon: '✓', class: 'text-success' };
+            case 'error': return { icon: '✗', class: 'text-error' };
+            case 'skipped': return { icon: '⊘', class: 'text-warning' };
+            default: return { icon: '?', class: 'text-base-content/40' };
+        }
     }
 </script>
 
@@ -325,6 +424,98 @@
 
                 <!-- Console -->
                 <LogConsole {logs} {running} title="Pipeline Console" height="h-80" />
+            </div>
+        </div>
+
+        <!-- ── Run History ────────────────────────────────────────── -->
+        <div class="card bg-base-200 shadow-sm">
+            <div class="card-body gap-4">
+                <div class="flex items-center justify-between">
+                    <h3 class="card-title text-lg">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                        </svg>
+                        Run History
+                    </h3>
+                    <button class="btn btn-ghost btn-xs" onclick={loadHistory} disabled={historyLoading}>
+                        {#if historyLoading}
+                            <span class="loading loading-spinner loading-xs"></span>
+                        {:else}
+                            Refresh
+                        {/if}
+                    </button>
+                </div>
+
+                {#if history.length === 0}
+                    <div class="text-center py-6 text-base-content/40">
+                        <p class="text-sm">No pipeline runs yet</p>
+                        <p class="text-xs mt-1">Run the pipeline above to see results here</p>
+                    </div>
+                {:else}
+                    <div class="space-y-2">
+                        {#each history as run}
+                            {@const badge = statusBadge(run.status)}
+                            <div class="bg-base-300/40 rounded-lg overflow-hidden">
+                                <!-- Run header (clickable) -->
+                                <button
+                                    class="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-base-300/60 transition-colors"
+                                    onclick={() => toggleRunDetail(run.id)}
+                                >
+                                    <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        class="h-3.5 w-3.5 text-base-content/40 transition-transform shrink-0 {expandedRunId === run.id ? 'rotate-90' : ''}"
+                                        viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                    >
+                                        <polyline points="9 18 15 12 9 6"/>
+                                    </svg>
+
+                                    <div class="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
+                                        <span class="badge badge-xs {badge.class}">{badge.label}</span>
+                                        <span class="badge badge-xs badge-outline">{run.mode}</span>
+                                        <span class="text-sm">{formatDate(run.started_at)}</span>
+                                        <span class="text-xs text-base-content/40">{timeAgo(run.started_at)}</span>
+                                    </div>
+
+                                    <div class="flex items-center gap-3 text-xs text-base-content/50 shrink-0">
+                                        {#if run.duration_ms}
+                                            <span>{formatDuration(run.duration_ms)}</span>
+                                        {/if}
+                                        {#if run.summary}
+                                            <span class="hidden sm:inline">{run.summary}</span>
+                                        {/if}
+                                    </div>
+                                </button>
+
+                                <!-- Expanded detail -->
+                                {#if expandedRunId === run.id}
+                                    <div class="px-4 pb-4 border-t border-base-300/60">
+                                        {#if detailLoading}
+                                            <div class="flex justify-center py-4">
+                                                <span class="loading loading-spinner loading-sm"></span>
+                                            </div>
+                                        {:else if expandedRunDetail?.phase_results}
+                                            <div class="mt-3 space-y-1.5">
+                                                {#each expandedRunDetail.phase_results as result}
+                                                    {@const icon = phaseIcon(result.status)}
+                                                    <div class="flex items-start gap-2 px-2 py-1.5 rounded {result.status === 'error' ? 'bg-error/5' : ''}">
+                                                        <span class="text-sm {icon.class} shrink-0 mt-0.5">{icon.icon}</span>
+                                                        <div class="flex-1 min-w-0">
+                                                            <span class="text-sm font-medium">{result.phase}</span>
+                                                            <span class="text-xs text-base-content/50 ml-2">{formatDuration(result.durationMs)}</span>
+                                                            <div class="text-xs text-base-content/60 mt-0.5 break-words">{result.message}</div>
+                                                        </div>
+                                                    </div>
+                                                {/each}
+                                            </div>
+                                        {:else}
+                                            <p class="text-sm text-base-content/40 py-3">No detail available for this run</p>
+                                        {/if}
+                                    </div>
+                                {/if}
+                            </div>
+                        {/each}
+                    </div>
+                {/if}
             </div>
         </div>
     {/if}

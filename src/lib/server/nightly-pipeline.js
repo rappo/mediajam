@@ -303,6 +303,12 @@ export async function runPipeline(mode = 'nightly', { audit = false } = {}) {
     const settings = getPipelineSettings();
     const phases = PHASES.filter(p => mode === 'weekly' || p.schedule === 'nightly');
 
+    // Persist run start
+    const runRow = db.prepare(
+        'INSERT INTO pipeline_runs (mode, status, started_at) VALUES (?, ?, ?)'
+    ).run(mode, 'running', new Date().toISOString());
+    const runId = runRow.lastInsertRowid;
+
     emit({ type: 'pipeline_start', mode, totalPhases: phases.length });
     console.log(`[pipeline] Starting ${mode} pipeline (${phases.length} phases)`);
 
@@ -383,6 +389,27 @@ export async function runPipeline(mode = 'nightly', { audit = false } = {}) {
     currentPhase = '';
 
     const totalMs = results.reduce((sum, r) => sum + r.durationMs, 0);
+    const hasError = results.some(r => r.status === 'error');
+    const summary = buildSummary(results);
+
+    // Persist run results
+    try {
+        db.prepare(`
+            UPDATE pipeline_runs
+            SET status = ?, finished_at = ?, duration_ms = ?, phase_results = ?, summary = ?
+            WHERE id = ?
+        `).run(
+            hasError ? 'completed_with_errors' : 'completed',
+            new Date().toISOString(),
+            totalMs,
+            JSON.stringify(results),
+            summary,
+            runId
+        );
+    } catch (e) {
+        console.warn('[pipeline] Failed to persist run results:', e instanceof Error ? e.message : e);
+    }
+
     emit({ type: 'pipeline_end', mode, message: `Completed in ${(totalMs / 1000).toFixed(0)}s` });
     console.log(`[pipeline] ${mode} pipeline complete (${(totalMs / 1000).toFixed(0)}s total)`);
 
@@ -520,3 +547,45 @@ export function stopPipelineScheduler() {
 
 /** Export PHASES for UI display */
 export { PHASES };
+
+// ── Run History ─────────────────────────────────────────────────────────────
+
+/**
+ * Build a human-readable summary from phase results.
+ * @param {Array<{phase: string, status: string, message: string, durationMs: number}>} results
+ * @returns {string}
+ */
+function buildSummary(results) {
+    const done = results.filter(r => r.status === 'done').length;
+    const errors = results.filter(r => r.status === 'error').length;
+    const skipped = results.filter(r => r.status === 'skipped').length;
+    const parts = [`${done} completed`];
+    if (errors > 0) parts.push(`${errors} failed`);
+    if (skipped > 0) parts.push(`${skipped} skipped`);
+    return parts.join(', ');
+}
+
+/**
+ * Get recent pipeline run history.
+ * @param {number} limit
+ * @returns {Array<{id: number, mode: string, status: string, started_at: string, finished_at: string|null, duration_ms: number|null, summary: string|null}>}
+ */
+export function getRunHistory(limit = 20) {
+    return /** @type {any[]} */ (db.prepare(
+        'SELECT id, mode, status, started_at, finished_at, duration_ms, summary FROM pipeline_runs ORDER BY started_at DESC LIMIT ?'
+    ).all(limit));
+}
+
+/**
+ * Get full details for a single pipeline run (including phase_results JSON).
+ * @param {number} id
+ * @returns {any|null}
+ */
+export function getRunDetail(id) {
+    const row = /** @type {any} */ (db.prepare(
+        'SELECT * FROM pipeline_runs WHERE id = ?'
+    ).get(id));
+    if (!row) return null;
+    try { row.phase_results = JSON.parse(row.phase_results); } catch { /* keep as string */ }
+    return row;
+}

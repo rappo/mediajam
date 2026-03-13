@@ -950,6 +950,21 @@ db.exec(`
 `);
 db.exec('CREATE INDEX IF NOT EXISTS idx_activity_log_read ON activity_log(read)');
 
+// -- Pipeline Run History --
+db.exec(`
+    CREATE TABLE IF NOT EXISTS pipeline_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        mode TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'running',
+        started_at TEXT NOT NULL DEFAULT (datetime('now')),
+        finished_at TEXT,
+        duration_ms INTEGER,
+        phase_results TEXT,
+        summary TEXT
+    )
+`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_pipeline_runs_started ON pipeline_runs(started_at)');
+
 // -- API Keys (Bearer token authentication for API access) --
 db.exec(`
     CREATE TABLE IF NOT EXISTS api_keys (

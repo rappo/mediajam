@@ -2328,7 +2328,6 @@
 
     <!-- ═══════════════════════ TAB: CREDS-METADATA ═══════════════════════ -->
     {#if activeTab === 'creds-metadata'}
-    <p class="text-sm text-base-content/50 -mb-2">External service credentials for metadata, ratings, and tracking.</p>
     <!-- Metadata API Keys -->
     <div
         id="api-keys"
