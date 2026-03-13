@@ -94,6 +94,7 @@ function pollForNewPlays() {
         let imported = 0;
         let skipped = 0;
         let maxRowid = lastPollRowid;
+        let lastItemId = null; // Track previous PR entry for adjacency dedup
 
         const txn = db.transaction(() => {
             for (const event of newEvents) {
@@ -101,6 +102,14 @@ function pollForNewPlays() {
 
                 const itemId = event.ItemId;
                 if (!itemId) { skipped++; continue; }
+
+                // Adjacent duplicate: same track played back-to-back = pause/resume
+                if (itemId === lastItemId) {
+                    lastItemId = itemId;
+                    skipped++;
+                    continue;
+                }
+                lastItemId = itemId;
 
                 // Try direct jellyfin_id match, then with _child suffix (movies), then tracks table (music)
                 let child = /** @type {any} */ (findChild.get(itemId));

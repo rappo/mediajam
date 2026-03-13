@@ -401,7 +401,10 @@ function scheduleNext() {
 /**
  * Start the backup scheduler. Call on server boot after DB is ready.
  */
+let backupSchedulerStarted = false;
 export function startBackupScheduler() {
+    if (backupSchedulerStarted) return;
+    backupSchedulerStarted = true;
     const settings = getBackupSettings();
     if (!settings.backupEnabled) {
         console.log('[backup] Automatic backups disabled');
@@ -414,6 +417,7 @@ export function startBackupScheduler() {
  * Restart the scheduler (after settings change).
  */
 export function restartBackupScheduler() {
+    backupSchedulerStarted = false;
     if (schedulerTimeout) {
         clearTimeout(schedulerTimeout);
         schedulerTimeout = null;

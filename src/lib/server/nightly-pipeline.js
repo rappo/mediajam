@@ -480,7 +480,10 @@ function scheduleWeekly() {
 /**
  * Start the pipeline scheduler. Call on server boot.
  */
+let pipelineSchedulerStarted = false;
 export function startPipelineScheduler() {
+    if (pipelineSchedulerStarted) return;
+    pipelineSchedulerStarted = true;
     const settings = getPipelineSettings();
     if (!settings.pipelineEnabled) {
         console.log('[pipeline] Pipeline scheduler disabled');
@@ -494,6 +497,7 @@ export function startPipelineScheduler() {
  * Restart the scheduler (after settings change).
  */
 export function restartPipelineScheduler() {
+    pipelineSchedulerStarted = false;
     if (nightlyTimeout) { clearTimeout(nightlyTimeout); nightlyTimeout = null; }
     if (weeklyTimeout) { clearTimeout(weeklyTimeout); weeklyTimeout = null; }
     startPipelineScheduler();
