@@ -98,11 +98,6 @@ export async function load({ params, locals }) {
     const totalRuntime = albums.reduce((sum, a) => sum + (a.runtime_ticks || 0), 0);
     const totalPlayed = albumsWithImages.filter(a => a.play_count > 0).length;
 
-    // Artist image: prefer external poster (TheAudioDB/Fanart.tv) which is reliable,
-    // fallback to Jellyfin primary image (which may 404 for some artists)
-    const artistImageUrl = artist.poster_url
-        || (artist.jellyfin_id ? `${jellyfinUrl}/Items/${artist.jellyfin_id}/Images/Primary?maxHeight=300` : null);
-
     // External ratings per album (Discogs, MusicBrainz)
     const albumRatings = /** @type {any[]} */ (db.prepare(`
         SELECT media_child_id, source, rating_type, value, vote_count, raw_value
@@ -138,11 +133,18 @@ export async function load({ params, locals }) {
         } catch { /* non-fatal */ }
     }
     // Fetch Fanart.tv poster if no poster_url and no usable Jellyfin primary
+    let resolvedPosterUrl = artist.poster_url || null;
     if (!artist.poster_url && artist.musicbrainz_id) {
         try {
-            await resolvePoster(artistId);
+            const fetched = await resolvePoster(artistId);
+            if (fetched) resolvedPosterUrl = fetched;
         } catch { /* non-fatal */ }
     }
+
+    // Artist image: prefer external poster (TheAudioDB/Fanart.tv) which is reliable,
+    // fallback to Jellyfin primary image (which may 404 for some artists)
+    const artistImageUrl = resolvedPosterUrl
+        || (artist.jellyfin_id ? `${jellyfinUrl}/Items/${artist.jellyfin_id}/Images/Primary?maxHeight=300` : null);
 
     // Band members / credits — show musicians (members, supporting, instrument-named roles) and crew separately
     const CREW_ROLES = `('director', 'writer', 'producer', 'creator', 'guest', 'conductor', 'lyricist', 'composer')`;
