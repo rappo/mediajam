@@ -48,7 +48,8 @@ export async function load({ params, locals }) {
             mc.runtime_ticks,
             mc.poster_url,
             mc.is_collected,
-            mc.musicbrainz_id
+            mc.musicbrainz_id,
+            mc.is_hidden
         FROM media_children mc
         WHERE mc.parent_id = ?
         ORDER BY mc.item_number ASC, mc.title ASC

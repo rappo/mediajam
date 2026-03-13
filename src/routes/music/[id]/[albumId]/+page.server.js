@@ -24,7 +24,8 @@ export async function load({ params, locals, fetch }) {
             mc.id, mc.title, mc.jellyfin_id,
             mc.item_number as release_year,
             mc.play_count, mc.runtime_ticks,
-            mc.poster_url, mc.overview, mc.musicbrainz_id
+            mc.poster_url, mc.overview, mc.musicbrainz_id,
+            mc.is_hidden
         FROM media_children mc
         WHERE mc.id = ? AND mc.parent_id = ?
     `).get(albumId, artistId));

@@ -11,6 +11,11 @@
     let loadingTracks = $state(null);
     /** @type {'list' | 'grid'} */
     let viewMode = $state("grid");
+    let showHiddenAlbums = $state(false);
+    let hiddenCount = $derived(data.albums.filter((/** @type {any} */ a) => a.is_hidden).length);
+    let visibleAlbums = $derived(
+        showHiddenAlbums ? data.albums : data.albums.filter((/** @type {any} */ a) => !a.is_hidden)
+    );
 
     async function toggleAlbum(album) {
         if (expandedAlbum === album.id) {
@@ -482,7 +487,19 @@
     <!-- Albums -->
     <div class="space-y-3">
         <div class="flex items-center justify-between">
-            <h2 class="text-xl font-bold">Discography</h2>
+            <h2 class="text-xl font-bold flex items-center gap-2">
+                Discography
+                {#if hiddenCount > 0}
+                    <button
+                        class="btn btn-xs btn-ghost gap-1 text-base-content/50"
+                        onclick={() => showHiddenAlbums = !showHiddenAlbums}
+                        title="{showHiddenAlbums ? 'Hide' : 'Show'} {hiddenCount} hidden album{hiddenCount === 1 ? '' : 's'}"
+                    >
+                        🙈 {hiddenCount} hidden
+                        <input type="checkbox" class="toggle toggle-xs" checked={showHiddenAlbums} />
+                    </button>
+                {/if}
+            </h2>
             <div class="join">
                 <button
                     class="join-item btn btn-xs"
@@ -560,7 +577,7 @@
             {/if}
         {:else if viewMode === "grid"}
             <div class="album-grid">
-                {#each data.albums as album}
+                {#each visibleAlbums as album}
                     <a
                         href="/music/{data.artist.id}/{album.id}"
                         class="album-tile group"
@@ -609,7 +626,7 @@
             </div>
         {:else}
             <div class="space-y-3">
-                {#each data.albums as album}
+                {#each visibleAlbums as album}
                     <!-- Album Card -->
                     <a href="/music/{data.artist.id}/{album.id}" class="block">
                         <div

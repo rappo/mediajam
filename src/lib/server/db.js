@@ -585,6 +585,9 @@ if (!mediaChildrenCols.has('musicbrainz_id')) {
 if (!mediaChildrenCols.has('community_rating')) {
     db.exec("ALTER TABLE media_children ADD COLUMN community_rating REAL");
 }
+if (!mediaChildrenCols.has('is_hidden')) {
+    db.exec("ALTER TABLE media_children ADD COLUMN is_hidden INTEGER DEFAULT 0");
+}
 
 // -- playback_history schema migrations --
 const historyCols = new Set(
