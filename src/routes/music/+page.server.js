@@ -125,10 +125,15 @@ export function load({ locals, url }) {
         else collectionBuckets.missing++;
     }
 
-    // ── Smart Sections ──
-    const recentListening = getRecentListening(userId, prefs.maxItemsPerSection);
-    const newFromFavorites = getNewFromFavorites(userId, prefs.maxItemsPerSection);
-    const rediscover = getRediscoverArtists(userId, prefs);
+    // ── Smart Sections (graceful degradation) ──
+    let recentListening = [], newFromFavorites = [], rediscover = [];
+    try {
+        recentListening = getRecentListening(userId, prefs.maxItemsPerSection);
+        newFromFavorites = getNewFromFavorites(userId, prefs.maxItemsPerSection);
+        rediscover = getRediscoverArtists(userId, prefs);
+    } catch (e) {
+        console.error('[music] Smart section error:', e instanceof Error ? e.message : e);
+    }
 
     return {
         totalArtists,

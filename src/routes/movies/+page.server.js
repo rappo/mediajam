@@ -95,11 +95,16 @@ export function load({ locals }) {
         ORDER BY play_count DESC LIMIT 10
     `).all();
 
-    // ── Smart Sections ──
-    const hero = detectMoviePatterns(userId, prefs);
-    const becauseYouLove = getBecauseYouLove(userId, prefs);
-    const recentlyWatched = getRecentlyWatchedMovies(userId, prefs.maxItemsPerSection);
-    const unwatched = getUnwatchedMovies(prefs.maxItemsPerSection);
+    // ── Smart Sections (graceful if DB schema differs or data is sparse) ──
+    let hero = null, becauseYouLove = [], recentlyWatched = [], unwatched = [];
+    try {
+        hero = detectMoviePatterns(userId, prefs);
+        becauseYouLove = getBecauseYouLove(userId, prefs);
+        recentlyWatched = getRecentlyWatchedMovies(userId, prefs.maxItemsPerSection);
+        unwatched = getUnwatchedMovies(prefs.maxItemsPerSection);
+    } catch (e) {
+        console.error('[movies] Smart section error:', e instanceof Error ? e.message : e);
+    }
 
     return {
         totalMovies,

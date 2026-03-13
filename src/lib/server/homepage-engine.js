@@ -19,13 +19,14 @@ const DEFAULTS = {
 
 /** @returns {typeof DEFAULTS} */
 export function getHomepagePrefs() {
-    const row = /** @type {any} */ (
-        db.prepare('SELECT homepage_preferences FROM app_settings WHERE id = 1').get()
-    );
     try {
+        const row = /** @type {any} */ (
+            db.prepare('SELECT homepage_preferences FROM app_settings WHERE id = 1').get()
+        );
         const parsed = row?.homepage_preferences ? JSON.parse(row.homepage_preferences) : {};
         return { ...DEFAULTS, ...parsed };
     } catch {
+        // Column may not exist yet (migration not run); return defaults
         return { ...DEFAULTS };
     }
 }

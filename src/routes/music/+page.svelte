@@ -3,7 +3,7 @@
     import DataTable from "$lib/components/DataTable.svelte";
     import Chart from "$lib/components/Chart.svelte";
     import DeleteToast from "$lib/components/DeleteToast.svelte";
-    import ReasonTag from "$lib/components/ReasonTag.svelte";
+    import PosterRow from "$lib/components/PosterRow.svelte";
     import ProgressCard from "$lib/components/ProgressCard.svelte";
 
     let { data } = $props();
@@ -88,6 +88,24 @@
     }
 
     const p = data.pagination;
+
+    // ── Transform data for PosterRow (square aspect for music) ──
+    const recentPosterItems = data.sections.recentListening.map((/** @type {any} */ i) => ({
+        href: `/music/${i.artist_id}`,
+        poster_url: i.artist_poster,
+        title: i.artist_name,
+        subtitle: `${i.album_title} · ${timeAgo(i.last_played)}`,
+        icon: '🎵',
+    }));
+
+    const favoritePosterItems = data.sections.newFromFavorites.map((/** @type {any} */ i) => ({
+        href: `/music/${i.artist_id}`,
+        poster_url: i.artist_poster,
+        title: i.artist_name,
+        subtitle: i.album_title,
+        icon: '🎵',
+        badge: '★',
+    }));
 </script>
 
 <svelte:head>
@@ -178,51 +196,10 @@
         <!-- ═══ SMART HOME VIEW ═══ -->
 
         <!-- Your Recent Listening -->
-        {#if data.sections.recentListening.length > 0}
-            <section class="smart-section">
-                <h2 class="text-lg font-bold">Your Recent Listening</h2>
-                <div class="poster-scroll">
-                    {#each data.sections.recentListening as item}
-                        <a href="/music/{item.artist_id}" class="poster-card">
-                            {#if item.artist_poster}
-                                <img src={item.artist_poster} alt={item.artist_name} class="poster-img" loading="lazy" />
-                            {:else}
-                                <div class="poster-img placeholder-poster">🎵</div>
-                            {/if}
-                            <div class="poster-label">
-                                <span class="poster-title">{item.artist_name}</span>
-                                <span class="poster-album">{item.album_title}</span>
-                                <span class="poster-meta">{timeAgo(item.last_played)}</span>
-                            </div>
-                        </a>
-                    {/each}
-                </div>
-            </section>
-        {/if}
+        <PosterRow title="Your Recent Listening" items={recentPosterItems} />
 
         <!-- New from Your Favorites -->
-        {#if data.sections.newFromFavorites.length > 0}
-            <section class="smart-section">
-                <h2 class="text-lg font-bold">New from Your Favorites</h2>
-                <p class="text-xs text-base-content/40 -mt-1">Unplayed albums from artists you've favorited</p>
-                <div class="poster-scroll">
-                    {#each data.sections.newFromFavorites as item}
-                        <a href="/music/{item.artist_id}" class="poster-card">
-                            {#if item.artist_poster}
-                                <img src={item.artist_poster} alt={item.artist_name} class="poster-img" loading="lazy" />
-                            {:else}
-                                <div class="poster-img placeholder-poster">🎵</div>
-                            {/if}
-                            <div class="poster-label">
-                                <span class="poster-title">{item.artist_name}</span>
-                                <span class="poster-album">{item.album_title}</span>
-                                <ReasonTag reason="★ Favorite Artist" />
-                            </div>
-                        </a>
-                    {/each}
-                </div>
-            </section>
-        {/if}
+        <PosterRow title="New from Your Favorites" items={favoritePosterItems} />
 
         <!-- Rediscover -->
         {#if data.sections.rediscover.length > 0}
@@ -244,14 +221,12 @@
         {/if}
 
         <!-- Quick Stats -->
-        <section class="smart-section">
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard icon="🎤" label="Artists" value={data.totalArtists} sub="in your library" color="primary" />
-                <StatCard icon="💿" label="Albums" value={data.totalAlbums} sub="collected" color="secondary" />
-                <StatCard icon="📦" label="Collection" value="{data.collectionStats.overallPct}%" sub="{data.collectionStats.totalCollected} of {data.collectionStats.totalReleased}" color="info" />
-                <StatCard icon="▶️" label="Total Plays" value={data.totalPlays} sub="across all albums" color="accent" />
-            </div>
-        </section>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <StatCard icon="🎤" label="Artists" value={data.totalArtists} sub="in your library" color="primary" />
+            <StatCard icon="💿" label="Albums" value={data.totalAlbums} sub="collected" color="secondary" />
+            <StatCard icon="📦" label="Collection" value="{data.collectionStats.overallPct}%" sub="{data.collectionStats.totalCollected} of {data.collectionStats.totalReleased}" color="info" />
+            <StatCard icon="▶️" label="Total Plays" value={data.totalPlays} sub="across all albums" color="accent" />
+        </div>
     {/if}
 </div>
 
@@ -260,70 +235,6 @@
         display: flex;
         flex-direction: column;
         gap: 10px;
-    }
-
-    .poster-scroll {
-        display: flex;
-        gap: 12px;
-        overflow-x: auto;
-        scrollbar-width: thin;
-        padding-bottom: 4px;
-    }
-
-    .poster-card {
-        flex-shrink: 0;
-        width: 130px;
-        text-decoration: none;
-        color: inherit;
-        transition: transform 0.15s;
-    }
-
-    .poster-card:hover {
-        transform: translateY(-3px);
-    }
-
-    .poster-img {
-        width: 100%;
-        aspect-ratio: 1;
-        border-radius: 10px;
-        object-fit: cover;
-        box-shadow: 0 2px 8px oklch(0 0 0 / 0.3);
-    }
-
-    .placeholder-poster {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: oklch(var(--b3));
-        font-size: 2rem;
-    }
-
-    .poster-label {
-        margin-top: 6px;
-        display: flex;
-        flex-direction: column;
-        gap: 1px;
-    }
-
-    .poster-title {
-        font-size: 0.75rem;
-        font-weight: 600;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .poster-album {
-        font-size: 0.65rem;
-        color: oklch(var(--bc) / 0.5);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .poster-meta {
-        font-size: 0.6rem;
-        color: oklch(var(--bc) / 0.35);
     }
 
     .progress-grid {

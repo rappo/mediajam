@@ -106,11 +106,16 @@ export function load({ locals }) {
         else collectionBuckets.missing++;
     }
 
-    // ── Smart Sections ──
-    const airingThisWeek = getAiringThisWeek(prefs);
-    const newUnwatched = getNewUnwatchedEpisodes(prefs);
-    const behindOn = getBehindOnShows(userId);
-    const comingUp = getUpcomingEpisodes(prefs);
+    // ── Smart Sections (graceful degradation) ──
+    let airingThisWeek = [], newUnwatched = [], behindOn = [], comingUp = [];
+    try {
+        airingThisWeek = getAiringThisWeek(prefs);
+        newUnwatched = getNewUnwatchedEpisodes(prefs);
+        behindOn = getBehindOnShows(userId);
+        comingUp = getUpcomingEpisodes(prefs);
+    } catch (e) {
+        console.error('[tv] Smart section error:', e instanceof Error ? e.message : e);
+    }
 
     return {
         totalShows,

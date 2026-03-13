@@ -4,6 +4,7 @@
     import Chart from "$lib/components/Chart.svelte";
     import DeleteToast from "$lib/components/DeleteToast.svelte";
     import CalendarStrip from "$lib/components/CalendarStrip.svelte";
+    import PosterRow from "$lib/components/PosterRow.svelte";
     import ProgressCard from "$lib/components/ProgressCard.svelte";
 
     let { data } = $props();
@@ -131,6 +132,60 @@
         if (row.collection_status !== "wanted") return "";
         return ["continuing"].includes(row.arr_status) ? "arr-upcoming" : "arr-missing";
     }
+
+    // ── Transform episode data for PosterRow ──
+    // Group unwatched episodes by show for a poster view
+    const unwatchedByShow = (() => {
+        /** @type {Map<number, {show_id: number, show_title: string, poster_url: string, episodes: any[]}>} */
+        const map = new Map();
+        for (const ep of data.sections.newUnwatched) {
+            if (!map.has(ep.show_id)) {
+                map.set(ep.show_id, {
+                    show_id: ep.show_id,
+                    show_title: ep.show_title,
+                    poster_url: ep.poster_url,
+                    episodes: [],
+                });
+            }
+            map.get(ep.show_id)?.episodes.push(ep);
+        }
+        return [...map.values()];
+    })();
+
+    const unwatchedPosterItems = unwatchedByShow.map(show => ({
+        href: `/tv/${show.show_id}`,
+        poster_url: show.poster_url,
+        title: show.show_title,
+        subtitle: show.episodes.length === 1
+            ? epCode(show.episodes[0])
+            : `${show.episodes.length} new episodes`,
+        icon: '📺',
+        badge: show.episodes.some((/** @type {any} */ e) => !e.is_collected) ? '↓' : undefined,
+    }));
+
+    const comingUpPosterItems = (() => {
+        /** @type {Map<number, {show_id: number, show_title: string, poster_url: string, episodes: any[]}>} */
+        const map = new Map();
+        for (const ep of data.sections.comingUp) {
+            if (!map.has(ep.show_id)) {
+                map.set(ep.show_id, {
+                    show_id: ep.show_id,
+                    show_title: ep.show_title,
+                    poster_url: ep.poster_url,
+                    episodes: [],
+                });
+            }
+            map.get(ep.show_id)?.episodes.push(ep);
+        }
+        return [...map.values()].map(show => ({
+            href: `/tv/${show.show_id}`,
+            poster_url: show.poster_url,
+            title: show.show_title,
+            subtitle: formatAirDate(show.episodes[0].premiere_date),
+            icon: '📺',
+            badge: show.episodes.some((/** @type {any} */ e) => e.isSeasonPremiere) ? 'NEW' : undefined,
+        }));
+    })();
 </script>
 
 <svelte:head>
@@ -186,35 +241,8 @@
             <CalendarStrip days={data.sections.airingThisWeek} />
         </section>
 
-        <!-- New Episodes — Unwatched -->
-        {#if data.sections.newUnwatched.length > 0}
-            <section class="smart-section">
-                <h2 class="text-lg font-bold">New Episodes — Unwatched</h2>
-                <div class="episode-list">
-                    {#each data.sections.newUnwatched as ep}
-                        <a href="/tv/{ep.show_id}" class="episode-row" title="{ep.show_title} {epCode(ep)} — {ep.episode_title}">
-                            {#if ep.poster_url}
-                                <img src={ep.poster_url} alt="" class="ep-poster" loading="lazy" />
-                            {:else}
-                                <div class="ep-poster ep-placeholder">📺</div>
-                            {/if}
-                            <div class="ep-details">
-                                <span class="ep-show-name">{ep.show_title}</span>
-                                <span class="ep-episode">{epCode(ep)} · {ep.episode_title || 'TBA'}</span>
-                            </div>
-                            <div class="ep-meta">
-                                <span class="ep-date">{formatAirDate(ep.premiere_date)}</span>
-                                {#if ep.status === 'downloaded'}
-                                    <span class="status-pill downloaded" title="Downloaded">✓ Downloaded</span>
-                                {:else}
-                                    <span class="status-pill available" title="Available for download">↓ Available</span>
-                                {/if}
-                            </div>
-                        </a>
-                    {/each}
-                </div>
-            </section>
-        {/if}
+        <!-- New Episodes — Unwatched (Poster Row) -->
+        <PosterRow title="New Episodes — Unwatched" items={unwatchedPosterItems} />
 
         <!-- Behind On -->
         {#if data.sections.behindOn.length > 0}
@@ -234,33 +262,8 @@
             </section>
         {/if}
 
-        <!-- Coming Up -->
-        {#if data.sections.comingUp.length > 0}
-            <section class="smart-section">
-                <h2 class="text-lg font-bold">Coming Up</h2>
-                <div class="episode-list">
-                    {#each data.sections.comingUp as ep}
-                        <a href="/tv/{ep.show_id}" class="episode-row" title="{ep.show_title} {epCode(ep)}">
-                            {#if ep.poster_url}
-                                <img src={ep.poster_url} alt="" class="ep-poster" loading="lazy" />
-                            {:else}
-                                <div class="ep-poster ep-placeholder">📺</div>
-                            {/if}
-                            <div class="ep-details">
-                                <span class="ep-show-name">
-                                    {ep.show_title}
-                                    {#if ep.isSeasonPremiere}
-                                        <span class="premiere-badge">NEW SEASON</span>
-                                    {/if}
-                                </span>
-                                <span class="ep-episode">{epCode(ep)} · {ep.episode_title || 'TBA'}</span>
-                            </div>
-                            <span class="ep-date">{formatAirDate(ep.premiere_date)}</span>
-                        </a>
-                    {/each}
-                </div>
-            </section>
-        {/if}
+        <!-- Coming Up (Poster Row) -->
+        <PosterRow title="Coming Up" items={comingUpPosterItems} />
     {/if}
 </div>
 
@@ -271,109 +274,6 @@
         gap: 10px;
     }
 
-    /* ── Episode List ── */
-    .episode-list {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-        background: oklch(var(--b2) / 0.3);
-        border-radius: 12px;
-        overflow: hidden;
-    }
-
-    .episode-row {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 10px 14px;
-        text-decoration: none;
-        color: inherit;
-        transition: background 0.15s;
-    }
-
-    .episode-row:hover {
-        background: oklch(var(--bc) / 0.05);
-    }
-
-    .ep-poster {
-        width: 36px;
-        height: 52px;
-        border-radius: 6px;
-        object-fit: cover;
-        flex-shrink: 0;
-    }
-
-    .ep-placeholder {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: oklch(var(--b3));
-        font-size: 1rem;
-    }
-
-    .ep-details {
-        flex: 1;
-        min-width: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-    }
-
-    .ep-show-name {
-        font-size: 0.85rem;
-        font-weight: 600;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-
-    .ep-episode {
-        font-size: 0.75rem;
-        color: oklch(var(--bc) / 0.5);
-    }
-
-    .ep-meta {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-end;
-        gap: 4px;
-        flex-shrink: 0;
-    }
-
-    .ep-date {
-        font-size: 0.7rem;
-        color: oklch(var(--bc) / 0.4);
-        flex-shrink: 0;
-    }
-
-    .status-pill {
-        font-size: 0.6rem;
-        padding: 2px 8px;
-        border-radius: 10px;
-        font-weight: 600;
-    }
-
-    .status-pill.downloaded {
-        background: oklch(var(--su) / 0.15);
-        color: oklch(var(--su));
-    }
-
-    .status-pill.available {
-        background: oklch(var(--wa) / 0.15);
-        color: oklch(var(--wa));
-    }
-
-    .premiere-badge {
-        font-size: 0.55rem;
-        padding: 1px 6px;
-        border-radius: 6px;
-        background: oklch(var(--p) / 0.2);
-        color: oklch(var(--p));
-        font-weight: 700;
-        letter-spacing: 0.05em;
-    }
-
-    /* ── Progress Grid ── */
     .progress-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));

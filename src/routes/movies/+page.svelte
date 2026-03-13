@@ -3,7 +3,7 @@
     import DataTable from "$lib/components/DataTable.svelte";
     import Chart from "$lib/components/Chart.svelte";
     import DeleteToast from "$lib/components/DeleteToast.svelte";
-    import ReasonTag from "$lib/components/ReasonTag.svelte";
+    import PosterRow from "$lib/components/PosterRow.svelte";
 
     let { data } = $props();
 
@@ -133,6 +133,36 @@
             return `${Math.floor(diff / 365)}y ago`;
         }},
     ];
+
+    // ── Transform data for PosterRow ──
+
+    /** @param {any} item @param {string} [sub] */
+    function moviePoster(item, sub) {
+        return {
+            href: `/movies/${item.id}`,
+            poster_url: item.poster_url,
+            title: item.title,
+            subtitle: sub || (item.release_year ? String(item.release_year) : ''),
+            icon: '🎬',
+        };
+    }
+
+    const heroItems = data.sections.hero
+        ? data.sections.hero.items.map(
+            (/** @type {any} */ i) => moviePoster(i, data.sections.hero.reason)
+          )
+        : [];
+
+    const recentItems = data.sections.recentlyWatched.map(
+        (/** @type {any} */ i) => ({
+            ...moviePoster(i),
+            subtitle: timeAgo(i.last_watched),
+        })
+    );
+
+    const unwatchedItems = data.sections.unwatched.map(
+        (/** @type {any} */ i) => moviePoster(i)
+    );
 </script>
 
 <svelte:head>
@@ -187,196 +217,51 @@
         <!-- ═══ SMART HOME VIEW ═══ -->
 
         <!-- Hero: Pattern Detection -->
-        {#if data.sections.hero}
-            <section class="hero-pattern rounded-2xl overflow-hidden">
-                <div class="hero-content">
-                    <div class="hero-text">
-                        <h2 class="text-2xl font-bold">{data.sections.hero.title}</h2>
-                        <p class="text-base-content/50 text-sm">{data.sections.hero.subtitle}</p>
-                    </div>
-                    <div class="hero-posters">
-                        {#each data.sections.hero.items.slice(0, 6) as item}
-                            <a href="/movies/{item.id}" class="hero-poster-card">
-                                {#if item.poster_url}
-                                    <img src={item.poster_url} alt={item.title} class="poster-img" loading="lazy" />
-                                {:else}
-                                    <div class="poster-img placeholder-poster">🎬</div>
-                                {/if}
-                                <div class="poster-label">
-                                    <span class="poster-title">{item.title}</span>
-                                    <span class="poster-year">{item.release_year || ''}</span>
-                                    <ReasonTag reason={data.sections.hero.reason} />
-                                </div>
-                            </a>
-                        {/each}
-                    </div>
+        {#if data.sections.hero && heroItems.length > 0}
+            <section class="hero-banner">
+                <div class="hero-inner">
+                    <h2 class="text-xl font-bold">{data.sections.hero.title}</h2>
+                    <p class="text-base-content/50 text-sm">{data.sections.hero.subtitle}</p>
                 </div>
+                <PosterRow title="" items={heroItems} />
             </section>
         {/if}
 
         <!-- Because You Love [person] -->
         {#each data.sections.becauseYouLove as section}
-            <section class="smart-section">
-                <div class="section-header">
-                    <h2 class="text-lg font-bold">Because You Love {section.person}</h2>
-                    <span class="text-xs text-base-content/40">{section.totalInLibrary} films in library · {section.items.length} unwatched</span>
-                </div>
-                <div class="poster-scroll">
-                    {#each section.items as item}
-                        <a href="/movies/{item.id}" class="poster-card">
-                            {#if item.poster_url}
-                                <img src={item.poster_url} alt={item.title} class="poster-img" loading="lazy" />
-                            {:else}
-                                <div class="poster-img placeholder-poster">🎬</div>
-                            {/if}
-                            <div class="poster-label">
-                                <span class="poster-title">{item.title}</span>
-                                <span class="poster-year">{item.release_year || ''}</span>
-                                <ReasonTag reason={section.reason} />
-                            </div>
-                        </a>
-                    {/each}
-                </div>
-            </section>
+            <PosterRow
+                title="Because You Love {section.person}"
+                items={section.items.map((/** @type {any} */ i) => moviePoster(i, section.reason))}
+            />
         {/each}
 
         <!-- Recently Watched -->
-        {#if data.sections.recentlyWatched.length > 0}
-            <section class="smart-section">
-                <div class="section-header">
-                    <h2 class="text-lg font-bold">Recently Watched</h2>
-                </div>
-                <div class="poster-scroll">
-                    {#each data.sections.recentlyWatched as item}
-                        <a href="/movies/{item.id}" class="poster-card">
-                            {#if item.poster_url}
-                                <img src={item.poster_url} alt={item.title} class="poster-img" loading="lazy" />
-                            {:else}
-                                <div class="poster-img placeholder-poster">🎬</div>
-                            {/if}
-                            <div class="poster-label">
-                                <span class="poster-title">{item.title}</span>
-                                <span class="poster-meta">{timeAgo(item.last_watched)}</span>
-                            </div>
-                        </a>
-                    {/each}
-                </div>
-            </section>
-        {/if}
+        <PosterRow title="Recently Watched" items={recentItems} />
 
         <!-- Unwatched in Library -->
-        {#if data.sections.unwatched.length > 0}
-            <section class="smart-section">
-                <div class="section-header">
-                    <h2 class="text-lg font-bold">Unwatched in Your Library</h2>
-                    <span class="text-xs text-base-content/40">{data.movieStats.unwatched} total</span>
-                </div>
-                <div class="poster-scroll">
-                    {#each data.sections.unwatched as item}
-                        <a href="/movies/{item.id}" class="poster-card">
-                            {#if item.poster_url}
-                                <img src={item.poster_url} alt={item.title} class="poster-img" loading="lazy" />
-                            {:else}
-                                <div class="poster-img placeholder-poster">🎬</div>
-                            {/if}
-                            <div class="poster-label">
-                                <span class="poster-title">{item.title}</span>
-                                <span class="poster-year">{item.release_year || ''}</span>
-                            </div>
-                        </a>
-                    {/each}
-                </div>
-            </section>
-        {/if}
+        <PosterRow title="Unwatched in Your Library" items={unwatchedItems} />
+
+        <!-- Quick Stats -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <StatCard icon="🎬" label="Movies" value={data.totalMovies} sub="in your library" color="primary" />
+            <StatCard icon="✅" label="Watched" value={data.movieStats.watched} sub="{watchPct}%" color="success" />
+            <StatCard icon="👀" label="Unwatched" value={data.movieStats.unwatched} sub="still to watch" color="warning" />
+            <StatCard icon="⏱️" label="Runtime" value="{data.runtimeHours.toLocaleString()}h" sub="total watch time" color="secondary" />
+        </div>
     {/if}
 </div>
 
 <style>
-    /* ── Hero Pattern ── */
-    .hero-pattern {
+    .hero-banner {
         background: linear-gradient(135deg, oklch(var(--b2)) 0%, oklch(var(--b3)) 100%);
         border: 1px solid oklch(var(--bc) / 0.06);
+        border-radius: 1rem;
+        padding: 1.25rem 1.5rem 0.5rem;
     }
-    .hero-content {
-        padding: 28px 24px 20px;
-    }
-    .hero-text {
-        margin-bottom: 16px;
-    }
-    .hero-posters {
-        display: flex;
-        gap: 12px;
-        overflow-x: auto;
-        scrollbar-width: thin;
-        padding-bottom: 4px;
+    .hero-inner {
+        margin-bottom: 0.5rem;
     }
 
-    /* ── Poster Cards ── */
-    .poster-card, .hero-poster-card {
-        flex-shrink: 0;
-        width: 130px;
-        text-decoration: none;
-        color: inherit;
-        transition: transform 0.15s, box-shadow 0.15s;
-    }
-    .hero-poster-card {
-        width: 150px;
-    }
-    .poster-card:hover, .hero-poster-card:hover {
-        transform: translateY(-3px);
-    }
-    .poster-img {
-        width: 100%;
-        aspect-ratio: 2/3;
-        border-radius: 10px;
-        object-fit: cover;
-        box-shadow: 0 2px 8px oklch(0 0 0 / 0.3);
-    }
-    .placeholder-poster {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: oklch(var(--b3));
-        font-size: 2rem;
-    }
-    .poster-label {
-        margin-top: 6px;
-        display: flex;
-        flex-direction: column;
-        gap: 1px;
-    }
-    .poster-title {
-        font-size: 0.75rem;
-        font-weight: 600;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-    .poster-year, .poster-meta {
-        font-size: 0.65rem;
-        color: oklch(var(--bc) / 0.4);
-    }
-
-    /* ── Sections ── */
-    .smart-section {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-    }
-    .section-header {
-        display: flex;
-        align-items: baseline;
-        gap: 10px;
-    }
-    .poster-scroll {
-        display: flex;
-        gap: 12px;
-        overflow-x: auto;
-        scrollbar-width: thin;
-        padding-bottom: 4px;
-    }
-
-    /* ── Misc ── */
     :global(.arr-missing) {
         border-left: 3px dashed rgba(239, 68, 68, 0.8);
     }
