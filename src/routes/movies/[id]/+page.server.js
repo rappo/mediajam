@@ -49,6 +49,96 @@ export async function load({ params, locals }) {
 
     if (!movie) throw error(404, 'Movie not found');
 
+    // ── Auto-enrich external stubs from TMDB ────────────────────────────────
+    if (!movie.jellyfin_id && movie.tmdb_id && getTmdbKey() && !movie.overview) {
+        try {
+            const detailRes = await tmdbFetch(`/movie/${movie.tmdb_id}`);
+            if (detailRes.ok) {
+                const detail = await detailRes.json();
+                db.prepare(`
+                    UPDATE media_parents SET
+                        overview = COALESCE(?, overview),
+                        release_year = COALESCE(?, release_year),
+                        poster_url = COALESCE(?, poster_url),
+                        backdrop_url = COALESCE(?, backdrop_url),
+                        runtime_minutes = COALESCE(?, runtime_minutes),
+                        imdb_id = COALESCE(?, imdb_id)
+                    WHERE id = ?
+                `).run(
+                    detail.overview || null,
+                    detail.release_date ? parseInt(detail.release_date.slice(0, 4)) : null,
+                    detail.poster_path ? `https://image.tmdb.org/t/p/w300${detail.poster_path}` : null,
+                    detail.backdrop_path ? `https://image.tmdb.org/t/p/w1280${detail.backdrop_path}` : null,
+                    detail.runtime || null,
+                    detail.imdb_id || null,
+                    movieId
+                );
+                // Refresh in-memory data
+                if (detail.overview) movie.overview = detail.overview;
+                if (detail.poster_path && !movie.poster_url) movie.poster_url = `https://image.tmdb.org/t/p/w300${detail.poster_path}`;
+                if (detail.backdrop_path && !movie.backdrop_url) movie.backdrop_url = `https://image.tmdb.org/t/p/w1280${detail.backdrop_path}`;
+                if (detail.runtime) movie.external_runtime_minutes = detail.runtime;
+                if (detail.imdb_id) movie.imdb_id = detail.imdb_id;
+            }
+
+            // Fetch cast/crew
+            const creditsRes = await tmdbFetch(`/movie/${movie.tmdb_id}/credits`);
+            if (creditsRes.ok) {
+                const creditsData = await creditsRes.json();
+                const cast = (creditsData.cast || []).slice(0, 20);
+                const crewMembers = (creditsData.crew || []).filter(
+                    /** @param {any} c */ (c) => ['Director', 'Writer', 'Screenplay', 'Producer', 'Original Music Composer'].includes(c.job)
+                ).slice(0, 10);
+
+                const findByTmdb = db.prepare('SELECT id FROM persons WHERE tmdb_person_id = ?');
+                const findByName = db.prepare('SELECT id FROM persons WHERE name = ? LIMIT 1');
+                const insertPerson = db.prepare('INSERT INTO persons (name, tmdb_person_id, photo_url) VALUES (?, ?, ?)');
+                const updatePhoto = db.prepare('UPDATE persons SET photo_url = COALESCE(?, photo_url) WHERE id = ?');
+                const upsertCredit = db.prepare(
+                    'INSERT OR IGNORE INTO person_credits (person_id, media_parent_id, role_type, character_name, sort_order) VALUES (?, ?, ?, ?, ?)'
+                );
+
+                const people = [
+                    ...cast.map(/** @param {any} c @param {number} i */ (c, i) => ({
+                        tmdb_id: String(c.id), name: c.name,
+                        photo: c.profile_path ? `https://image.tmdb.org/t/p/w185${c.profile_path}` : null,
+                        role: 'actor', char: c.character || null, order: i
+                    })),
+                    ...crewMembers.map(/** @param {any} c @param {number} i */ (c, i) => ({
+                        tmdb_id: String(c.id), name: c.name,
+                        photo: c.profile_path ? `https://image.tmdb.org/t/p/w185${c.profile_path}` : null,
+                        role: c.job === 'Director' ? 'director' : c.job === 'Writer' || c.job === 'Screenplay' ? 'writer'
+                            : c.job === 'Producer' ? 'producer' : 'composer',
+                        char: null, order: 100 + i
+                    }))
+                ];
+
+                db.transaction(() => {
+                    for (const p of people) {
+                        let personId;
+                        const ex = /** @type {any} */ (findByTmdb.get(p.tmdb_id));
+                        if (ex) {
+                            personId = ex.id;
+                            if (p.photo) updatePhoto.run(p.photo, personId);
+                        } else {
+                            const byName = /** @type {any} */ (findByName.get(p.name));
+                            if (byName) {
+                                personId = byName.id;
+                                db.prepare('UPDATE persons SET tmdb_person_id = COALESCE(tmdb_person_id, ?) WHERE id = ?').run(p.tmdb_id, personId);
+                                if (p.photo) updatePhoto.run(p.photo, personId);
+                            } else {
+                                personId = insertPerson.run(p.name, p.tmdb_id, p.photo).lastInsertRowid;
+                            }
+                        }
+                        upsertCredit.run(personId, movieId, p.role, p.char, p.order);
+                    }
+                })();
+            }
+        } catch (e) {
+            console.warn('[movie-enrich] TMDB enrichment failed:', e instanceof Error ? e.message : e);
+        }
+    }
+
     // Playback history for this movie
     const rawHistory = /** @type {any[]} */ (db.prepare(`
         SELECT ph.id, ph.timestamp, ph.source, ph.duration_consumed_seconds, ph.completion_pct

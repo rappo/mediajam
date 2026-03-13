@@ -46,6 +46,143 @@ export async function load({ params }) {
 
     if (!show) throw error(404, 'Show not found');
 
+    // ── Auto-enrich external stubs from TMDB ────────────────────────────────
+    const episodesExist = /** @type {any} */ (db.prepare(
+        'SELECT COUNT(*) as c FROM media_children WHERE parent_id = ?'
+    ).get(showId))?.c || 0;
+
+    if (episodesExist === 0 && show.tmdb_id && getTmdbKey() && !show.jellyfin_id) {
+        try {
+            // Fetch full show details with seasons
+            const detailRes = await tmdbFetch(`/tv/${show.tmdb_id}`);
+            if (detailRes.ok) {
+                const detail = await detailRes.json();
+
+                // Update parent with enriched data
+                db.prepare(`
+                    UPDATE media_parents SET
+                        overview = COALESCE(?, overview),
+                        release_year = COALESCE(?, release_year),
+                        poster_url = COALESCE(?, poster_url),
+                        backdrop_url = COALESCE(?, backdrop_url)
+                    WHERE id = ?
+                `).run(
+                    detail.overview || null,
+                    detail.first_air_date ? parseInt(detail.first_air_date.slice(0, 4)) : null,
+                    detail.poster_path ? `https://image.tmdb.org/t/p/w300${detail.poster_path}` : null,
+                    detail.backdrop_path ? `https://image.tmdb.org/t/p/w1280${detail.backdrop_path}` : null,
+                    showId
+                );
+
+                // Reload show data after enrichment
+                if (detail.overview && !show.overview) show.overview = detail.overview;
+                if (detail.poster_path && !show.poster_url) show.poster_url = `https://image.tmdb.org/t/p/w300${detail.poster_path}`;
+                if (detail.backdrop_path && !show.backdrop_url) show.backdrop_url = `https://image.tmdb.org/t/p/w1280${detail.backdrop_path}`;
+
+                // Fetch episodes for each season
+                const insertEp = db.prepare(`
+                    INSERT OR IGNORE INTO media_children
+                    (parent_id, title, season_number, item_number, is_collected, watch_status, overview, premiere_date, community_rating)
+                    VALUES (?, ?, ?, ?, 0, 'unwatched', ?, ?, ?)
+                `);
+
+                const seasonNumbers = (detail.seasons || []).map((/** @type {any} */ s) => s.season_number);
+                for (const sn of seasonNumbers) {
+                    try {
+                        const seasonRes = await tmdbFetch(`/tv/${show.tmdb_id}/season/${sn}`);
+                        if (seasonRes.ok) {
+                            const seasonData = await seasonRes.json();
+                            db.transaction(() => {
+                                for (const ep of (seasonData.episodes || [])) {
+                                    insertEp.run(
+                                        showId,
+                                        ep.name || `Episode ${ep.episode_number}`,
+                                        sn,
+                                        ep.episode_number,
+                                        ep.overview || null,
+                                        ep.air_date || null,
+                                        ep.vote_average || null
+                                    );
+                                }
+                            })();
+                        }
+                        // Rate limit TMDB requests
+                        await new Promise(r => setTimeout(r, 250));
+                    } catch {
+                        console.warn(`[tv-enrich] Failed to fetch season ${sn} for tmdb ${show.tmdb_id}`);
+                    }
+                }
+
+                // Update episode counts on parent
+                const stats = /** @type {any} */ (db.prepare(`
+                    SELECT COUNT(*) as total,
+                           SUM(CASE WHEN is_collected = 1 THEN 1 ELSE 0 END) as collected
+                    FROM media_children WHERE parent_id = ?
+                `).get(showId));
+                if (stats) {
+                    db.prepare('UPDATE media_parents SET total_released_children = ?, collected_children = ? WHERE id = ?')
+                        .run(stats.total, stats.collected || 0, showId);
+                }
+            }
+
+            // Fetch cast/crew
+            const creditsRes = await tmdbFetch(`/tv/${show.tmdb_id}/credits`);
+            if (creditsRes.ok) {
+                const creditsData = await creditsRes.json();
+                const cast = (creditsData.cast || []).slice(0, 20);
+                const crewMembers = (creditsData.crew || []).filter(
+                    /** @param {any} c */ (c) => ['Director', 'Writer', 'Screenplay', 'Producer', 'Original Music Composer', 'Creator'].includes(c.job)
+                ).slice(0, 10);
+
+                const findByTmdb = db.prepare('SELECT id FROM persons WHERE tmdb_person_id = ?');
+                const findByName = db.prepare('SELECT id FROM persons WHERE name = ? LIMIT 1');
+                const insertPerson = db.prepare('INSERT INTO persons (name, tmdb_person_id, photo_url) VALUES (?, ?, ?)');
+                const updatePhoto = db.prepare('UPDATE persons SET photo_url = COALESCE(?, photo_url) WHERE id = ?');
+                const upsertCredit = db.prepare(
+                    'INSERT OR IGNORE INTO person_credits (person_id, media_parent_id, role_type, character_name, sort_order) VALUES (?, ?, ?, ?, ?)'
+                );
+
+                const people = [
+                    ...cast.map(/** @param {any} c @param {number} i */ (c, i) => ({
+                        tmdb_id: String(c.id), name: c.name,
+                        photo: c.profile_path ? `https://image.tmdb.org/t/p/w185${c.profile_path}` : null,
+                        role: 'actor', char: c.character || null, order: i
+                    })),
+                    ...crewMembers.map(/** @param {any} c @param {number} i */ (c, i) => ({
+                        tmdb_id: String(c.id), name: c.name,
+                        photo: c.profile_path ? `https://image.tmdb.org/t/p/w185${c.profile_path}` : null,
+                        role: c.job === 'Director' ? 'director' : c.job === 'Writer' || c.job === 'Screenplay' ? 'writer'
+                            : c.job === 'Producer' ? 'producer' : c.job === 'Original Music Composer' ? 'composer' : 'creator',
+                        char: null, order: 100 + i
+                    }))
+                ];
+
+                db.transaction(() => {
+                    for (const p of people) {
+                        let personId;
+                        const ex = /** @type {any} */ (findByTmdb.get(p.tmdb_id));
+                        if (ex) {
+                            personId = ex.id;
+                            if (p.photo) updatePhoto.run(p.photo, personId);
+                        } else {
+                            const byName = /** @type {any} */ (findByName.get(p.name));
+                            if (byName) {
+                                personId = byName.id;
+                                db.prepare('UPDATE persons SET tmdb_person_id = COALESCE(tmdb_person_id, ?) WHERE id = ?').run(p.tmdb_id, personId);
+                                if (p.photo) updatePhoto.run(p.photo, personId);
+                            } else {
+                                personId = insertPerson.run(p.name, p.tmdb_id, p.photo).lastInsertRowid;
+                            }
+                        }
+                        upsertCredit.run(personId, showId, p.role, p.char, p.order);
+                    }
+                })();
+            }
+        } catch (e) {
+            console.warn('[tv-enrich] TMDB enrichment failed:', e instanceof Error ? e.message : e);
+        }
+    }
+
     // Check if ratings need backfill (any episode with NULL community_rating)
     const missingRatings = /** @type {any} */ (db.prepare(
         'SELECT COUNT(*) as c FROM media_children WHERE parent_id = ? AND community_rating IS NULL AND is_collected = 1'

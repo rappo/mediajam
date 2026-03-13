@@ -65,8 +65,10 @@
 
     const isPerson = mediaType === 'person';
     // Use poster as backdrop fallback for pages without explicit backdrops (e.g. music)
-    const effectiveBackdrop = (backdropUrl || posterUrl) ? imgUrl(backdropUrl || posterUrl) : null;
+    const effectiveBackdrop = $derived((backdropUrl || posterUrl) ? imgUrl(backdropUrl || posterUrl) : null);
     let backdropBroken = $state(false);
+    // Reset broken state when backdrop URL changes (e.g. navigating between items)
+    $effect(() => { void effectiveBackdrop; backdropBroken = false; });
     const hasBackdrop = $derived(!!effectiveBackdrop && !backdropBroken);
 
     let gearOpen = $state(false);
