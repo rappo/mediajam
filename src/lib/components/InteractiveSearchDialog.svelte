@@ -9,8 +9,8 @@
      * @prop {string} title — media title for the dialog header
      */
 
-    /** @type {{ service: string, mediaParentId: number, title: string }} */
-    let { service, mediaParentId, title } = $props();
+    /** @type {{ service: string, mediaParentId: number, title: string, episodeId?: number | null }} */
+    let { service, mediaParentId, title, episodeId = null } = $props();
 
     let loading = $state(false);
     let error = $state('');
@@ -108,7 +108,8 @@
         error = '';
         releases = [];
         try {
-            const res = await fetch(`/api/arr/${service}/releases?mediaParentId=${mediaParentId}`);
+            const epParam = episodeId ? `&episodeId=${episodeId}` : '';
+            const res = await fetch(`/api/arr/${service}/releases?mediaParentId=${mediaParentId}${epParam}`);
             const data = await res.json();
             if (!res.ok) {
                 error = data.error || `HTTP ${res.status}`;

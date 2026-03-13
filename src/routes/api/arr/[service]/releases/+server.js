@@ -4,8 +4,9 @@ import { json } from '@sveltejs/kit';
 import { logActivity } from '$lib/server/activity-log.js';
 
 /**
- * GET /api/arr/[service]/releases?mediaParentId={id}
+ * GET /api/arr/[service]/releases?mediaParentId={id}&episodeId={id}
  * Interactive search — queries indexers via *arr and returns release results.
+ * For Sonarr, if episodeId is provided, searches for that specific episode.
  * This can take 30s–3min+, so the timeout is generous.
  */
 export async function GET({ params, url, locals }) {
@@ -18,6 +19,7 @@ export async function GET({ params, url, locals }) {
 
     const mediaParentId = parseInt(url.searchParams.get('mediaParentId') || '');
     if (!mediaParentId) return json({ error: 'mediaParentId required' }, { status: 400 });
+    const episodeId = url.searchParams.get('episodeId') ? parseInt(url.searchParams.get('episodeId') || '') : null;
 
     const settings = /** @type {any} */ (db.prepare(
         `SELECT ${service}_url as url, ${service}_api_key as apiKey FROM app_settings WHERE id = 1`
@@ -37,7 +39,27 @@ export async function GET({ params, url, locals }) {
     const idParam = service === 'radarr' ? 'movieId' : service === 'sonarr' ? 'seriesId' : 'artistId';
 
     try {
-        const releases = await arrFetch(settings.url, settings.apiKey, service, `release?${idParam}=${media.arr_id}`, {
+        // For Sonarr episode-level search, look up the Sonarr episode ID
+        let releaseQuery = `release?${idParam}=${media.arr_id}`;
+        if (service === 'sonarr' && episodeId) {
+            const episode = /** @type {any} */ (db.prepare(
+                'SELECT season_number, item_number FROM media_children WHERE id = ? AND parent_id = ?'
+            ).get(episodeId, mediaParentId));
+            if (episode) {
+                // Look up Sonarr episode ID
+                const sonarrEpisodes = await arrFetch(settings.url, settings.apiKey, service,
+                    `episode?seriesId=${media.arr_id}&seasonNumber=${episode.season_number}`,
+                    { signal: AbortSignal.timeout(15000) });
+                const sonarrEp = (Array.isArray(sonarrEpisodes) ? sonarrEpisodes : []).find(
+                    (/** @type {any} */ e) => e.episodeNumber === episode.item_number
+                );
+                if (sonarrEp) {
+                    releaseQuery = `release?episodeId=${sonarrEp.id}`;
+                }
+            }
+        }
+
+        const releases = await arrFetch(settings.url, settings.apiKey, service, releaseQuery, {
             signal: AbortSignal.timeout(180000), // 3 minutes — indexer queries are slow
         });
 

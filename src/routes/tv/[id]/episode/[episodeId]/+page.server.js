@@ -25,7 +25,8 @@ export async function load({ params, locals }) {
 
     // Load the parent show
     const show = /** @type {any} */ (db.prepare(`
-        SELECT id, title, jellyfin_id, poster_url, tmdb_id, imdb_id, tvdb_id, sonarr_id, arr_slug
+        SELECT id, title, jellyfin_id, poster_url, backdrop_url, tmdb_id, imdb_id, tvdb_id,
+               sonarr_id, arr_slug, release_year, overview
         FROM media_parents WHERE id = ? AND media_type = 'show'
     `).get(showId));
 

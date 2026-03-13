@@ -283,11 +283,14 @@ export async function load({ params }) {
     // Cast & Crew
     const cast = /** @type {any[]} */ (db.prepare(`
         SELECT p.id, p.name, p.photo_url, p.tmdb_person_id,
-               pc.role_type, pc.character_name, pc.sort_order
+               pc.role_type,
+               GROUP_CONCAT(DISTINCT pc.character_name) as character_name,
+               MIN(pc.sort_order) as sort_order
         FROM person_credits pc
         JOIN persons p ON pc.person_id = p.id
         WHERE pc.media_parent_id = ? AND pc.role_type = 'actor'
-        ORDER BY pc.sort_order ASC
+        GROUP BY p.id
+        ORDER BY sort_order ASC
     `).all(showId));
 
     const crewRaw = /** @type {any[]} */ (db.prepare(`
