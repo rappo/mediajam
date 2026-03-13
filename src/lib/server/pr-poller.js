@@ -145,7 +145,11 @@ function pollForNewPlays() {
                     completionPct = Math.min(100, Math.round((durationSeconds / runtimeSeconds) * 100));
                 }
 
-                const timestamp = event.DateCreated || new Date().toISOString();
+                // DateCreated from PR DB is UTC without 'Z' suffix — normalize to ISO
+                let timestamp = event.DateCreated || new Date().toISOString();
+                if (timestamp && !timestamp.endsWith('Z') && !timestamp.includes('+')) {
+                    timestamp = timestamp.replace(' ', 'T') + 'Z';
+                }
                 const eventId = `jellyfin_pr:${event.rowid}`;
 
                 const result = insertHistory.run({

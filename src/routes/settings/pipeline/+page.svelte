@@ -238,7 +238,8 @@
      */
     function formatDate(dateStr) {
         if (!dateStr) return '—';
-        const d = new Date(dateStr + 'Z');
+        const d = new Date(dateStr.endsWith('Z') || dateStr.includes('+') ? dateStr : dateStr + 'Z');
+        if (isNaN(d.getTime())) return '—';
         return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
             ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     }
@@ -249,7 +250,8 @@
      */
     function timeAgo(dateStr) {
         if (!dateStr) return '';
-        const d = new Date(dateStr + 'Z');
+        const d = new Date(dateStr.endsWith('Z') || dateStr.includes('+') ? dateStr : dateStr + 'Z');
+        if (isNaN(d.getTime())) return '';
         const now = new Date();
         const diffMs = now.getTime() - d.getTime();
         const diffMin = Math.floor(diffMs / 60000);

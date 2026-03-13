@@ -253,11 +253,11 @@
     <div class="px-3 py-2.5">
         <!-- Artist header -->
         <div class="flex items-center gap-3 mb-2">
-            {#if artistPoster && albumGroups.length <= 1}
+            {#if artistPoster}
                 <img
                     src={artistPoster}
                     alt=""
-                    class="w-14 h-14 rounded-lg object-cover shadow-sm shrink-0"
+                    class="w-10 h-10 rounded-lg object-cover shadow-sm shrink-0"
                 />
             {:else}
                 <div class="w-10 h-10 rounded-lg bg-base-300 flex items-center justify-center text-lg shrink-0">🎵</div>
