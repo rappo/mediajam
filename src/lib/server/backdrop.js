@@ -118,6 +118,7 @@ export async function resolveBackdrop(mediaParentId) {
 /**
  * Fetch artist poster/thumb from Fanart.tv.
  * Uses artistthumb (square artist photo) — ideal for poster slot.
+ * Falls back to artistbackground (wide concert/promo shots) if no thumb exists.
  * @param {string} musicbrainzId
  * @returns {Promise<string | null>} Image URL or null
  */
@@ -140,8 +141,12 @@ export async function fetchFanartPoster(musicbrainzId) {
             if (best?.url) return best.url;
         }
 
-        // Fallback: hdmusiclogo or musiclogo (less ideal but better than nothing)
-        // Skip these — logos aren't good posters
+        // Fallback: artistbackground (wide concert/promo shots) — better than nothing
+        const backgrounds = data.artistbackground || [];
+        if (backgrounds.length > 0) {
+            const best = backgrounds.sort((/** @type {any} */ a, /** @type {any} */ b) => (parseInt(b.likes) || 0) - (parseInt(a.likes) || 0))[0];
+            if (best?.url) return best.url;
+        }
 
         return null;
     } catch {

@@ -142,9 +142,10 @@ export async function load({ params, locals }) {
     }
 
     // Artist image: prefer external poster (TheAudioDB/Fanart.tv) which is reliable,
-    // fallback to Jellyfin primary image (which may 404 for some artists)
+    // fallback to Jellyfin primary image, then backdrop if nothing else works
     const artistImageUrl = resolvedPosterUrl
-        || (artist.jellyfin_id ? `${jellyfinUrl}/Items/${artist.jellyfin_id}/Images/Primary?maxHeight=300` : null);
+        || (artist.jellyfin_id ? `${jellyfinUrl}/Items/${artist.jellyfin_id}/Images/Primary?maxHeight=300` : null)
+        || backdropUrl;
 
     // Band members / credits — show musicians (members, supporting, instrument-named roles) and crew separately
     const CREW_ROLES = `('director', 'writer', 'producer', 'creator', 'guest', 'conductor', 'lyricist', 'composer')`;
