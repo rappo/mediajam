@@ -162,6 +162,12 @@ export async function syncArrService(service, url, apiKey) {
         WHERE id = ?
     `);
 
+    // For Lidarr: also update musicbrainz_id since Lidarr's foreignArtistId
+    // is more authoritative than Jellyfin's MusicBrainzArtist provider ID
+    const updateMbId = service === 'lidarr'
+        ? db.prepare('UPDATE media_parents SET musicbrainz_id = ? WHERE id = ? AND (musicbrainz_id IS NULL OR musicbrainz_id != ?)')
+        : null;
+
     // Prepare insert statement (for unmatched *arr-only items)
     const insertStmt = db.prepare(`
         INSERT INTO media_parents (
@@ -282,6 +288,10 @@ export async function syncArrService(service, url, apiKey) {
                     slug,
                     match.id
                 );
+                // Lidarr: correct musicbrainz_id if Jellyfin had the wrong one
+                if (updateMbId && item.foreignArtistId) {
+                    updateMbId.run(item.foreignArtistId, match.id, item.foreignArtistId);
+                }
                 if (existingWantedIds.has(match.id)) seenWantedIds.add(match.id);
                 matched++;
             } else {

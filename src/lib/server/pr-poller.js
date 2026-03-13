@@ -160,10 +160,12 @@ function pollForNewPlays() {
 
                 if (result.changes > 0) {
                     imported++;
-                    // Only mark as watched if completion is meaningful
-                    // For music: always count as played (5 min threshold already passed)
                     const isMusic = childInfo?.media_type === 'artist';
-                    if (completionPct >= WATCHED_THRESHOLD_PCT || isMusic) {
+                    if (isMusic) {
+                        // Music: just bump play_count, don't set watch_status
+                        bumpPlayCount.run(child.id);
+                    } else if (completionPct >= WATCHED_THRESHOLD_PCT) {
+                        // Video: mark as watched if completion threshold met
                         const statusResult = updateWatchStatus.run(child.id);
                         if (statusResult.changes === 0) {
                             bumpPlayCount.run(child.id);
