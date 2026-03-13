@@ -41,6 +41,7 @@
                 { href: "/settings/backups", label: "Backups" },
                 { tab: "import-export", label: "Import / Export" },
                 { href: "/settings/audit", label: "Audit" },
+                { href: "/settings/pipeline", label: "Pipeline" },
             ],
         },
         {
