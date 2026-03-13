@@ -234,6 +234,13 @@ async function pollRecentAudio() {
         const findTrack = db.prepare(
             'SELECT mc.id as media_child_id, t.title as track_title FROM tracks t JOIN media_children mc ON mc.id = t.album_id WHERE t.jellyfin_id = ?'
         );
+        // Check if a play of this track (by same user, same album) already exists within 24 hours
+        const findRecentPlay = db.prepare(`
+            SELECT 1 FROM playback_history
+            WHERE user_id = ? AND media_id = ? AND track_name = ?
+              AND ABS(strftime('%s', timestamp) - strftime('%s', ?)) < 86400
+            LIMIT 1
+        `);
         const insertHistory = db.prepare(`
             INSERT OR IGNORE INTO playback_history
                 (user_id, media_id, source, timestamp, completion_pct, external_event_id, track_name)
@@ -247,6 +254,11 @@ async function pollRecentAudio() {
 
             const playedDate = track.UserData?.LastPlayedDate;
             if (!playedDate) continue;
+
+            // Skip if we already have a play of this track within 24 hours
+            // (PR DB poll is more accurate; Jellyfin LastPlayedDate can drift on re-scan)
+            const existing = findRecentPlay.get(user.id, match.media_child_id, match.track_title, playedDate);
+            if (existing) continue;
 
             const eventId = `jellyfin_audio:${track.Id}:${playedDate}`;
             const result = insertHistory.run({
