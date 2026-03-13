@@ -119,7 +119,7 @@ export async function load({ params, locals }) {
         ORDER BY pc.sort_order ASC
     `).all(movieId));
 
-    const crew = /** @type {any[]} */ (db.prepare(`
+    const crewRaw = /** @type {any[]} */ (db.prepare(`
         SELECT p.id, p.name, p.photo_url, p.tmdb_person_id,
                pc.role_type, pc.character_name, pc.sort_order
         FROM person_credits pc
@@ -127,6 +127,20 @@ export async function load({ params, locals }) {
         WHERE pc.media_parent_id = ? AND pc.role_type != 'actor'
         ORDER BY pc.sort_order ASC
     `).all(movieId));
+
+    // Combine crew members with multiple roles (e.g. "Director, Writer")
+    const crewMap = new Map();
+    for (const c of crewRaw) {
+        const existing = crewMap.get(c.id);
+        if (existing) {
+            if (!existing.role_type.includes(c.role_type)) {
+                existing.role_type += ', ' + c.role_type;
+            }
+        } else {
+            crewMap.set(c.id, { ...c });
+        }
+    }
+    const crew = [...crewMap.values()];
 
     // External ratings
     const externalRatings = /** @type {any[]} */ (db.prepare(`
