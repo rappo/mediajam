@@ -5,6 +5,7 @@ import {
     getNewUnwatchedEpisodes,
     getBehindOnShows,
     getUpcomingEpisodes,
+    getRecentlyWatchedShows,
 } from '$lib/server/homepage-engine.js';
 
 /** @type {import('./$types').PageServerLoad} */
@@ -107,7 +108,7 @@ export function load({ locals }) {
     }
 
     // ── Smart Sections (each isolated so one failure doesn't block the rest) ──
-    let airingThisWeek = [], newUnwatched = [], behindOn = [], comingUp = [];
+    let airingThisWeek = [], newUnwatched = [], behindOn = [], comingUp = [], recentlyWatched = [];
     try { airingThisWeek = getAiringThisWeek(prefs); } catch (e) {
         console.error('[tv] airingThisWeek error:', e instanceof Error ? e.message : e);
     }
@@ -119,6 +120,9 @@ export function load({ locals }) {
     }
     try { comingUp = getUpcomingEpisodes(prefs, userId); } catch (e) {
         console.error('[tv] comingUp error:', e instanceof Error ? e.message : e);
+    }
+    try { recentlyWatched = getRecentlyWatchedShows(userId, prefs.maxItemsPerSection); } catch (e) {
+        console.error('[tv] recentlyWatched error:', e instanceof Error ? e.message : e);
     }
 
     return {
@@ -141,6 +145,6 @@ export function load({ locals }) {
             totalReleased,
             overallPct: totalReleased > 0 ? Math.round((totalCollected / totalReleased) * 100) : 100
         },
-        sections: { airingThisWeek, newUnwatched, behindOn, comingUp }
+        sections: { airingThisWeek, newUnwatched, behindOn, comingUp, recentlyWatched }
     };
 }

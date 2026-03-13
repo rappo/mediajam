@@ -379,6 +379,27 @@ function _fetchUpcoming(days, userId = 0) {
     }));
 }
 
+/**
+ * Recently watched TV shows — last 20 shows the user watched episodes of.
+ * @param {number} userId
+ * @param {number} limit
+ */
+export function getRecentlyWatchedShows(userId, limit = 20) {
+    return /** @type {any[]} */ (db.prepare(`
+        SELECT DISTINCT mp.id, mp.title, mp.poster_url,
+               mp.watched_children as watched, mp.collected_children as total,
+               MAX(ph.timestamp) as last_watched
+        FROM playback_history ph
+        JOIN media_children mc ON ph.media_id = mc.id
+        JOIN media_parents mp ON mc.parent_id = mp.id
+        WHERE mp.media_type = 'show' AND ph.user_id = ?
+          AND mp.poster_url IS NOT NULL AND ph.timestamp > '2000-01-01'
+        GROUP BY mp.id
+        ORDER BY last_watched DESC
+        LIMIT ?
+    `).all(userId, limit));
+}
+
 // ── Music ───────────────────────────────────────────────────────────────────
 
 /**

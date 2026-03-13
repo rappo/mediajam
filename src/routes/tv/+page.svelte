@@ -25,6 +25,19 @@
         return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     }
 
+    /** @param {string} ts */
+    function timeAgo(ts) {
+        if (!ts) return '';
+        const d = new Date(ts);
+        const diff = Math.floor((Date.now() - d.getTime()) / 86400000);
+        if (diff === 0) return 'Today';
+        if (diff === 1) return 'Yesterday';
+        if (diff < 7) return `${diff}d ago`;
+        if (diff < 30) return `${Math.floor(diff / 7)}w ago`;
+        if (diff < 365) return `${Math.floor(diff / 30)}mo ago`;
+        return `${Math.floor(diff / 365)}y ago`;
+    }
+
     /**
      * @param {any} ep
      */
@@ -180,32 +193,64 @@
     {:else}
         <!-- ═══ SMART HOME VIEW ═══ -->
 
-        <!-- ▌AIRING THIS WEEK ─────────────────────────────────────── -->
-        <section class="smart-section">
-            <h2 class="section-title">Airing This Week</h2>
-            <CalendarStrip days={data.sections.airingThisWeek} />
-        </section>
-
-        <!-- ▌UNWATCHED IN YOUR LIBRARY (behind on shows with poster cards) ── -->
+        <!-- ▌CONTINUE WATCHING (hero banner with progress rings) ─────── -->
         {#if data.sections.behindOn.length > 0}
-            <section class="smart-section">
+            <section class="hero-banner">
+                <!-- Blurred backdrop from first show -->
+                {#if data.sections.behindOn[0]?.poster_url}
+                    <div class="hero-bg" style="background-image: url('{imgUrl(data.sections.behindOn[0].poster_url)}')"></div>
+                {/if}
+                <div class="hero-overlay"></div>
+                <div class="hero-body">
+                    <h2 class="hero-title">Continue Watching</h2>
+                    <p class="hero-subtitle">{data.sections.behindOn.length} shows in progress</p>
+                    <div class="hero-posters">
+                        {#each data.sections.behindOn as show}
+                            <a href="/tv/{show.id}" class="progress-card" title="{show.title} — {show.total - show.watched} unwatched">
+                                {#if show.poster_url}
+                                    <img src={imgUrl(show.poster_url)} alt={show.title} class="progress-poster" loading="lazy" />
+                                {:else}
+                                    <div class="progress-poster poster-placeholder">📺</div>
+                                {/if}
+                                <!-- SVG progress ring -->
+                                <div class="progress-ring-wrap">
+                                    <svg class="progress-ring" viewBox="0 0 44 44">
+                                        <circle class="ring-bg" cx="22" cy="22" r="18" />
+                                        <circle
+                                            class="ring-fill"
+                                            cx="22" cy="22" r="18"
+                                            stroke-dasharray="{Math.round((show.watched / Math.max(show.total, 1)) * 113)} 113"
+                                        />
+                                    </svg>
+                                    <span class="ring-label">{show.watched}<span class="ring-sep">/</span>{show.total}</span>
+                                </div>
+                                <div class="progress-meta">
+                                    <span class="progress-name">{show.title}</span>
+                                </div>
+                            </a>
+                        {/each}
+                    </div>
+                </div>
+            </section>
+        {/if}
+
+        <!-- ▌RECENTLY WATCHED ──────────────────────────────────────── -->
+        {#if data.sections.recentlyWatched.length > 0}
+            <section class="smart-section recently-watched-section">
                 <div class="section-header">
-                    <h2 class="section-title">Unwatched in Your Library</h2>
+                    <h2 class="section-title">Recently Watched</h2>
                 </div>
                 <div class="poster-scroll">
-                    {#each data.sections.behindOn as show}
-                        <a href="/tv/{show.id}" class="poster-card" title="{show.title} — {show.total - show.watched} unwatched">
+                    {#each data.sections.recentlyWatched as show}
+                        <a href="/tv/{show.id}" class="poster-card" title={show.title}>
                             {#if show.poster_url}
                                 <img src={imgUrl(show.poster_url)} alt={show.title} class="poster-img" loading="lazy" />
                             {:else}
                                 <div class="poster-img poster-placeholder">📺</div>
                             {/if}
-                            <span class="count-badge">{show.total - show.watched}</span>
                             <div class="poster-meta">
                                 <span class="poster-name">{show.title}</span>
-                            </div>
-                            <div class="poster-progress">
-                                <div class="poster-progress-fill" style="width: {Math.round((show.watched / Math.max(show.total, 1)) * 100)}%"></div>
+                                <span class="poster-year">{timeAgo(show.last_watched)}</span>
                             </div>
                         </a>
                     {/each}
@@ -213,30 +258,34 @@
             </section>
         {/if}
 
-        <!-- ▌NEW UNWATCHED EPISODES ───────────────────────────────── -->
+        <!-- ▌AIRING THIS WEEK ─────────────────────────────────────── -->
+        <section class="smart-section">
+            <h2 class="section-title">Airing This Week</h2>
+            <CalendarStrip days={data.sections.airingThisWeek} />
+        </section>
+
+        <!-- ▌NEW EPISODES (poster scroll with NEW badges) ──────────── -->
         {#if data.sections.newUnwatched.length > 0}
             <section class="smart-section">
-                <h2 class="section-title">New Episodes — Unwatched</h2>
-                <div class="episode-list">
+                <h2 class="section-title">New Episodes</h2>
+                <div class="poster-scroll">
                     {#each data.sections.newUnwatched as ep}
-                        <a href="/tv/{ep.show_id}" class="episode-row" title="{ep.show_title} {epCode(ep)} — {ep.episode_title}">
+                        <a href="/tv/{ep.show_id}" class="poster-card" title="{ep.show_title} {epCode(ep)} — {ep.episode_title}">
+                            <span class="new-badge">NEW</span>
                             {#if ep.poster_url}
-                                <img src={imgUrl(ep.poster_url)} alt="" class="ep-poster" loading="lazy" />
+                                <img src={imgUrl(ep.poster_url)} alt={ep.show_title} class="poster-img" loading="lazy" />
                             {:else}
-                                <div class="ep-poster ep-placeholder">📺</div>
+                                <div class="poster-img poster-placeholder">📺</div>
                             {/if}
-                            <div class="ep-details">
-                                <span class="ep-show-name">{ep.show_title}</span>
-                                <span class="ep-episode">{epCode(ep)} — {ep.episode_title || 'TBA'}</span>
+                            <div class="poster-meta">
+                                <span class="poster-name">{ep.show_title}</span>
+                                <span class="poster-ep">{epCode(ep)} — {ep.episode_title || 'TBA'}</span>
                             </div>
-                            <div class="ep-right">
-                                <span class="ep-date">{formatAirDate(ep.premiere_date)}</span>
-                                {#if ep.status === 'downloaded'}
-                                    <span class="status-pill downloaded">✓ Downloaded</span>
-                                {:else}
-                                    <span class="status-pill available">✓ Available</span>
-                                {/if}
-                            </div>
+                            {#if ep.status === 'downloaded'}
+                                <span class="dl-pill downloaded">✓ Downloaded</span>
+                            {:else}
+                                <span class="dl-pill available">✓ Available</span>
+                            {/if}
                         </a>
                     {/each}
                 </div>
@@ -296,6 +345,139 @@
         margin-top: 2px;
     }
 
+    /* ── Hero Banner (Continue Watching) ── */
+    .hero-banner {
+        position: relative;
+        border-radius: 1rem;
+        overflow: hidden;
+        min-height: 260px;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+    }
+    .hero-bg {
+        position: absolute;
+        inset: 0;
+        background-size: cover;
+        background-position: center top;
+        filter: blur(20px) brightness(0.4) saturate(1.2);
+        transform: scale(1.2);
+    }
+    .hero-overlay {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+            180deg,
+            oklch(var(--b1) / 0.15) 0%,
+            oklch(var(--b1) / 0.6) 35%,
+            oklch(var(--b1) / 0.92) 100%
+        );
+    }
+    .hero-body {
+        position: relative;
+        z-index: 1;
+        padding: 2rem 1.75rem 1.5rem;
+        text-align: center;
+    }
+    .hero-title {
+        font-size: 1.5rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        margin-bottom: 0.2rem;
+    }
+    .hero-subtitle {
+        font-size: 0.8rem;
+        color: oklch(var(--bc) / 0.5);
+        margin-bottom: 1.25rem;
+    }
+    .hero-posters {
+        display: flex;
+        gap: 16px;
+        justify-content: center;
+        overflow-x: auto;
+        scrollbar-width: none;
+        padding-bottom: 4px;
+    }
+    .hero-posters::-webkit-scrollbar { display: none; }
+
+    /* ── Progress Card (within hero) ── */
+    .progress-card {
+        flex-shrink: 0;
+        width: 110px;
+        text-decoration: none;
+        color: inherit;
+        transition: transform 0.2s ease;
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+    .progress-card:hover {
+        transform: translateY(-4px) scale(1.04);
+    }
+    .progress-poster {
+        width: 100%;
+        aspect-ratio: 2/3;
+        border-radius: 10px;
+        object-fit: cover;
+        box-shadow: 0 4px 16px oklch(0 0 0 / 0.4);
+    }
+
+    /* SVG ring over poster */
+    .progress-ring-wrap {
+        position: absolute;
+        bottom: 30px;
+        right: 4px;
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .progress-ring {
+        width: 100%;
+        height: 100%;
+        transform: rotate(-90deg);
+    }
+    .ring-bg {
+        fill: none;
+        stroke: oklch(var(--bc) / 0.15);
+        stroke-width: 3.5;
+    }
+    .ring-fill {
+        fill: none;
+        stroke: oklch(var(--su));
+        stroke-width: 3.5;
+        stroke-linecap: round;
+        transition: stroke-dasharray 0.4s ease;
+    }
+    .ring-label {
+        position: absolute;
+        font-size: 0.5rem;
+        font-weight: 700;
+        color: oklch(var(--bc) / 0.9);
+        text-shadow: 0 1px 3px oklch(0 0 0 / 0.6);
+        line-height: 1;
+    }
+    .ring-sep {
+        color: oklch(var(--bc) / 0.4);
+        margin: 0 0.5px;
+    }
+
+    .progress-meta {
+        margin-top: 5px;
+        text-align: center;
+        width: 100%;
+    }
+    .progress-name {
+        font-size: 0.68rem;
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        display: block;
+    }
+
     /* ── Sections ── */
     .smart-section {
         display: flex;
@@ -312,7 +494,15 @@
         font-weight: 700;
     }
 
-    /* ── Poster Scroll (Unwatched in Library shows) ── */
+    /* Recently watched section (darker bg) */
+    .recently-watched-section {
+        background: oklch(var(--b2) / 0.4);
+        margin: 0 -1.5rem;
+        padding: 1.25rem 1.5rem;
+        border-radius: 1rem;
+    }
+
+    /* ── Poster Scroll & Cards ── */
     .poster-scroll {
         display: flex;
         gap: 14px;
@@ -349,23 +539,8 @@
         font-size: 2rem;
     }
 
-    /* Episode count badge (e.g. "32") */
-    .count-badge {
-        position: absolute;
-        bottom: 46px;
-        right: 6px;
-        background: oklch(var(--p) / 0.9);
-        color: oklch(var(--pc));
-        font-size: 0.65rem;
-        font-weight: 700;
-        padding: 2px 7px;
-        border-radius: 6px;
-        backdrop-filter: blur(4px);
-        line-height: 1.4;
-    }
-
     .poster-meta {
-        margin-top: 5px;
+        margin-top: 6px;
         display: flex;
         flex-direction: column;
         gap: 1px;
@@ -376,24 +551,58 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+        line-height: 1.3;
     }
-
-    /* Mini progress bar under poster */
-    .poster-progress {
-        height: 3px;
-        border-radius: 2px;
-        background: oklch(var(--bc) / 0.1);
-        margin-top: 3px;
+    .poster-year {
+        font-size: 0.62rem;
+        color: oklch(var(--bc) / 0.4);
+    }
+    .poster-ep {
+        font-size: 0.58rem;
+        color: oklch(var(--bc) / 0.45);
         overflow: hidden;
-    }
-    .poster-progress-fill {
-        height: 100%;
-        border-radius: 2px;
-        background: oklch(var(--p));
-        transition: width 0.3s ease;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
-    /* ── Episode List (New Unwatched + Coming Up) ── */
+    /* NEW badge */
+    .new-badge {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        z-index: 2;
+        font-size: 0.5rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        padding: 2px 7px;
+        border-radius: 6px;
+        background: oklch(var(--p) / 0.88);
+        color: oklch(var(--pc));
+        backdrop-filter: blur(4px);
+    }
+
+    /* Download status pill */
+    .dl-pill {
+        display: block;
+        margin-top: 4px;
+        font-size: 0.52rem;
+        padding: 2px 8px;
+        border-radius: 8px;
+        font-weight: 600;
+        white-space: nowrap;
+        text-align: center;
+    }
+    .dl-pill.downloaded {
+        background: oklch(var(--su) / 0.12);
+        color: oklch(var(--su));
+    }
+    .dl-pill.available {
+        background: oklch(var(--wa) / 0.12);
+        color: oklch(var(--wa));
+    }
+
+    /* ── Episode List (Coming Up) ── */
     .episode-list {
         display: flex;
         flex-direction: column;
@@ -452,33 +661,10 @@
         color: oklch(var(--bc) / 0.5);
     }
 
-    .ep-right {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-end;
-        gap: 4px;
-        flex-shrink: 0;
-    }
     .ep-date {
         font-size: 0.7rem;
         color: oklch(var(--bc) / 0.4);
         flex-shrink: 0;
-    }
-
-    .status-pill {
-        font-size: 0.6rem;
-        padding: 2px 8px;
-        border-radius: 10px;
-        font-weight: 600;
-        white-space: nowrap;
-    }
-    .status-pill.downloaded {
-        background: oklch(var(--su) / 0.15);
-        color: oklch(var(--su));
-    }
-    .status-pill.available {
-        background: oklch(var(--wa) / 0.15);
-        color: oklch(var(--wa));
     }
 
     .premiere-badge {
