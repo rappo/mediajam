@@ -545,9 +545,19 @@
         </div>
 
         {#if data.albums.length === 0}
-            <p class="text-base-content/40 text-sm py-8 text-center">
-                No albums found for this artist.
-            </p>
+            {#if !data.artist.jellyfin_id && data.artist.collection_status === 'wanted'}
+                <div class="alert alert-info bg-info/10 border-info/20 text-sm py-6 text-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0 opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    <div>
+                        <p class="font-semibold">No local files</p>
+                        <p class="opacity-60">This artist is monitored in Lidarr but no music has been downloaded yet.</p>
+                    </div>
+                </div>
+            {:else}
+                <p class="text-base-content/40 text-sm py-8 text-center">
+                    No albums found for this artist.
+                </p>
+            {/if}
         {:else if viewMode === "grid"}
             <div class="album-grid">
                 {#each data.albums as album}
