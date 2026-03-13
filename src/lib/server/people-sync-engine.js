@@ -395,6 +395,182 @@ async function runPeopleSync(jellyfinUrl, accessToken, userId) {
             type: 'progress',
             log: `🔗 External IDs: ${idsUpdated} persons updated with TMDB/IMDb IDs`,
             logType: 'success',
+            progress: 90,
+            itemsSynced: synced,
+            errors
+        });
+    }
+
+    // ─── Phase 3: TMDB Crew Backfill ─────────────────────────────────────────
+    // Find movies/shows with TMDB IDs that are missing director or writer credits.
+    // Fetch crew from TMDB and upsert the missing credits.
+    try {
+        const { tmdbFetch, getTmdbKey } = await import('$lib/server/tmdb.js');
+
+        if (getTmdbKey()) {
+            // Find items missing director credits (most critical gap)
+            const missingCrew = /** @type {any[]} */ (db.prepare(`
+                SELECT mp.id, mp.tmdb_id, mp.media_type, mp.title
+                FROM media_parents mp
+                WHERE mp.tmdb_id IS NOT NULL AND mp.tmdb_id != ''
+                  AND mp.media_type IN ('movie', 'show')
+                  AND NOT EXISTS (
+                      SELECT 1 FROM person_credits pc
+                      WHERE pc.media_parent_id = mp.id
+                        AND pc.role_type IN ('director', 'writer')
+                  )
+                ORDER BY mp.title
+            `).all());
+
+            if (missingCrew.length > 0) {
+                broadcast({
+                    type: 'progress',
+                    log: `🎬 Phase 3: Backfilling crew from TMDB for ${missingCrew.length} items missing director/writer...`,
+                    logType: 'info',
+                    progress: 92,
+                    itemsSynced: synced,
+                    errors
+                });
+                console.log(`[people-sync] TMDB crew backfill: ${missingCrew.length} items`);
+
+                let crewAdded = 0;
+                let crewErrors = 0;
+
+                // Map TMDB crew jobs to our role types
+                const crewJobMap = {
+                    'Director': 'director',
+                    'Screenplay': 'writer',
+                    'Writer': 'writer',
+                    'Story': 'writer',
+                    'Novel': 'writer',
+                    'Characters': 'writer',
+                    'Original Story': 'writer',
+                    'Author': 'writer',
+                    'Comic Book': 'writer',
+                    'Teleplay': 'writer',
+                };
+
+                const findPersonByTmdbCrew = db.prepare('SELECT id FROM persons WHERE tmdb_person_id = ?');
+
+                for (let i = 0; i < missingCrew.length; i++) {
+                    if (!engineState.running) break;
+                    await waitWhilePaused();
+
+                    const item = missingCrew[i];
+                    const tmdbType = item.media_type === 'show' ? 'tv' : 'movie';
+
+                    try {
+                        const res = await tmdbFetch(`/${tmdbType}/${item.tmdb_id}/credits`);
+                        if (!res.ok) {
+                            if (res.status === 429) {
+                                broadcast({ type: 'progress', log: `⏳ TMDB rate limit, waiting 2s...`, logType: 'warning' });
+                                await sleep(2000);
+                                i--; // retry
+                                continue;
+                            }
+                            crewErrors++;
+                            continue;
+                        }
+
+                        const data = await res.json();
+                        const crew = data.crew || [];
+
+                        // Filter to directors and writers only
+                        const relevantCrew = crew.filter((/** @type {any} */ c) =>
+                            crewJobMap[c.job] || c.department === 'Directing'
+                        );
+
+                        if (relevantCrew.length > 0) {
+                            db.transaction(() => {
+                                for (let idx = 0; idx < relevantCrew.length; idx++) {
+                                    const member = relevantCrew[idx];
+                                    const tmdbPersonId = String(member.id);
+                                    const name = member.name;
+                                    if (!name) continue;
+
+                                    const roleType = member.department === 'Directing' ? 'director'
+                                        : crewJobMap[member.job] || 'writer';
+                                    const characterName = member.job || null;
+
+                                    // Upsert person
+                                    let personId;
+                                    const existing = /** @type {any} */ (findPersonByTmdbCrew.get(tmdbPersonId));
+                                    if (existing) {
+                                        personId = existing.id;
+                                    } else {
+                                        const photoUrl = member.profile_path
+                                            ? `https://image.tmdb.org/t/p/w300${member.profile_path}`
+                                            : null;
+                                        try {
+                                            insertPerson.run({
+                                                name,
+                                                tmdbPersonId: tmdbPersonId,
+                                                imdbPersonId: null,
+                                                jellyfinId: null,
+                                                photoUrl
+                                            });
+                                            personId = /** @type {any} */ (findPersonByTmdbCrew.get(tmdbPersonId))?.id;
+                                        } catch {
+                                            // UNIQUE constraint — already exists
+                                            const retry = /** @type {any} */ (findPersonByTmdbCrew.get(tmdbPersonId));
+                                            if (retry) personId = retry.id;
+                                        }
+                                    }
+
+                                    if (personId) {
+                                        upsertCredit.run({
+                                            personId,
+                                            mediaParentId: item.id,
+                                            roleType,
+                                            characterName: roleType === 'director' ? null : characterName,
+                                            sortOrder: 1000 + idx  // sort after Jellyfin actors
+                                        });
+                                        crewAdded++;
+                                    }
+                                }
+                            })();
+                        }
+                    } catch (/** @type {any} */ err) {
+                        crewErrors++;
+                        if ((crewErrors % 10) === 1) {
+                            logWarn('people-sync', `TMDB crew fetch error for ${item.title}: ${err?.message || String(err)}`);
+                        }
+                    }
+
+                    // Progress and rate limiting
+                    if ((i + 1) % 25 === 0 || i === missingCrew.length - 1) {
+                        const progress = 92 + Math.floor(((i + 1) / missingCrew.length) * 8);
+                        broadcast({
+                            type: 'progress',
+                            log: `🎬 ${i + 1}/${missingCrew.length} — ${crewAdded} crew credits added, ${crewErrors} errors`,
+                            logType: 'info',
+                            progress,
+                            itemsSynced: synced,
+                            errors: errors + crewErrors
+                        });
+                    }
+                    await sleep(250); // TMDB rate limit: ~40 req/10s
+                }
+
+                errors += crewErrors;
+                broadcast({
+                    type: 'progress',
+                    log: `🎬 TMDB crew backfill: ${crewAdded} director/writer credits added across ${missingCrew.length} items`,
+                    logType: 'success',
+                    progress: 100,
+                    itemsSynced: synced,
+                    errors
+                });
+                console.log(`[people-sync] TMDB crew backfill done: ${crewAdded} credits added, ${crewErrors} errors`);
+            }
+        }
+    } catch (/** @type {any} */ e) {
+        const msg = e?.message || String(e);
+        logWarn('people-sync', `TMDB crew backfill skipped: ${msg}`);
+        broadcast({
+            type: 'progress',
+            log: `⚠️ TMDB crew backfill skipped: ${msg}`,
+            logType: 'warning',
             progress: 100,
             itemsSynced: synced,
             errors
