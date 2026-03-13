@@ -212,20 +212,13 @@
                                 {:else}
                                     <div class="progress-poster poster-placeholder">📺</div>
                                 {/if}
-                                <!-- SVG progress ring -->
-                                <div class="progress-ring-wrap">
-                                    <svg class="progress-ring" viewBox="0 0 44 44">
-                                        <circle class="ring-bg" cx="22" cy="22" r="18" />
-                                        <circle
-                                            class="ring-fill"
-                                            cx="22" cy="22" r="18"
-                                            stroke-dasharray="{Math.round((show.watched / Math.max(show.total, 1)) * 113)} 113"
-                                        />
-                                    </svg>
-                                    <span class="ring-label">{show.watched}<span class="ring-sep">/</span>{show.total}</span>
+                                <!-- Thin progress bar at bottom of poster -->
+                                <div class="progress-bar-track">
+                                    <div class="progress-bar-fill" style="width: {Math.round((show.watched / Math.max(show.total, 1)) * 100)}%"></div>
                                 </div>
                                 <div class="progress-meta">
                                     <span class="progress-name">{show.title}</span>
+                                    <span class="progress-count">{show.watched}/{show.total}</span>
                                 </div>
                             </a>
                         {/each}
@@ -423,45 +416,22 @@
         box-shadow: 0 4px 16px oklch(0 0 0 / 0.4);
     }
 
-    /* SVG ring over poster */
-    .progress-ring-wrap {
+    /* Thin progress bar overlaid at bottom of poster */
+    .progress-bar-track {
         position: absolute;
-        bottom: 30px;
+        bottom: 28px;
+        left: 4px;
         right: 4px;
-        width: 40px;
-        height: 40px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        height: 3px;
+        border-radius: 2px;
+        background: oklch(var(--bc) / 0.15);
+        overflow: hidden;
     }
-    .progress-ring {
-        width: 100%;
+    .progress-bar-fill {
         height: 100%;
-        transform: rotate(-90deg);
-    }
-    .ring-bg {
-        fill: none;
-        stroke: oklch(var(--bc) / 0.15);
-        stroke-width: 3.5;
-    }
-    .ring-fill {
-        fill: none;
-        stroke: oklch(var(--su));
-        stroke-width: 3.5;
-        stroke-linecap: round;
-        transition: stroke-dasharray 0.4s ease;
-    }
-    .ring-label {
-        position: absolute;
-        font-size: 0.5rem;
-        font-weight: 700;
-        color: oklch(var(--bc) / 0.9);
-        text-shadow: 0 1px 3px oklch(0 0 0 / 0.6);
-        line-height: 1;
-    }
-    .ring-sep {
-        color: oklch(var(--bc) / 0.4);
-        margin: 0 0.5px;
+        border-radius: 2px;
+        background: oklch(var(--su));
+        transition: width 0.4s ease;
     }
 
     .progress-meta {
@@ -475,6 +445,11 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+        display: block;
+    }
+    .progress-count {
+        font-size: 0.55rem;
+        color: oklch(var(--bc) / 0.4);
         display: block;
     }
 
