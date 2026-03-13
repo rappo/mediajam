@@ -176,9 +176,12 @@ export async function load({ params }) {
     if (!backdropUrl && show.jellyfin_id) {
         backdropUrl = `${jellyfinUrl}/Items/${show.jellyfin_id}/Images/Backdrop?maxWidth=1200`;
     }
-    // Lazy-fetch TMDB backdrop if not yet cached
+    // Fetch TMDB backdrop if not yet cached (await so it shows on first visit)
     if (!show.backdrop_url && show.tmdb_id) {
-        resolveBackdrop(showId).catch(() => {});
+        try {
+            const resolved = await resolveBackdrop(showId);
+            if (resolved) backdropUrl = resolved;
+        } catch { /* non-fatal */ }
     }
 
     // Poster URL from Jellyfin if available

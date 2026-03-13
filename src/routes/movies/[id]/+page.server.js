@@ -101,9 +101,12 @@ export async function load({ params, locals }) {
     if (!backdropUrl && movie.jellyfin_id) {
         backdropUrl = `${jellyfinUrl}/Items/${movie.jellyfin_id}/Images/Backdrop?maxWidth=1200`;
     }
-    // Lazy-fetch TMDB backdrop if not yet cached
+    // Fetch TMDB backdrop if not yet cached (await so it shows on first visit)
     if (!movie.backdrop_url && movie.tmdb_id) {
-        resolveBackdrop(movieId).catch(() => {});
+        try {
+            const resolved = await resolveBackdrop(movieId);
+            if (resolved) backdropUrl = resolved;
+        } catch { /* non-fatal */ }
     }
 
     // Cast & Crew

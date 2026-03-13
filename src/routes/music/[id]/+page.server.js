@@ -128,14 +128,19 @@ export async function load({ params, locals }) {
     const liveFavorite = await checkJellyfinFavorite(artist.jellyfin_id, 'media_parents', artist.id);
 
     // Artist backdrop: prefer Fanart.tv (cached in DB), fallback to Jellyfin poster
-    const backdropUrl = artist.backdrop_url || null;
-    // Lazy-fetch Fanart.tv backdrop if not yet cached
+    let backdropUrl = artist.backdrop_url || null;
+    // Fetch Fanart.tv backdrop if not yet cached (await so it shows on first visit)
     if (!artist.backdrop_url && artist.musicbrainz_id) {
-        resolveBackdrop(artistId).catch(() => {});
+        try {
+            const resolved = await resolveBackdrop(artistId);
+            if (resolved) backdropUrl = resolved;
+        } catch { /* non-fatal */ }
     }
-    // Lazy-fetch Fanart.tv poster if no poster_url and no usable Jellyfin primary
+    // Fetch Fanart.tv poster if no poster_url and no usable Jellyfin primary
     if (!artist.poster_url && artist.musicbrainz_id) {
-        resolvePoster(artistId).catch(() => {});
+        try {
+            await resolvePoster(artistId);
+        } catch { /* non-fatal */ }
     }
 
     // Band members / credits — show musicians (members, supporting, instrument-named roles) and crew separately
