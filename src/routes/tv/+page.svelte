@@ -251,9 +251,9 @@
             </section>
         {/if}
 
-        <!-- ▌AIRING THIS WEEK ─────────────────────────────────────── -->
+        <!-- ▌UPCOMING EPISODES ─────────────────────────────────────── -->
         <section class="smart-section">
-            <h2 class="section-title">Airing This Week</h2>
+            <h2 class="section-title">Upcoming Episodes</h2>
             <CalendarStrip days={data.sections.airingThisWeek} />
         </section>
 
@@ -279,34 +279,6 @@
                             {:else}
                                 <span class="dl-pill available">✓ Available</span>
                             {/if}
-                        </a>
-                    {/each}
-                </div>
-            </section>
-        {/if}
-
-        <!-- ▌COMING UP ────────────────────────────────────────────── -->
-        {#if data.sections.comingUp.length > 0}
-            <section class="smart-section">
-                <h2 class="section-title">Coming Up</h2>
-                <div class="episode-list">
-                    {#each data.sections.comingUp as ep}
-                        <a href="/tv/{ep.show_id}" class="episode-row" title="{ep.show_title} {epCode(ep)}">
-                            {#if ep.poster_url}
-                                <img src={imgUrl(ep.poster_url)} alt="" class="ep-poster" loading="lazy" />
-                            {:else}
-                                <div class="ep-poster ep-placeholder">📺</div>
-                            {/if}
-                            <div class="ep-details">
-                                <span class="ep-show-name">
-                                    {ep.show_title}
-                                    {#if ep.isSeasonPremiere}
-                                        <span class="premiere-badge">NEW SEASON</span>
-                                    {/if}
-                                </span>
-                                <span class="ep-episode">{epCode(ep)} — {ep.episode_title || 'TBA'}</span>
-                            </div>
-                            <span class="ep-date">{formatAirDate(ep.premiere_date)}</span>
                         </a>
                     {/each}
                 </div>
@@ -577,80 +549,6 @@
         color: oklch(var(--wa));
     }
 
-    /* ── Episode List (Coming Up) ── */
-    .episode-list {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-        background: oklch(var(--b2) / 0.35);
-        border-radius: 12px;
-        overflow: hidden;
-        border: 1px solid oklch(var(--bc) / 0.04);
-    }
-
-    .episode-row {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 10px 14px;
-        text-decoration: none;
-        color: inherit;
-        transition: background 0.15s;
-    }
-    .episode-row:hover {
-        background: oklch(var(--bc) / 0.05);
-    }
-
-    .ep-poster {
-        width: 36px;
-        height: 52px;
-        border-radius: 6px;
-        object-fit: cover;
-        flex-shrink: 0;
-        box-shadow: 0 2px 6px oklch(0 0 0 / 0.2);
-    }
-    .ep-placeholder {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: oklch(var(--b3));
-        font-size: 1rem;
-    }
-
-    .ep-details {
-        flex: 1;
-        min-width: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-    }
-    .ep-show-name {
-        font-size: 0.85rem;
-        font-weight: 600;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-    .ep-episode {
-        font-size: 0.72rem;
-        color: oklch(var(--bc) / 0.5);
-    }
-
-    .ep-date {
-        font-size: 0.7rem;
-        color: oklch(var(--bc) / 0.4);
-        flex-shrink: 0;
-    }
-
-    .premiere-badge {
-        font-size: 0.55rem;
-        padding: 1px 6px;
-        border-radius: 6px;
-        background: oklch(var(--p) / 0.2);
-        color: oklch(var(--p));
-        font-weight: 700;
-        letter-spacing: 0.05em;
-    }
 
     :global(.arr-missing) {
         border-left: 3px dashed rgba(239, 68, 68, 0.8);

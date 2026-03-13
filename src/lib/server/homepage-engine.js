@@ -192,7 +192,7 @@ export function getUnwatchedMovies(limit = 20) {
 // ── TV Shows ────────────────────────────────────────────────────────────────
 
 /**
- * Episodes airing this week — grouped by date with download/availability status.
+ * Episodes airing in the next 3 weeks — grouped by date with download/availability status.
  * @param {typeof DEFAULTS} prefs
  */
 export function getAiringThisWeek(prefs) {
@@ -202,12 +202,13 @@ export function getAiringThisWeek(prefs) {
     const monday = new Date(now);
     monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
     monday.setHours(0, 0, 0, 0);
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-    sunday.setHours(23, 59, 59);
+    // 3 weeks = 21 days
+    const endDate = new Date(monday);
+    endDate.setDate(monday.getDate() + 20);
+    endDate.setHours(23, 59, 59);
 
     const mondayISO = monday.toISOString().split('T')[0];
-    const sundayISO = sunday.toISOString().split('T')[0];
+    const endISO = endDate.toISOString().split('T')[0];
 
     const episodes = /** @type {any[]} */ (db.prepare(`
         SELECT mc.id as episode_id, mc.title as episode_title,
@@ -223,13 +224,13 @@ export function getAiringThisWeek(prefs) {
           AND date(mc.premiere_date) <= ?
           AND mc.is_special = 0
         ORDER BY mc.premiere_date ASC, mp.title ASC
-    `).all(mondayISO, sundayISO));
+    `).all(mondayISO, endISO));
 
     // Group by date
     /** @type {Record<string, any[]>} */
     const byDate = {};
-    // Pre-populate all 7 days
-    for (let i = 0; i < 7; i++) {
+    // Pre-populate all 21 days
+    for (let i = 0; i < 21; i++) {
         const d = new Date(monday);
         d.setDate(monday.getDate() + i);
         const key = d.toISOString().split('T')[0];
