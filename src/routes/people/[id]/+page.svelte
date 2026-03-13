@@ -78,6 +78,15 @@
         return '';
     }
 
+    /**
+     * Is this credit "in library"? True if it has a jellyfin_id (downloaded)
+     * or collection_status is 'wanted' (tracked in *arr).
+     * Stubs/metadata-only items return false.
+     */
+    function isInLibrary(credit) {
+        return !!credit.jellyfin_id || credit.collection_status === 'wanted' || credit.arr_has_file === 1;
+    }
+
     /** @type {Record<string, { label: string, icon: string, urlFn: (id: string) => string }>} */
     const sourceConfig = {
         discogs: {
@@ -595,12 +604,14 @@
 
     <!-- Movies -->
     {#if data.movies.length > 0}
+        {@const libraryMovies = data.movies.filter(c => isInLibrary(c))}
+        {@const stubMovies = data.movies.filter(c => !isInLibrary(c))}
         <div class="space-y-3">
             <div class="flex items-center justify-between">
                 <h2 class="text-xl font-bold flex items-center gap-2">
                     🎬 Movies
                     <span class="badge badge-ghost badge-sm"
-                        >{data.movies.length}</span
+                        >{libraryMovies.length}</span
                     >
                 </h2>
                 <button
@@ -616,7 +627,7 @@
                 <div
                     class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3"
                 >
-                    {#each data.movies.filter(shouldShow) as credit}
+                    {#each libraryMovies.filter(shouldShow) as credit}
                         <a
                             href="/movies/{credit.media_id}"
                             class="card bg-base-200 card-compact overflow-hidden group transition-colors {mediaBorderClass(
@@ -689,7 +700,7 @@
                 </div>
             {:else}
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {#each data.movies.filter(shouldShow) as credit}
+                    {#each libraryMovies.filter(shouldShow) as credit}
                         <a
                             href="/movies/{credit.media_id}"
                             class="flex gap-3 p-3 rounded-xl bg-base-200/50 border border-base-300 hover:border-primary/30 transition-colors group"
@@ -747,22 +758,93 @@
                 </div>
             {/if}
         </div>
+
+        <!-- You Might Be Interested In (stub movies) -->
+        {#if stubMovies.length > 0}
+            <div class="space-y-3 mt-6">
+                <h3 class="text-lg font-semibold flex items-center gap-2 text-base-content/70">
+                    💡 You Might Be Interested In
+                    <span class="badge badge-ghost badge-sm">{stubMovies.length}</span>
+                </h3>
+                {#if creditsView === "poster"}
+                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                        {#each stubMovies.filter(shouldShow) as credit}
+                            <a
+                                href="/movies/{credit.media_id}"
+                                class="card bg-base-200/50 card-compact overflow-hidden group transition-colors {mediaBorderClass(credit)} opacity-80 hover:opacity-100"
+                            >
+                                {#if credit.poster_url}
+                                    <figure class="aspect-[2/3] relative">
+                                        <img
+                                            src={imgUrl(credit.poster_url, 300)}
+                                            alt={credit.title}
+                                            class="w-full h-full object-cover"
+                                        />
+                                    </figure>
+                                {:else}
+                                    <div class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl">🎬</div>
+                                {/if}
+                                <div class="card-body !p-2 !gap-1">
+                                    <h3 class="font-medium text-xs leading-tight line-clamp-2 group-hover:text-primary transition-colors" title={credit.title}>{credit.title}</h3>
+                                    <div class="flex items-center gap-1 flex-wrap">
+                                        {#if credit.release_year}
+                                            <span class="text-[10px] text-base-content/40">{credit.release_year}</span>
+                                        {/if}
+                                        {#each credit.roles as role}
+                                            <span class="badge {roleBadge(role.role_type)} badge-xs capitalize">{role.role_type}</span>
+                                        {/each}
+                                    </div>
+                                </div>
+                            </a>
+                        {/each}
+                    </div>
+                {:else}
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {#each stubMovies.filter(shouldShow) as credit}
+                            <a
+                                href="/movies/{credit.media_id}"
+                                class="flex gap-3 p-3 rounded-xl bg-base-200/30 border border-base-300/50 hover:border-primary/30 transition-colors group opacity-80 hover:opacity-100"
+                            >
+                                {#if credit.poster_url}
+                                    <img src={imgUrl(credit.poster_url, 100)} alt={credit.title} class="w-12 h-18 rounded-lg object-cover shrink-0" />
+                                {:else}
+                                    <div class="w-12 h-18 rounded-lg bg-base-300 flex items-center justify-center text-lg shrink-0">🎬</div>
+                                {/if}
+                                <div class="min-w-0 flex-1">
+                                    <span class="font-medium group-hover:text-primary transition-colors truncate">{credit.title}</span>
+                                    <div class="flex flex-wrap items-center gap-1 mt-1">
+                                        {#if credit.release_year}
+                                            <span class="text-xs text-base-content/40">{credit.release_year}</span>
+                                        {/if}
+                                        {#each credit.roles as role}
+                                            <span class="badge {roleBadge(role.role_type)} badge-xs capitalize">{role.role_type}</span>
+                                        {/each}
+                                    </div>
+                                </div>
+                            </a>
+                        {/each}
+                    </div>
+                {/if}
+            </div>
+        {/if}
     {/if}
 
     <!-- TV Shows -->
     {#if data.shows.length > 0}
+        {@const libraryShows = data.shows.filter(c => isInLibrary(c))}
+        {@const stubShows = data.shows.filter(c => !isInLibrary(c))}
         <div class="space-y-3">
             <h2 class="text-xl font-bold flex items-center gap-2">
                 📺 TV Shows
                 <span class="badge badge-ghost badge-sm"
-                    >{data.shows.length}</span
+                    >{libraryShows.length}</span
                 >
             </h2>
             {#if creditsView === "poster"}
                 <div
                     class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3"
                 >
-                    {#each data.shows.filter(shouldShow) as credit}
+                    {#each libraryShows.filter(shouldShow) as credit}
                         <a
                             href="/tv/{credit.media_id}"
                             class="card bg-base-200 card-compact overflow-hidden group transition-colors {mediaBorderClass(
@@ -841,7 +923,7 @@
                 </div>
             {:else}
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {#each data.shows.filter(shouldShow) as credit}
+                    {#each libraryShows.filter(shouldShow) as credit}
                         <a
                             href="/tv/{credit.media_id}"
                             class="flex gap-3 p-3 rounded-xl bg-base-200/50 border border-base-300 hover:border-primary/30 transition-colors group"
@@ -902,6 +984,71 @@
                 </div>
             {/if}
         </div>
+
+        <!-- You Might Be Interested In (stub shows) -->
+        {#if stubShows.length > 0}
+            <div class="space-y-3 mt-6">
+                <h3 class="text-lg font-semibold flex items-center gap-2 text-base-content/70">
+                    💡 You Might Be Interested In
+                    <span class="badge badge-ghost badge-sm">{stubShows.length}</span>
+                </h3>
+                {#if creditsView === "poster"}
+                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                        {#each stubShows.filter(shouldShow) as credit}
+                            <a
+                                href="/tv/{credit.media_id}"
+                                class="card bg-base-200/50 card-compact overflow-hidden group transition-colors {mediaBorderClass(credit)} opacity-80 hover:opacity-100"
+                            >
+                                {#if credit.poster_url}
+                                    <figure class="aspect-[2/3] relative">
+                                        <img src={imgUrl(credit.poster_url, 300)} alt={credit.title} class="w-full h-full object-cover" />
+                                    </figure>
+                                {:else}
+                                    <div class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl">📺</div>
+                                {/if}
+                                <div class="card-body !p-2 !gap-1">
+                                    <h3 class="font-medium text-xs leading-tight line-clamp-2 group-hover:text-primary transition-colors" title={credit.title}>{credit.title}</h3>
+                                    <div class="flex items-center gap-1 flex-wrap">
+                                        {#if credit.release_year}
+                                            <span class="text-[10px] text-base-content/40">{credit.release_year}</span>
+                                        {/if}
+                                        {#each credit.roles as role}
+                                            <span class="badge {roleBadge(role.role_type)} badge-xs capitalize">{role.role_type}</span>
+                                        {/each}
+                                    </div>
+                                </div>
+                            </a>
+                        {/each}
+                    </div>
+                {:else}
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {#each stubShows.filter(shouldShow) as credit}
+                            <a
+                                href="/tv/{credit.media_id}"
+                                class="flex gap-3 p-3 rounded-xl bg-base-200/30 border border-base-300/50 hover:border-primary/30 transition-colors group opacity-80 hover:opacity-100"
+                            >
+                                {#if credit.poster_url}
+                                    <img src={imgUrl(credit.poster_url, 100)} alt={credit.title} class="w-12 h-18 rounded-lg object-cover shrink-0" />
+                                {:else}
+                                    <div class="w-12 h-18 rounded-lg bg-base-300 flex items-center justify-center text-lg shrink-0">📺</div>
+                                {/if}
+                                <div class="min-w-0 flex-1">
+                                    <span class="font-medium group-hover:text-primary transition-colors truncate">{credit.title}</span>
+                                    <div class="flex flex-wrap items-center gap-1 mt-1">
+                                        {#if credit.release_year}
+                                            <span class="text-xs text-base-content/40">{credit.release_year}</span>
+                                        {/if}
+                                        {#each credit.roles as role}
+                                            <span class="badge {roleBadge(role.role_type)} badge-xs capitalize">{role.role_type}</span>
+                                        {/each}
+                                    </div>
+                                </div>
+                            </a>
+                        {/each}
+                    </div>
+                {/if}
+            </div>
+        {/if}
     {/if}
 
     <!-- Music -->
