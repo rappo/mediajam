@@ -966,6 +966,17 @@
         gap: 2px;
     }
 
+    /* Fix tooltip clipping on left/right edge episode cells */
+    .grid-container :global(.tooltip::before) {
+        white-space: nowrap;
+        max-width: 240px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .episode-cells :global(.tooltip) {
+        position: relative;
+    }
+
     .grid-row {
         display: flex;
         align-items: center;
