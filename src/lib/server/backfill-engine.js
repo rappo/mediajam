@@ -57,6 +57,10 @@ const findMediaByJellyfinId = db.prepare(`
     SELECT mc.id FROM media_children mc WHERE mc.jellyfin_id = ?
 `);
 
+const findTrackByJellyfinId = db.prepare(`
+    SELECT t.album_id, t.title as track_title FROM tracks t WHERE t.jellyfin_id = ?
+`);
+
 const findWatchedWithoutHistory = db.prepare(`
     SELECT mc.id as media_id, mc.jellyfin_id, mc.runtime_ticks
     FROM media_children mc
@@ -929,8 +933,17 @@ export async function backfillJellyfinPR(userId, dbPath) {
             const itemId = activity.ItemId;
             if (!itemId) { totalSkipped++; continue; }
 
-            // Map to media_children
-            const match = /** @type {any} */ (findMediaByJellyfinId.get(itemId));
+            // Map to media_children or tracks table
+            let match = /** @type {any} */ (findMediaByJellyfinId.get(itemId));
+            let trackName = null;
+            if (!match) {
+                // Music: track IDs are stored in the tracks table
+                const track = /** @type {any} */ (findTrackByJellyfinId.get(itemId));
+                if (track) {
+                    match = { id: track.album_id };
+                    trackName = track.track_title;
+                }
+            }
             if (!match) { totalSkipped++; continue; }
 
             const durationSeconds = activity.PlayDuration ? Math.round(activity.PlayDuration) : null;
@@ -944,7 +957,7 @@ export async function backfillJellyfinPR(userId, dbPath) {
                 durationSeconds,
                 completionPct: null,
                 externalEventId: `jellyfin_pr:${activity.rowid}`,
-                trackName: null
+                trackName
             });
 
             if (result.changes > 0) totalImported++;

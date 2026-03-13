@@ -70,13 +70,14 @@ function pollForNewPlays() {
         const WATCHED_THRESHOLD_PCT = 80;
 
         const findChild = db.prepare('SELECT id FROM media_children WHERE jellyfin_id = ?');
+        const findTrack = db.prepare('SELECT t.album_id, t.title as track_title FROM tracks t WHERE t.jellyfin_id = ?');
         const findChildRuntime = db.prepare(
             'SELECT mc.runtime_ticks, mp.media_type FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mc.id = ?'
         );
         const insertHistory = db.prepare(`
             INSERT OR IGNORE INTO playback_history
-                (user_id, media_id, source, timestamp, duration_consumed_seconds, completion_pct, external_event_id)
-            VALUES (@userId, @mediaId, 'jellyfin_pr', @timestamp, @durationSeconds, @completionPct, @externalEventId)
+                (user_id, media_id, source, timestamp, duration_consumed_seconds, completion_pct, external_event_id, track_name)
+            VALUES (@userId, @mediaId, 'jellyfin_pr', @timestamp, @durationSeconds, @completionPct, @externalEventId, @trackName)
         `);
         const updateWatchStatus = db.prepare(
             "UPDATE media_children SET watch_status = 'watched', play_count = play_count + 1 WHERE id = ? AND watch_status != 'watched'"
@@ -101,15 +102,26 @@ function pollForNewPlays() {
                 const itemId = event.ItemId;
                 if (!itemId) { skipped++; continue; }
 
-                // Try direct jellyfin_id match, then with _child suffix (movies)
+                // Try direct jellyfin_id match, then with _child suffix (movies), then tracks table (music)
                 let child = /** @type {any} */ (findChild.get(itemId));
                 if (!child) child = /** @type {any} */ (findChild.get(itemId + '_child'));
+                let trackName = null;
+                if (!child) {
+                    // Music: track IDs are stored in the tracks table, not media_children
+                    const track = /** @type {any} */ (findTrack.get(itemId));
+                    if (track) {
+                        child = { id: track.album_id };
+                        trackName = track.track_title;
+                    }
+                }
                 if (!child) { skipped++; continue; }
 
                 const durationSeconds = event.PlayDuration ? Math.round(event.PlayDuration) : null;
 
-                // Skip brief previews — opening a movie for a few seconds shouldn't count
-                if (!durationSeconds || durationSeconds < MIN_PLAY_SECONDS) {
+                // Skip brief previews — use shorter threshold for music tracks
+                const isTrack = !!trackName;
+                const minPlaySeconds = isTrack ? 30 : MIN_PLAY_SECONDS;
+                if (!durationSeconds || durationSeconds < minPlaySeconds) {
                     skipped++;
                     if (event.rowid > maxRowid) maxRowid = event.rowid; // still advance cursor
                     continue;
@@ -132,7 +144,8 @@ function pollForNewPlays() {
                     timestamp,
                     durationSeconds,
                     completionPct,
-                    externalEventId: eventId
+                    externalEventId: eventId,
+                    trackName
                 });
 
                 if (result.changes > 0) {
