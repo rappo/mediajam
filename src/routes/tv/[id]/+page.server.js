@@ -344,9 +344,7 @@ export async function load({ params }) {
     /** @type {any[]} */
     let similarInLibrary = [];
     /** @type {any[]} */
-    let similarInterested = [];
-    /** @type {any[]} */
-    let similarNotInLibrary = [];
+    let similarYouMightLike = [];
 
     if (show.tmdb_id && getTmdbKey()) {
         try {
@@ -398,7 +396,7 @@ export async function load({ params }) {
                             if (localMatch.jellyfin_id || localMatch.collection_status === 'wanted' || localMatch.arr_has_file === 1) {
                                 similarInLibrary.push(item);
                             } else {
-                                similarInterested.push(item);
+                                similarYouMightLike.push(item);
                             }
                         } else {
                             // Create or update a local stub so the item is browsable
@@ -421,7 +419,7 @@ export async function load({ params }) {
                                     existing = /** @type {any} */ (findStub.get(stubParams.tmdbId));
                                 }
                                 if (existing) {
-                                    similarNotInLibrary.push({
+                                    similarYouMightLike.push({
                                         href: `/tv/${existing.id}`,
                                         poster_url: existing.poster_url || posterUrl,
                                         title: stubParams.title,
@@ -430,7 +428,7 @@ export async function load({ params }) {
                                 }
                             } catch {
                                 // If stub creation fails, still show with TMDB poster
-                                similarNotInLibrary.push({
+                                similarYouMightLike.push({
                                     href: `https://www.themoviedb.org/tv/${rec.id}`,
                                     poster_url: posterUrl,
                                     title: rec.name || rec.original_name || 'Unknown',
@@ -471,7 +469,6 @@ export async function load({ params }) {
         crew,
         externalRatings,
         similarInLibrary,
-        similarInterested,
-        similarNotInLibrary,
+        similarYouMightLike,
     };
 }

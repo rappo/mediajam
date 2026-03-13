@@ -254,9 +254,7 @@ export async function load({ params, locals }) {
     /** @type {any[]} */
     let similarInLibrary = [];
     /** @type {any[]} */
-    let similarInterested = [];
-    /** @type {any[]} */
-    let similarNotInLibrary = [];
+    let similarYouMightLike = [];
 
     if (movie.tmdb_id && getTmdbKey()) {
         try {
@@ -309,7 +307,7 @@ export async function load({ params, locals }) {
                             if (localMatch.jellyfin_id || localMatch.collection_status === 'wanted' || localMatch.arr_has_file === 1) {
                                 similarInLibrary.push(item);
                             } else {
-                                similarInterested.push(item);
+                                similarYouMightLike.push(item);
                             }
                         } else {
                             // Create or update a local stub so the item is browsable
@@ -332,7 +330,7 @@ export async function load({ params, locals }) {
                                     existing = /** @type {any} */ (findStub.get(stubParams.tmdbId));
                                 }
                                 if (existing) {
-                                    similarNotInLibrary.push({
+                                    similarYouMightLike.push({
                                         href: `/movies/${existing.id}`,
                                         poster_url: existing.poster_url || posterUrl,
                                         title: stubParams.title,
@@ -341,7 +339,7 @@ export async function load({ params, locals }) {
                                 }
                             } catch {
                                 // If stub creation fails, still show with TMDB poster
-                                similarNotInLibrary.push({
+                                similarYouMightLike.push({
                                     href: `https://www.themoviedb.org/movie/${rec.id}`,
                                     poster_url: posterUrl,
                                     title: rec.title || rec.original_title || 'Unknown',
@@ -386,7 +384,6 @@ export async function load({ params, locals }) {
         arrService: 'radarr',
         inWatchlist,
         similarInLibrary,
-        similarInterested,
-        similarNotInLibrary,
+        similarYouMightLike,
     };
 }
