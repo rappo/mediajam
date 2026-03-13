@@ -63,37 +63,57 @@ export function load({ locals, url }) {
         LIMIT 500
     `).all(...params)) : [];
 
-    // Dedup: merge plays of the same media_id within a 12-hour window from different sources.
-    // Trakt uses UTC, Jellyfin uses local time, so the same viewing event can appear ~7-8 hours apart.
-    // Keep the entry with more data (duration/completion), combine sources.
-    const DEDUP_WINDOW_MS = 12 * 60 * 60 * 1000; // 12 hours
+    // Dedup strategy differs by media type:
+    // - Video: Map-based 12-hour window keyed on media_id (Trakt UTC vs Jellyfin local can differ ~7-8h)
+    // - Music: adjacency-based — only merge back-to-back entries of the SAME track.
+    //   A→B→A = 2 plays of A. A→A (from different sources) = 1 play.
+    const VIDEO_DEDUP_MS = 12 * 60 * 60 * 1000; // 12 hours
     /** @type {any[]} */
     const history = [];
-    /** @type {Map<number, any>} */
-    const recentByMediaId = new Map();
+    /** @type {Map<string, any>} */
+    const recentByKey = new Map(); // used for video only
 
     for (const entry of rawHistory) {
-        const existing = recentByMediaId.get(entry.media_id);
-        if (existing) {
-            const existingTime = new Date(existing.timestamp).getTime();
-            const entryTime = new Date(entry.timestamp).getTime();
-            if (Math.abs(existingTime - entryTime) <= DEDUP_WINDOW_MS) {
-                // Merge: keep the one with more data, combine sources
-                const sources = new Set((existing.source || '').split(' + '));
+        const isMusic = entry.media_type === 'artist';
+
+        if (isMusic) {
+            // Adjacency dedup: merge only if the previous history entry is the same track
+            const prev = history.length > 0 ? history[history.length - 1] : null;
+            if (prev && prev.media_type === 'artist'
+                && prev.media_id === entry.media_id
+                && (prev.track_name || '') === (entry.track_name || '')) {
+                // Back-to-back same track — merge sources
+                const sources = new Set((prev.source || '').split(' + '));
                 sources.add(entry.source);
-                existing.source = [...sources].join(' + ');
-                // Prefer the entry with duration/completion data
-                if (!existing.duration_consumed_seconds && entry.duration_consumed_seconds) {
-                    existing.duration_consumed_seconds = entry.duration_consumed_seconds;
+                prev.source = [...sources].join(' + ');
+                if (!prev.duration_consumed_seconds && entry.duration_consumed_seconds) {
+                    prev.duration_consumed_seconds = entry.duration_consumed_seconds;
                 }
-                if (!existing.completion_pct && entry.completion_pct) {
-                    existing.completion_pct = entry.completion_pct;
-                }
-                continue; // Skip this duplicate
+                continue;
             }
+        } else {
+            // Video: Map-based window dedup
+            const dedupKey = String(entry.media_id);
+            const existing = recentByKey.get(dedupKey);
+            if (existing) {
+                const existingTime = new Date(existing.timestamp).getTime();
+                const entryTime = new Date(entry.timestamp).getTime();
+                if (Math.abs(existingTime - entryTime) <= VIDEO_DEDUP_MS) {
+                    const sources = new Set((existing.source || '').split(' + '));
+                    sources.add(entry.source);
+                    existing.source = [...sources].join(' + ');
+                    if (!existing.duration_consumed_seconds && entry.duration_consumed_seconds) {
+                        existing.duration_consumed_seconds = entry.duration_consumed_seconds;
+                    }
+                    if (!existing.completion_pct && entry.completion_pct) {
+                        existing.completion_pct = entry.completion_pct;
+                    }
+                    continue;
+                }
+            }
+            recentByKey.set(dedupKey, entry);
         }
         history.push(entry);
-        recentByMediaId.set(entry.media_id, entry);
     }
 
     // Build album art URLs for music entries
@@ -221,8 +241,9 @@ export function load({ locals, url }) {
         ORDER BY year DESC
     `).all(userId)) : [];
 
-    // Load user's timezone preference
-    let userTimezone = 'UTC';
+    // Load user's timezone preference (fallback to server's local timezone, not UTC)
+    const serverTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    let userTimezone = serverTimezone;
     if (userId) {
         try {
             const userRow = /** @type {any} */ (db.prepare('SELECT preferences FROM users WHERE id = ?').get(userId));
