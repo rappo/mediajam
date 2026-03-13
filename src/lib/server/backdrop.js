@@ -114,3 +114,64 @@ export async function resolveBackdrop(mediaParentId) {
 
     return url;
 }
+
+/**
+ * Fetch artist poster/thumb from Fanart.tv.
+ * Uses artistthumb (square artist photo) — ideal for poster slot.
+ * @param {string} musicbrainzId
+ * @returns {Promise<string | null>} Image URL or null
+ */
+export async function fetchFanartPoster(musicbrainzId) {
+    const settings = /** @type {any} */ (db.prepare('SELECT fanart_api_key FROM app_settings WHERE id = 1').get());
+    const apiKey = settings?.fanart_api_key?.trim();
+    if (!apiKey) return null;
+
+    try {
+        const res = await fetch(`https://webservice.fanart.tv/v3/music/${musicbrainzId}?api_key=${apiKey}`, {
+            headers: { 'Accept': 'application/json' }
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+
+        // artistthumb = square artist photos, best for poster use
+        const thumbs = data.artistthumb || [];
+        if (thumbs.length > 0) {
+            const best = thumbs.sort((/** @type {any} */ a, /** @type {any} */ b) => (parseInt(b.likes) || 0) - (parseInt(a.likes) || 0))[0];
+            if (best?.url) return best.url;
+        }
+
+        // Fallback: hdmusiclogo or musiclogo (less ideal but better than nothing)
+        // Skip these — logos aren't good posters
+
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Resolve the best poster URL for a music artist.
+ * Checks DB cache first, fetches from Fanart.tv if missing, and caches.
+ * @param {number} mediaParentId
+ * @returns {Promise<string | null>}
+ */
+export async function resolvePoster(mediaParentId) {
+    const row = /** @type {any} */ (db.prepare(
+        'SELECT poster_url, media_type, jellyfin_id, musicbrainz_id FROM media_parents WHERE id = ?'
+    ).get(mediaParentId));
+    if (!row) return null;
+
+    // Already has a poster
+    if (row.poster_url) return row.poster_url;
+
+    // Only resolve for artists with a MB ID
+    if (row.media_type !== 'artist' || !row.musicbrainz_id) return null;
+
+    const url = await fetchFanartPoster(row.musicbrainz_id);
+
+    if (url) {
+        db.prepare('UPDATE media_parents SET poster_url = ? WHERE id = ?').run(url, mediaParentId);
+    }
+
+    return url;
+}

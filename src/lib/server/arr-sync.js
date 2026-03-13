@@ -201,6 +201,12 @@ export async function syncArrService(service, url, apiKey) {
         ) LIMIT 1`
     );
 
+    // Title-based fallback — catches Lidarr artists where Jellyfin had the wrong MB ID
+    // (e.g. Jellyfin says Sleep is MB:xyz but Lidarr says Sleep is MB:abc)
+    const findByTitle = db.prepare(
+        `SELECT id FROM media_parents WHERE title = ? COLLATE NOCASE AND media_type = ? AND jellyfin_id IS NOT NULL LIMIT 1`
+    );
+
     let matched = 0;
     let created = 0;
 
@@ -275,6 +281,12 @@ export async function syncArrService(service, url, apiKey) {
                     meta.mediaType,
                     ids.tmdb_id || '', ids.imdb_id || '', ids.tvdb_id || '', ids.musicbrainz_id || ''
                 ));
+            }
+
+            // Title-based fallback — last resort for when Jellyfin has the wrong external IDs
+            if (!match) {
+                const title = meta.extractTitle(item);
+                match = /** @type {any} */ (findByTitle.get(title, meta.mediaType));
             }
 
             if (match) {

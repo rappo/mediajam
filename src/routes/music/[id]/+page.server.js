@@ -1,7 +1,7 @@
 import db from '$lib/server/db.js';
 import { error } from '@sveltejs/kit';
 import { checkJellyfinFavorite } from '$lib/server/jellyfin-favorites.js';
-import { resolveBackdrop } from '$lib/server/backdrop.js';
+import { resolveBackdrop, resolvePoster } from '$lib/server/backdrop.js';
 
 export async function load({ params, locals }) {
     const artistId = parseInt(params.id);
@@ -132,6 +132,10 @@ export async function load({ params, locals }) {
     // Lazy-fetch Fanart.tv backdrop if not yet cached
     if (!artist.backdrop_url && artist.musicbrainz_id) {
         resolveBackdrop(artistId).catch(() => {});
+    }
+    // Lazy-fetch Fanart.tv poster if no poster_url and no usable Jellyfin primary
+    if (!artist.poster_url && artist.musicbrainz_id) {
+        resolvePoster(artistId).catch(() => {});
     }
 
     // Band members / credits — show musicians (members, supporting, instrument-named roles) and crew separately
