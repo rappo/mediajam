@@ -1,7 +1,17 @@
 import db from '$lib/server/db.js';
+import {
+    getHomepagePrefs,
+    detectMoviePatterns,
+    getBecauseYouLove,
+    getRecentlyWatchedMovies,
+    getUnwatchedMovies,
+} from '$lib/server/homepage-engine.js';
 
 /** @type {import('./$types').PageServerLoad} */
 export function load({ locals }) {
+    const userId = locals.user?.id || 0;
+    const prefs = getHomepagePrefs();
+
     const totalMovies = /** @type {any} */ (db.prepare('SELECT COUNT(*) as c FROM media_parents WHERE media_type = ?').get('movie')).c;
 
     const movieStats = /** @type {any} */ (db.prepare(`
@@ -24,8 +34,7 @@ export function load({ locals }) {
 
     const runtimeHours = Math.round((movieStats.total_runtime || 0) / 10000000 / 3600);
 
-    // Movies with watch status — pre-aggregate playback_history to avoid correlated subqueries
-    const userId = locals.user?.id || 0;
+    // Movies with watch status — for table view
     const movies = db.prepare(`
         WITH play_stats AS (
             SELECT media_id,
@@ -41,17 +50,9 @@ export function load({ locals }) {
             GROUP BY media_id
         )
         SELECT
-            mp.id,
-            mp.title,
-            mp.release_year,
-            mp.poster_url,
-            mp.overview,
-            mp.tmdb_id,
-            mp.imdb_id,
-            mp.collected_children,
-            mp.total_released_children,
-            mp.collection_status,
-            mp.arr_status,
+            mp.id, mp.title, mp.release_year, mp.poster_url, mp.overview,
+            mp.tmdb_id, mp.imdb_id, mp.collected_children, mp.total_released_children,
+            mp.collection_status, mp.arr_status,
             CASE
                 WHEN mp.collection_status = 'wanted' THEN 'wanted'
                 WHEN COALESCE(ps.watch_count, 0) > 0 THEN 'watched'
@@ -68,27 +69,19 @@ export function load({ locals }) {
         ORDER BY mp.title
     `).all(userId);
 
-    // Movies by decade
+    // Movies by decade (for charts)
     const moviesByDecade = db.prepare(`
-        SELECT
-            (release_year / 10) * 10 as decade,
-            COUNT(*) as count
-        FROM media_parents
-        WHERE media_type = 'movie' AND release_year IS NOT NULL
-        GROUP BY decade
-        ORDER BY decade
+        SELECT (release_year / 10) * 10 as decade, COUNT(*) as count
+        FROM media_parents WHERE media_type = 'movie' AND release_year IS NOT NULL
+        GROUP BY decade ORDER BY decade
     `).all();
 
-    // Movies by year (recent 20 years)
     const moviesByYear = db.prepare(`
         SELECT release_year as year, COUNT(*) as count
-        FROM media_parents
-        WHERE media_type = 'movie' AND release_year IS NOT NULL
-        GROUP BY release_year
-        ORDER BY release_year
+        FROM media_parents WHERE media_type = 'movie' AND release_year IS NOT NULL
+        GROUP BY release_year ORDER BY release_year
     `).all();
 
-    // Most re-watched (deduplicated by 12-hour window)
     const mostRewatched = db.prepare(`
         SELECT mp.title, COUNT(*) as play_count
         FROM media_parents mp
@@ -98,51 +91,15 @@ export function load({ locals }) {
             FROM playback_history
         ) deduped ON deduped.media_id = mc.id
         WHERE mp.media_type = 'movie'
-        GROUP BY mp.id
-        HAVING COUNT(*) > 1
-        ORDER BY play_count DESC
-        LIMIT 10
+        GROUP BY mp.id HAVING COUNT(*) > 1
+        ORDER BY play_count DESC LIMIT 10
     `).all();
 
-    // ── Poster row data ──
-    const recentlyAdded = db.prepare(`
-        SELECT id, title, poster_url, release_year
-        FROM media_parents WHERE media_type = 'movie' AND poster_url IS NOT NULL
-        ORDER BY id DESC LIMIT 20
-    `).all();
-
-    const recentlyWatched = db.prepare(`
-        SELECT DISTINCT mp.id, mp.title, mp.poster_url, mp.release_year
-        FROM playback_history ph
-        JOIN media_children mc ON ph.media_id = mc.id
-        JOIN media_parents mp ON mc.parent_id = mp.id
-        WHERE mp.media_type = 'movie' AND ph.user_id = ? AND mp.poster_url IS NOT NULL
-        ORDER BY ph.timestamp DESC LIMIT 20
-    `).all(userId);
-
-    const continueWatchingMovies = db.prepare(`
-        SELECT mp.id, mp.title, mp.poster_url, mp.release_year
-        FROM media_parents mp
-        JOIN media_children mc ON mc.parent_id = mp.id
-        WHERE mp.media_type = 'movie' AND mc.watch_status = 'in_progress' AND mp.poster_url IS NOT NULL
-        ORDER BY mp.id DESC LIMIT 20
-    `).all();
-
-    const highestRated = db.prepare(`
-        SELECT id, title, poster_url, release_year, jellyfin_user_rating
-        FROM media_parents
-        WHERE media_type = 'movie' AND jellyfin_user_rating IS NOT NULL AND jellyfin_user_rating > 0
-            AND poster_url IS NOT NULL
-        ORDER BY jellyfin_user_rating DESC LIMIT 20
-    `).all();
-
-    const unwatchedMovies = db.prepare(`
-        SELECT mp.id, mp.title, mp.poster_url, mp.release_year
-        FROM media_parents mp
-        LEFT JOIN media_children mc ON mc.parent_id = mp.id
-        WHERE mp.media_type = 'movie' AND mc.watch_status = 'unwatched' AND mp.poster_url IS NOT NULL
-        ORDER BY mp.release_year DESC LIMIT 20
-    `).all();
+    // ── Smart Sections ──
+    const hero = detectMoviePatterns(userId, prefs);
+    const becauseYouLove = getBecauseYouLove(userId, prefs);
+    const recentlyWatched = getRecentlyWatchedMovies(userId, prefs.maxItemsPerSection);
+    const unwatched = getUnwatchedMovies(prefs.maxItemsPerSection);
 
     return {
         totalMovies,
@@ -157,6 +114,6 @@ export function load({ locals }) {
         moviesByDecade,
         moviesByYear,
         mostRewatched,
-        posterRows: { recentlyAdded, recentlyWatched, continueWatching: continueWatchingMovies, highestRated, unwatched: unwatchedMovies }
+        sections: { hero, becauseYouLove, recentlyWatched, unwatched }
     };
 }

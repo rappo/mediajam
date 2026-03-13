@@ -450,6 +450,8 @@ const newAppCols = [
     ['weekly_pipeline_day', "TEXT DEFAULT 'sunday'"],
     ['weekly_pipeline_time', "TEXT DEFAULT '03:00'"],
     ['pipeline_phase_flags', "TEXT DEFAULT '{}'"],
+    // Homepage smart sections
+    ['homepage_preferences', "TEXT DEFAULT '{}'"],
 ];
 for (const [col, type] of newAppCols) {
     if (!existingCols.has(col)) {
