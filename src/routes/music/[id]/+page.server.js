@@ -97,10 +97,10 @@ export async function load({ params, locals }) {
     const totalRuntime = albums.reduce((sum, a) => sum + (a.runtime_ticks || 0), 0);
     const totalPlayed = albumsWithImages.filter(a => a.play_count > 0).length;
 
-    // Artist image from Jellyfin
-    const artistImageUrl = artist.jellyfin_id
-        ? `${jellyfinUrl}/Items/${artist.jellyfin_id}/Images/Primary?maxHeight=300`
-        : artist.poster_url;
+    // Artist image: prefer external poster (TheAudioDB/Fanart.tv) which is reliable,
+    // fallback to Jellyfin primary image (which may 404 for some artists)
+    const artistImageUrl = artist.poster_url
+        || (artist.jellyfin_id ? `${jellyfinUrl}/Items/${artist.jellyfin_id}/Images/Primary?maxHeight=300` : null);
 
     // External ratings per album (Discogs, MusicBrainz)
     const albumRatings = /** @type {any[]} */ (db.prepare(`
