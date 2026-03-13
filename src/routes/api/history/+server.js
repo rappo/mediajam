@@ -38,7 +38,8 @@ export async function GET({ url, locals }) {
             mp.media_type,
             mp.poster_url,
             mp.jellyfin_id as parent_jellyfin_id,
-            u.username
+            u.username,
+            ph.track_name
         FROM playback_history ph
         JOIN media_children mc ON ph.media_id = mc.id
         JOIN media_parents mp ON mc.parent_id = mp.id

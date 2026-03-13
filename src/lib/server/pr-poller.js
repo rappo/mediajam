@@ -219,7 +219,7 @@ async function pollRecentAudio() {
             sortBy: ['DatePlayed'],
             sortOrder: ['Descending'],
             enableUserData: true,
-            limit: 5,
+            limit: 50,
             fields: [],
             recursive: true,
         });
