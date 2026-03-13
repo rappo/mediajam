@@ -82,6 +82,21 @@ Authorization: Bearer mj_abc123
   ]}
 ```
 
+### Backup & Audit
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/backups` | List all backups with settings |
+| `POST` | `/api/backups` | Create a manual backup |
+| `DELETE` | `/api/backups/{filename}` | Delete a backup |
+| `POST` | `/api/backups/restore` | Restore from a backup (destructive) |
+| `GET` | `/api/backups/download/{filename}` | Download a backup file |
+| `PUT` | `/api/backups/settings` | Update backup settings |
+| `GET` | `/api/audit` | List all audit snapshots |
+| `POST` | `/api/audit` | Take a new audit snapshot (`{label}`) |
+| `POST` | `/api/audit/compare` | Compare two snapshots (`{before, after}`) |
+| `DELETE` | `/api/audit/{filename}` | Delete an audit snapshot |
+
 ## Implementation Notes
 
 - Most query endpoints already have the DB queries written for the UI page servers — they just need to be exposed as JSON API routes

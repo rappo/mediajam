@@ -18,7 +18,32 @@ import db from '$lib/server/db.js';
 
 // ── Paths ───────────────────────────────────────────────────────────────────
 
-const BACKUP_DIR = join(dirname(DB_PATH), 'backups');
+export const BACKUP_DIR = join(dirname(DB_PATH), 'backups');
+
+// ── Shared Lock (coordinates pipeline ↔ backup) ────────────────────────────
+
+/** @type {string|null} */
+let lockHolder = null;
+
+/**
+ * Acquire a named lock. Polls every 2 s until free.
+ * @param {string} holder — e.g. 'pipeline' or 'backup'
+ */
+export async function acquireLock(holder) {
+    while (lockHolder && lockHolder !== holder) {
+        console.log(`[lock] ${holder} waiting for ${lockHolder} to release...`);
+        await new Promise(r => setTimeout(r, 2000));
+    }
+    lockHolder = holder;
+}
+
+/**
+ * Release a named lock.
+ * @param {string} holder
+ */
+export function releaseLock(holder) {
+    if (lockHolder === holder) lockHolder = null;
+}
 
 /** Ensure the backup directory exists. */
 function ensureDir() {

@@ -1,6 +1,7 @@
 import db from '$lib/server/db.js';
 import { backfillTrakt, backfillLastfm, processLastfmScrobbles } from '$lib/server/backfill-engine.js';
 import { startSync } from '$lib/server/sync-engine.js';
+import { startPipelineScheduler } from '$lib/server/nightly-pipeline.js';
 
 const CHECK_INTERVAL_MS = 30 * 60 * 1000; // Check every 30 minutes
 const DEFAULT_SYNC_INTERVAL_HOURS = 6;

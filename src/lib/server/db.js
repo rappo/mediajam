@@ -444,6 +444,12 @@ const newAppCols = [
     // Codex CLI OAuth tokens (pasted from ~/.codex/auth.json)
     ['codex_access_token', 'TEXT'],
     ['codex_refresh_token', 'TEXT'],
+    // Nightly/weekly pipeline scheduler
+    ['pipeline_enabled', 'INTEGER DEFAULT 0'],
+    ['nightly_pipeline_time', "TEXT DEFAULT '02:00'"],
+    ['weekly_pipeline_day', "TEXT DEFAULT 'sunday'"],
+    ['weekly_pipeline_time', "TEXT DEFAULT '03:00'"],
+    ['pipeline_phase_flags', "TEXT DEFAULT '{}'"],
 ];
 for (const [col, type] of newAppCols) {
     if (!existingCols.has(col)) {
@@ -477,6 +483,7 @@ const arrParentCols = [
     ['arr_has_file', 'INTEGER'],
     ['arr_status', 'TEXT'],
     ['arr_slug', 'TEXT'],
+    ['arr_sync_pending', 'INTEGER DEFAULT 0'],
 ];
 for (const [col, type] of arrParentCols) {
     if (!mediaParentsCols.has(col)) {

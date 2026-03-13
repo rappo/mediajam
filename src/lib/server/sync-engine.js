@@ -1338,6 +1338,25 @@ export async function startSync(libraryId = null, force = false) {
             }
         });
 
+        // ── Post-sync dedup ─────────────────────────────────────────────────
+        if (!allFailed) {
+            try {
+                broadcast({ type: 'progress', log: '🧹 Running post-sync dedup...', logType: 'info' });
+                const { deduplicateParents: dedupP, deduplicateParentsByTitle: dedupPT, deduplicateChildren: dedupC, deduplicatePlaybackHistory: dedupPH } = await import('$lib/server/reconcile.js');
+                const dp = dedupP();
+                const dpt = dedupPT();
+                const dc = dedupC();
+                const dph = dedupPH();
+                const dedupTotal = dp + dpt + dc + dph;
+                if (dedupTotal > 0) {
+                    broadcast({ type: 'progress', log: `🧹 Dedup: ${dp} parents(extID), ${dpt} parents(title), ${dc} children, ${dph} history dupes`, logType: 'info' });
+                    console.log(`[sync] Post-sync dedup: ${dp} parents, ${dpt} by-title, ${dc} children, ${dph} history`);
+                }
+            } catch (dedupErr) {
+                console.warn('[sync] Post-sync dedup failed:', dedupErr instanceof Error ? dedupErr.message : dedupErr);
+            }
+        }
+
     } catch (e) {
         console.error('Sync engine error:', e);
         const errMsg = e instanceof Error ? e.message : String(e);

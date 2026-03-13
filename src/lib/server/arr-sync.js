@@ -157,7 +157,8 @@ export async function syncArrService(service, url, apiKey) {
             arr_has_file = ?,
             arr_quality_profile = ?,
             arr_status = ?,
-            arr_slug = ?
+            arr_slug = ?,
+            arr_sync_pending = 0
         WHERE id = ?
     `);
 
@@ -232,8 +233,8 @@ export async function syncArrService(service, url, apiKey) {
 
     // Main sync transaction
     db.transaction(() => {
-        // Clear stale *arr IDs on Jellyfin-sourced items (still keep the row)
-        db.prepare(`UPDATE media_parents SET ${config.idColumn} = NULL, arr_monitored = 0, arr_has_file = NULL, arr_status = NULL, arr_slug = NULL, arr_quality_profile = NULL WHERE ${config.idColumn} IS NOT NULL AND collection_status != 'wanted'`).run();
+        // Mark existing *arr-linked items as pending (instead of clearing IDs upfront)
+        db.prepare(`UPDATE media_parents SET arr_sync_pending = 1 WHERE ${config.idColumn} IS NOT NULL AND collection_status != 'wanted'`).run();
 
         for (const item of items) {
             const externalId = String(item[config.matchField] || '');
@@ -342,6 +343,22 @@ export async function syncArrService(service, url, apiKey) {
             }
         }
     })();
+
+    // ── Cleanup: clear *arr IDs for items still pending (no longer in *arr) ──
+    try {
+        const pendingCleared = db.prepare(`
+            UPDATE media_parents SET
+                ${config.idColumn} = NULL, arr_monitored = 0, arr_has_file = NULL,
+                arr_status = NULL, arr_slug = NULL, arr_quality_profile = NULL,
+                arr_sync_pending = 0
+            WHERE arr_sync_pending = 1 AND collection_status != 'wanted'
+        `).run();
+        if (pendingCleared.changes > 0) {
+            console.log(`[arr-sync] ${service}: cleared *arr IDs from ${pendingCleared.changes} items no longer in *arr`);
+        }
+    } catch (clearErr) {
+        console.warn(`[arr-sync] ${service}: pending cleanup failed:`, clearErr instanceof Error ? clearErr.message : clearErr);
+    }
 
     // ── Cleanup: remove wanted stubs no longer in *arr ──
     const staleWantedIds = [...existingWantedIds].filter(id => !seenWantedIds.has(id));

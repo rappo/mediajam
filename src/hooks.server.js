@@ -4,6 +4,7 @@ import { verifySession, SESSION_COOKIE } from '$lib/server/session.js';
 import { startAutoSyncScheduler } from '$lib/server/auto-sync.js';
 import { startPrPoller } from '$lib/server/pr-poller.js';
 import { startBackupScheduler } from '$lib/server/backup-engine.js';
+import { startPipelineScheduler } from '$lib/server/nightly-pipeline.js';
 import { logError } from '$lib/server/logger.js';
 import { prefetchIcons } from '$lib/server/icon-cache.js';
 
@@ -34,6 +35,7 @@ export async function handle({ event, resolve }) {
         startAutoSyncScheduler();
         startPrPoller();
         startBackupScheduler();
+        startPipelineScheduler();
     }
 
     event.locals.isSetupComplete = isSetupComplete;
