@@ -172,15 +172,19 @@ export async function load({ params, locals }) {
 
                     const libByTmdb = new Map(inLib.map(m => [String(m.tmdb_id), m]));
 
-                    const upsertStub = db.prepare(`
+                    // Prepared statements for stub check/create (partial unique index doesn't support ON CONFLICT)
+                    const findStub = db.prepare(`SELECT id, poster_url FROM media_parents WHERE tmdb_id = ? AND media_type = 'movie'`);
+                    const insertStub = db.prepare(`
                         INSERT INTO media_parents (tmdb_id, title, media_type, release_year, poster_url, overview, collection_status)
                         VALUES (@tmdbId, @title, 'movie', @releaseYear, @posterUrl, @overview, 'external')
-                        ON CONFLICT(tmdb_id, media_type) DO UPDATE SET
+                    `);
+                    const updateStub = db.prepare(`
+                        UPDATE media_parents SET
                             title = COALESCE(@title, title),
                             release_year = COALESCE(@releaseYear, release_year),
                             poster_url = COALESCE(@posterUrl, poster_url),
                             overview = COALESCE(@overview, overview)
-                        RETURNING id, poster_url
+                        WHERE tmdb_id = @tmdbId AND media_type = 'movie'
                     `);
 
                     for (const rec of recs) {
@@ -201,21 +205,30 @@ export async function load({ params, locals }) {
                                 ? `https://image.tmdb.org/t/p/w300${rec.poster_path}`
                                 : null;
                             try {
-                                const stub = /** @type {any} */ (upsertStub.get({
+                                const stubParams = {
                                     tmdbId: String(rec.id),
                                     title: rec.title || rec.original_title || 'Unknown',
                                     releaseYear: rec.release_date ? parseInt(rec.release_date.slice(0, 4)) : null,
                                     posterUrl,
                                     overview: rec.overview || null,
-                                }));
-                                similarNotInLibrary.push({
-                                    href: `/movies/${stub.id}`,
-                                    poster_url: stub.poster_url || posterUrl,
-                                    title: rec.title || rec.original_title || 'Unknown',
-                                    subtitle: rec.release_date ? rec.release_date.slice(0, 4) : '',
-                                });
+                                };
+                                let existing = /** @type {any} */ (findStub.get(stubParams.tmdbId));
+                                if (existing) {
+                                    updateStub.run(stubParams);
+                                } else {
+                                    insertStub.run(stubParams);
+                                    existing = /** @type {any} */ (findStub.get(stubParams.tmdbId));
+                                }
+                                if (existing) {
+                                    similarNotInLibrary.push({
+                                        href: `/movies/${existing.id}`,
+                                        poster_url: existing.poster_url || posterUrl,
+                                        title: stubParams.title,
+                                        subtitle: rec.release_date ? rec.release_date.slice(0, 4) : '',
+                                    });
+                                }
                             } catch {
-                                // If stub creation fails, still show it with TMDB poster
+                                // If stub creation fails, still show with TMDB poster
                                 similarNotInLibrary.push({
                                     href: `https://www.themoviedb.org/movie/${rec.id}`,
                                     poster_url: posterUrl,
