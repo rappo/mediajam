@@ -256,7 +256,11 @@ export function getAiringThisWeek(prefs) {
  * @param {typeof DEFAULTS} _prefs
  * @param {number} limit
  */
-export function getNewUnwatchedEpisodes(_prefs, limit = 15) {
+export function getNewUnwatchedEpisodes(_prefs, userId = 0, limit = 15) {
+    // Only show episodes from shows the user is engaged with:
+    // - Caught up: watched >= 80% of collected episodes
+    // - Nearly caught up: at most 5 episodes behind
+    // - Recently active: has playback history in the last 90 days
     const episodes = /** @type {any[]} */ (db.prepare(`
         SELECT mc.id as episode_id, mc.title as episode_title,
                mc.season_number, mc.item_number, mc.premiere_date,
@@ -271,9 +275,22 @@ export function getNewUnwatchedEpisodes(_prefs, limit = 15) {
           AND date(mc.premiere_date) >= date('now', '-30 days')
           AND mc.watch_status != 'watched'
           AND mc.is_special = 0
+          AND (
+              -- Caught up: watched >= 80% of collected episodes
+              (mp.collected_children > 0 AND mp.watched_children >= mp.collected_children * 0.8)
+              -- Nearly caught up: at most 5 episodes behind
+              OR (mp.collected_children > 0 AND (mp.collected_children - mp.watched_children) <= 5)
+              -- Recently active: has playback in last 90 days
+              OR mp.id IN (
+                  SELECT DISTINCT mc2.parent_id
+                  FROM playback_history ph
+                  JOIN media_children mc2 ON ph.media_id = mc2.id
+                  WHERE ph.user_id = ? AND ph.timestamp >= datetime('now', '-90 days')
+              )
+          )
         ORDER BY mc.premiere_date DESC
         LIMIT ?
-    `).all(limit));
+    `).all(userId, limit));
 
     return episodes.map(ep => ({
         ...ep,
@@ -309,13 +326,13 @@ export function getBehindOnShows(_userId, limit = 12) {
  * Highlights season premieres and finales.
  * @param {typeof DEFAULTS} prefs
  */
-export function getUpcomingEpisodes(prefs) {
+export function getUpcomingEpisodes(prefs, userId = 0) {
     // Try with default lookahead first
-    let episodes = _fetchUpcoming(prefs.lookaheadDaysDefault);
+    let episodes = _fetchUpcoming(prefs.lookaheadDaysDefault, userId);
 
     // Expand window if too few results
     if (episodes.length < prefs.minCalendarResults && prefs.lookaheadDaysDefault < prefs.lookaheadDaysMax) {
-        episodes = _fetchUpcoming(prefs.lookaheadDaysMax);
+        episodes = _fetchUpcoming(prefs.lookaheadDaysMax, userId);
     }
 
     return episodes;
@@ -324,7 +341,8 @@ export function getUpcomingEpisodes(prefs) {
 /**
  * @param {number} days
  */
-function _fetchUpcoming(days) {
+function _fetchUpcoming(days, userId = 0) {
+    // Only show upcoming episodes for shows the user is engaged with
     const episodes = /** @type {any[]} */ (db.prepare(`
         SELECT mc.id as episode_id, mc.title as episode_title,
                mc.season_number, mc.item_number, mc.premiere_date,
@@ -336,9 +354,22 @@ function _fetchUpcoming(days) {
           AND date(mc.premiere_date) > date('now')
           AND date(mc.premiere_date) <= date('now', ?)
           AND mc.is_special = 0
+          AND (
+              -- Caught up: watched >= 80% of collected episodes
+              (mp.collected_children > 0 AND mp.watched_children >= mp.collected_children * 0.8)
+              -- Nearly caught up: at most 5 episodes behind
+              OR (mp.collected_children > 0 AND (mp.collected_children - mp.watched_children) <= 5)
+              -- Recently active: has playback in last 90 days
+              OR mp.id IN (
+                  SELECT DISTINCT mc2.parent_id
+                  FROM playback_history ph
+                  JOIN media_children mc2 ON ph.media_id = mc2.id
+                  WHERE ph.user_id = ? AND ph.timestamp >= datetime('now', '-90 days')
+              )
+          )
         ORDER BY mc.premiere_date ASC
         LIMIT 20
-    `).all(`+${days} days`));
+    `).all(`+${days} days`, userId));
 
     // Detect season premieres (E1) and finales
     return episodes.map(ep => ({

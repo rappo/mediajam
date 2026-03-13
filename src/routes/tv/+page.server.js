@@ -110,9 +110,9 @@ export function load({ locals }) {
     let airingThisWeek = [], newUnwatched = [], behindOn = [], comingUp = [];
     try {
         airingThisWeek = getAiringThisWeek(prefs);
-        newUnwatched = getNewUnwatchedEpisodes(prefs);
+        newUnwatched = getNewUnwatchedEpisodes(prefs, userId);
         behindOn = getBehindOnShows(userId);
-        comingUp = getUpcomingEpisodes(prefs);
+        comingUp = getUpcomingEpisodes(prefs, userId);
     } catch (e) {
         console.error('[tv] Smart section error:', e instanceof Error ? e.message : e);
     }
