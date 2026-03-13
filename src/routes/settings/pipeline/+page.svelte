@@ -191,6 +191,9 @@
             case 'phase_error':
                 addLog(`✗ ${event.phase}: ${event.error} (${formatDuration(event.duration)})`, 'error');
                 break;
+            case 'phase_progress':
+                addLog(`  ↳ ${event.message}`, 'info');
+                break;
             case 'pipeline_end':
                 addLog(`✓ Pipeline complete — ${event.message}`, 'success');
                 break;

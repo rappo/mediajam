@@ -40,7 +40,7 @@ let listeners = [];
 
 /**
  * @typedef {{
- *   type: 'phase_start' | 'phase_end' | 'phase_skip' | 'phase_error' | 'pipeline_start' | 'pipeline_end',
+ *   type: 'phase_start' | 'phase_end' | 'phase_skip' | 'phase_error' | 'phase_progress' | 'pipeline_start' | 'pipeline_end',
  *   phase?: string,
  *   phaseIndex?: number,
  *   totalPhases?: number,
@@ -110,7 +110,7 @@ export function updatePipelineSettings(settings) {
  *   id: string,
  *   label: string,
  *   schedule: 'nightly' | 'weekly',
- *   run: () => Promise<string>,
+ *   run: (log: (msg: string) => void) => Promise<string>,
  *   shouldSkip?: () => boolean,
  * }} PhaseDefinition
  */
@@ -156,8 +156,14 @@ const PHASES = [
         id: 'jellyfin-sync',
         label: 'Jellyfin Library Sync',
         schedule: 'nightly',
-        async run() {
+        async run(log) {
+            log('Connecting to Jellyfin...');
+            const before = /** @type {any} */ (db.prepare('SELECT COUNT(*) as c FROM media_parents').get())?.c || 0;
             await startSync();
+            const after = /** @type {any} */ (db.prepare('SELECT COUNT(*) as c FROM media_parents').get())?.c || 0;
+            const diff = after - before;
+            if (diff > 0) log(`Added ${diff} new items (${before} → ${after})`);
+            else log(`Library unchanged at ${after} items`);
             return 'Jellyfin library sync complete';
         },
     },
@@ -165,9 +171,15 @@ const PHASES = [
         id: 'jellyfin-history',
         label: 'Jellyfin Watch History',
         schedule: 'nightly',
-        async run() {
+        async run(log) {
             const userId = getPipelineUserId();
+            const beforeCount = /** @type {any} */ (db.prepare('SELECT COUNT(*) as c FROM playback_history').get())?.c || 0;
+            log('Fetching watch history from Jellyfin...');
             await syncJellyfinHistory(userId);
+            const afterCount = /** @type {any} */ (db.prepare('SELECT COUNT(*) as c FROM playback_history').get())?.c || 0;
+            const diff = afterCount - beforeCount;
+            if (diff > 0) log(`Imported ${diff} new play records (${beforeCount} → ${afterCount})`);
+            else log(`No new plays (${afterCount} total)`);
             return 'Jellyfin watch history synced';
         },
     },
@@ -176,9 +188,12 @@ const PHASES = [
         label: 'Trakt History Import',
         schedule: 'nightly',
         shouldSkip: () => !isTraktAutoSyncEnabled(),
-        async run() {
+        async run(log) {
             const userId = getPipelineUserId();
+            log('Fetching Trakt watch history...');
             await backfillTrakt(userId);
+            const traktCount = /** @type {any} */ (db.prepare("SELECT COUNT(*) as c FROM playback_history WHERE source = 'trakt'").get())?.c || 0;
+            log(`Trakt plays total: ${traktCount}`);
             return 'Trakt history imported';
         },
     },
@@ -187,10 +202,14 @@ const PHASES = [
         label: 'Last.fm Scrobble Import',
         schedule: 'nightly',
         shouldSkip: () => !isLastfmAutoSyncEnabled(),
-        async run() {
+        async run(log) {
             const userId = getPipelineUserId();
+            log('Fetching Last.fm scrobbles...');
             await backfillLastfm(userId);
+            log('Processing scrobbles into playback history...');
             processLastfmScrobbles(userId);
+            const lfmCount = /** @type {any} */ (db.prepare("SELECT COUNT(*) as c FROM playback_history WHERE source = 'lastfm'").get())?.c || 0;
+            log(`Last.fm plays total: ${lfmCount}`);
             return 'Last.fm scrobbles imported and processed';
         },
     },
@@ -199,7 +218,10 @@ const PHASES = [
         label: '*arr Sync',
         schedule: 'nightly',
         shouldSkip: () => !isArrConfigured(),
-        async run() {
+        async run(log) {
+            const settings = /** @type {any} */ (db.prepare('SELECT radarr_url, sonarr_url, lidarr_url FROM app_settings WHERE id = 1').get());
+            const services = [settings?.radarr_url && 'Radarr', settings?.sonarr_url && 'Sonarr', settings?.lidarr_url && 'Lidarr'].filter(Boolean);
+            log(`Syncing: ${services.join(', ')}`);
             await syncAllArr();
             return '*arr sync complete';
         },
@@ -208,35 +230,49 @@ const PHASES = [
         id: 'dedup-cleanup',
         label: 'Quick Cleanup (Dedup)',
         schedule: 'nightly',
-        async run() {
-            const results = [];
+        async run(log) {
+            log('Deduplicating parents by external ID...');
             const p = deduplicateParents();
-            results.push(`Parents (extID): ${p.deduped} merged`);
+            if (p.deduped > 0) log(`  Merged ${p.deduped} parent duplicates`);
+
+            log('Deduplicating parents by title...');
             const pt = deduplicateParentsByTitle();
-            results.push(`Parents (title): ${pt.deduped} merged`);
+            if (pt.deduped > 0) log(`  Merged ${pt.deduped} title duplicates`);
+
+            log('Deduplicating children...');
             const c = deduplicateChildren();
-            results.push(`Children: ${c.deduped} merged`);
+            if (c.deduped > 0) log(`  Merged ${c.deduped} child duplicates`);
+
+            log('Removing duplicate playback history...');
             const ph = deduplicatePlaybackHistory();
-            results.push(`Playback history: ${ph.removed} dupes removed`);
+            if (ph.removed > 0) log(`  Removed ${ph.removed} duplicate plays`);
+
+            log('Merging orphan artists into albums...');
             const oa = mergeOrphanArtistsIntoAlbums();
-            results.push(`Orphan artists→albums: ${oa.merged} merged`);
+            if (oa.merged > 0) log(`  Merged ${oa.merged} orphan artists`);
+
+            log('Deduplicating external albums...');
             const ea = deduplicateExternalAlbums();
-            results.push(`External albums: ${ea.deduped} merged`);
-            return results.join('; ');
+            if (ea.deduped > 0) log(`  Merged ${ea.deduped} external album duplicates`);
+
+            const totalMerged = p.deduped + pt.deduped + c.deduped + ph.removed + oa.merged + ea.deduped;
+            return totalMerged > 0
+                ? `Cleanup complete: ${totalMerged} total operations`
+                : 'No duplicates found';
         },
     },
     {
         id: 'image-warm',
         label: 'Image Cache Warm',
         schedule: 'nightly',
-        async run() {
-            // Gather URLs from media_parents that have poster/backdrop URLs
+        async run(log) {
             const rows = /** @type {any[]} */ (db.prepare(`
                 SELECT poster_url, backdrop_url FROM media_parents
                 WHERE poster_url IS NOT NULL OR backdrop_url IS NOT NULL
             `).all());
             const urls = rows.flatMap(r => [r.poster_url, r.backdrop_url].filter(Boolean));
             if (urls.length === 0) return 'No images to warm';
+            log(`Found ${urls.length} images to warm...`);
             await warmCache(urls, 5);
             return `Warmed ${urls.length} images`;
         },
@@ -247,21 +283,42 @@ const PHASES = [
         id: 'people-sync',
         label: 'People & Credits',
         schedule: 'weekly',
-        async run() {
+        async run(log) {
+            const beforePeople = /** @type {any} */ (db.prepare('SELECT COUNT(*) as c FROM persons').get())?.c || 0;
+            const beforeCredits = /** @type {any} */ (db.prepare('SELECT COUNT(*) as c FROM person_credits').get())?.c || 0;
+            log(`Starting with ${beforePeople} people, ${beforeCredits} credits`);
+
+            log('Phase 1: Syncing people from Jellyfin...');
             await startPeopleSync();
+            const afterSync = /** @type {any} */ (db.prepare('SELECT COUNT(*) as c FROM persons').get())?.c || 0;
+            if (afterSync > beforePeople) log(`  Added ${afterSync - beforePeople} new people`);
+
+            log('Phase 2: Backfilling external IDs (TMDB)...');
             await startExternalIdsSync();
+
+            log('Phase 3: TMDB crew enrichment (directors, writers)...');
             await startPeopleEnrichSync();
-            return 'People sync → ext IDs → TMDB enrich complete';
+            const afterCredits = /** @type {any} */ (db.prepare('SELECT COUNT(*) as c FROM person_credits').get())?.c || 0;
+            if (afterCredits > beforeCredits) log(`  Added ${afterCredits - beforeCredits} new credits`);
+
+            return `People sync complete: ${afterSync} people, ${afterCredits} credits`;
         },
     },
     {
         id: 'music-enrich',
         label: 'Music Enrichment',
         schedule: 'weekly',
-        async run() {
+        async run(log) {
+            log('Running MusicBrainz enrichment...');
             await startMusicBrainzEnrich();
+
+            log('Auto-merging high-confidence album matches...');
             const merged = autoMergeMediumPlus();
+            if ((merged?.merged ?? 0) > 0) log(`  Merged ${merged.merged} albums`);
+
+            log('Enriching remaining unmatched albums...');
             await enrichUnmatchedAlbums();
+
             return `MB enrich done, ${merged?.merged ?? 0} albums auto-merged, unmatched enriched`;
         },
     },
@@ -269,8 +326,13 @@ const PHASES = [
         id: 'ratings-refresh',
         label: 'Ratings Refresh',
         schedule: 'weekly',
-        async run() {
+        async run(log) {
+            const needsRating = /** @type {any} */ (db.prepare(
+                "SELECT COUNT(*) as c FROM media_parents WHERE tmdb_id IS NOT NULL AND tmdb_id != '' AND id NOT IN (SELECT media_parent_id FROM external_ratings)"
+            ).get())?.c || 0;
+            log(`${needsRating} items need ratings...`);
             const result = await fetchAllRatings({ force: false });
+            log(`Fetched ${result?.fetched ?? 0}, skipped ${result?.skipped ?? 0}`);
             return `Ratings refreshed: ${result?.fetched ?? 0} fetched, ${result?.skipped ?? 0} skipped`;
         },
     },
@@ -278,7 +340,11 @@ const PHASES = [
         id: 'wikipedia-backfill',
         label: 'Wikipedia Backfill',
         schedule: 'weekly',
-        async run() {
+        async run(log) {
+            const missing = /** @type {any} */ (db.prepare(
+                "SELECT COUNT(*) as c FROM media_parents WHERE wikipedia_url IS NULL AND tmdb_id IS NOT NULL AND tmdb_id != '' AND media_type IN ('movie','show')"
+            ).get())?.c || 0;
+            log(`${missing} items missing Wikipedia links...`);
             await backfillWikipedia();
             return 'Wikipedia backfill complete';
         },
@@ -361,8 +427,13 @@ export async function runPipeline(mode = 'nightly', { audit = false } = {}) {
         console.log(`[pipeline] Phase ${i + 1}/${phases.length}: ${phase.label}`);
 
         const start = Date.now();
+        /** @param {string} msg */
+        const phaseLog = (msg) => {
+            emit({ type: 'phase_progress', phase: phase.id, phaseIndex: i, totalPhases: phases.length, message: msg });
+            console.log(`[pipeline]   ${msg}`);
+        };
         try {
-            const message = await phase.run();
+            const message = await phase.run(phaseLog);
             const durationMs = Date.now() - start;
             emit({ type: 'phase_end', phase: phase.id, phaseIndex: i, totalPhases: phases.length, message, duration: durationMs });
             results.push({ phase: phase.id, status: 'done', message, durationMs });
