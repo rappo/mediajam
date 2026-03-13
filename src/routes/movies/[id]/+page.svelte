@@ -8,6 +8,7 @@
     import ServiceIcon from "$lib/components/ServiceIcon.svelte";
     import InteractiveSearchDialog from "$lib/components/InteractiveSearchDialog.svelte";
     import MediaDetailHeader from "$lib/components/MediaDetailHeader.svelte";
+    import PosterRow from "$lib/components/PosterRow.svelte";
     import { invalidateAll, goto } from "$app/navigation";
     import { page } from "$app/stores";
     import { imgUrl } from "$lib/utils.js";
@@ -792,6 +793,16 @@
             </div>
         </div>
     {/if}
+
+    <!-- Similar Items -->
+    <PosterRow
+        title="Similar In Your Library"
+        items={data.similarInLibrary}
+    />
+    <PosterRow
+        title="Similar Not In Your Library"
+        items={data.similarNotInLibrary}
+    />
 
     <!-- Playback History -->
     {#if data.history.length > 0}

@@ -2,6 +2,7 @@ import db from '$lib/server/db.js';
 import { error } from '@sveltejs/kit';
 import { checkJellyfinFavorite } from '$lib/server/jellyfin-favorites.js';
 import { resolveBackdrop } from '$lib/server/backdrop.js';
+import { tmdbFetch, getTmdbKey } from '$lib/server/tmdb.js';
 
 export async function load({ params }) {
     const showId = parseInt(params.id);
@@ -185,6 +186,62 @@ export async function load({ params }) {
         ? `${jellyfinUrl}/Items/${show.jellyfin_id}/Images/Primary?maxHeight=400`
         : show.poster_url;
 
+    // ── Similar Items (TMDB Recommendations) ─────────────────────────────────
+    /** @type {any[]} */
+    let similarInLibrary = [];
+    /** @type {any[]} */
+    let similarNotInLibrary = [];
+
+    if (show.tmdb_id && getTmdbKey()) {
+        try {
+            const res = await tmdbFetch(`/tv/${show.tmdb_id}/recommendations`);
+            if (res.ok) {
+                const data = await res.json();
+                const recs = (data.results || []).slice(0, 20);
+
+                if (recs.length > 0) {
+                    const tmdbIds = recs.map(/** @param {any} r */ (r) => r.id);
+                    const placeholders = tmdbIds.map(() => '?').join(',');
+                    const inLib = /** @type {any[]} */ (db.prepare(
+                        `SELECT id, tmdb_id, title, poster_url, release_year, jellyfin_id
+                         FROM media_parents
+                         WHERE tmdb_id IN (${placeholders}) AND media_type = 'show'`
+                    ).all(...tmdbIds));
+
+                    const libByTmdb = new Map(inLib.map(m => [String(m.tmdb_id), m]));
+
+                    for (const rec of recs) {
+                        const localMatch = libByTmdb.get(String(rec.id));
+                        if (localMatch) {
+                            const pUrl = localMatch.jellyfin_id
+                                ? `${jellyfinUrl}/Items/${localMatch.jellyfin_id}/Images/Primary?maxHeight=400`
+                                : localMatch.poster_url;
+                            similarInLibrary.push({
+                                href: `/tv/${localMatch.id}`,
+                                poster_url: pUrl,
+                                title: localMatch.title,
+                                subtitle: localMatch.release_year ? String(localMatch.release_year) : '',
+                            });
+                        } else {
+                            const posterPath = rec.poster_path
+                                ? `https://image.tmdb.org/t/p/w300${rec.poster_path}`
+                                : null;
+                            similarNotInLibrary.push({
+                                href: `https://www.themoviedb.org/tv/${rec.id}`,
+                                poster_url: posterPath,
+                                title: rec.name || rec.original_name || 'Unknown',
+                                subtitle: rec.first_air_date ? rec.first_air_date.slice(0, 4) : '',
+                                external: true,
+                            });
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('[similar] Failed to fetch TMDB TV recommendations:', e instanceof Error ? e.message : e);
+        }
+    }
+
     return {
         show: {
             ...show,
@@ -207,6 +264,8 @@ export async function load({ params }) {
         totalInProgress: filteredEpisodes.filter(e => e.watch_status === 'in_progress').length,
         cast,
         crew,
-        externalRatings
+        externalRatings,
+        similarInLibrary,
+        similarNotInLibrary,
     };
 }

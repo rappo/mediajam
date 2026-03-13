@@ -8,6 +8,7 @@
     import FavoriteButton from "$lib/components/FavoriteButton.svelte";
     import MediaDetailHeader from "$lib/components/MediaDetailHeader.svelte";
     import InteractiveSearchDialog from "$lib/components/InteractiveSearchDialog.svelte";
+    import PosterRow from "$lib/components/PosterRow.svelte";
     import { imgUrl } from "$lib/utils.js";
 
 
@@ -768,6 +769,16 @@
             </div>
         </div>
     {/if}
+
+    <!-- Similar Items -->
+    <PosterRow
+        title="Similar In Your Library"
+        items={data.similarInLibrary}
+    />
+    <PosterRow
+        title="Similar Not In Your Library"
+        items={data.similarNotInLibrary}
+    />
 </div>
 
 <!-- Discovery: Related Shows from TMDb -->

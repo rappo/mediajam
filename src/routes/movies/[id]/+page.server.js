@@ -2,6 +2,7 @@ import db from '$lib/server/db.js';
 import { error } from '@sveltejs/kit';
 import { checkJellyfinFavorite } from '$lib/server/jellyfin-favorites.js';
 import { resolveBackdrop } from '$lib/server/backdrop.js';
+import { tmdbFetch, getTmdbKey } from '$lib/server/tmdb.js';
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ params, locals }) {
@@ -142,6 +143,63 @@ export async function load({ params, locals }) {
         'SELECT 1 FROM watchlist WHERE user_id = ? AND media_parent_id = ?'
     ).get(userId, movieId);
 
+    // ── Similar Items (TMDB Recommendations) ─────────────────────────────────
+    /** @type {any[]} */
+    let similarInLibrary = [];
+    /** @type {any[]} */
+    let similarNotInLibrary = [];
+
+    if (movie.tmdb_id && getTmdbKey()) {
+        try {
+            const res = await tmdbFetch(`/movie/${movie.tmdb_id}/recommendations`);
+            if (res.ok) {
+                const data = await res.json();
+                const recs = (data.results || []).slice(0, 20);
+
+                // Batch lookup: which tmdb_ids are in our library?
+                if (recs.length > 0) {
+                    const tmdbIds = recs.map(/** @param {any} r */ (r) => r.id);
+                    const placeholders = tmdbIds.map(() => '?').join(',');
+                    const inLib = /** @type {any[]} */ (db.prepare(
+                        `SELECT id, tmdb_id, title, poster_url, release_year, jellyfin_id
+                         FROM media_parents
+                         WHERE tmdb_id IN (${placeholders}) AND media_type = 'movie'`
+                    ).all(...tmdbIds));
+
+                    const libByTmdb = new Map(inLib.map(m => [String(m.tmdb_id), m]));
+
+                    for (const rec of recs) {
+                        const localMatch = libByTmdb.get(String(rec.id));
+                        if (localMatch) {
+                            const pUrl = localMatch.jellyfin_id
+                                ? `${jellyfinUrl}/Items/${localMatch.jellyfin_id}/Images/Primary?maxHeight=400`
+                                : localMatch.poster_url;
+                            similarInLibrary.push({
+                                href: `/movies/${localMatch.id}`,
+                                poster_url: pUrl,
+                                title: localMatch.title,
+                                subtitle: localMatch.release_year ? String(localMatch.release_year) : '',
+                            });
+                        } else {
+                            const posterPath = rec.poster_path
+                                ? `https://image.tmdb.org/t/p/w300${rec.poster_path}`
+                                : null;
+                            similarNotInLibrary.push({
+                                href: `https://www.themoviedb.org/movie/${rec.id}`,
+                                poster_url: posterPath,
+                                title: rec.title || rec.original_title || 'Unknown',
+                                subtitle: rec.release_date ? rec.release_date.slice(0, 4) : '',
+                                external: true,
+                            });
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('[similar] Failed to fetch TMDB recommendations:', e instanceof Error ? e.message : e);
+        }
+    }
+
     return {
         movie: {
             ...movie,
@@ -168,6 +226,8 @@ export async function load({ params, locals }) {
         jellyfinUrl,
         arrUrl: (settings?.radarr_external_url || settings?.radarr_url || '').replace(/\/+$/, ''),
         arrService: 'radarr',
-        inWatchlist
+        inWatchlist,
+        similarInLibrary,
+        similarNotInLibrary,
     };
 }
