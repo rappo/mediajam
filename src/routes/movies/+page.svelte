@@ -3,7 +3,7 @@
     import DataTable from "$lib/components/DataTable.svelte";
     import Chart from "$lib/components/Chart.svelte";
     import DeleteToast from "$lib/components/DeleteToast.svelte";
-    import PosterRow from "$lib/components/PosterRow.svelte";
+    import { imgUrl } from "$lib/utils.js";
 
     let { data } = $props();
 
@@ -52,7 +52,7 @@
         axisY: { title: "Count", titleFontColor: "#a6adba" },
         data: [{
             type: "column", color: "#f472b6", cornerRadius: 4,
-            dataPoints: data.moviesByDecade.map((d) => ({ label: `${d.decade}s`, y: d.count })),
+            dataPoints: data.moviesByDecade.map((/** @type {any} */ d) => ({ label: `${d.decade}s`, y: d.count })),
         }],
     };
 
@@ -62,7 +62,7 @@
         axisY: { title: "Count", titleFontColor: "#a6adba" },
         data: [{
             type: "column", color: "#f472b6", cornerRadius: 4,
-            dataPoints: data.moviesByYear.map((d) => ({ x: d.year, y: d.count })),
+            dataPoints: data.moviesByYear.map((/** @type {any} */ d) => ({ x: d.year, y: d.count })),
         }],
     };
 
@@ -73,7 +73,7 @@
             axisY: { title: "Play Count", titleFontColor: "#a6adba" },
             data: [{
                 type: "bar", color: "#a78bfa", cornerRadius: 4,
-                dataPoints: data.mostRewatched.map((m) => ({
+                dataPoints: data.mostRewatched.map((/** @type {any} */ m) => ({
                     label: m.title.length > 25 ? m.title.substring(0, 23) + "…" : m.title,
                     y: m.play_count,
                 })),
@@ -82,6 +82,7 @@
 
     /** @param {string} status */
     function watchBadge(status) {
+        /** @type {Record<string, string>} */
         const map = {
             watched: '<span class="badge badge-success badge-sm">Watched</span>',
             in_progress: '<span class="badge badge-warning badge-sm">In Progress</span>',
@@ -133,50 +134,20 @@
             return `${Math.floor(diff / 365)}y ago`;
         }},
     ];
-
-    // ── Transform data for PosterRow ──
-
-    /** @param {any} item @param {string} [sub] */
-    function moviePoster(item, sub) {
-        return {
-            href: `/movies/${item.id}`,
-            poster_url: item.poster_url,
-            title: item.title,
-            subtitle: sub || (item.release_year ? String(item.release_year) : ''),
-            icon: '🎬',
-        };
-    }
-
-    const heroItems = data.sections.hero
-        ? data.sections.hero.items.map(
-            (/** @type {any} */ i) => moviePoster(i, data.sections.hero.reason)
-          )
-        : [];
-
-    const recentItems = data.sections.recentlyWatched.map(
-        (/** @type {any} */ i) => ({
-            ...moviePoster(i),
-            subtitle: timeAgo(i.last_watched),
-        })
-    );
-
-    const unwatchedItems = data.sections.unwatched.map(
-        (/** @type {any} */ i) => moviePoster(i)
-    );
 </script>
 
 <svelte:head>
     <title>Mediajam — Movies</title>
 </svelte:head>
 
-<div class="space-y-8">
+<div class="page-wrap">
     <DeleteToast />
 
     <!-- Header -->
-    <div class="flex items-end justify-between">
+    <div class="page-header">
         <div>
-            <h1 class="text-3xl font-bold">Movies</h1>
-            <p class="text-base-content/50 text-sm mt-1">
+            <h1 class="page-title">Movies</h1>
+            <p class="page-sub">
                 {data.totalMovies.toLocaleString()} films · {data.movieStats.watched.toLocaleString()} watched · {data.runtimeHours.toLocaleString()}h total runtime
             </p>
         </div>
@@ -186,14 +157,13 @@
     </div>
 
     {#if showLibrary}
-        <!-- ═══ LIBRARY VIEW (stats, charts, table) ═══ -->
+        <!-- ═══ LIBRARY VIEW ═══ -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
             <StatCard icon="🎬" label="Movies" value={data.totalMovies} sub="in your library" color="primary" />
             <StatCard icon="✅" label="Watched" value={data.movieStats.watched} sub="{watchPct}% of collection" color="success" />
             <StatCard icon="👀" label="Unwatched" value={data.movieStats.unwatched} sub="still to watch" color="warning" />
             <StatCard icon="⏱️" label="Runtime" value="{data.runtimeHours.toLocaleString()}h" sub="total watch time" color="secondary" />
         </div>
-
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Chart options={watchPieOptions} height={320} />
             <Chart options={decadeBarOptions} height={320} />
@@ -208,7 +178,6 @@
                 </div>
             {/if}
         </div>
-
         <div class="space-y-2">
             <h2 class="text-xl font-bold">All Movies</h2>
             <DataTable {columns} data={data.movies} searchKey="title" pageSize={25} hideCollectedKey="collection_pct" {rowClass} />
@@ -216,50 +185,293 @@
     {:else}
         <!-- ═══ SMART HOME VIEW ═══ -->
 
-        <!-- Hero: Pattern Detection -->
-        {#if data.sections.hero && heroItems.length > 0}
+        <!-- ▌HERO: Pattern Detection ──────────────────────────────── -->
+        {#if data.sections.hero && data.sections.hero.items.length > 0}
             <section class="hero-banner">
-                <div class="hero-inner">
-                    <h2 class="text-xl font-bold">{data.sections.hero.title}</h2>
-                    <p class="text-base-content/50 text-sm">{data.sections.hero.subtitle}</p>
+                <!-- Background faded poster -->
+                {#if data.sections.hero.items[0]?.poster_url}
+                    <div class="hero-bg" style="background-image: url('{imgUrl(data.sections.hero.items[0].poster_url)}')"></div>
+                {/if}
+                <div class="hero-overlay"></div>
+                <div class="hero-body">
+                    <h2 class="hero-title">{data.sections.hero.title}</h2>
+                    <p class="hero-subtitle">{data.sections.hero.subtitle}</p>
+                    <div class="hero-posters">
+                        {#each data.sections.hero.items.slice(0, 6) as item}
+                            <a href="/movies/{item.id}" class="poster-card" title={item.title}>
+                                {#if item.poster_url}
+                                    <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img" loading="lazy" />
+                                {:else}
+                                    <div class="poster-img poster-placeholder">🎬</div>
+                                {/if}
+                                <div class="poster-meta">
+                                    <span class="poster-name">{item.title}</span>
+                                    <span class="poster-year">{item.release_year || ''}</span>
+                                </div>
+                            </a>
+                        {/each}
+                    </div>
                 </div>
-                <PosterRow title="" items={heroItems} />
             </section>
         {/if}
 
-        <!-- Because You Love [person] -->
+        <!-- ▌BECAUSE YOU LOVE [person] ────────────────────────────── -->
         {#each data.sections.becauseYouLove as section}
-            <PosterRow
-                title="Because You Love {section.person}"
-                items={section.items.map((/** @type {any} */ i) => moviePoster(i, section.reason))}
-            />
+            <section class="smart-section">
+                <div class="section-header">
+                    <h2 class="section-title">Because You Love {section.person}</h2>
+                    <span class="section-count">{section.totalInLibrary} films in library · {section.items.length} unwatched</span>
+                </div>
+                <div class="poster-scroll">
+                    {#each section.items as item}
+                        <a href="/movies/{item.id}" class="poster-card" title={item.title}>
+                            <span class="uwb">unwatched</span>
+                            {#if item.poster_url}
+                                <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img" loading="lazy" />
+                            {:else}
+                                <div class="poster-img poster-placeholder">🎬</div>
+                            {/if}
+                            <div class="poster-meta">
+                                <span class="poster-name">{item.title}</span>
+                                <span class="poster-reason">{section.reason}</span>
+                            </div>
+                        </a>
+                    {/each}
+                </div>
+            </section>
         {/each}
 
-        <!-- Recently Watched -->
-        <PosterRow title="Recently Watched" items={recentItems} />
+        <!-- ▌RECENTLY WATCHED ─────────────────────────────────────── -->
+        {#if data.sections.recentlyWatched.length > 0}
+            <section class="smart-section recently-watched-section">
+                <div class="section-header">
+                    <h2 class="section-title">Recently Watched</h2>
+                </div>
+                <div class="poster-scroll">
+                    {#each data.sections.recentlyWatched as item}
+                        <a href="/movies/{item.id}" class="poster-card" title={item.title}>
+                            {#if item.poster_url}
+                                <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img" loading="lazy" />
+                            {:else}
+                                <div class="poster-img poster-placeholder">🎬</div>
+                            {/if}
+                            <div class="poster-meta">
+                                <span class="poster-name">{item.title}</span>
+                                <span class="poster-year">{timeAgo(item.last_watched)}</span>
+                            </div>
+                        </a>
+                    {/each}
+                </div>
+            </section>
+        {/if}
 
-        <!-- Unwatched in Library -->
-        <PosterRow title="Unwatched in Your Library" items={unwatchedItems} />
-
-        <!-- Quick Stats -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard icon="🎬" label="Movies" value={data.totalMovies} sub="in your library" color="primary" />
-            <StatCard icon="✅" label="Watched" value={data.movieStats.watched} sub="{watchPct}%" color="success" />
-            <StatCard icon="👀" label="Unwatched" value={data.movieStats.unwatched} sub="still to watch" color="warning" />
-            <StatCard icon="⏱️" label="Runtime" value="{data.runtimeHours.toLocaleString()}h" sub="total watch time" color="secondary" />
-        </div>
+        <!-- ▌UNWATCHED IN LIBRARY ─────────────────────────────────── -->
+        {#if data.sections.unwatched.length > 0}
+            <section class="smart-section">
+                <div class="section-header">
+                    <h2 class="section-title">Unwatched in Your Library</h2>
+                    <span class="section-count">{data.movieStats.unwatched} total</span>
+                </div>
+                <div class="poster-scroll">
+                    {#each data.sections.unwatched as item}
+                        <a href="/movies/{item.id}" class="poster-card" title={item.title}>
+                            {#if item.poster_url}
+                                <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img" loading="lazy" />
+                            {:else}
+                                <div class="poster-img poster-placeholder">🎬</div>
+                            {/if}
+                            <div class="poster-meta">
+                                <span class="poster-name">{item.title}</span>
+                                <span class="poster-year">{item.release_year || ''}</span>
+                            </div>
+                        </a>
+                    {/each}
+                </div>
+            </section>
+        {/if}
     {/if}
 </div>
 
 <style>
-    .hero-banner {
-        background: linear-gradient(135deg, oklch(var(--b2)) 0%, oklch(var(--b3)) 100%);
-        border: 1px solid oklch(var(--bc) / 0.06);
-        border-radius: 1rem;
-        padding: 1.25rem 1.5rem 0.5rem;
+    /* ── Page Layout ── */
+    .page-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 2rem;
     }
-    .hero-inner {
-        margin-bottom: 0.5rem;
+    .page-header {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+    }
+    .page-title {
+        font-size: 1.75rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+    }
+    .page-sub {
+        font-size: 0.8rem;
+        color: oklch(var(--bc) / 0.45);
+        margin-top: 2px;
+    }
+
+    /* ── Hero Banner ── */
+    .hero-banner {
+        position: relative;
+        border-radius: 1rem;
+        overflow: hidden;
+        min-height: 280px;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+    }
+    .hero-bg {
+        position: absolute;
+        inset: 0;
+        background-size: cover;
+        background-position: center top;
+        filter: blur(16px) brightness(0.45) saturate(1.1);
+        transform: scale(1.15);
+    }
+    .hero-overlay {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+            180deg,
+            oklch(var(--b1) / 0.2) 0%,
+            oklch(var(--b1) / 0.65) 40%,
+            oklch(var(--b1) / 0.92) 100%
+        );
+    }
+    .hero-body {
+        position: relative;
+        z-index: 1;
+        padding: 2rem 1.75rem 1.5rem;
+        text-align: center;
+    }
+    .hero-title {
+        font-size: 1.75rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        margin-bottom: 0.25rem;
+    }
+    .hero-subtitle {
+        font-size: 0.85rem;
+        color: oklch(var(--bc) / 0.5);
+        margin-bottom: 1.25rem;
+    }
+    .hero-posters {
+        display: flex;
+        gap: 14px;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+
+    /* ── Smart Sections ── */
+    .smart-section {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    .section-header {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+    }
+    .section-title {
+        font-size: 1.1rem;
+        font-weight: 700;
+    }
+    .section-count {
+        font-size: 0.7rem;
+        color: oklch(var(--bc) / 0.35);
+    }
+
+    /* ── Poster Scroll & Cards ── */
+    .poster-scroll {
+        display: flex;
+        gap: 14px;
+        overflow-x: auto;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+        padding-bottom: 4px;
+    }
+    .poster-scroll::-webkit-scrollbar { display: none; }
+
+    .poster-card {
+        flex-shrink: 0;
+        width: 130px;
+        text-decoration: none;
+        color: inherit;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        position: relative;
+    }
+    .poster-card:hover {
+        transform: translateY(-4px) scale(1.03);
+    }
+    .poster-img {
+        width: 100%;
+        aspect-ratio: 2/3;
+        border-radius: 10px;
+        object-fit: cover;
+        box-shadow: 0 4px 14px oklch(0 0 0 / 0.35);
+    }
+    .poster-placeholder {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: oklch(var(--b3));
+        font-size: 2rem;
+    }
+
+    /* Poster meta text */
+    .poster-meta {
+        margin-top: 6px;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+    }
+    .poster-name {
+        font-size: 0.72rem;
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        line-height: 1.3;
+    }
+    .poster-year {
+        font-size: 0.62rem;
+        color: oklch(var(--bc) / 0.4);
+    }
+    .poster-reason {
+        font-size: 0.58rem;
+        color: oklch(var(--p) / 0.8);
+        font-weight: 500;
+    }
+
+    /* Unwatched badge */
+    .uwb {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        z-index: 2;
+        font-size: 0.5rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 2px 7px;
+        border-radius: 6px;
+        background: oklch(var(--er) / 0.85);
+        color: oklch(var(--erc));
+        backdrop-filter: blur(4px);
+    }
+
+    /* Recently watched section has darker bg */
+    .recently-watched-section {
+        background: oklch(var(--b2) / 0.4);
+        margin: 0 -1.5rem;
+        padding: 1.25rem 1.5rem;
+        border-radius: 1rem;
     }
 
     :global(.arr-missing) {
