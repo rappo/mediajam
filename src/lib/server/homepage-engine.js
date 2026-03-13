@@ -43,7 +43,7 @@ export function detectMoviePatterns(userId, prefs) {
     const patterns = /** @type {any[]} */ (db.prepare(`
         SELECT p.id as person_id, p.name, pc.role_type,
                COUNT(DISTINCT mp.id) as watch_count,
-               GROUP_CONCAT(DISTINCT mp.title, '|') as watched_titles
+               GROUP_CONCAT(DISTINCT mp.title) as watched_titles
         FROM playback_history ph
         JOIN media_children mc ON ph.media_id = mc.id
         JOIN media_parents mp ON mc.parent_id = mp.id
@@ -81,7 +81,7 @@ export function detectMoviePatterns(userId, prefs) {
 
     if (unwatched.length === 0) return null;
 
-    const watchedTitles = best.watched_titles.split('|');
+    const watchedTitles = best.watched_titles.split(',');
     const roleLabel = best.role_type === 'director' ? 'directed by' : 'starring';
     const watchedList = watchedTitles.length <= 3
         ? watchedTitles.join(', ')
