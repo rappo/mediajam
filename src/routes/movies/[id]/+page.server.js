@@ -161,7 +161,8 @@ export async function load({ params, locals }) {
 
                 // Batch lookup: which tmdb_ids are in our library?
                 if (recs.length > 0) {
-                    const tmdbIds = recs.map(/** @param {any} r */ (r) => r.id);
+                    // IMPORTANT: tmdb_id is stored as TEXT — must convert to strings for IN match
+                    const tmdbIds = recs.map(/** @param {any} r */ (r) => String(r.id));
                     const placeholders = tmdbIds.map(() => '?').join(',');
                     const inLib = /** @type {any[]} */ (db.prepare(
                         `SELECT id, tmdb_id, title, poster_url, release_year, jellyfin_id
@@ -170,6 +171,17 @@ export async function load({ params, locals }) {
                     ).all(...tmdbIds));
 
                     const libByTmdb = new Map(inLib.map(m => [String(m.tmdb_id), m]));
+
+                    const upsertStub = db.prepare(`
+                        INSERT INTO media_parents (tmdb_id, title, media_type, release_year, poster_url, overview, collection_status)
+                        VALUES (@tmdbId, @title, 'movie', @releaseYear, @posterUrl, @overview, 'external')
+                        ON CONFLICT(tmdb_id, media_type) DO UPDATE SET
+                            title = COALESCE(@title, title),
+                            release_year = COALESCE(@releaseYear, release_year),
+                            poster_url = COALESCE(@posterUrl, poster_url),
+                            overview = COALESCE(@overview, overview)
+                        RETURNING id, poster_url
+                    `);
 
                     for (const rec of recs) {
                         const localMatch = libByTmdb.get(String(rec.id));
@@ -184,16 +196,34 @@ export async function load({ params, locals }) {
                                 subtitle: localMatch.release_year ? String(localMatch.release_year) : '',
                             });
                         } else {
-                            const posterPath = rec.poster_path
+                            // Create or update a local stub so the item is browsable
+                            const posterUrl = rec.poster_path
                                 ? `https://image.tmdb.org/t/p/w300${rec.poster_path}`
                                 : null;
-                            similarNotInLibrary.push({
-                                href: `https://www.themoviedb.org/movie/${rec.id}`,
-                                poster_url: posterPath,
-                                title: rec.title || rec.original_title || 'Unknown',
-                                subtitle: rec.release_date ? rec.release_date.slice(0, 4) : '',
-                                external: true,
-                            });
+                            try {
+                                const stub = /** @type {any} */ (upsertStub.get({
+                                    tmdbId: String(rec.id),
+                                    title: rec.title || rec.original_title || 'Unknown',
+                                    releaseYear: rec.release_date ? parseInt(rec.release_date.slice(0, 4)) : null,
+                                    posterUrl,
+                                    overview: rec.overview || null,
+                                }));
+                                similarNotInLibrary.push({
+                                    href: `/movies/${stub.id}`,
+                                    poster_url: stub.poster_url || posterUrl,
+                                    title: rec.title || rec.original_title || 'Unknown',
+                                    subtitle: rec.release_date ? rec.release_date.slice(0, 4) : '',
+                                });
+                            } catch {
+                                // If stub creation fails, still show it with TMDB poster
+                                similarNotInLibrary.push({
+                                    href: `https://www.themoviedb.org/movie/${rec.id}`,
+                                    poster_url: posterUrl,
+                                    title: rec.title || rec.original_title || 'Unknown',
+                                    subtitle: rec.release_date ? rec.release_date.slice(0, 4) : '',
+                                    external: true,
+                                });
+                            }
                         }
                     }
                 }
