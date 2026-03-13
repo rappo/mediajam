@@ -210,12 +210,18 @@ const PHASES = [
         schedule: 'nightly',
         async run() {
             const results = [];
-            results.push(`Parents (extID): ${deduplicateParents()} merged`);
-            results.push(`Parents (title): ${deduplicateParentsByTitle()} merged`);
-            results.push(`Children: ${deduplicateChildren()} merged`);
-            results.push(`Playback history: ${deduplicatePlaybackHistory()} dupes removed`);
-            results.push(`Orphan artists→albums: ${mergeOrphanArtistsIntoAlbums()} merged`);
-            results.push(`External albums: ${deduplicateExternalAlbums()} merged`);
+            const p = deduplicateParents();
+            results.push(`Parents (extID): ${p.deduped} merged`);
+            const pt = deduplicateParentsByTitle();
+            results.push(`Parents (title): ${pt.deduped} merged`);
+            const c = deduplicateChildren();
+            results.push(`Children: ${c.deduped} merged`);
+            const ph = deduplicatePlaybackHistory();
+            results.push(`Playback history: ${ph.removed} dupes removed`);
+            const oa = mergeOrphanArtistsIntoAlbums();
+            results.push(`Orphan artists→albums: ${oa.merged} merged`);
+            const ea = deduplicateExternalAlbums();
+            results.push(`External albums: ${ea.deduped} merged`);
             return results.join('; ');
         },
     },
@@ -231,8 +237,8 @@ const PHASES = [
             `).all());
             const urls = rows.flatMap(r => [r.poster_url, r.backdrop_url].filter(Boolean));
             if (urls.length === 0) return 'No images to warm';
-            const cached = await warmCache(urls, 5);
-            return `Warmed ${cached} images`;
+            await warmCache(urls, 5);
+            return `Warmed ${urls.length} images`;
         },
     },
 

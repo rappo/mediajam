@@ -106,7 +106,11 @@
             const res = await fetch("/api/sync/item", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ jellyfinId: data.artist.jellyfin_id }),
+                body: JSON.stringify({
+                    jellyfinId: data.artist.jellyfin_id || undefined,
+                    mediaParentId: data.artist.id,
+                    musicbrainzId: data.artist.musicbrainz_id || undefined,
+                }),
             });
             const result = await res.json();
             if (result.success) {

@@ -19,6 +19,12 @@ export async function POST({ request, locals }) {
         return tmdbEnrich(mediaParentId, tmdbId);
     }
 
+    // ── MusicBrainz-only enrichment path (for artists without Jellyfin) ──
+    const { musicbrainzId } = body;
+    if (!jellyfinId && mediaParentId && musicbrainzId) {
+        return musicbrainzEnrich(mediaParentId, musicbrainzId);
+    }
+
     if (!jellyfinId) return json({ error: 'Missing jellyfinId or mediaParentId+tmdbId' }, { status: 400 });
 
     const settings = /** @type {any} */ (db.prepare('SELECT * FROM app_settings WHERE id = 1').get());
@@ -491,5 +497,61 @@ async function tmdbEnrich(mediaParentId, tmdbId) {
     } catch (e) {
         console.error(`[item-sync] TMDb enrichment error for ${parent.title}:`, e instanceof Error ? e.message : String(e));
         return json({ error: 'TMDb enrichment failed', details: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    }
+}
+
+/**
+ * MusicBrainz-only enrichment for artists without a Jellyfin ID.
+ * Syncs band members + fetches Wikipedia.
+ * @param {number} mediaParentId
+ * @param {string} musicbrainzId
+ */
+async function musicbrainzEnrich(mediaParentId, musicbrainzId) {
+    const parent = /** @type {any} */ (db.prepare(
+        'SELECT id, title, media_type, musicbrainz_id FROM media_parents WHERE id = ?'
+    ).get(mediaParentId));
+    if (!parent) return json({ error: 'Item not found in database' }, { status: 404 });
+
+    try {
+        console.log(`[item-sync] MusicBrainz enrichment for ${parent.title} (mb:${musicbrainzId})...`);
+
+        // Ensure musicbrainz_id is set
+        if (!parent.musicbrainz_id) {
+            db.prepare('UPDATE media_parents SET musicbrainz_id = ? WHERE id = ?').run(musicbrainzId, mediaParentId);
+        }
+
+        // Sync band members
+        const { syncBandMembers } = await import('$lib/server/musicbrainz-members.js');
+        const memberResult = await syncBandMembers(mediaParentId);
+
+        // Fetch Wikipedia if not yet done
+        let wikiUrl = null;
+        const settings = /** @type {any} */ (db.prepare('SELECT tmdb_api_key FROM app_settings WHERE id = 1').get());
+        const freshParent = /** @type {any} */ (db.prepare(
+            'SELECT id, media_type, tmdb_id, musicbrainz_id, wikipedia_fetched_at FROM media_parents WHERE id = ?'
+        ).get(mediaParentId));
+        if (freshParent && !freshParent.wikipedia_fetched_at) {
+            try {
+                const wiki = await fetchWikipediaForMediaParent(
+                    freshParent.id, freshParent.media_type,
+                    { tmdb_id: freshParent.tmdb_id, musicbrainz_id: freshParent.musicbrainz_id },
+                    settings?.tmdb_api_key || null
+                );
+                if (wiki) wikiUrl = wiki.url;
+            } catch { /* ignore */ }
+        }
+
+        console.log(`[item-sync] ✅ MusicBrainz enrichment complete: ${parent.title}, ${memberResult.members.length} members`);
+        return json({
+            success: true,
+            parent: parent.title,
+            members: memberResult.members.length,
+            errors: memberResult.errors,
+            wikipedia: wikiUrl,
+            source: 'musicbrainz'
+        });
+    } catch (e) {
+        console.error(`[item-sync] MusicBrainz enrichment error for ${parent.title}:`, e instanceof Error ? e.message : String(e));
+        return json({ error: 'MusicBrainz enrichment failed', details: e instanceof Error ? e.message : String(e) }, { status: 500 });
     }
 }

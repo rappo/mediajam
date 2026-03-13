@@ -354,18 +354,26 @@ async function runEnrichment() {
             continue;
         }
 
-        // Filter to "member of band" relationships where the member is a Person
+        // Filter to band member and supporting musician relationships where the person is a Person
+        const MEMBER_REL_TYPES = new Set([
+            'member of band',
+            'instrumental supporting musician',
+            'supporting musician',
+            'vocal supporting musician',
+        ]);
         const memberRels = data.relations.filter(
             /** @param {any} r */(r) =>
-                r.type === 'member of band' &&
-                r.direction === 'backward' &&
-                r.artist?.type === 'Person'
+                MEMBER_REL_TYPES.has(r.type) &&
+                ((r.direction === 'backward' && r.artist?.type === 'Person') ||
+                 (r.type === 'member of band' && r.direction === 'forward'))
         );
 
-        // Deduplicate by member MBID — combine instruments
-        /** @type {Map<string, {name: string, mbid: string, instruments: Set<string>, isOriginal: boolean, begin: string|null, end: string|null, ended: boolean}>} */
+        // Deduplicate by member MBID — combine instruments across relationships
+        /** @type {Map<string, {name: string, mbid: string, instruments: Set<string>, isOriginal: boolean, isSupportingMusician: boolean, begin: string|null, end: string|null, ended: boolean}>} */
         const memberMap = new Map();
         for (const rel of memberRels) {
+            // For 'member of band' forward rels, the artist is the band (skip — we want the person)
+            if (rel.direction === 'forward') continue;
             const mbid = rel.artist.id;
             if (!memberMap.has(mbid)) {
                 memberMap.set(mbid, {
@@ -373,6 +381,7 @@ async function runEnrichment() {
                     mbid,
                     instruments: new Set(),
                     isOriginal: false,
+                    isSupportingMusician: rel.type !== 'member of band',
                     begin: rel.begin,
                     end: rel.end,
                     ended: rel.ended
@@ -422,8 +431,10 @@ async function runEnrichment() {
                 const instruments = [...member.instruments];
                 const roleType = instruments.length > 0
                     ? instruments.join(', ')
-                    : 'member';
-                const characterName = member.isOriginal ? 'original member' : (member.ended ? 'former member' : 'member');
+                    : member.isSupportingMusician ? 'supporting musician' : 'member';
+                const characterName = member.isSupportingMusician
+                    ? (member.ended ? 'former supporting musician' : 'supporting musician')
+                    : member.isOriginal ? 'original member' : (member.ended ? 'former member' : 'member');
 
                 upsertCredit.run({
                     personId,

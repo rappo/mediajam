@@ -152,7 +152,7 @@ export async function syncBandMembers(mediaParentId, opts) {
         return { members: [], errors: ['Failed to fetch from MusicBrainz'] };
     }
 
-    // Handle solo artists (type=Person): link the artist to their person record
+    // Handle solo artists (type=Person): link the artist to their person record + import supporting musicians
     if (data.type !== 'Group') {
         onProgress(`"${artist.title}" is a ${data.type || 'Person'} — linking as solo artist`);
 
@@ -187,6 +187,112 @@ export async function syncBandMembers(mediaParentId, opts) {
         }
 
         onProgress(`Linked "${artist.title}" as solo artist (person #${personId}, ${fetchedExtIds} ext IDs)`);
+
+        // Import supporting musicians (touring/session members)
+        const SUPPORTING_REL_TYPES = new Set([
+            'instrumental supporting musician',
+            'supporting musician',
+            'vocal supporting musician',
+        ]);
+        const supportRels = data.relations.filter(
+            /** @param {any} r */ (r) => SUPPORTING_REL_TYPES.has(r.type) && r.direction === 'backward' && r.artist?.type === 'Person'
+        );
+
+        if (supportRels.length > 0) {
+            onProgress(`Found ${supportRels.length} supporting musician relationships`);
+
+            // Deduplicate by MBID — combine instruments from multiple eras
+            /** @type {Map<string, { name: string, mbid: string, instruments: Set<string>, isCurrent: boolean, begin: string|null, end: string|null }>} */
+            const supportMap = new Map();
+            for (const rel of supportRels) {
+                const mbid = rel.artist.id;
+                const existing = supportMap.get(mbid);
+                const attrs = rel.attributes || [];
+                const instruments = attrs.filter(/** @param {string} a */ (a) => a !== 'original' && a !== 'additional');
+                const isCurrent = !rel.ended;
+
+                if (existing) {
+                    for (const inst of instruments) existing.instruments.add(inst);
+                    if (isCurrent) { existing.isCurrent = true; existing.end = null; }
+                    if (rel.begin && (!existing.begin || rel.begin < existing.begin)) {
+                        existing.begin = rel.begin;
+                    }
+                } else {
+                    supportMap.set(mbid, {
+                        name: rel.artist.name,
+                        mbid,
+                        instruments: new Set(instruments),
+                        isCurrent,
+                        begin: rel.begin || null,
+                        end: rel.end || null,
+                    });
+                }
+            }
+
+            // Sort: current first, then by start date
+            const sorted = [...supportMap.values()].sort((a, b) => {
+                if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
+                return (a.begin || '9999').localeCompare(b.begin || '9999');
+            });
+
+            /** @type {MemberInfo[]} */
+            const supportMembers = [];
+            const insertSupporting = db.transaction(() => {
+                for (let i = 0; i < sorted.length; i++) {
+                    const m = sorted[i];
+                    try {
+                        const mPersonId = findOrCreatePerson(m.name, m.mbid);
+                        if (!mPersonId) continue;
+                        const instrumentStr = [...m.instruments].join(', ');
+                        const roleType = instrumentStr || 'supporting musician';
+                        const charName = m.isCurrent ? 'supporting musician' : 'former supporting musician';
+                        upsertCredit.run(mPersonId, mediaParentId, roleType, charName, i + 1);
+                        supportMembers.push({
+                            personId: mPersonId, name: m.name, mbid: m.mbid,
+                            instruments: instrumentStr, isOriginal: false, isCurrent: m.isCurrent,
+                            begin: m.begin, end: m.end,
+                        });
+                    } catch (e) {
+                        errors.push(`Failed to upsert supporting musician ${m.name}: ${e instanceof Error ? e.message : String(e)}`);
+                    }
+                }
+            });
+            insertSupporting();
+
+            onProgress(`Stored ${supportMembers.length} supporting musicians for "${artist.title}"`);
+
+            // Fetch external IDs for supporting musicians
+            for (const member of supportMembers) {
+                await new Promise(r => setTimeout(r, 1100));
+                const memberData = await mbFetch(`/artist/${member.mbid}?inc=url-rels&fmt=json`);
+                if (!memberData?.relations) continue;
+                for (const rel of memberData.relations) {
+                    if (rel['target-type'] !== 'url' || !rel.url?.resource) continue;
+                    const url = rel.url.resource;
+                    if (rel.type === 'IMDb') {
+                        const imdbId = extractImdbId(url);
+                        if (imdbId) { updatePersonImdb.run(imdbId, member.personId); }
+                    }
+                    if (rel.type === 'wikidata') {
+                        const wikidataId = extractWikidataId(url);
+                        if (wikidataId) { try { upsertExtId.run(member.personId, 'wikidata', wikidataId); } catch { /* */ } }
+                    }
+                    if (rel.type === 'discogs') {
+                        try { upsertExtId.run(member.personId, 'discogs', url); } catch { /* */ }
+                    }
+                }
+            }
+
+            return {
+                members: [
+                    { personId, name: data.name || artist.title, mbid: artist.musicbrainz_id,
+                      instruments: '', isOriginal: true, isCurrent: true, begin: null, end: null },
+                    ...supportMembers,
+                ],
+                errors
+            };
+        }
+
         return {
             members: [{
                 personId, name: data.name || artist.title, mbid: artist.musicbrainz_id,

@@ -134,13 +134,14 @@ export async function load({ params, locals }) {
         resolveBackdrop(artistId).catch(() => {});
     }
 
-    // Band members / credits (same pattern as movie cast/crew)
+    // Band members / credits — show musicians (members, supporting, instrument-named roles) and crew separately
+    const CREW_ROLES = `('director', 'writer', 'producer', 'creator', 'guest', 'conductor', 'lyricist', 'composer')`;
     const members = /** @type {any[]} */ (db.prepare(`
         SELECT p.id, p.name, p.photo_url, p.tmdb_person_id, p.musicbrainz_artist_id,
                pc.role_type, pc.character_name, pc.sort_order
         FROM person_credits pc
         JOIN persons p ON pc.person_id = p.id
-        WHERE pc.media_parent_id = ? AND pc.role_type IN ('member', 'artist', 'actor')
+        WHERE pc.media_parent_id = ? AND pc.role_type NOT IN ${CREW_ROLES}
         ORDER BY pc.sort_order ASC
     `).all(artistId));
 
@@ -149,7 +150,7 @@ export async function load({ params, locals }) {
                pc.role_type, pc.character_name, pc.sort_order
         FROM person_credits pc
         JOIN persons p ON pc.person_id = p.id
-        WHERE pc.media_parent_id = ? AND pc.role_type NOT IN ('member', 'artist', 'actor')
+        WHERE pc.media_parent_id = ? AND pc.role_type IN ${CREW_ROLES}
         ORDER BY pc.sort_order ASC
     `).all(artistId));
 

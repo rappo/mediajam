@@ -341,7 +341,12 @@
                                                                 {sample.type}
                                                             </span>
                                                         </td>
-                                                        <td class="font-mono text-xs">{sample.id}</td>
+                                                        <td class="font-mono text-xs">
+                                                            {sample.id}
+                                                            {#if sample.label}
+                                                                <span class="text-base-content/50 font-sans ml-1">({sample.label})</span>
+                                                            {/if}
+                                                        </td>
                                                         <td class="text-xs max-w-xs truncate">
                                                             {#if sample.type === 'modified' && sample.before}
                                                                 {#each Object.entries(sample.before).slice(0, 3) as [key, change]}

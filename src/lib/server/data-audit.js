@@ -116,9 +116,26 @@ export function deleteSnapshot(filename) {
  *   added: number,
  *   deleted: number,
  *   modified: number,
- *   samples: Array<{ type: 'added'|'deleted'|'modified', id: any, before?: any, after?: any }>
+ *   samples: Array<{ type: 'added'|'deleted'|'modified', id: any, label?: string, before?: any, after?: any }>
  * }} TableDiff
  */
+
+/**
+ * Extract a human-readable label from a row object.
+ * Tries title, name, track_name, then a few other common columns.
+ * @param {any} row
+ * @param {string} table
+ * @returns {string}
+ */
+function resolveLabel(row, table) {
+    if (!row) return '';
+    // media_children: include parent context if available
+    if (row.title) return row.title;
+    if (row.name) return row.name;
+    if (row.track_name) return row.track_name;
+    if (row.source && row.timestamp) return `${row.source} @ ${row.timestamp}`;
+    return '';
+}
 
 /**
  * Compare two audit snapshots and return per-table diffs.
@@ -210,7 +227,8 @@ function diffTable(beforeDb, afterDb, table) {
             if (!beforeIds.has(id)) {
                 added++;
                 if (samples.length < 10) {
-                    samples.push({ type: 'added', id, after: afterMap.get(id) });
+                    const row = afterMap.get(id);
+                    samples.push({ type: 'added', id, label: resolveLabel(row, table), after: row });
                 }
             }
         }
@@ -220,7 +238,8 @@ function diffTable(beforeDb, afterDb, table) {
             if (!afterIds.has(id)) {
                 deleted++;
                 if (samples.length < 10) {
-                    samples.push({ type: 'deleted', id, before: beforeMap.get(id) });
+                    const row = beforeMap.get(id);
+                    samples.push({ type: 'deleted', id, label: resolveLabel(row, table), before: row });
                 }
             }
         }
@@ -240,7 +259,7 @@ function diffTable(beforeDb, afterDb, table) {
                                 changedFields[key] = { before: bRow[key], after: aRow[key] };
                             }
                         }
-                        samples.push({ type: 'modified', id, before: changedFields, after: changedFields });
+                        samples.push({ type: 'modified', id, label: resolveLabel(aRow, table), before: changedFields, after: changedFields });
                     }
                 }
             }
