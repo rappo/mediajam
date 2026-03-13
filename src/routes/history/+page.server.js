@@ -49,15 +49,18 @@ export function load({ locals, url }) {
             mc.season_number,
             mc.item_number,
             mc.jellyfin_id as item_jellyfin_id,
+            mc.runtime_ticks as child_runtime_ticks,
             mp.id as parent_id,
             mp.title as parent_title,
             mp.media_type,
             mp.poster_url,
             mp.jellyfin_id as parent_jellyfin_id,
-            mp.collection_status
+            mp.collection_status,
+            t.runtime_ticks as track_runtime_ticks
         FROM playback_history ph
         JOIN media_children mc ON ph.media_id = mc.id
         JOIN media_parents mp ON mc.parent_id = mp.id
+        LEFT JOIN tracks t ON t.album_id = mc.id AND t.title = ph.track_name
         WHERE ${whereClause}
         ORDER BY ph.timestamp DESC
         LIMIT 500

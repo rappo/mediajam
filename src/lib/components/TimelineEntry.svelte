@@ -1,8 +1,8 @@
 <script>
     import ServiceIcon from "$lib/components/ServiceIcon.svelte";
 
-    /** @type {{ entry: any, jellyfinUrl?: string, albumGroup?: any[] | null }} */
-    let { entry, jellyfinUrl = "", albumGroup = null } = $props();
+    /** @type {{ entry: any, jellyfinUrl?: string, albumGroups?: Array<{albumTitle: string, albumArtUrl: string|null, albumId: number|null, tracks: any[]}> | null }} */
+    let { entry, jellyfinUrl = "", albumGroups = null } = $props();
 
     /** @param {string} timestamp */
     function timeAgo(timestamp) {
@@ -25,6 +25,33 @@
             hour: "2-digit",
             minute: "2-digit",
         });
+    }
+
+    /**
+     * Format runtime ticks to friendly duration
+     * @param {number|null|undefined} ticks
+     * @returns {string}
+     */
+    function formatRuntime(ticks) {
+        if (!ticks) return "";
+        const totalSeconds = Math.round(ticks / 10000000);
+        const mins = Math.floor(totalSeconds / 60);
+        const secs = totalSeconds % 60;
+        if (mins > 0) return `${mins}:${String(secs).padStart(2, '0')}`;
+        return `0:${String(secs).padStart(2, '0')}`;
+    }
+
+    /**
+     * Format seconds to friendly duration
+     * @param {number|null|undefined} seconds
+     * @returns {string}
+     */
+    function formatSeconds(seconds) {
+        if (!seconds) return "";
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        if (h > 0) return `${h}h ${m}m`;
+        return `${m}m`;
     }
 
     /** @param {string} type */
@@ -92,8 +119,21 @@
         );
     }
 
+    /**
+     * Get track runtime string
+     * @param {any} e
+     * @returns {string}
+     */
+    function getTrackRuntime(e) {
+        // Prefer track-level ticks, fall back to consumed seconds
+        if (e.track_runtime_ticks) return formatRuntime(e.track_runtime_ticks);
+        if (e.duration_consumed_seconds) return formatSeconds(e.duration_consumed_seconds);
+        // For video, use child_runtime_ticks (episode/movie runtime)
+        if (e.child_runtime_ticks) return formatRuntime(e.child_runtime_ticks);
+        return "";
+    }
+
     const posterUrl = getPosterUrl(entry);
-    const sourceStyle = getSourceStyle(entry.source);
     const link = getLink(entry);
     const title = getTitle(entry);
     const isExternal = entry.collection_status === "external";
@@ -101,8 +141,8 @@
     // Is this a movie or TV entry? -> larger poster
     const isVideoMedia =
         entry.media_type === "movie" || entry.media_type === "show";
-    // Is this an album group?
-    const isGroup = albumGroup && albumGroup.length > 0;
+    // Is this an artist group with album sub-groups?
+    const isGroup = albumGroups && albumGroups.length > 0;
 </script>
 
 {#snippet sourceBadge(src)}
@@ -203,78 +243,85 @@
     </span>
 {/snippet}
 
-<!-- ═══ ALBUM GROUP MODE ═══ -->
+<!-- ═══ ARTIST GROUP MODE (with album sub-groups) ═══ -->
 {#if isGroup}
-    {@const albumLink = entry.parent_id ? `/music/${entry.parent_id}` : null}
-    {@const albumPoster = getPosterUrl(entry)}
+    {@const artistLink = entry.parent_id ? `/music/${entry.parent_id}` : null}
+    {@const artistPoster = getPosterUrl(entry)}
+    {@const totalTracks = albumGroups.reduce((sum, g) => sum + g.tracks.length, 0)}
+    {@const latestTimestamp = entry.timestamp}
 
-    {#snippet albumContent()}
-        <!-- Large album art -->
-        <div class="flex-shrink-0">
-            {#if albumPoster}
+    <div class="px-3 py-2.5">
+        <!-- Artist header -->
+        <div class="flex items-center gap-3 mb-2">
+            {#if artistPoster && albumGroups.length <= 1}
                 <img
-                    src={albumPoster}
+                    src={artistPoster}
                     alt=""
-                    class="w-16 h-16 rounded-lg object-cover shadow-sm"
+                    class="w-14 h-14 rounded-lg object-cover shadow-sm shrink-0"
                 />
             {:else}
-                <div
-                    class="w-16 h-16 rounded-lg bg-base-300 flex items-center justify-center text-2xl"
-                >
-                    🎵
-                </div>
+                <div class="w-10 h-10 rounded-lg bg-base-300 flex items-center justify-center text-lg shrink-0">🎵</div>
             {/if}
+            <div class="flex-1 min-w-0">
+                {#if artistLink}
+                    <a href={artistLink} class="font-semibold text-sm hover:text-primary transition-colors truncate block">
+                        {entry.parent_title}
+                    </a>
+                {:else}
+                    <span class="font-semibold text-sm truncate block">{entry.parent_title}</span>
+                {/if}
+                <span class="text-xs text-base-content/40">{totalTracks} {totalTracks === 1 ? 'track' : 'tracks'}</span>
+            </div>
+            <span class="text-xs text-base-content/40 shrink-0">{timeAgo(latestTimestamp)}</span>
         </div>
 
-        <!-- Album title + song list -->
-        <div class="flex-1 min-w-0">
-            <div
-                class="font-medium text-sm group-hover:text-primary transition-colors truncate"
-            >
-                {entry.parent_title}
-            </div>
-            <div class="mt-0.5 space-y-0">
-                {#each albumGroup as track}
-                    <div
-                        class="flex items-center gap-1.5 text-xs text-base-content/70"
-                    >
-                        <span
-                            class="text-base-content/30 w-10 text-right shrink-0"
-                            >{formatTime(track.timestamp)}</span
-                        >
-                        <span class="truncate"
-                            >{track.track_name || track.item_title}</span
-                        >
-                        <div class="ml-auto shrink-0">
-                            {@render sourceBadge(track.source)}
+        <!-- Album sub-groups -->
+        <div class="space-y-1.5 ml-1">
+            {#each albumGroups as albumGroup}
+                {@const albumLink = entry.parent_id && albumGroup.albumId ? `/music/${entry.parent_id}/${albumGroup.albumId}` : null}
+                <div class="rounded-lg bg-base-300/20 overflow-hidden">
+                    <!-- Album header (if multiple albums or multiple tracks) -->
+                    {#if albumGroups.length > 1 || albumGroup.tracks.length > 1}
+                        <div class="flex items-center gap-2.5 px-2.5 py-1.5">
+                            {#if albumGroup.albumArtUrl && albumGroups.length > 1}
+                                <img
+                                    src={albumGroup.albumArtUrl}
+                                    alt=""
+                                    class="w-9 h-9 rounded object-cover shadow-sm shrink-0"
+                                />
+                            {/if}
+                            {#if albumLink}
+                                <a href={albumLink} class="text-xs font-medium text-base-content/60 hover:text-primary transition-colors truncate">
+                                    {albumGroup.albumTitle}
+                                </a>
+                            {:else}
+                                <span class="text-xs font-medium text-base-content/60 truncate">{albumGroup.albumTitle}</span>
+                            {/if}
+                            <span class="text-[10px] text-base-content/30 shrink-0">{albumGroup.tracks.length} {albumGroup.tracks.length === 1 ? 'track' : 'tracks'}</span>
                         </div>
+                    {/if}
+
+                    <!-- Track list -->
+                    <div class="space-y-0">
+                        {#each albumGroup.tracks as track}
+                            {@const runtime = getTrackRuntime(track)}
+                            <div class="flex items-center gap-2 px-2.5 py-0.5 text-xs text-base-content/70 hover:bg-base-300/30 transition-colors">
+                                <span class="truncate flex-1">
+                                    {track.track_name || track.item_title}
+                                    {#if runtime && albumGroup.tracks.length > 1}
+                                        <span class="text-base-content/30 ml-1">{runtime}</span>
+                                    {/if}
+                                </span>
+                                <div class="shrink-0">
+                                    {@render sourceBadge(track.source)}
+                                </div>
+                            </div>
+                        {/each}
                     </div>
-                {/each}
-            </div>
+                </div>
+            {/each}
         </div>
-
-        <!-- Track count -->
-        <div class="flex-shrink-0 flex items-center gap-2">
-            <span class="text-xs text-base-content/40"
-                >{albumGroup.length} tracks</span
-            >
-        </div>
-    {/snippet}
-
-    {#if albumLink}
-        <a
-            href={albumLink}
-            class="flex gap-3 px-3 py-2 hover:bg-base-200/50 transition-colors group no-underline text-inherit"
-        >
-            {@render albumContent()}
-        </a>
-    {:else}
-        <div
-            class="flex gap-3 px-3 py-2 hover:bg-base-200/50 transition-colors group"
-        >
-            {@render albumContent()}
-        </div>
-    {/if}
+    </div>
 
     <!-- ═══ SINGLE ENTRY MODE ═══ -->
 {:else}
@@ -306,25 +353,27 @@
         <div
             class="flex-1 min-w-0 {isVideoMedia
                 ? 'flex flex-col justify-center gap-0.5'
-                : 'flex items-center gap-1.5'}"
+                : 'flex flex-col justify-center'}"
         >
-            <span
-                class="font-medium {isVideoMedia
-                    ? 'text-base'
-                    : 'text-sm'} truncate group-hover:text-primary transition-colors"
-            >
-                {title.primary}
-            </span>
-            {#if title.secondary}
-                {#if !isVideoMedia}
-                    <span class="text-base-content/40 text-sm">—</span>
-                {/if}
+            <div class="flex items-center gap-1.5">
                 <span
-                    class="{isVideoMedia
-                        ? 'text-sm'
-                        : 'text-sm'} text-base-content/70 truncate"
-                    >{title.secondary}</span
+                    class="font-medium {isVideoMedia
+                        ? 'text-base'
+                        : 'text-sm'} truncate group-hover:text-primary transition-colors"
                 >
+                    {title.primary}
+                </span>
+                {#if title.secondary && !isVideoMedia}
+                    <span class="text-base-content/40 text-sm">—</span>
+                    <span class="text-sm text-base-content/70 truncate">{title.secondary}</span>
+                {/if}
+            </div>
+            {#if title.secondary && isVideoMedia}
+                <span class="text-sm text-base-content/70 truncate">{title.secondary}</span>
+            {/if}
+            <!-- Runtime subtitle for single entries -->
+            {#if getTrackRuntime(entry)}
+                <span class="text-xs text-base-content/30">{getTrackRuntime(entry)}</span>
             {/if}
         </div>
 

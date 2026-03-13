@@ -59,17 +59,18 @@
     );
 
     /**
-     * Group consecutive same-album music tracks (3+) into combined entries.
+     * Group consecutive same-artist music tracks into artist groups with album sub-groups.
      * @param {any[]} entries
-     * @returns {Array<{type: 'single', entry: any} | {type: 'album', entry: any, tracks: any[]}>}
+     * @returns {Array<{type: 'single', entry: any} | {type: 'artist_group', entry: any, albumGroups: Array<{albumTitle: string, albumArtUrl: string|null, albumId: number|null, tracks: any[]}>}>}
      */
     function groupEntries(entries) {
-        /** @type {Array<{type: 'single', entry: any} | {type: 'album', entry: any, tracks: any[]}>} */
+        /** @type {Array<{type: 'single', entry: any} | {type: 'artist_group', entry: any, albumGroups: Array<{albumTitle: string, albumArtUrl: string|null, albumId: number|null, tracks: any[]}>}>} */
         const result = [];
         let i = 0;
         while (i < entries.length) {
             const e = entries[i];
             if (e.media_type === "artist" && e.parent_id) {
+                // Collect consecutive same-artist tracks
                 let j = i + 1;
                 while (
                     j < entries.length &&
@@ -80,10 +81,31 @@
                 }
                 const run = entries.slice(i, j);
                 if (run.length > 2) {
+                    // Sub-group by album (media_id = album child)
+                    /** @type {Array<{albumTitle: string, albumArtUrl: string|null, albumId: number|null, tracks: any[]}>} */
+                    const albumGroups = [];
+                    /** @type {{albumTitle: string, albumArtUrl: string|null, albumId: number|null, tracks: any[]}|null} */
+                    let currentAlbum = null;
+
+                    for (const track of run) {
+                        const albumKey = track.media_id;
+                        if (currentAlbum && currentAlbum.albumId === albumKey) {
+                            currentAlbum.tracks.push(track);
+                        } else {
+                            currentAlbum = {
+                                albumTitle: track.item_title || 'Unknown Album',
+                                albumArtUrl: track.album_art_url || null,
+                                albumId: albumKey,
+                                tracks: [track],
+                            };
+                            albumGroups.push(currentAlbum);
+                        }
+                    }
+
                     result.push({
-                        type: "album",
+                        type: "artist_group",
                         entry: run[0],
-                        tracks: run,
+                        albumGroups,
                     });
                     i = j;
                     continue;
@@ -344,12 +366,12 @@
                         class="card bg-base-200/20 border border-base-300/30"
                     >
                         <div class="divide-y divide-base-300/20">
-                            {#each groupEntries(group.entries) as item, idx (item.type === "album" ? `album-${item.entry.id}` : item.entry.id)}
-                                {#if item.type === "album"}
+                            {#each groupEntries(group.entries) as item, idx (item.type === "artist_group" ? `group-${item.entry.id}-${idx}` : item.entry.id)}
+                                {#if item.type === "artist_group"}
                                     <TimelineEntry
                                         entry={item.entry}
                                         jellyfinUrl={data.jellyfinUrl}
-                                        albumGroup={item.tracks}
+                                        albumGroups={item.albumGroups}
                                     />
                                 {:else}
                                     <TimelineEntry
