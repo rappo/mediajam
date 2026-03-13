@@ -234,9 +234,7 @@ async function runEnrichment() {
         INSERT OR IGNORE INTO persons (name, musicbrainz_artist_id) VALUES (@name, @mbid)
     `);
 
-    const findPersonByName = db.prepare(`
-        SELECT id FROM persons WHERE LOWER(name) = LOWER(@name) LIMIT 1
-    `);
+    // NOTE: findPersonByName removed — name-only matching causes collisions (e.g. two different "Emma Watson" actors)
 
     const upsertCredit = db.prepare(`
         INSERT OR IGNORE INTO person_credits (person_id, media_parent_id, role_type, character_name, sort_order)
@@ -403,25 +401,15 @@ async function runEnrichment() {
                 if (byMbid) {
                     personId = byMbid.id;
                 } else {
-                    const byName = /** @type {any} */ (findPersonByName.get({ name: member.name }));
-                    if (byName) {
-                        personId = byName.id;
-                        // Set MBID on existing person (guard against UNIQUE constraint)
-                        try {
-                            db.prepare('UPDATE persons SET musicbrainz_artist_id = ? WHERE id = ? AND musicbrainz_artist_id IS NULL')
-                                .run(mbid, personId);
-                        } catch {
-                            // Another person already has this MB ID — just use the existing match
-                        }
+                    // No MBID match — create new person
+                    // (Don't fall back to name matching: different people can share a name)
+                    const result = insertPerson.run({ name: member.name, mbid });
+                    if (result.changes > 0) {
+                        personId = result.lastInsertRowid;
                     } else {
-                        const result = insertPerson.run({ name: member.name, mbid });
-                        if (result.changes > 0) {
-                            personId = result.lastInsertRowid;
-                        } else {
-                            // INSERT OR IGNORE didn't insert — find who owns this MBID
-                            const existingMb = /** @type {any} */ (findPersonByMbid.get({ mbid }));
-                            if (existingMb) personId = existingMb.id;
-                        }
+                        // INSERT OR IGNORE didn't insert — find who owns this MBID
+                        const existingMb = /** @type {any} */ (findPersonByMbid.get({ mbid }));
+                        if (existingMb) personId = existingMb.id;
                     }
                 }
 

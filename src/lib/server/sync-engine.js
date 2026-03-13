@@ -405,7 +405,7 @@ export async function startSync(libraryId = null, force = false) {
     // Person upsert: check-then-insert/update to avoid ON CONFLICT with partial unique indexes
     const findPersonByTmdb = db.prepare('SELECT id FROM persons WHERE tmdb_person_id = ?');
     const findPersonByJellyfin = db.prepare('SELECT id FROM persons WHERE jellyfin_id = ?');
-    const findPersonByName = db.prepare('SELECT id FROM persons WHERE name = ? LIMIT 1');
+    // NOTE: findPersonByName removed — name-only matching causes collisions (e.g. two different "Emma Watson" actors)
     const insertPerson = db.prepare(`
         INSERT INTO persons (name, tmdb_person_id, imdb_person_id, jellyfin_id, photo_url)
         VALUES (@name, @tmdbPersonId, @imdbPersonId, @jellyfinId, @photoUrl)
@@ -485,17 +485,13 @@ export async function startSync(libraryId = null, force = false) {
                         updatePersonByJellyfin.run({ name, jellyfinId: jellyfinPersonId, photoUrl });
                         personId = existing.id;
                     } else {
-                        // Check if name already exists to avoid duplicates
-                        const byName = /** @type {any} */ (findPersonByName.get(name));
-                        if (byName) {
-                            personId = byName.id;
-                        } else {
-                            try {
-                                insertPerson.run(params);
-                                personId = /** @type {any} */ (findPersonByJellyfin.get(jellyfinPersonId))?.id;
-                            } catch {
-                                // constraint error — skip
-                            }
+                        // No Jellyfin match either — create new person
+                        // (Don't fall back to name matching: different people can share a name)
+                        try {
+                            insertPerson.run(params);
+                            personId = /** @type {any} */ (findPersonByJellyfin.get(jellyfinPersonId))?.id;
+                        } catch {
+                            // constraint error — skip
                         }
                     }
                 }

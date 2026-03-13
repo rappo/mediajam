@@ -445,7 +445,7 @@ async function enrichWithTmdbCast(service) {
 
     // Prepared statements for person upserts
     const findPersonByTmdb = db.prepare('SELECT id FROM persons WHERE tmdb_person_id = ?');
-    const findPersonByName = db.prepare('SELECT id FROM persons WHERE name = ? LIMIT 1');
+    // NOTE: findPersonByName removed — name-only matching causes collisions (e.g. two different "Emma Watson" actors)
     const insertPerson = db.prepare(`
         INSERT INTO persons (name, tmdb_person_id, photo_url)
         VALUES (?, ?, ?)
@@ -493,18 +493,10 @@ async function enrichWithTmdbCast(service) {
                         personId = existing.id;
                         if (p.photo) updatePersonPhoto.run(p.photo, personId);
                     } else {
-                        // Try by name
-                        const byName = /** @type {any} */ (findPersonByName.get(p.name));
-                        if (byName) {
-                            personId = byName.id;
-                            // Update tmdb_person_id
-                            db.prepare('UPDATE persons SET tmdb_person_id = COALESCE(tmdb_person_id, ?) WHERE id = ?').run(p.tmdb_id, personId);
-                            if (p.photo) updatePersonPhoto.run(p.photo, personId);
-                        } else {
-                            // Create new person
-                            const result = insertPerson.run(p.name, p.tmdb_id, p.photo);
-                            personId = /** @type {number} */ (result.lastInsertRowid);
-                        }
+                        // No TMDB match — create new person
+                        // (Don't fall back to name matching: different people can share a name)
+                        const result = insertPerson.run(p.name, p.tmdb_id, p.photo);
+                        personId = /** @type {number} */ (result.lastInsertRowid);
                     }
 
                     upsertCredit.run(personId, item.id, p.role_type, p.character, p.order);
