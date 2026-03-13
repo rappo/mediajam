@@ -469,7 +469,7 @@
                 Upcoming
             </p>
 
-            <div class="overflow-x-auto">
+            <div class="overflow-x-auto" style="overflow-y: visible; padding-top: 2.5rem;">
                 <div class="grid-container">
                     {#each data.seasons as season}
                         <div class="grid-row">
@@ -526,7 +526,7 @@
                 </label>
             </div>
 
-            <div class="overflow-x-auto">
+            <div class="overflow-x-auto" style="overflow-y: visible; padding-top: 2.5rem;">
                 <div class="grid-container">
                     {#each data.seasons as season}
                         <div class="grid-row">
