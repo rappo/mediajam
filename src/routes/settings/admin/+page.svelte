@@ -699,7 +699,12 @@
     let ratingsSyncTotal = $state(0);
     let ratingsSyncFetched = $state(0);
     let ratingsSyncErrors = $state(0);
-    let ratingsSyncLogs = $state(/** @type {string[]} */ ([]));
+    let ratingsSyncLogs = $state(/** @type {{time: string, message: string, type: string}[]} */ ([]));
+
+    /** @param {string} message @param {string} [type] */
+    function addRatingsSyncLog(message, type = 'info') {
+        ratingsSyncLogs = [...ratingsSyncLogs.slice(-200), { time: new Date().toLocaleTimeString(), message, type }];
+    }
 
     async function triggerRatingsSync(force = false) {
         ratingsSyncStatus = "syncing";
@@ -707,7 +712,8 @@
         ratingsSyncCurrent = "";
         ratingsSyncFetched = 0;
         ratingsSyncErrors = 0;
-        ratingsSyncLogs = ["Starting batch ratings fetch..."];
+        ratingsSyncLogs = [];
+        addRatingsSyncLog("Starting batch ratings fetch...");
 
         try {
             const res = await fetch('/api/sync/ratings', {
@@ -718,7 +724,7 @@
 
             if (!res.ok) {
                 const err = await res.json();
-                ratingsSyncLogs = [...ratingsSyncLogs, `Error: ${err.error}`];
+                addRatingsSyncLog(`Error: ${err.error}`, 'error');
                 ratingsSyncStatus = "error";
                 return;
             }
@@ -741,20 +747,20 @@
                         const d = JSON.parse(line.slice(6));
                         if (d.type === 'ratings_start') {
                             ratingsSyncTotal = d.total;
-                            ratingsSyncLogs = [...ratingsSyncLogs, `Found ${d.total} items to process`];
+                            addRatingsSyncLog(`Found ${d.total} items to process`);
                         } else if (d.type === 'ratings_progress') {
                             ratingsSyncProgress = Math.round((d.current / d.total) * 100);
                             ratingsSyncCurrent = d.title;
                             ratingsSyncFetched = d.fetched || 0;
                             ratingsSyncErrors = d.errorCount || 0;
                             if (!d.skipped && d.sources?.length) {
-                                ratingsSyncLogs = [...ratingsSyncLogs, `${d.title}: ${d.sources.join(', ')}`];
+                                addRatingsSyncLog(`${d.title}: ${d.sources.join(', ')}`, 'success');
                             }
                         } else if (d.type === 'ratings_done') {
-                            ratingsSyncLogs = [...ratingsSyncLogs, `Done! ${d.fetched} items updated, ${d.errors} errors`];
+                            addRatingsSyncLog(`Done! ${d.fetched} items updated, ${d.errors} errors`, 'success');
                             ratingsSyncStatus = "complete";
                         } else if (d.type === 'ratings_error') {
-                            ratingsSyncLogs = [...ratingsSyncLogs, `Error: ${d.error}`];
+                            addRatingsSyncLog(`Error: ${d.error}`, 'error');
                             ratingsSyncStatus = "error";
                         }
                     } catch { /* skip malformed */ }
@@ -763,7 +769,7 @@
 
             if (ratingsSyncStatus === "syncing") ratingsSyncStatus = "complete";
         } catch (e) {
-            ratingsSyncLogs = [...ratingsSyncLogs, `Network error: ${e instanceof Error ? e.message : String(e)}`];
+            addRatingsSyncLog(`Network error: ${e instanceof Error ? e.message : String(e)}`, 'error');
             ratingsSyncStatus = "error";
         }
     }

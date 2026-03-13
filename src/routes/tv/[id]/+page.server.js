@@ -344,6 +344,8 @@ export async function load({ params }) {
     /** @type {any[]} */
     let similarInLibrary = [];
     /** @type {any[]} */
+    let similarInterested = [];
+    /** @type {any[]} */
     let similarNotInLibrary = [];
 
     if (show.tmdb_id && getTmdbKey()) {
@@ -358,7 +360,7 @@ export async function load({ params }) {
                     const tmdbIds = recs.map(/** @param {any} r */ (r) => String(r.id));
                     const placeholders = tmdbIds.map(() => '?').join(',');
                     const inLib = /** @type {any[]} */ (db.prepare(
-                        `SELECT id, tmdb_id, title, poster_url, release_year, jellyfin_id
+                        `SELECT id, tmdb_id, title, poster_url, release_year, jellyfin_id, collection_status, arr_has_file
                          FROM media_parents
                          WHERE tmdb_id IN (${placeholders}) AND media_type = 'show'`
                     ).all(...tmdbIds));
@@ -386,12 +388,18 @@ export async function load({ params }) {
                             const pUrl = localMatch.jellyfin_id
                                 ? `${jellyfinUrl}/Items/${localMatch.jellyfin_id}/Images/Primary?maxHeight=400`
                                 : localMatch.poster_url;
-                            similarInLibrary.push({
+                            const item = {
                                 href: `/tv/${localMatch.id}`,
                                 poster_url: pUrl,
                                 title: localMatch.title,
                                 subtitle: localMatch.release_year ? String(localMatch.release_year) : '',
-                            });
+                            };
+                            // Engaged = jellyfin_id, wanted, or arr_has_file
+                            if (localMatch.jellyfin_id || localMatch.collection_status === 'wanted' || localMatch.arr_has_file === 1) {
+                                similarInLibrary.push(item);
+                            } else {
+                                similarInterested.push(item);
+                            }
                         } else {
                             // Create or update a local stub so the item is browsable
                             const posterUrl = rec.poster_path
@@ -463,6 +471,7 @@ export async function load({ params }) {
         crew,
         externalRatings,
         similarInLibrary,
+        similarInterested,
         similarNotInLibrary,
     };
 }

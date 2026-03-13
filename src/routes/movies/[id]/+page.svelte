@@ -799,6 +799,12 @@
         title="Similar In Your Library"
         items={data.similarInLibrary}
     />
+    {#if data.similarInterested?.length > 0}
+        <PosterRow
+            title="💡 You Might Be Interested In"
+            items={data.similarInterested}
+        />
+    {/if}
     <PosterRow
         title="Similar Not In Your Library"
         items={data.similarNotInLibrary}
