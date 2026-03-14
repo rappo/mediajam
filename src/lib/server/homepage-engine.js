@@ -431,7 +431,6 @@ export function getRecommendedMovies(userId, limit = 12) {
     // Step 3: Find unwatched movies that share these tags, scored by match count
     const candidates = /** @type {any[]} */ (db.prepare(`
         SELECT mp.id, mp.title, mp.poster_url, mp.release_year,
-               mp.community_rating,
                COUNT(DISTINCT mt.tag_value) as tag_matches,
                GROUP_CONCAT(DISTINCT mt.tag_value) as matched_tags
         FROM media_parents mp
@@ -446,7 +445,7 @@ export function getRecommendedMovies(userId, limit = 12) {
               SELECT 1 FROM playback_history ph WHERE ph.media_id = mc.id
           )
         GROUP BY mp.id
-        ORDER BY tag_matches DESC, mp.community_rating DESC
+        ORDER BY tag_matches DESC
         LIMIT ?
     `).all(...tagValues, limit * 3));
 
