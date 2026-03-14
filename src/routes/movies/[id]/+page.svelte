@@ -158,6 +158,20 @@
         ratingsLoading = false;
     }
 
+    // Auto-fetch ratings on first visit if none exist
+    let ratingsAutoFetched = $state(false);
+    $effect(() => {
+        if (
+            externalRatings.length === 0 &&
+            !ratingsLoading &&
+            !ratingsAutoFetched &&
+            (data.movie.tmdb_id || data.movie.imdb_id)
+        ) {
+            ratingsAutoFetched = true;
+            refreshRatings();
+        }
+    });
+
     // *arr state
     let arrLoading = $state("");
     let arrError = $state("");

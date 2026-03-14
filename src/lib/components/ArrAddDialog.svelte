@@ -128,8 +128,8 @@
 {#if open}
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="modal modal-open" onclick={close}>
-        <div class="modal-box max-w-sm" onclick={(e) => e.stopPropagation()}>
+    <div class="modal modal-open">
+        <div class="modal-box max-w-md" onclick={(e) => e.stopPropagation()}>
             <h3 class="font-bold text-lg">Add to {serviceLabel}</h3>
 
             {#if loading}
@@ -142,16 +142,16 @@
                     <button class="btn btn-sm" onclick={close}>Close</button>
                 </div>
             {:else}
-                <div class="space-y-3 mt-3">
+                <div class="space-y-4 mt-4">
                     <div class="form-control">
                         <label class="label" for="qp-select">
-                            <span class="label-text text-sm"
+                            <span class="label-text"
                                 >Quality Profile</span
                             >
                         </label>
                         <select
                             id="qp-select"
-                            class="select select-bordered select-sm w-full"
+                            class="select select-bordered w-full"
                             bind:value={selectedProfileId}
                         >
                             {#each profiles as p}
@@ -162,11 +162,11 @@
 
                     <div class="form-control">
                         <label class="label" for="mon-select">
-                            <span class="label-text text-sm">Monitor</span>
+                            <span class="label-text">Monitor</span>
                         </label>
                         <select
                             id="mon-select"
-                            class="select select-bordered select-sm w-full"
+                            class="select select-bordered w-full"
                             bind:value={selectedMonitor}
                         >
                             {#each options as opt}
@@ -178,13 +178,13 @@
                     {#if rootFolders.length > 1}
                         <div class="form-control">
                             <label class="label" for="rf-select">
-                                <span class="label-text text-sm"
+                                <span class="label-text"
                                     >Root Folder</span
                                 >
                             </label>
                             <select
                                 id="rf-select"
-                                class="select select-bordered select-sm w-full"
+                                class="select select-bordered w-full"
                                 bind:value={selectedRootFolder}
                             >
                                 {#each rootFolders as rf}
@@ -202,11 +202,11 @@
                 </div>
 
                 <div class="modal-action">
-                    <button class="btn btn-sm btn-ghost" onclick={close}
+                    <button class="btn btn-ghost" onclick={close}
                         >Cancel</button
                     >
                     <button
-                        class="btn btn-sm btn-primary"
+                        class="btn btn-primary"
                         onclick={addToArr}
                         disabled={adding || !selectedProfileId}
                     >
@@ -214,10 +214,11 @@
                             <span class="loading loading-spinner loading-xs"
                             ></span>
                         {/if}
-                        Add
+                        Add to {serviceLabel}
                     </button>
                 </div>
             {/if}
         </div>
+        <div class="modal-backdrop" onclick={close}></div>
     </div>
 {/if}
