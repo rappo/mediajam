@@ -5,9 +5,10 @@
     let loading = $state(true);
     let pipelineEnabled = $state(false);
     let nightlyTime = $state('02:00');
+    let nightlyDays = $state(['monday','tuesday','wednesday','thursday','friday','saturday','sunday']);
     let weeklyDay = $state('sunday');
     let weeklyTime = $state('03:00');
-    /** @type {Record<string, boolean>} */
+    /** @type {Record<string, {nightly: boolean, weekly: boolean}>} */
     let phaseFlags = $state({});
     /** @type {Array<{id: string, label: string, schedule: string}>} */
     let phases = $state([]);
@@ -35,6 +36,15 @@
     let detailLoading = $state(false);
 
     const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const DAY_LABELS = [
+        { id: 'sunday',    short: 'S' },
+        { id: 'monday',    short: 'M' },
+        { id: 'tuesday',   short: 'T' },
+        { id: 'wednesday', short: 'W' },
+        { id: 'thursday',  short: 'T' },
+        { id: 'friday',    short: 'F' },
+        { id: 'saturday',  short: 'S' },
+    ];
 
     /** Fetch current status + settings on mount */
     async function loadStatus() {
@@ -44,12 +54,35 @@
                 const data = await res.json();
                 pipelineEnabled = data.pipelineEnabled ?? false;
                 nightlyTime = data.nightlyTime || '02:00';
+                nightlyDays = data.nightlyDays || ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
                 weeklyDay = data.weeklyDay || 'sunday';
                 weeklyTime = data.weeklyTime || '03:00';
-                phaseFlags = data.phaseFlags || {};
                 phases = data.phases || [];
                 running = data.running ?? false;
                 currentPhase = data.currentPhase || '';
+
+                // Normalise phaseFlags: migrate legacy boolean format to {nightly, weekly}
+                const rawFlags = data.phaseFlags || {};
+                /** @type {Record<string, {nightly: boolean, weekly: boolean}>} */
+                const normalised = {};
+                for (const phase of phases) {
+                    const flag = rawFlags[phase.id];
+                    if (flag !== undefined && typeof flag === 'object' && flag !== null) {
+                        normalised[phase.id] = { nightly: !!flag.nightly, weekly: !!flag.weekly };
+                    } else if (flag === false) {
+                        // Legacy disabled — off for both
+                        normalised[phase.id] = { nightly: false, weekly: false };
+                    } else {
+                        // Legacy true or undefined — use defaults
+                        // Default: nightly phases → nightly on, weekly phases → weekly on
+                        // Per user request: weekly column ALL checked by default
+                        normalised[phase.id] = {
+                            nightly: phase.schedule === 'nightly',
+                            weekly: true,
+                        };
+                    }
+                }
+                phaseFlags = normalised;
             }
         } catch { /* ignore */ }
         loading = false;
@@ -99,7 +132,7 @@
             const res = await fetch('/api/pipeline', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pipelineEnabled, nightlyTime, weeklyDay, weeklyTime, phaseFlags })
+                body: JSON.stringify({ pipelineEnabled, nightlyTime, nightlyDays, weeklyDay, weeklyTime, phaseFlags })
             });
             const data = await res.json();
             if (res.ok) {
@@ -264,9 +297,25 @@
         return `${Math.floor(diffDay / 7)}w ago`;
     }
 
-    /** Toggle a specific phase */
-    function togglePhase(/** @type {string} */ id) {
-        phaseFlags = { ...phaseFlags, [id]: !(phaseFlags[id] ?? true) };
+    /** Toggle nightly day */
+    function toggleNightlyDay(/** @type {string} */ day) {
+        if (nightlyDays.includes(day)) {
+            nightlyDays = nightlyDays.filter(d => d !== day);
+        } else {
+            nightlyDays = [...nightlyDays, day];
+        }
+    }
+
+    /** Toggle a specific phase nightly/weekly flag */
+    function togglePhaseFlag(/** @type {string} */ id, /** @type {'nightly'|'weekly'} */ mode) {
+        const current = phaseFlags[id] || { nightly: false, weekly: false };
+        phaseFlags = { ...phaseFlags, [id]: { ...current, [mode]: !current[mode] } };
+    }
+
+    /** Check if a phase is completely disabled */
+    function isPhaseDisabled(/** @type {string} */ id) {
+        const f = phaseFlags[id];
+        return f && !f.nightly && !f.weekly;
     }
 
     /** Status badge styling */
@@ -316,25 +365,51 @@
                 </label>
 
                 {#if pipelineEnabled}
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pl-1">
-                        <div class="form-control">
-                            <label class="label" for="nightly-time">
-                                <span class="label-text">Nightly run time</span>
-                            </label>
-                            <input id="nightly-time" type="time" class="input input-bordered input-sm w-40" bind:value={nightlyTime} />
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 pl-1">
+                        <!-- Nightly -->
+                        <div class="space-y-3">
+                            <div class="flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+                                <span class="font-medium text-sm">Nightly</span>
+                            </div>
+                            <div class="form-control">
+                                <label class="label py-0" for="nightly-time">
+                                    <span class="label-text text-xs text-base-content/50">Run time</span>
+                                </label>
+                                <input id="nightly-time" type="time" class="input input-bordered input-sm w-32" bind:value={nightlyTime} />
+                            </div>
+                            <div>
+                                <span class="label-text text-xs text-base-content/50">Active days</span>
+                                <div class="flex gap-1.5 mt-1">
+                                    {#each DAY_LABELS as day}
+                                        <button
+                                            class="w-8 h-8 rounded-full text-xs font-semibold transition-all
+                                                {nightlyDays.includes(day.id) ? 'bg-primary text-primary-content' : 'bg-base-300 text-base-content/40 hover:bg-base-300/80'}"
+                                            onclick={() => toggleNightlyDay(day.id)}
+                                        >{day.short}</button>
+                                    {/each}
+                                </div>
+                            </div>
                         </div>
 
-                        <div class="form-control">
-                            <label class="label" for="weekly-day">
-                                <span class="label-text">Weekly run</span>
-                            </label>
-                            <div class="flex gap-2">
-                                <select id="weekly-day" class="select select-bordered select-sm" bind:value={weeklyDay}>
-                                    {#each WEEKDAYS as day}
-                                        <option value={day}>{day.charAt(0).toUpperCase() + day.slice(1)}</option>
-                                    {/each}
-                                </select>
-                                <input type="time" class="input input-bordered input-sm w-40" bind:value={weeklyTime} />
+                        <!-- Weekly -->
+                        <div class="space-y-3">
+                            <div class="flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-secondary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                <span class="font-medium text-sm">Weekly</span>
+                            </div>
+                            <div class="form-control">
+                                <label class="label py-0" for="weekly-day">
+                                    <span class="label-text text-xs text-base-content/50">Day & time</span>
+                                </label>
+                                <div class="flex gap-2">
+                                    <select id="weekly-day" class="select select-bordered select-sm" bind:value={weeklyDay}>
+                                        {#each WEEKDAYS as day}
+                                            <option value={day}>{day.charAt(0).toUpperCase() + day.slice(1)}</option>
+                                        {/each}
+                                    </select>
+                                    <input type="time" class="input input-bordered input-sm w-32" bind:value={weeklyTime} />
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -359,23 +434,55 @@
         <div class="card bg-base-200 shadow-sm">
             <div class="card-body gap-3">
                 <h3 class="card-title text-lg">Phases</h3>
-                <p class="text-xs text-base-content/50">Toggle which phases run in the pipeline</p>
+                <p class="text-xs text-base-content/50">Choose which phases run on each schedule. Uncheck both to disable.</p>
 
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {#each phases as phase}
-                        <label class="flex items-center gap-2.5 py-1.5 px-2 rounded-lg hover:bg-base-300 cursor-pointer transition-colors">
-                            <input
-                                type="checkbox"
-                                class="checkbox checkbox-sm checkbox-primary"
-                                checked={phaseFlags[phase.id] ?? true}
-                                onchange={() => togglePhase(phase.id)}
-                            />
-                            <div class="flex-1 min-w-0">
-                                <span class="text-sm font-medium">{phase.label}</span>
-                                <span class="badge badge-xs badge-ghost ml-1.5 opacity-60">{phase.schedule}</span>
-                            </div>
-                        </label>
-                    {/each}
+                <div class="overflow-x-auto">
+                    <table class="table table-sm w-full">
+                        <thead>
+                            <tr class="text-base-content/60">
+                                <th class="font-medium">Phase</th>
+                                <th class="text-center w-24 font-medium">
+                                    <div class="flex items-center justify-center gap-1.5">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+                                        Nightly
+                                    </div>
+                                </th>
+                                <th class="text-center w-24 font-medium">
+                                    <div class="flex items-center justify-center gap-1.5">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-secondary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                        Weekly
+                                    </div>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {#each phases as phase}
+                                {@const flags = phaseFlags[phase.id] || { nightly: false, weekly: false }}
+                                {@const disabled = !flags.nightly && !flags.weekly}
+                                <tr class={disabled ? 'opacity-40' : ''}>
+                                    <td>
+                                        <span class="text-sm font-medium">{phase.label}</span>
+                                    </td>
+                                    <td class="text-center">
+                                        <input
+                                            type="checkbox"
+                                            class="checkbox checkbox-sm checkbox-info"
+                                            checked={flags.nightly}
+                                            onchange={() => togglePhaseFlag(phase.id, 'nightly')}
+                                        />
+                                    </td>
+                                    <td class="text-center">
+                                        <input
+                                            type="checkbox"
+                                            class="checkbox checkbox-sm checkbox-secondary"
+                                            checked={flags.weekly}
+                                            onchange={() => togglePhaseFlag(phase.id, 'weekly')}
+                                        />
+                                    </td>
+                                </tr>
+                            {/each}
+                        </tbody>
+                    </table>
                 </div>
 
                 <button class="btn btn-primary btn-sm w-fit mt-1" onclick={saveSettings} disabled={saving}>

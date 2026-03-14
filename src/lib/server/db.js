@@ -450,6 +450,7 @@ const newAppCols = [
     ['weekly_pipeline_day', "TEXT DEFAULT 'sunday'"],
     ['weekly_pipeline_time', "TEXT DEFAULT '03:00'"],
     ['pipeline_phase_flags', "TEXT DEFAULT '{}'"],
+    ['nightly_pipeline_days', "TEXT"],
     // Homepage smart sections
     ['homepage_preferences', "TEXT DEFAULT '{}'"],
 ];

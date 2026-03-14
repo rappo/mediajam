@@ -76,17 +76,23 @@ export function stopPipeline() { pipelineAbort = true; }
 export function getPipelineSettings() {
     const row = /** @type {any} */ (db.prepare(`
         SELECT pipeline_enabled, nightly_pipeline_time, weekly_pipeline_day,
-               weekly_pipeline_time, pipeline_phase_flags
+               weekly_pipeline_time, pipeline_phase_flags, nightly_pipeline_days
         FROM app_settings WHERE id = 1
     `).get());
     let phaseFlags = {};
     try { phaseFlags = JSON.parse(row?.pipeline_phase_flags || '{}'); } catch { /* */ }
+    let nightlyDays = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
+    try {
+        const parsed = JSON.parse(row?.nightly_pipeline_days || 'null');
+        if (Array.isArray(parsed)) nightlyDays = parsed;
+    } catch { /* */ }
     return {
         pipelineEnabled: (row?.pipeline_enabled ?? 0) !== 0,
         nightlyTime: row?.nightly_pipeline_time || '02:00',
         weeklyDay: row?.weekly_pipeline_day || 'sunday',
         weeklyTime: row?.weekly_pipeline_time || '03:00',
         phaseFlags,
+        nightlyDays,
     };
 }
 
@@ -101,6 +107,7 @@ export function updatePipelineSettings(settings) {
     if (settings.weeklyDay !== undefined) { cols.push('weekly_pipeline_day = ?'); vals.push(settings.weeklyDay); }
     if (settings.weeklyTime !== undefined) { cols.push('weekly_pipeline_time = ?'); vals.push(settings.weeklyTime); }
     if (settings.phaseFlags !== undefined) { cols.push('pipeline_phase_flags = ?'); vals.push(JSON.stringify(settings.phaseFlags)); }
+    if (settings.nightlyDays !== undefined) { cols.push('nightly_pipeline_days = ?'); vals.push(JSON.stringify(settings.nightlyDays)); }
     if (cols.length === 0) return;
     db.prepare(`UPDATE app_settings SET ${cols.join(', ')} WHERE id = 1`).run(...vals);
 }
@@ -553,7 +560,7 @@ export async function runPipeline(mode = 'nightly', { audit = false } = {}) {
     running = true;
     pipelineAbort = false;
     const settings = getPipelineSettings();
-    const phases = PHASES.filter(p => mode === 'weekly' || p.schedule === 'nightly');
+    const phases = PHASES;
 
     // Persist run start
     const runRow = db.prepare(
@@ -594,8 +601,23 @@ export async function runPipeline(mode = 'nightly', { audit = false } = {}) {
         const phase = phases[i];
         const phaseFlag = settings.phaseFlags[phase.id];
 
+        // New-style: { nightly: bool, weekly: bool } — or legacy boolean
+        let enabled = true;
+        if (phaseFlag !== undefined) {
+            if (typeof phaseFlag === 'object' && phaseFlag !== null) {
+                // New format: check if this phase is enabled for the current mode
+                enabled = mode === 'nightly' ? (phaseFlag.nightly ?? false) : (phaseFlag.weekly ?? false);
+            } else {
+                // Legacy boolean format
+                enabled = phaseFlag !== false;
+            }
+        } else {
+            // No explicit flag — use phase's default schedule
+            enabled = mode === 'weekly' || phase.schedule === 'nightly';
+        }
+
         // Check if phase is disabled via settings
-        if (phaseFlag === false) {
+        if (!enabled) {
             emit({ type: 'phase_skip', phase: phase.id, phaseIndex: i, totalPhases: phases.length, message: 'Disabled in settings' });
             results.push({ phase: phase.id, status: 'skipped', message: 'Disabled in settings', durationMs: 0 });
             continue;
@@ -722,6 +744,15 @@ function msUntilDayTime(day, timeStr) {
 async function runNightly() {
     const settings = getPipelineSettings();
     if (!settings.pipelineEnabled) return;
+
+    // Check if today is an enabled nightly day
+    const todayIndex = new Date().getDay();
+    const todayName = WEEKDAYS[todayIndex];
+    if (!settings.nightlyDays.includes(todayName)) {
+        console.log(`[pipeline] Skipping nightly — ${todayName} is not enabled`);
+        scheduleNightly();
+        return;
+    }
 
     try {
         await runPipeline('nightly');
