@@ -125,33 +125,22 @@ export function detectMoviePatterns(userId, prefs) {
 }
 
 /**
- * "Because You Love [person]" — top credited people with unwatched films.
+ * Contextual person-based recommendations with accurate labels.
+ * Priority: favorited people → most-watched people → most-credited people.
+ * Returns sections with a contextual sectionTitle like "Because You Favorited",
+ * "Because You've Watched", or "More from".
  * @param {number} userId
  * @param {typeof DEFAULTS} prefs
  */
 export function getBecauseYouLove(userId, prefs) {
-    // Find most-credited actors/directors overall (not just recent)
-    // Fetch a larger pool so we can rotate daily
-    const topPeople = /** @type {any[]} */ (db.prepare(`
-        SELECT p.id as person_id, p.name, p.photo_url, pc.role_type,
-               COUNT(DISTINCT pc.media_parent_id) as total_movies
-        FROM persons p
-        JOIN person_credits pc ON pc.person_id = p.id
-        JOIN media_parents mp ON pc.media_parent_id = mp.id
-        WHERE pc.role_type IN ('actor', 'director') AND mp.media_type = 'movie'
-        GROUP BY p.id, pc.role_type
-        HAVING total_movies >= 3
-        ORDER BY total_movies DESC
-        LIMIT 40
-    `).all());
-
-    // Build all eligible sections first, then pick randomly
-    /** @type {Array<{person: string, personId: number, photoUrl: string|null, role: string, totalInLibrary: number, reason: string, items: any[]}>} */
-    const eligible = [];
-
-    for (const person of topPeople) {
-        // Find truly unwatched movies (no playback_history either)
-        const unwatched = /** @type {any[]} */ (db.prepare(`
+    /**
+     * Find unwatched movies for a given person+role.
+     * @param {number} personId
+     * @param {string} roleType
+     * @returns {any[]}
+     */
+    function getUnwatchedByPerson(personId, roleType) {
+        return /** @type {any[]} */ (db.prepare(`
             SELECT DISTINCT mp.id, mp.title, mp.poster_url, mp.release_year
             FROM person_credits pc
             JOIN media_parents mp ON pc.media_parent_id = mp.id
@@ -164,17 +153,105 @@ export function getBecauseYouLove(userId, prefs) {
               )
             ORDER BY mp.release_year DESC
             LIMIT ?
-        `).all(person.person_id, person.role_type, prefs.maxItemsPerSection));
+        `).all(personId, roleType, prefs.maxItemsPerSection));
+    }
 
+    /** @type {Array<{person: string, personId: number, photoUrl: string|null, role: string, totalInLibrary: number, reason: string, sectionTitle: string, items: any[]}>} */
+    const eligible = [];
+    /** @type {Set<string>} */
+    const usedKeys = new Set();
+
+    // ── Tier 1: Favorited people ────────────────────────────────────────
+    const favorited = /** @type {any[]} */ (db.prepare(`
+        SELECT p.id as person_id, p.name, p.photo_url, pc.role_type,
+               COUNT(DISTINCT pc.media_parent_id) as total_movies
+        FROM persons p
+        JOIN person_credits pc ON pc.person_id = p.id
+        JOIN media_parents mp ON pc.media_parent_id = mp.id
+        WHERE p.is_favorite = 1
+          AND pc.role_type IN ('actor', 'director') AND mp.media_type = 'movie'
+        GROUP BY p.id, pc.role_type
+        ORDER BY total_movies DESC
+        LIMIT 20
+    `).all());
+
+    for (const person of favorited) {
+        const key = `${person.person_id}-${person.role_type}`;
+        if (usedKeys.has(key)) continue;
+        const unwatched = getUnwatchedByPerson(person.person_id, person.role_type);
         if (unwatched.length < 2) continue;
-
+        usedKeys.add(key);
         const roleLabel = person.role_type === 'director' ? 'directed by' : 'starring';
         eligible.push({
-            person: person.name,
-            personId: person.person_id,
-            photoUrl: person.photo_url,
-            role: person.role_type,
-            totalInLibrary: person.total_movies,
+            person: person.name, personId: person.person_id, photoUrl: person.photo_url,
+            role: person.role_type, totalInLibrary: person.total_movies,
+            sectionTitle: `Because You Favorited ${person.name}`,
+            reason: `${roleLabel} ${person.name}`,
+            items: unwatched,
+        });
+    }
+
+    // ── Tier 2: Most-watched people (3+ movies watched) ────────────────
+    const mostWatched = /** @type {any[]} */ (db.prepare(`
+        SELECT p.id as person_id, p.name, p.photo_url, pc.role_type,
+               COUNT(DISTINCT mp.id) as watched_count,
+               (SELECT COUNT(DISTINCT pc2.media_parent_id) FROM person_credits pc2
+                JOIN media_parents mp2 ON pc2.media_parent_id = mp2.id
+                WHERE pc2.person_id = p.id AND pc2.role_type = pc.role_type
+                AND mp2.media_type = 'movie') as total_movies
+        FROM persons p
+        JOIN person_credits pc ON pc.person_id = p.id
+        JOIN media_parents mp ON pc.media_parent_id = mp.id
+        JOIN media_children mc ON mc.parent_id = mp.id
+        JOIN playback_history ph ON ph.media_id = mc.id AND ph.user_id = ?
+        WHERE pc.role_type IN ('actor', 'director') AND mp.media_type = 'movie'
+        GROUP BY p.id, pc.role_type
+        HAVING watched_count >= 3
+        ORDER BY watched_count DESC
+        LIMIT 30
+    `).all(userId));
+
+    for (const person of mostWatched) {
+        const key = `${person.person_id}-${person.role_type}`;
+        if (usedKeys.has(key)) continue;
+        const unwatched = getUnwatchedByPerson(person.person_id, person.role_type);
+        if (unwatched.length < 2) continue;
+        usedKeys.add(key);
+        const roleLabel = person.role_type === 'director' ? 'directed by' : 'starring';
+        eligible.push({
+            person: person.name, personId: person.person_id, photoUrl: person.photo_url,
+            role: person.role_type, totalInLibrary: person.total_movies,
+            sectionTitle: `Because You've Watched ${person.name}`,
+            reason: `${roleLabel} ${person.name}`,
+            items: unwatched,
+        });
+    }
+
+    // ── Tier 3: Most-credited people (fallback) ────────────────────────
+    const topCredited = /** @type {any[]} */ (db.prepare(`
+        SELECT p.id as person_id, p.name, p.photo_url, pc.role_type,
+               COUNT(DISTINCT pc.media_parent_id) as total_movies
+        FROM persons p
+        JOIN person_credits pc ON pc.person_id = p.id
+        JOIN media_parents mp ON pc.media_parent_id = mp.id
+        WHERE pc.role_type IN ('actor', 'director') AND mp.media_type = 'movie'
+        GROUP BY p.id, pc.role_type
+        HAVING total_movies >= 3
+        ORDER BY total_movies DESC
+        LIMIT 30
+    `).all());
+
+    for (const person of topCredited) {
+        const key = `${person.person_id}-${person.role_type}`;
+        if (usedKeys.has(key)) continue;
+        const unwatched = getUnwatchedByPerson(person.person_id, person.role_type);
+        if (unwatched.length < 2) continue;
+        usedKeys.add(key);
+        const roleLabel = person.role_type === 'director' ? 'directed by' : 'starring';
+        eligible.push({
+            person: person.name, personId: person.person_id, photoUrl: person.photo_url,
+            role: person.role_type, totalInLibrary: person.total_movies,
+            sectionTitle: `More from ${person.name}`,
             reason: `${roleLabel} ${person.name}`,
             items: unwatched,
         });

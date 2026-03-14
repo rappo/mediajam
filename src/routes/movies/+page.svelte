@@ -246,7 +246,7 @@
         {#each data.sections.becauseYouLove as section}
             <section class="smart-section">
                 <div class="section-header">
-                    <h2 class="section-title">Because You Love {section.person}</h2>
+                    <h2 class="section-title">{section.sectionTitle || `More from ${section.person}`}</h2>
                     <span class="section-count">{section.totalInLibrary} films in library · {section.items.length} unwatched</span>
                 </div>
                 <div class="poster-scroll">
