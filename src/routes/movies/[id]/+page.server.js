@@ -209,10 +209,12 @@ export async function load({ params, locals }) {
         ORDER BY pc.sort_order ASC
     `).all(movieId));
 
-    // Deduplicate cast by person ID (same actor may have multiple credit rows)
+    // Deduplicate cast by name (same actor may exist as separate person rows
+    // from Jellyfin vs TMDB syncs, so p.id alone isn't enough)
     const castMap = new Map();
     for (const c of castRaw) {
-        const existing = castMap.get(c.id);
+        const key = c.name.toLowerCase();
+        const existing = castMap.get(key);
         if (existing) {
             // Keep the better character name (non-empty, non-duplicate)
             if (c.character_name && !existing.character_name) {
@@ -222,8 +224,11 @@ export async function load({ params, locals }) {
             if (c.sort_order < existing.sort_order) {
                 existing.sort_order = c.sort_order;
             }
+            // Prefer entry with photo and tmdb_person_id
+            if (c.photo_url && !existing.photo_url) existing.photo_url = c.photo_url;
+            if (c.tmdb_person_id && !existing.tmdb_person_id) existing.tmdb_person_id = c.tmdb_person_id;
         } else {
-            castMap.set(c.id, { ...c });
+            castMap.set(key, { ...c });
         }
     }
     const cast = [...castMap.values()].sort((a, b) => a.sort_order - b.sort_order);
@@ -238,15 +243,19 @@ export async function load({ params, locals }) {
     `).all(movieId));
 
     // Combine crew members with multiple roles (e.g. "Director, Writer")
+    // Keyed by name to catch duplicate person rows
     const crewMap = new Map();
     for (const c of crewRaw) {
-        const existing = crewMap.get(c.id);
+        const key = c.name.toLowerCase();
+        const existing = crewMap.get(key);
         if (existing) {
             if (!existing.role_type.includes(c.role_type)) {
                 existing.role_type += ', ' + c.role_type;
             }
+            if (c.photo_url && !existing.photo_url) existing.photo_url = c.photo_url;
+            if (c.tmdb_person_id && !existing.tmdb_person_id) existing.tmdb_person_id = c.tmdb_person_id;
         } else {
-            crewMap.set(c.id, { ...c });
+            crewMap.set(key, { ...c });
         }
     }
     const crew = [...crewMap.values()];
