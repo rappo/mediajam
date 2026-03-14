@@ -28,6 +28,8 @@ import { startMusicBrainzEnrich } from '$lib/server/musicbrainz-engine.js';
 import { autoMergeMediumPlus, enrichUnmatchedAlbums } from '$lib/server/album-matcher.js';
 import { fetchAllRatings } from '$lib/server/ratings-engine.js';
 import { backfillWikipedia } from '$lib/server/wikipedia-backfill.js';
+import { generate, embed, isEmbeddingAvailable } from '$lib/server/llm.js';
+import crypto from 'crypto';
 
 // ── State ───────────────────────────────────────────────────────────────────
 
@@ -147,6 +149,26 @@ function isArrConfigured() {
         SELECT radarr_url, sonarr_url, lidarr_url FROM app_settings WHERE id = 1
     `).get());
     return !!(row?.radarr_url || row?.sonarr_url || row?.lidarr_url);
+}
+
+/**
+ * Check whether an LLM chat provider is configured (for tag generation).
+ */
+function isLlmConfigured() {
+    try {
+        const row = /** @type {any} */ (db.prepare(`
+            SELECT llm_provider, ollama_url, ollama_chat_model,
+                   openai_api_key, gemini_api_key, claude_api_key, kimi_api_key, llm_api_key,
+                   codex_access_token
+            FROM app_settings WHERE id = 1
+        `).get());
+        if (!row) return false;
+        const provider = row.llm_provider || 'ollama';
+        if (provider === 'ollama') return !!(row.ollama_url && row.ollama_chat_model);
+        return !!(row.openai_api_key || row.gemini_api_key || row.claude_api_key || row.kimi_api_key || row.llm_api_key || row.codex_access_token);
+    } catch {
+        return false;
+    }
 }
 
 /** @type {PhaseDefinition[]} */
@@ -347,6 +369,169 @@ const PHASES = [
             log(`${missing} items missing Wikipedia links...`);
             await backfillWikipedia();
             return 'Wikipedia backfill complete';
+        },
+    },
+    {
+        id: 'llm-tags',
+        label: 'Generate Tags (LLM)',
+        schedule: 'weekly',
+        shouldSkip: () => !isLlmConfigured(),
+        async run(log) {
+            // Test that the LLM is actually reachable
+            const test = await generate('Say "ok"', { temperature: 0 });
+            if (!test) throw new Error('LLM not reachable — skipping tag generation');
+
+            const parents = /** @type {any[]} */ (db.prepare(`
+                SELECT mp.id, mp.title, mp.overview, mp.media_type
+                FROM media_parents mp
+                WHERE mp.overview IS NOT NULL AND mp.overview != ''
+                AND mp.id NOT IN (SELECT DISTINCT media_parent_id FROM media_tags)
+                ORDER BY mp.title
+            `).all());
+
+            if (parents.length === 0) return 'All items already tagged';
+            log(`${parents.length} items need tagging...`);
+
+            const insertTag = db.prepare(
+                'INSERT OR IGNORE INTO media_tags (media_parent_id, tag_type, tag_value) VALUES (?, ?, ?)'
+            );
+
+            let tagged = 0;
+            let failed = 0;
+            for (let i = 0; i < parents.length; i++) {
+                const parent = parents[i];
+                const mediaTypeLabel = parent.media_type === 'artist' ? 'music artist' : parent.media_type;
+                const prompt = `Categorize this ${mediaTypeLabel}:
+Title: ${parent.title}
+Overview: ${parent.overview}
+
+Return a JSON object with these arrays:
+- genres: up to 3 genre tags (e.g. Action, Comedy, Rock, Jazz)
+- moods: up to 2 mood/tone tags (e.g. Dark, Uplifting, Suspenseful, Chill)
+- themes: up to 3 theme tags (e.g. Family, Revenge, Space, Coming-of-age)
+
+Only return valid JSON, no explanation.`;
+
+                const response = await generate(prompt, {
+                    temperature: 0.2,
+                    format: 'json',
+                    system: 'You are a media categorization expert. Return only valid JSON with genres, moods, and themes arrays.',
+                });
+
+                if (response) {
+                    try {
+                        const tags = JSON.parse(response);
+                        db.transaction(() => {
+                            for (const genre of (tags.genres || [])) {
+                                insertTag.run(parent.id, 'genre', String(genre).toLowerCase().trim());
+                            }
+                            for (const mood of (tags.moods || [])) {
+                                insertTag.run(parent.id, 'mood', String(mood).toLowerCase().trim());
+                            }
+                            for (const theme of (tags.themes || [])) {
+                                insertTag.run(parent.id, 'theme', String(theme).toLowerCase().trim());
+                            }
+                        })();
+                        tagged++;
+                    } catch {
+                        failed++;
+                    }
+                } else {
+                    failed++;
+                }
+
+                if ((i + 1) % 25 === 0) log(`Tagged ${tagged}/${i + 1} (${failed} failed)`);
+            }
+
+            return `Tagged ${tagged}/${parents.length} items (${failed} failed)`;
+        },
+    },
+    {
+        id: 'llm-embeddings',
+        label: 'Generate Embeddings (LLM)',
+        schedule: 'weekly',
+        shouldSkip: () => !isEmbeddingAvailable(),
+        async run(log) {
+            // Verify embedding works
+            const testEmbed = await embed('test');
+            if (!testEmbed) throw new Error('Embedding model not available');
+            const embedDim = testEmbed.length;
+            if (embedDim !== 768) throw new Error(`Embedding dimension mismatch: got ${embedDim}, expected 768`);
+
+            // Phase 1: Overview embeddings
+            const parents = /** @type {any[]} */ (db.prepare(
+                `SELECT mp.id, mp.title, mp.overview, eh.content_hash
+                 FROM media_parents mp
+                 LEFT JOIN embedding_hashes eh ON eh.media_parent_id = mp.id
+                 WHERE mp.overview IS NOT NULL AND mp.overview != ''`
+            ).all());
+
+            const checkVecExists = db.prepare(
+                'SELECT 1 FROM overview_embeddings WHERE media_parent_id = ? LIMIT 1'
+            );
+            const needsEmbedding = parents.filter(p => {
+                const hash = crypto.createHash('sha256').update(`${p.title}. ${p.overview}`).digest('hex');
+                p._hash = hash;
+                if (!p.content_hash || p.content_hash !== hash) return true;
+                try { return !checkVecExists.get(Number(p.id)); } catch { return true; }
+            });
+
+            log(`${needsEmbedding.length} overviews need embedding (${parents.length - needsEmbedding.length} up-to-date)...`);
+
+            let overviewOk = 0;
+            let overviewFail = 0;
+            for (let i = 0; i < needsEmbedding.length; i++) {
+                const parent = needsEmbedding[i];
+                const text = `${parent.title}. ${parent.overview}`;
+                const embedding = await embed(text);
+                if (embedding) {
+                    try {
+                        const pid = parent.id;
+                        const vecJson = JSON.stringify(embedding);
+                        try { db.prepare('DELETE FROM overview_embeddings WHERE media_parent_id = CAST(? AS INTEGER)').run(pid); } catch { /* may not exist */ }
+                        db.prepare(
+                            'INSERT INTO overview_embeddings (media_parent_id, overview_embedding) VALUES (CAST(? AS INTEGER), ?)'
+                        ).run(pid, vecJson);
+                        db.prepare(
+                            'INSERT OR REPLACE INTO embedding_hashes (media_parent_id, content_hash, embedded_at) VALUES (?, ?, datetime(\'now\'))'
+                        ).run(pid, parent._hash);
+                        overviewOk++;
+                    } catch {
+                        overviewFail++;
+                    }
+                }
+                if ((i + 1) % 50 === 0) log(`Overviews: ${overviewOk}/${i + 1} embedded`);
+            }
+
+            // Phase 2: Title embeddings
+            const children = /** @type {any[]} */ (db.prepare(
+                `SELECT mc.id, mc.title, mp.title as parent_title
+                 FROM media_children mc
+                 JOIN media_parents mp ON mc.parent_id = mp.id
+                 WHERE mc.id NOT IN (SELECT media_id FROM media_embeddings)`
+            ).all());
+
+            log(`${children.length} titles need embedding...`);
+
+            let titleOk = 0;
+            for (let i = 0; i < children.length; i++) {
+                const child = children[i];
+                const text = `${child.parent_title} - ${child.title}`;
+                const embedding = await embed(text);
+                if (embedding) {
+                    try {
+                        const cid = child.id;
+                        try { db.prepare('DELETE FROM media_embeddings WHERE media_id = CAST(? AS INTEGER)').run(cid); } catch { /* */ }
+                        db.prepare(
+                            'INSERT INTO media_embeddings (media_id, title_embedding) VALUES (CAST(? AS INTEGER), ?)'
+                        ).run(cid, JSON.stringify(embedding));
+                        titleOk++;
+                    } catch { /* */ }
+                }
+                if ((i + 1) % 50 === 0) log(`Titles: ${titleOk}/${i + 1} embedded`);
+            }
+
+            return `Overviews: ${overviewOk} embedded (${overviewFail} failed), Titles: ${titleOk} embedded`;
         },
     },
 ];
