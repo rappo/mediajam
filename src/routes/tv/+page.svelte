@@ -394,16 +394,18 @@
         bottom: 28px;
         left: 4px;
         right: 4px;
-        height: 3px;
-        border-radius: 2px;
-        background: oklch(var(--bc) / 0.15);
+        height: 5px;
+        border-radius: 3px;
+        background: oklch(var(--bc) / 0.2);
         overflow: hidden;
+        box-shadow: 0 1px 4px oklch(0 0 0 / 0.3);
     }
     .progress-bar-fill {
         height: 100%;
-        border-radius: 2px;
-        background: oklch(var(--su));
+        border-radius: 3px;
+        background: linear-gradient(90deg, oklch(var(--su)), oklch(var(--su) / 0.85));
         transition: width 0.4s ease;
+        box-shadow: 0 0 6px oklch(var(--su) / 0.5);
     }
 
     .progress-meta {
