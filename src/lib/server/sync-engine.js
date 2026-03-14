@@ -1027,6 +1027,42 @@ export async function startSync(libraryId = null, force = false) {
                             }
                         }
 
+                        // ── Dedup: merge duplicate episodes with same season/episode number ──
+                        // Jellyfin sometimes reports the same episode twice (e.g. virtual + on-disk),
+                        // producing two media_children rows with different jellyfin_ids.
+                        // Keep the collected (is_collected=1) entry; delete the virtual duplicate.
+                        const dupeEpisodes = /** @type {any[]} */ (db.prepare(`
+                            SELECT season_number, item_number, GROUP_CONCAT(id) as ids, COUNT(*) as cnt
+                            FROM media_children
+                            WHERE parent_id = ? AND season_number IS NOT NULL
+                            GROUP BY season_number, item_number
+                            HAVING cnt > 1
+                        `).all(parentId));
+                        if (dupeEpisodes.length > 0) {
+                            const migrateHistory = db.prepare('UPDATE playback_history SET media_id = ? WHERE media_id = ?');
+                            const deleteChild = db.prepare('DELETE FROM media_children WHERE id = ?');
+                            db.transaction(() => {
+                                for (const dupe of dupeEpisodes) {
+                                    const ids = dupe.ids.split(',').map(Number);
+                                    const rows = /** @type {any[]} */ (db.prepare(
+                                        `SELECT id, is_collected, jellyfin_id, watch_status, play_count FROM media_children WHERE id IN (${ids.join(',')})`
+                                    ).all());
+                                    // Sort: prefer is_collected=1, then most plays, then highest id
+                                    rows.sort((a, b) => {
+                                        if (a.is_collected !== b.is_collected) return b.is_collected - a.is_collected;
+                                        if ((a.play_count || 0) !== (b.play_count || 0)) return (b.play_count || 0) - (a.play_count || 0);
+                                        return b.id - a.id;
+                                    });
+                                    const keepId = rows[0].id;
+                                    for (const row of rows.slice(1)) {
+                                        migrateHistory.run(keepId, row.id);
+                                        deleteChild.run(row.id);
+                                    }
+                                }
+                            })();
+                            broadcast({ type: 'progress', log: `  🧹 ${item.Name}: deduped ${dupeEpisodes.length} duplicate episode(s)`, logType: 'info' });
+                        }
+
                         const collectedNonSpecial = episodes.filter(ep => ep.LocationType !== 'Virtual' && (ep.ParentIndexNumber || 0) !== 0).length;
                         const missingNonSpecial = episodes.filter(ep => ep.LocationType === 'Virtual' && (ep.ParentIndexNumber || 0) !== 0).length;
                         updateTotalReleased.run(collectedNonSpecial + missingNonSpecial, parentId);
