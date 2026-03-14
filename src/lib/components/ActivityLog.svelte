@@ -8,6 +8,8 @@
      */
     import { invalidateAll } from "$app/navigation";
 
+    import { onMount } from "svelte";
+
     /** @type {{ initialUnread?: number, conflictDialog?: any }} */
     let { initialUnread = 0, conflictDialog } = $props();
 
@@ -19,12 +21,26 @@
     let pollInterval = $state(/** @type {any} */ (null));
     /** @type {Record<number, boolean>} */
     let expandedActivity = $state({});
+    /** @type {HTMLDivElement | null} */
+    let containerEl = $state(null);
 
     // Start polling for unread count when mounted
     $effect(() => {
         pollUnread();
         pollInterval = setInterval(pollUnread, 30000); // Every 30s
         return () => clearInterval(pollInterval);
+    });
+
+    // Click-outside to close
+    onMount(() => {
+        /** @param {MouseEvent} e */
+        function handleClickOutside(e) {
+            if (open && containerEl && !containerEl.contains(/** @type {Node} */ (e.target))) {
+                close();
+            }
+        }
+        document.addEventListener('click', handleClickOutside, true);
+        return () => document.removeEventListener('click', handleClickOutside, true);
     });
 
     async function pollUnread() {
@@ -172,7 +188,7 @@
     }
 </script>
 
-<div class="relative">
+<div class="relative" bind:this={containerEl}>
     <button
         class="btn btn-ghost btn-sm btn-circle indicator"
         onclick={toggle}
@@ -197,10 +213,6 @@
     </button>
 
     {#if open}
-        <!-- Backdrop -->
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div class="fixed inset-0 z-[90]" onclick={close}></div>
 
         <!-- Dropdown panel -->
         <div
