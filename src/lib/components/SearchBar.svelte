@@ -87,14 +87,30 @@
     }
 
     /** @param {any} item */
-    function navigateToExternalResult(item) {
+    async function navigateToExternalResult(item) {
         close();
-        if (item.type === 'movie' && item.tmdb_id) {
-            window.open(`https://www.themoviedb.org/movie/${item.tmdb_id}`, '_blank');
-        } else if (item.type === 'show' && item.tmdb_id) {
-            window.open(`https://www.themoviedb.org/tv/${item.tmdb_id}`, '_blank');
-        } else if (item.type === 'artist' && item.musicbrainz_id) {
-            window.open(`https://musicbrainz.org/artist/${item.musicbrainz_id}`, '_blank');
+        try {
+            const res = await fetch('/api/search/external/stub', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: item.type,
+                    tmdb_id: item.tmdb_id || null,
+                    musicbrainz_id: item.musicbrainz_id || null,
+                    title: item.title,
+                    release_year: item.release_year || null,
+                    poster_url: item.poster_url || null,
+                    overview: item.overview || null,
+                }),
+            });
+            if (res.ok) {
+                const data = await res.json();
+                goto(data.href);
+            } else {
+                addToast({ type: 'error', message: 'Failed to create entry' });
+            }
+        } catch (/** @type {any} */ err) {
+            addToast({ type: 'error', message: 'Failed to load result', detail: err?.message || String(err) });
         }
     }
 
