@@ -4,6 +4,9 @@ import {
     getRecentListening,
     getNewFromFavorites,
     getRediscoverArtists,
+    getHeavyRotation,
+    getUnplayedAlbums,
+    getDeepCuts,
 } from '$lib/server/homepage-engine.js';
 
 /** @type {import('./$types').PageServerLoad} */
@@ -127,10 +130,14 @@ export function load({ locals, url }) {
 
     // ── Smart Sections (graceful degradation) ──
     let recentListening = [], newFromFavorites = [], rediscover = [];
+    let heavyRotation = [], unplayedAlbums = [], deepCuts = [];
     try {
         recentListening = getRecentListening(userId, prefs.maxItemsPerSection);
         newFromFavorites = getNewFromFavorites(userId, prefs.maxItemsPerSection);
         rediscover = getRediscoverArtists(userId, prefs);
+        heavyRotation = getHeavyRotation(userId, prefs.maxItemsPerSection);
+        unplayedAlbums = getUnplayedAlbums(userId, prefs.maxItemsPerSection);
+        deepCuts = getDeepCuts(userId, prefs.maxItemsPerSection);
     } catch (e) {
         console.error('[music] Smart section error:', e instanceof Error ? e.message : e);
     }
@@ -152,6 +159,6 @@ export function load({ locals, url }) {
         pagination: { page, perPage, total: filteredTotal, totalPages },
         search,
         sort,
-        sections: { recentListening, newFromFavorites, rediscover }
+        sections: { recentListening, newFromFavorites, rediscover, heavyRotation, unplayedAlbums, deepCuts }
     };
 }

@@ -91,20 +91,44 @@
 
     // ── Transform data for PosterRow (square aspect for music) ──
     const recentPosterItems = data.sections.recentListening.map((/** @type {any} */ i) => ({
-        href: `/music/${i.artist_id}`,
-        poster_url: i.artist_poster,
-        title: i.artist_name,
-        subtitle: `${i.album_title} · ${timeAgo(i.last_played)}`,
+        href: `/music/${i.artist_id}/${i.album_id}`,
+        poster_url: i.album_art,
+        title: i.album_title,
+        subtitle: `${i.artist_name} · ${timeAgo(i.last_played)}`,
         icon: '🎵',
     }));
 
     const favoritePosterItems = data.sections.newFromFavorites.map((/** @type {any} */ i) => ({
-        href: `/music/${i.artist_id}`,
-        poster_url: i.artist_poster,
-        title: i.artist_name,
-        subtitle: i.album_title,
+        href: `/music/${i.artist_id}/${i.album_id}`,
+        poster_url: i.album_art,
+        title: i.album_title,
+        subtitle: i.artist_name,
         icon: '🎵',
         badge: '★',
+    }));
+
+    const heavyRotationItems = data.sections.heavyRotation.map((/** @type {any} */ i) => ({
+        href: `/music/${i.artist_id}/${i.album_id}`,
+        poster_url: i.album_art,
+        title: i.album_title,
+        subtitle: `${i.artist_name} · ${i.recent_plays} plays`,
+        icon: '🔥',
+    }));
+
+    const unplayedItems = data.sections.unplayedAlbums.map((/** @type {any} */ i) => ({
+        href: `/music/${i.artist_id}/${i.album_id}`,
+        poster_url: i.album_art,
+        title: i.album_title,
+        subtitle: i.artist_name,
+        icon: '💿',
+    }));
+
+    const deepCutsItems = data.sections.deepCuts.map((/** @type {any} */ i) => ({
+        href: `/music/${i.artist_id}/${i.album_id}`,
+        poster_url: i.album_art,
+        title: i.album_title,
+        subtitle: `${i.artist_name} · ${i.artist_plays} plays from this artist`,
+        icon: '💎',
     }));
 </script>
 
@@ -195,11 +219,26 @@
     {:else}
         <!-- ═══ SMART HOME VIEW ═══ -->
 
+        <!-- Heavy Rotation -->
+        {#if heavyRotationItems.length > 0}
+            <PosterRow title="🔥 Heavy Rotation" items={heavyRotationItems} />
+        {/if}
+
         <!-- Your Recent Listening -->
         <PosterRow title="Your Recent Listening" items={recentPosterItems} />
 
         <!-- New from Your Favorites -->
         <PosterRow title="New from Your Favorites" items={favoritePosterItems} />
+
+        <!-- Deep Cuts -->
+        {#if deepCutsItems.length > 0}
+            <PosterRow title="💎 Deep Cuts" items={deepCutsItems} />
+        {/if}
+
+        <!-- Unplayed Albums -->
+        {#if unplayedItems.length > 0}
+            <PosterRow title="💿 Unplayed in Your Library" items={unplayedItems} />
+        {/if}
 
         <!-- Rediscover -->
         {#if data.sections.rediscover.length > 0}

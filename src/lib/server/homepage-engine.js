@@ -679,9 +679,14 @@ export function getRecentlyWatchedShows(userId, limit = 20) {
  * @param {number} limit
  */
 export function getRecentListening(userId, limit = 12) {
-    return /** @type {any[]} */ (db.prepare(`
-        SELECT DISTINCT mc.id as album_id, mc.title as album_title,
-               mp.id as artist_id, mp.title as artist_name, mp.poster_url as artist_poster,
+    const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_url FROM app_settings WHERE id = 1').get());
+    const jfUrl = settings?.jellyfin_url || '';
+
+    const rows = /** @type {any[]} */ (db.prepare(`
+        SELECT mc.id as album_id, mc.title as album_title,
+               mc.jellyfin_id as album_jellyfin_id, mc.poster_url as album_poster_url,
+               mp.id as artist_id, mp.title as artist_name,
+               mp.jellyfin_id as artist_jellyfin_id, mp.poster_url as artist_poster,
                mp.is_favorite,
                MAX(ph.timestamp) as last_played
         FROM playback_history ph
@@ -693,18 +698,30 @@ export function getRecentListening(userId, limit = 12) {
         ORDER BY last_played DESC
         LIMIT ?
     `).all(userId, limit));
+
+    return rows.map(r => ({
+        ...r,
+        album_art: r.album_jellyfin_id
+            ? `${jfUrl}/Items/${r.album_jellyfin_id}/Images/Primary?maxHeight=300`
+            : (r.album_poster_url || r.artist_poster || null),
+    }));
 }
 
 /**
  * New releases from favorite artists — albums you haven't played yet.
+ * Grouped by album, shows album art.
  * @param {number} userId
  * @param {number} limit
  */
 export function getNewFromFavorites(userId, limit = 12) {
-    // Find favorite artists with albums that have 0 plays
-    return /** @type {any[]} */ (db.prepare(`
+    const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_url FROM app_settings WHERE id = 1').get());
+    const jfUrl = settings?.jellyfin_url || '';
+
+    const rows = /** @type {any[]} */ (db.prepare(`
         SELECT mc.id as album_id, mc.title as album_title,
-               mp.id as artist_id, mp.title as artist_name, mp.poster_url as artist_poster
+               mc.jellyfin_id as album_jellyfin_id, mc.poster_url as album_poster_url,
+               mp.id as artist_id, mp.title as artist_name,
+               mp.jellyfin_id as artist_jellyfin_id, mp.poster_url as artist_poster
         FROM media_parents mp
         JOIN media_children mc ON mc.parent_id = mp.id
         WHERE mp.media_type = 'artist'
@@ -714,9 +731,16 @@ export function getNewFromFavorites(userId, limit = 12) {
               SELECT 1 FROM playback_history ph
               WHERE ph.media_id = mc.id AND ph.user_id = ?
           )
-        ORDER BY mp.title ASC
+        ORDER BY mp.title ASC, mc.item_number DESC
         LIMIT ?
     `).all(userId, limit));
+
+    return rows.map(r => ({
+        ...r,
+        album_art: r.album_jellyfin_id
+            ? `${jfUrl}/Items/${r.album_jellyfin_id}/Images/Primary?maxHeight=300`
+            : (r.album_poster_url || r.artist_poster || null),
+    }));
 }
 
 /**
@@ -764,3 +788,130 @@ export function getRediscoverArtists(userId, prefs, limit = 8) {
         return { ...a, unplayedAlbums: unplayed, reason };
     });
 }
+
+/**
+ * "Heavy Rotation" — most-played albums in the last 30 days.
+ * @param {number} userId
+ * @param {number} limit
+ */
+export function getHeavyRotation(userId, limit = 12) {
+    const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_url FROM app_settings WHERE id = 1').get());
+    const jfUrl = settings?.jellyfin_url || '';
+
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+    const cutoffISO = cutoff.toISOString();
+
+    const rows = /** @type {any[]} */ (db.prepare(`
+        SELECT mc.id as album_id, mc.title as album_title,
+               mc.jellyfin_id as album_jellyfin_id, mc.poster_url as album_poster_url,
+               mp.id as artist_id, mp.title as artist_name,
+               mp.jellyfin_id as artist_jellyfin_id, mp.poster_url as artist_poster,
+               COUNT(DISTINCT deduped.time_bucket) as recent_plays
+        FROM (
+            SELECT ph.media_id,
+                   CAST(strftime('%s', ph.timestamp) / 300 AS INTEGER) as time_bucket
+            FROM playback_history ph
+            WHERE ph.user_id = ? AND ph.timestamp > ?
+        ) deduped
+        JOIN media_children mc ON deduped.media_id = mc.id
+        JOIN media_parents mp ON mc.parent_id = mp.id
+        WHERE mp.media_type = 'artist'
+        GROUP BY mc.id
+        ORDER BY recent_plays DESC
+        LIMIT ?
+    `).all(userId, cutoffISO, limit));
+
+    return rows.map(r => ({
+        ...r,
+        album_art: r.album_jellyfin_id
+            ? `${jfUrl}/Items/${r.album_jellyfin_id}/Images/Primary?maxHeight=300`
+            : (r.album_poster_url || r.artist_poster || null),
+    }));
+}
+
+/**
+ * "Unplayed Albums" — albums in your collection with 0 plays.
+ * @param {number} userId
+ * @param {number} limit
+ */
+export function getUnplayedAlbums(userId, limit = 12) {
+    const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_url FROM app_settings WHERE id = 1').get());
+    const jfUrl = settings?.jellyfin_url || '';
+
+    const rows = /** @type {any[]} */ (db.prepare(`
+        SELECT mc.id as album_id, mc.title as album_title,
+               mc.jellyfin_id as album_jellyfin_id, mc.poster_url as album_poster_url,
+               mp.id as artist_id, mp.title as artist_name,
+               mp.jellyfin_id as artist_jellyfin_id, mp.poster_url as artist_poster,
+               mp.is_favorite
+        FROM media_children mc
+        JOIN media_parents mp ON mc.parent_id = mp.id
+        WHERE mp.media_type = 'artist'
+          AND mc.play_count = 0
+          AND mc.jellyfin_id IS NOT NULL
+          AND NOT EXISTS (
+              SELECT 1 FROM playback_history ph
+              WHERE ph.media_id = mc.id AND ph.user_id = ?
+          )
+        ORDER BY mp.is_favorite DESC, RANDOM()
+        LIMIT ?
+    `).all(userId, limit));
+
+    return rows.map(r => ({
+        ...r,
+        album_art: r.album_jellyfin_id
+            ? `${jfUrl}/Items/${r.album_jellyfin_id}/Images/Primary?maxHeight=300`
+            : (r.album_poster_url || r.artist_poster || null),
+    }));
+}
+
+/**
+ * "Deep Cuts" — unplayed albums from your most-listened artists.
+ * Finds artists you listen to the most, then returns their albums you haven't played.
+ * @param {number} userId
+ * @param {number} limit
+ */
+export function getDeepCuts(userId, limit = 12) {
+    const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_url FROM app_settings WHERE id = 1').get());
+    const jfUrl = settings?.jellyfin_url || '';
+
+    const rows = /** @type {any[]} */ (db.prepare(`
+        SELECT mc.id as album_id, mc.title as album_title,
+               mc.jellyfin_id as album_jellyfin_id, mc.poster_url as album_poster_url,
+               mp.id as artist_id, mp.title as artist_name,
+               mp.jellyfin_id as artist_jellyfin_id, mp.poster_url as artist_poster,
+               top_artists.total_plays as artist_plays
+        FROM media_children mc
+        JOIN media_parents mp ON mc.parent_id = mp.id
+        JOIN (
+            SELECT mc2.parent_id, COUNT(DISTINCT deduped.time_bucket) as total_plays
+            FROM (
+                SELECT ph.media_id,
+                       CAST(strftime('%s', ph.timestamp) / 300 AS INTEGER) as time_bucket
+                FROM playback_history ph WHERE ph.user_id = ?
+            ) deduped
+            JOIN media_children mc2 ON deduped.media_id = mc2.id
+            GROUP BY mc2.parent_id
+            HAVING total_plays >= 5
+            ORDER BY total_plays DESC
+            LIMIT 20
+        ) top_artists ON top_artists.parent_id = mp.id
+        WHERE mp.media_type = 'artist'
+          AND mc.play_count = 0
+          AND NOT EXISTS (
+              SELECT 1 FROM playback_history ph
+              WHERE ph.media_id = mc.id AND ph.user_id = ?
+          )
+        ORDER BY top_artists.total_plays DESC, RANDOM()
+        LIMIT ?
+    `).all(userId, userId, limit));
+
+    return rows.map(r => ({
+        ...r,
+        album_art: r.album_jellyfin_id
+            ? `${jfUrl}/Items/${r.album_jellyfin_id}/Images/Primary?maxHeight=300`
+            : (r.album_poster_url || r.artist_poster || null),
+    }));
+}
+
