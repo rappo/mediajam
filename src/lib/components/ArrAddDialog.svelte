@@ -2,6 +2,8 @@
     /**
      * Dialog for selecting quality profile and monitor level before adding media to *arr.
      * Fetches profiles from /api/arr/profiles, shows dropdowns, then adds.
+     * Uses a portal to render the modal at document.body level so it escapes
+     * any parent container (e.g. gear dropdown menus).
      *
      * @component
      * @example
@@ -59,6 +61,16 @@
     };
 
     const options = monitorOptions[service] || monitorOptions.radarr;
+
+    /** Svelte action: portal – moves the node to document.body */
+    function portal(node) {
+        document.body.appendChild(node);
+        return {
+            destroy() {
+                node.remove();
+            },
+        };
+    }
 
     async function openDialog() {
         open = true;
@@ -120,105 +132,108 @@
     {#if adding}
         <span class="loading loading-spinner loading-xs"></span>
     {:else}
-        ➕
+        ✨
     {/if}
     Add to {serviceLabel}
 </button>
 
 {#if open}
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div class="modal modal-open">
-        <div class="modal-box max-w-md" onclick={(e) => e.stopPropagation()}>
-            <h3 class="font-bold text-lg">Add to {serviceLabel}</h3>
+    <!-- Portal: rendered at document.body so it escapes the gear dropdown -->
+    <div use:portal>
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="modal modal-open" style="z-index: 1000;">
+            <div class="modal-box max-w-md" onclick={(e) => e.stopPropagation()}>
+                <h3 class="font-bold text-lg">Add to {serviceLabel}</h3>
 
-            {#if loading}
-                <div class="flex justify-center py-6">
-                    <span class="loading loading-spinner loading-md"></span>
-                </div>
-            {:else if error && profiles.length === 0}
-                <div class="alert alert-error mt-3 text-sm">{error}</div>
-                <div class="modal-action">
-                    <button class="btn btn-sm" onclick={close}>Close</button>
-                </div>
-            {:else}
-                <div class="space-y-4 mt-4">
-                    <div class="form-control">
-                        <label class="label" for="qp-select">
-                            <span class="label-text"
-                                >Quality Profile</span
-                            >
-                        </label>
-                        <select
-                            id="qp-select"
-                            class="select select-bordered w-full"
-                            bind:value={selectedProfileId}
-                        >
-                            {#each profiles as p}
-                                <option value={p.id}>{p.name}</option>
-                            {/each}
-                        </select>
+                {#if loading}
+                    <div class="flex justify-center py-6">
+                        <span class="loading loading-spinner loading-md"></span>
                     </div>
-
-                    <div class="form-control">
-                        <label class="label" for="mon-select">
-                            <span class="label-text">Monitor</span>
-                        </label>
-                        <select
-                            id="mon-select"
-                            class="select select-bordered w-full"
-                            bind:value={selectedMonitor}
-                        >
-                            {#each options as opt}
-                                <option value={opt.value}>{opt.label}</option>
-                            {/each}
-                        </select>
+                {:else if error && profiles.length === 0}
+                    <div class="alert alert-error mt-3 text-sm">{error}</div>
+                    <div class="modal-action">
+                        <button class="btn btn-sm" onclick={close}>Close</button>
                     </div>
-
-                    {#if rootFolders.length > 1}
+                {:else}
+                    <div class="space-y-4 mt-4">
                         <div class="form-control">
-                            <label class="label" for="rf-select">
+                            <label class="label" for="qp-select">
                                 <span class="label-text"
-                                    >Root Folder</span
+                                    >Quality Profile</span
                                 >
                             </label>
                             <select
-                                id="rf-select"
+                                id="qp-select"
                                 class="select select-bordered w-full"
-                                bind:value={selectedRootFolder}
+                                bind:value={selectedProfileId}
                             >
-                                {#each rootFolders as rf}
-                                    <option value={rf.path}>{rf.path}</option>
+                                {#each profiles as p}
+                                    <option value={p.id}>{p.name}</option>
                                 {/each}
                             </select>
                         </div>
-                    {/if}
 
-                    {#if error}
-                        <div class="alert alert-error text-sm py-2">
-                            {error}
+                        <div class="form-control">
+                            <label class="label" for="mon-select">
+                                <span class="label-text">Monitor</span>
+                            </label>
+                            <select
+                                id="mon-select"
+                                class="select select-bordered w-full"
+                                bind:value={selectedMonitor}
+                            >
+                                {#each options as opt}
+                                    <option value={opt.value}>{opt.label}</option>
+                                {/each}
+                            </select>
                         </div>
-                    {/if}
-                </div>
 
-                <div class="modal-action">
-                    <button class="btn btn-ghost" onclick={close}
-                        >Cancel</button
-                    >
-                    <button
-                        class="btn btn-primary"
-                        onclick={addToArr}
-                        disabled={adding || !selectedProfileId}
-                    >
-                        {#if adding}
-                            <span class="loading loading-spinner loading-xs"
-                            ></span>
+                        {#if rootFolders.length > 1}
+                            <div class="form-control">
+                                <label class="label" for="rf-select">
+                                    <span class="label-text"
+                                        >Root Folder</span
+                                    >
+                                </label>
+                                <select
+                                    id="rf-select"
+                                    class="select select-bordered w-full"
+                                    bind:value={selectedRootFolder}
+                                >
+                                    {#each rootFolders as rf}
+                                        <option value={rf.path}>{rf.path}</option>
+                                    {/each}
+                                </select>
+                            </div>
                         {/if}
-                        Add to {serviceLabel}
-                    </button>
-                </div>
-            {/if}
+
+                        {#if error}
+                            <div class="alert alert-error text-sm py-2">
+                                {error}
+                            </div>
+                        {/if}
+                    </div>
+
+                    <div class="modal-action">
+                        <button class="btn btn-ghost" onclick={close}
+                            >Cancel</button
+                        >
+                        <button
+                            class="btn btn-primary"
+                            onclick={addToArr}
+                            disabled={adding || !selectedProfileId}
+                        >
+                            {#if adding}
+                                <span class="loading loading-spinner loading-xs"
+                                ></span>
+                            {/if}
+                            Add to {serviceLabel}
+                        </button>
+                    </div>
+                {/if}
+            </div>
+            <div class="modal-backdrop" onclick={close}></div>
         </div>
-        <div class="modal-backdrop" onclick={close}></div>
     </div>
 {/if}
