@@ -4,6 +4,33 @@
  */
 import db from '$lib/server/db.js';
 
+// ── Seeded shuffle (deterministic per seed, changes daily) ──────────────────
+
+/** @returns {number} A seed that changes once per day */
+function dailySeed() {
+    const d = new Date();
+    return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+}
+
+/**
+ * Fisher-Yates shuffle with a simple seeded PRNG.
+ * Same seed always produces the same order.
+ * @template T
+ * @param {T[]} arr
+ * @param {number} seed
+ * @returns {T[]}
+ */
+function seededShuffle(arr, seed) {
+    const copy = [...arr];
+    let s = seed;
+    for (let i = copy.length - 1; i > 0; i--) {
+        s = (s * 1664525 + 1013904223) & 0x7fffffff;
+        const j = s % (i + 1);
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy;
+}
+
 // ── Preferences ─────────────────────────────────────────────────────────────
 
 const DEFAULTS = {
@@ -104,6 +131,7 @@ export function detectMoviePatterns(userId, prefs) {
  */
 export function getBecauseYouLove(userId, prefs) {
     // Find most-credited actors/directors overall (not just recent)
+    // Fetch a larger pool so we can rotate daily
     const topPeople = /** @type {any[]} */ (db.prepare(`
         SELECT p.id as person_id, p.name, p.photo_url, pc.role_type,
                COUNT(DISTINCT pc.media_parent_id) as total_movies
@@ -112,17 +140,17 @@ export function getBecauseYouLove(userId, prefs) {
         JOIN media_parents mp ON pc.media_parent_id = mp.id
         WHERE pc.role_type IN ('actor', 'director') AND mp.media_type = 'movie'
         GROUP BY p.id, pc.role_type
+        HAVING total_movies >= 3
         ORDER BY total_movies DESC
-        LIMIT 20
+        LIMIT 40
     `).all());
 
+    // Build all eligible sections first, then pick randomly
     /** @type {Array<{person: string, personId: number, photoUrl: string|null, role: string, totalInLibrary: number, reason: string, items: any[]}>} */
-    const sections = [];
+    const eligible = [];
 
     for (const person of topPeople) {
-        if (sections.length >= prefs.maxBecauseYouLove) break;
-
-        // Find unwatched movies by this person
+        // Find truly unwatched movies (no playback_history either)
         const unwatched = /** @type {any[]} */ (db.prepare(`
             SELECT DISTINCT mp.id, mp.title, mp.poster_url, mp.release_year
             FROM person_credits pc
@@ -131,14 +159,17 @@ export function getBecauseYouLove(userId, prefs) {
             WHERE pc.person_id = ? AND pc.role_type = ?
               AND mp.media_type = 'movie'
               AND mc.watch_status != 'watched'
+              AND NOT EXISTS (
+                  SELECT 1 FROM playback_history ph WHERE ph.media_id = mc.id
+              )
             ORDER BY mp.release_year DESC
             LIMIT ?
         `).all(person.person_id, person.role_type, prefs.maxItemsPerSection));
 
-        if (unwatched.length < 2) continue; // Need at least 2 unwatched to be a section
+        if (unwatched.length < 2) continue;
 
         const roleLabel = person.role_type === 'director' ? 'directed by' : 'starring';
-        sections.push({
+        eligible.push({
             person: person.name,
             personId: person.person_id,
             photoUrl: person.photo_url,
@@ -149,7 +180,9 @@ export function getBecauseYouLove(userId, prefs) {
         });
     }
 
-    return sections;
+    // Daily shuffle so it rotates which people are featured
+    const shuffled = seededShuffle(eligible, dailySeed());
+    return shuffled.slice(0, prefs.maxBecauseYouLove);
 }
 
 /**
@@ -173,20 +206,89 @@ export function getRecentlyWatchedMovies(userId, limit = 20) {
 }
 
 /**
- * Unwatched movies in library — sorted by release year desc.
+ * Unwatched movies in library — truly unwatched (no playback_history),
+ * excludes not-downloaded/wanted movies, shuffled daily.
  * @param {number} limit
  */
 export function getUnwatchedMovies(limit = 20) {
-    return /** @type {any[]} */ (db.prepare(`
+    // Fetch a larger pool so we can shuffle and still fill the section
+    const pool = /** @type {any[]} */ (db.prepare(`
         SELECT mp.id, mp.title, mp.poster_url, mp.release_year, mp.overview,
                mp.arr_status, mp.collection_status
         FROM media_parents mp
         JOIN media_children mc ON mc.parent_id = mp.id
-        WHERE mp.media_type = 'movie' AND mc.watch_status = 'unwatched'
+        WHERE mp.media_type = 'movie'
+          AND mc.watch_status = 'unwatched'
           AND mp.poster_url IS NOT NULL
+          AND mp.collection_status != 'wanted'
+          AND NOT EXISTS (
+              SELECT 1 FROM playback_history ph WHERE ph.media_id = mc.id
+          )
         ORDER BY mp.release_year DESC
         LIMIT ?
-    `).all(limit));
+    `).all(limit * 4));
+
+    // Daily shuffle so different movies surface each day
+    return seededShuffle(pool, dailySeed()).slice(0, limit);
+}
+
+/**
+ * Recommended movies — unwatched movies sharing tags with recently watched.
+ * Uses a daily seed so recommendations rotate.
+ * @param {number} userId
+ * @param {number} limit
+ */
+export function getRecommendedMovies(userId, limit = 12) {
+    // Step 1: Get tags from recently watched movies (last 30 days or last 10 movies)
+    const recentTags = /** @type {any[]} */ (db.prepare(`
+        SELECT DISTINCT mt.tag_type, mt.tag_value, COUNT(*) as freq
+        FROM media_tags mt
+        JOIN media_parents mp ON mt.media_parent_id = mp.id
+        JOIN media_children mc ON mc.parent_id = mp.id
+        JOIN playback_history ph ON ph.media_id = mc.id
+        WHERE mp.media_type = 'movie' AND ph.user_id = ?
+          AND mt.tag_type IN ('genre', 'theme', 'mood', 'setting')
+        GROUP BY mt.tag_type, mt.tag_value
+        ORDER BY freq DESC
+        LIMIT 15
+    `).all(userId));
+
+    if (recentTags.length === 0) return [];
+
+    // Step 2: Build tag value list for matching
+    const tagValues = recentTags.map(t => t.tag_value);
+    const placeholders = tagValues.map(() => '?').join(',');
+
+    // Step 3: Find unwatched movies that share these tags, scored by match count
+    const candidates = /** @type {any[]} */ (db.prepare(`
+        SELECT mp.id, mp.title, mp.poster_url, mp.release_year, mp.overview,
+               mp.community_rating,
+               COUNT(DISTINCT mt.tag_value) as tag_matches,
+               GROUP_CONCAT(DISTINCT mt.tag_value) as matched_tags
+        FROM media_parents mp
+        JOIN media_children mc ON mc.parent_id = mp.id
+        JOIN media_tags mt ON mt.media_parent_id = mp.id
+        WHERE mp.media_type = 'movie'
+          AND mc.watch_status = 'unwatched'
+          AND mp.poster_url IS NOT NULL
+          AND mp.collection_status != 'wanted'
+          AND mt.tag_value IN (${placeholders})
+          AND NOT EXISTS (
+              SELECT 1 FROM playback_history ph WHERE ph.media_id = mc.id
+          )
+        GROUP BY mp.id
+        ORDER BY tag_matches DESC, mp.community_rating DESC
+        LIMIT ?
+    `).all(...tagValues, limit * 3));
+
+    if (candidates.length === 0) return [];
+
+    // Step 4: Weighted shuffle — top matches more likely to appear but not deterministic
+    const shuffled = seededShuffle(candidates, dailySeed() + 7);
+    return shuffled.slice(0, limit).map(c => ({
+        ...c,
+        reason: c.matched_tags?.split(',').slice(0, 3).join(', ') || '',
+    }));
 }
 
 // ── TV Shows ────────────────────────────────────────────────────────────────

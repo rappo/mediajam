@@ -215,6 +215,33 @@
             </section>
         {/if}
 
+        <!-- ▌RECOMMENDED FOR YOU ──────────────────────────────────── -->
+        {#if data.sections.recommended.length > 0}
+            <section class="smart-section">
+                <div class="section-header">
+                    <h2 class="section-title">🎯 Recommended For You</h2>
+                    <span class="section-count">based on what you watch</span>
+                </div>
+                <div class="poster-scroll">
+                    {#each data.sections.recommended as item}
+                        <a href="/movies/{item.id}" class="poster-card" title={item.title}>
+                            {#if item.poster_url}
+                                <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img" loading="lazy" />
+                            {:else}
+                                <div class="poster-img poster-placeholder">🎬</div>
+                            {/if}
+                            <div class="poster-meta">
+                                <span class="poster-name">{item.title}</span>
+                                {#if item.reason}
+                                    <span class="poster-reason">{item.reason}</span>
+                                {/if}
+                            </div>
+                        </a>
+                    {/each}
+                </div>
+            </section>
+        {/if}
+
         <!-- ▌BECAUSE YOU LOVE [person] ────────────────────────────── -->
         {#each data.sections.becauseYouLove as section}
             <section class="smart-section">
@@ -298,6 +325,7 @@
         display: flex;
         flex-direction: column;
         gap: 2rem;
+        padding: 0 1.5rem;
     }
     .page-header {
         display: flex;
