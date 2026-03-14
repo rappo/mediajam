@@ -1,7 +1,7 @@
 <script>
     import { imgUrl } from "$lib/utils.js";
-    /** @type {{ title: string, items: any[], emptyText?: string }} */
-    let { title, items, emptyText = '' } = $props();
+    /** @type {{ title: string, items: any[], emptyText?: string, square?: boolean }} */
+    let { title, items, emptyText = '', square = false } = $props();
     /** @type {HTMLDivElement|null} */
     let scrollContainer = $state(null);
     let canScrollLeft = $state(false);
@@ -27,6 +27,7 @@
             {/if}
             <div
                 class="poster-row"
+                class:poster-row-square={square}
                 bind:this={scrollContainer}
                 onscroll={updateScrollState}
             >
@@ -95,6 +96,10 @@
         cursor: pointer;
         text-decoration: none;
         color: inherit;
+    }
+    .poster-row-square .poster-card {
+        width: 150px;
+        aspect-ratio: 1/1;
     }
     .poster-card:hover {
         transform: scale(1.05);

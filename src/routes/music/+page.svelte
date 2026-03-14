@@ -221,23 +221,23 @@
 
         <!-- Heavy Rotation -->
         {#if heavyRotationItems.length > 0}
-            <PosterRow title="🔥 Heavy Rotation" items={heavyRotationItems} />
+            <PosterRow title="🔥 Heavy Rotation" items={heavyRotationItems} square />
         {/if}
 
         <!-- Your Recent Listening -->
-        <PosterRow title="Your Recent Listening" items={recentPosterItems} />
+        <PosterRow title="Your Recent Listening" items={recentPosterItems} square />
 
         <!-- New from Your Favorites -->
-        <PosterRow title="New from Your Favorites" items={favoritePosterItems} />
+        <PosterRow title="New from Your Favorites" items={favoritePosterItems} square />
 
         <!-- Deep Cuts -->
         {#if deepCutsItems.length > 0}
-            <PosterRow title="💎 Deep Cuts" items={deepCutsItems} />
+            <PosterRow title="💎 Deep Cuts" items={deepCutsItems} square />
         {/if}
 
         <!-- Unplayed Albums -->
         {#if unplayedItems.length > 0}
-            <PosterRow title="💿 Unplayed in Your Library" items={unplayedItems} />
+            <PosterRow title="💿 Unplayed in Your Library" items={unplayedItems} square />
         {/if}
 
         <!-- Rediscover -->
