@@ -200,7 +200,7 @@ export async function load({ params, locals }) {
     }
 
     // Cast & Crew
-    const cast = /** @type {any[]} */ (db.prepare(`
+    const castRaw = /** @type {any[]} */ (db.prepare(`
         SELECT p.id, p.name, p.photo_url, p.tmdb_person_id,
                pc.role_type, pc.character_name, pc.sort_order
         FROM person_credits pc
@@ -208,6 +208,25 @@ export async function load({ params, locals }) {
         WHERE pc.media_parent_id = ? AND pc.role_type = 'actor'
         ORDER BY pc.sort_order ASC
     `).all(movieId));
+
+    // Deduplicate cast by person ID (same actor may have multiple credit rows)
+    const castMap = new Map();
+    for (const c of castRaw) {
+        const existing = castMap.get(c.id);
+        if (existing) {
+            // Keep the better character name (non-empty, non-duplicate)
+            if (c.character_name && !existing.character_name) {
+                existing.character_name = c.character_name;
+            }
+            // Keep the lower sort_order (higher billing)
+            if (c.sort_order < existing.sort_order) {
+                existing.sort_order = c.sort_order;
+            }
+        } else {
+            castMap.set(c.id, { ...c });
+        }
+    }
+    const cast = [...castMap.values()].sort((a, b) => a.sort_order - b.sort_order);
 
     const crewRaw = /** @type {any[]} */ (db.prepare(`
         SELECT p.id, p.name, p.photo_url, p.tmdb_person_id,
