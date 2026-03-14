@@ -18,15 +18,51 @@
 		window.scrollTo({ top: 0 });
 	});
 
-	// Dynamic favicon: use poster/photo from detail pages, fallback to default
-	let dynamicFavicon = $derived.by(() => {
+	// Dynamic favicon: check nested page data for poster/photo URLs
+	let faviconSource = $derived.by(() => {
 		const d = $page.data;
-		return d?.posterUrl
-			|| d?.albumArtUrl
+		return d?.movie?.posterUrl
+			|| d?.show?.posterUrl
+			|| d?.album?.artUrl
 			|| d?.artist?.imageUrl
 			|| d?.person?.photoUrl
-			|| '/favicon.png';
+			|| null;
 	});
+
+	// Canvas-based favicon: maintains aspect ratio by drawing image
+	// cover-fit into a 32x32 square, avoiding stretched portraits
+	let dynamicFavicon = $state('/favicon.png');
+	$effect(() => {
+		const src = faviconSource;
+		if (!src) {
+			dynamicFavicon = '/favicon.png';
+			return;
+		}
+		const img = new Image();
+		img.crossOrigin = 'anonymous';
+		img.onload = () => {
+			try {
+				const canvas = document.createElement('canvas');
+				canvas.width = 32;
+				canvas.height = 32;
+				const ctx = canvas.getContext('2d');
+				if (!ctx) return;
+				// Cover-fit: scale to fill, center crop
+				const scale = Math.max(32 / img.width, 32 / img.height);
+				const w = img.width * scale;
+				const h = img.height * scale;
+				ctx.drawImage(img, (32 - w) / 2, (32 - h) / 2, w, h);
+				dynamicFavicon = canvas.toDataURL('image/png');
+			} catch {
+				dynamicFavicon = src; // fallback to raw URL if canvas fails
+			}
+		};
+		img.onerror = () => { dynamicFavicon = '/favicon.png'; };
+		img.src = src;
+	});
+
+	// Current path for nav active state
+	let currentPath = $derived($page.url.pathname);
 
 	/** @type {{ data: import('./$types').LayoutData, children: import('svelte').Snippet }} */
 	let { data, children } = $props();
@@ -191,7 +227,7 @@
 					<a
 						href="/history"
 						role="tab"
-						class="tab tab-sm font-medium"
+						class="tab tab-sm font-medium {currentPath === '/history' ? 'tab-active' : ''}"
 					>
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
@@ -207,7 +243,7 @@
 						</svg>
 						History
 					</a>
-					<a href="/tv" role="tab" class="tab tab-sm font-medium">
+					<a href="/tv" role="tab" class="tab tab-sm font-medium {currentPath.startsWith('/tv') ? 'tab-active' : ''}">
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							class="h-4 w-4 mr-1.5"
@@ -227,7 +263,7 @@
 						</svg>
 						TV
 					</a>
-					<a href="/movies" role="tab" class="tab tab-sm font-medium">
+					<a href="/movies" role="tab" class="tab tab-sm font-medium {currentPath.startsWith('/movies') ? 'tab-active' : ''}">
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							class="h-4 w-4 mr-1.5"
@@ -262,7 +298,7 @@
 						</svg>
 						Movies
 					</a>
-					<a href="/music" role="tab" class="tab tab-sm font-medium">
+					<a href="/music" role="tab" class="tab tab-sm font-medium {currentPath.startsWith('/music') ? 'tab-active' : ''}">
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							class="h-4 w-4 mr-1.5"

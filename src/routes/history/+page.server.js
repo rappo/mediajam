@@ -36,6 +36,7 @@ export function load({ locals, url }) {
     const whereClause = conditions.join(' AND ');
 
     // Get playback history with filters applied
+    // NOTE: tracks LEFT JOIN removed for performance — track runtime resolved in post-processing
     const rawHistory = userId ? /** @type {any[]} */ (db.prepare(`
         SELECT
             ph.id,
@@ -55,12 +56,10 @@ export function load({ locals, url }) {
             mp.media_type,
             mp.poster_url,
             mp.jellyfin_id as parent_jellyfin_id,
-            mp.collection_status,
-            t.runtime_ticks as track_runtime_ticks
+            mp.collection_status
         FROM playback_history ph
         JOIN media_children mc ON ph.media_id = mc.id
         JOIN media_parents mp ON mc.parent_id = mp.id
-        LEFT JOIN tracks t ON t.album_id = mc.id AND t.title = ph.track_name
         WHERE ${whereClause}
         ORDER BY ph.timestamp DESC
         LIMIT 500
