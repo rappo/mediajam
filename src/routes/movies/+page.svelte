@@ -242,8 +242,8 @@
             </section>
         {/if}
 
-        <!-- ▌BECAUSE YOU LOVE [person] ────────────────────────────── -->
-        {#each data.sections.becauseYouLove as section}
+        <!-- ▌PERSON RECOMMENDATIONS ────────────────────────────── -->
+        {#each data.sections.personRecs as section}
             <section class="smart-section">
                 <div class="section-header">
                     <h2 class="section-title">{section.sectionTitle || `More from ${section.person}`}</h2>

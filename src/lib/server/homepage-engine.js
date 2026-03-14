@@ -39,7 +39,7 @@ const DEFAULTS = {
     lookaheadDaysDefault: 7,   // initial calendar window
     lookaheadDaysMax: 30,      // expand if too few results
     minCalendarResults: 3,     // expand to max if fewer than this
-    maxBecauseYouLove: 3,      // max "Because You Love X" sections
+    maxPersonSections: 3,      // max person-based recommendation sections
     maxItemsPerSection: 12,    // max items in a section row
     rediscoverMonths: 3,       // months since last play to trigger "Rediscover"
 };
@@ -132,7 +132,7 @@ export function detectMoviePatterns(userId, prefs) {
  * @param {number} userId
  * @param {typeof DEFAULTS} prefs
  */
-export function getBecauseYouLove(userId, prefs) {
+export function getPersonRecommendations(userId, prefs) {
     /**
      * Find unwatched movies for a given person+role.
      * @param {number} personId
@@ -259,7 +259,7 @@ export function getBecauseYouLove(userId, prefs) {
 
     // Daily shuffle so it rotates which people are featured
     const shuffled = seededShuffle(eligible, dailySeed());
-    return shuffled.slice(0, prefs.maxBecauseYouLove);
+    return shuffled.slice(0, prefs.maxPersonSections);
 }
 
 /**

@@ -2,7 +2,7 @@ import db from '$lib/server/db.js';
 import {
     getHomepagePrefs,
     detectMoviePatterns,
-    getBecauseYouLove,
+    getPersonRecommendations,
     getRecentlyWatchedMovies,
     getUnwatchedMovies,
     getRecommendedMovies,
@@ -97,15 +97,15 @@ export function load({ locals }) {
     `).all();
 
     // ── Smart Sections (each isolated so one failure doesn't block the rest) ──
-    let hero = null, becauseYouLove = [], recentlyWatched = [], unwatched = [], recommended = [];
+    let hero = null, personRecs = [], recentlyWatched = [], unwatched = [], recommended = [];
     try { hero = detectMoviePatterns(userId, prefs); } catch (e) {
         console.error('[movies] hero error:', e instanceof Error ? e.message : e);
     }
     try { recommended = getRecommendedMovies(userId, prefs.maxItemsPerSection); } catch (e) {
         console.error('[movies] recommended error:', e instanceof Error ? e.message : e);
     }
-    try { becauseYouLove = getBecauseYouLove(userId, prefs); } catch (e) {
-        console.error('[movies] becauseYouLove error:', e instanceof Error ? e.message : e);
+    try { personRecs = getPersonRecommendations(userId, prefs); } catch (e) {
+        console.error('[movies] personRecs error:', e instanceof Error ? e.message : e);
     }
     try { recentlyWatched = getRecentlyWatchedMovies(userId, prefs.maxItemsPerSection); } catch (e) {
         console.error('[movies] recentlyWatched error:', e instanceof Error ? e.message : e);
@@ -127,6 +127,6 @@ export function load({ locals }) {
         moviesByDecade,
         moviesByYear,
         mostRewatched,
-        sections: { hero, recommended, becauseYouLove, recentlyWatched, unwatched }
+        sections: { hero, recommended, personRecs, recentlyWatched, unwatched }
     };
 }
