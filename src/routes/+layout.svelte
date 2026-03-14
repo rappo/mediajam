@@ -11,6 +11,22 @@
 	import { addToast } from "$lib/stores/toast.js";
 	import { jellyfinAuthInvalid } from "$lib/stores/auth.js";
 	import { page } from "$app/stores";
+	import { afterNavigate } from "$app/navigation";
+
+	// Scroll to top on every navigation
+	afterNavigate(() => {
+		window.scrollTo({ top: 0 });
+	});
+
+	// Dynamic favicon: use poster/photo from detail pages, fallback to default
+	let dynamicFavicon = $derived.by(() => {
+		const d = $page.data;
+		return d?.posterUrl
+			|| d?.albumArtUrl
+			|| d?.artist?.imageUrl
+			|| d?.person?.photoUrl
+			|| '/favicon.png';
+	});
 
 	/** @type {{ data: import('./$types').LayoutData, children: import('svelte').Snippet }} */
 	let { data, children } = $props();
@@ -130,6 +146,10 @@
 		reauthLoading = false;
 	}
 </script>
+
+<svelte:head>
+	<link rel="icon" type="image/png" href={dynamicFavicon} />
+</svelte:head>
 
 {#if data.isSetupComplete}
 	<div class="min-h-screen bg-base-100 flex flex-col">
