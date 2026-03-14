@@ -260,7 +260,7 @@
                             {/if}
                             <div class="poster-meta">
                                 <span class="poster-name">{item.title}</span>
-                                <span class="poster-reason">{section.reason}</span>
+                                <span class="poster-reason">{item.reason}</span>
                             </div>
                         </a>
                     {/each}

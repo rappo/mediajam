@@ -156,6 +156,86 @@ export function getPersonRecommendations(userId, prefs) {
         `).all(personId, roleType, prefs.maxItemsPerSection));
     }
 
+    /**
+     * Enrich each movie with a unique per-item reason/subtitle.
+     * For actor sections: highlight director, writer, or notable co-star.
+     * For director sections: highlight lead actor.
+     * @param {any[]} movies
+     * @param {number} sectionPersonId
+     * @param {string} sectionRole
+     */
+    function enrichMovieReasons(movies, sectionPersonId, sectionRole) {
+        if (movies.length === 0) return;
+        const movieIds = movies.map(m => m.id);
+        const ph = movieIds.map(() => '?').join(',');
+
+        const credits = /** @type {any[]} */ (db.prepare(`
+            SELECT pc.media_parent_id, p.name, pc.role_type, p.is_favorite,
+                   (SELECT COUNT(*) FROM playback_history ph2
+                    JOIN media_children mc2 ON ph2.media_id = mc2.id
+                    JOIN person_credits pc2 ON pc2.media_parent_id = mc2.parent_id
+                    WHERE pc2.person_id = p.id AND ph2.user_id = ?) as user_watches
+            FROM person_credits pc
+            JOIN persons p ON pc.person_id = p.id
+            WHERE pc.media_parent_id IN (${ph})
+              AND pc.person_id != ?
+              AND pc.role_type IN ('actor', 'director', 'writer')
+            ORDER BY p.is_favorite DESC, user_watches DESC, pc.role_type ASC
+        `).all(userId, ...movieIds, sectionPersonId));
+
+        /** @type {Map<number, any[]>} */
+        const byMovie = new Map();
+        for (const c of credits) {
+            if (!byMovie.has(c.media_parent_id)) byMovie.set(c.media_parent_id, []);
+            byMovie.get(c.media_parent_id)?.push(c);
+        }
+
+        /** @type {Set<string>} */
+        const used = new Set();
+
+        for (const movie of movies) {
+            const mc = byMovie.get(movie.id) || [];
+            let reason = '';
+
+            if (sectionRole === 'actor') {
+                const dir = mc.find(c => c.role_type === 'director');
+                const wr = mc.find(c => c.role_type === 'writer');
+                const coFav = mc.find(c => c.role_type === 'actor' && (c.is_favorite || c.user_watches > 0));
+                const coAny = mc.find(c => c.role_type === 'actor');
+
+                if (dir && !used.has(`d-${dir.name}`)) {
+                    reason = `directed by ${dir.name}`;
+                    used.add(`d-${dir.name}`);
+                } else if (coFav && !used.has(`s-${coFav.name}`)) {
+                    reason = `also starring ${coFav.name}`;
+                    used.add(`s-${coFav.name}`);
+                } else if (wr && !used.has(`w-${wr.name}`)) {
+                    reason = `written by ${wr.name}`;
+                    used.add(`w-${wr.name}`);
+                } else if (dir) {
+                    reason = `directed by ${dir.name}`;
+                } else if (coAny) {
+                    reason = `also starring ${coAny.name}`;
+                }
+            } else {
+                const favActor = mc.find(c => c.role_type === 'actor' && (c.is_favorite || c.user_watches > 0));
+                const lead = mc.find(c => c.role_type === 'actor');
+
+                if (favActor && !used.has(`s-${favActor.name}`)) {
+                    reason = `starring ${favActor.name}`;
+                    used.add(`s-${favActor.name}`);
+                } else if (lead && !used.has(`s-${lead.name}`)) {
+                    reason = `starring ${lead.name}`;
+                    used.add(`s-${lead.name}`);
+                } else if (lead) {
+                    reason = `starring ${lead.name}`;
+                }
+            }
+
+            movie.reason = reason || `${movie.release_year || ''}`;
+        }
+    }
+
     /** @type {Array<{person: string, personId: number, photoUrl: string|null, role: string, totalInLibrary: number, reason: string, sectionTitle: string, items: any[]}>} */
     const eligible = [];
     /** @type {Set<string>} */
@@ -180,13 +260,13 @@ export function getPersonRecommendations(userId, prefs) {
         if (usedKeys.has(key)) continue;
         const unwatched = getUnwatchedByPerson(person.person_id, person.role_type);
         if (unwatched.length < 2) continue;
+        enrichMovieReasons(unwatched, person.person_id, person.role_type);
         usedKeys.add(key);
-        const roleLabel = person.role_type === 'director' ? 'directed by' : 'starring';
         eligible.push({
             person: person.name, personId: person.person_id, photoUrl: person.photo_url,
             role: person.role_type, totalInLibrary: person.total_movies,
             sectionTitle: `Because You Favorited ${person.name}`,
-            reason: `${roleLabel} ${person.name}`,
+            reason: '',
             items: unwatched,
         });
     }
@@ -216,13 +296,13 @@ export function getPersonRecommendations(userId, prefs) {
         if (usedKeys.has(key)) continue;
         const unwatched = getUnwatchedByPerson(person.person_id, person.role_type);
         if (unwatched.length < 2) continue;
+        enrichMovieReasons(unwatched, person.person_id, person.role_type);
         usedKeys.add(key);
-        const roleLabel = person.role_type === 'director' ? 'directed by' : 'starring';
         eligible.push({
             person: person.name, personId: person.person_id, photoUrl: person.photo_url,
             role: person.role_type, totalInLibrary: person.total_movies,
             sectionTitle: `Because You've Watched ${person.name}`,
-            reason: `${roleLabel} ${person.name}`,
+            reason: '',
             items: unwatched,
         });
     }
@@ -246,13 +326,13 @@ export function getPersonRecommendations(userId, prefs) {
         if (usedKeys.has(key)) continue;
         const unwatched = getUnwatchedByPerson(person.person_id, person.role_type);
         if (unwatched.length < 2) continue;
+        enrichMovieReasons(unwatched, person.person_id, person.role_type);
         usedKeys.add(key);
-        const roleLabel = person.role_type === 'director' ? 'directed by' : 'starring';
         eligible.push({
             person: person.name, personId: person.person_id, photoUrl: person.photo_url,
             role: person.role_type, totalInLibrary: person.total_movies,
             sectionTitle: `More from ${person.name}`,
-            reason: `${roleLabel} ${person.name}`,
+            reason: '',
             items: unwatched,
         });
     }
