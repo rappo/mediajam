@@ -3783,6 +3783,7 @@ cat ~/.codex/auth.json</pre>
                                                 <span class="text-base-content/40">Click a title to fix in Jellyfin</span>
                                             </div>
                                         </div>
+                                        <button class="btn btn-xs btn-outline btn-primary" onclick={() => window.dispatchEvent(new CustomEvent('show-conflict-dialog'))} title="Resolve conflict">Resolve</button>
                                         <button class="btn btn-ghost btn-xs" onclick={() => dismissConflict(conflict.id)} title="Dismiss">✕</button>
                                     </div>
                                 </div>

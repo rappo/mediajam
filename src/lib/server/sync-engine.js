@@ -719,13 +719,19 @@ export async function startSync(libraryId = null, force = false) {
                                         }
                                     } else {
                                         // Both rows have jellyfin_ids — genuinely two Jellyfin items sharing musicbrainz_id
-                                        try {
-                                            db.prepare(
-                                                `INSERT OR IGNORE INTO sync_conflicts (conflict_type, primary_id, secondary_id, external_id, status)
-                                                 VALUES ('shared_musicbrainz_id', ?, ?, ?, 'pending')`
-                                            ).run(existing.id, currentId, parentParams.musicbrainzId);
-                                        } catch { /* ignore duplicate */ }
-                                        broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: two Jellyfin items share MusicBrainz ID with ${existing.title} — resolve in Settings`, logType: 'warning' });
+                                        // Skip if this external_id was already resolved/dismissed
+                                        const alreadyHandled = /** @type {any} */ (db.prepare(
+                                            `SELECT 1 FROM sync_conflicts WHERE conflict_type = 'shared_musicbrainz_id' AND external_id = ? AND status = 'resolved' LIMIT 1`
+                                        ).get(parentParams.musicbrainzId));
+                                        if (!alreadyHandled) {
+                                            try {
+                                                db.prepare(
+                                                    `INSERT OR IGNORE INTO sync_conflicts (conflict_type, primary_id, secondary_id, external_id, status)
+                                                     VALUES ('shared_musicbrainz_id', ?, ?, ?, 'pending')`
+                                                ).run(existing.id, currentId, parentParams.musicbrainzId);
+                                            } catch { /* ignore duplicate */ }
+                                            broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: two Jellyfin items share MusicBrainz ID with ${existing.title} — resolve in Settings`, logType: 'warning' });
+                                        }
                                     }
                                 } else if (!existing) {
                                     broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: shared MusicBrainz ID, syncing without it`, logType: 'warning' });
@@ -909,13 +915,19 @@ export async function startSync(libraryId = null, force = false) {
                                         }
                                     } else {
                                         // Both rows have jellyfin_ids
-                                        try {
-                                            db.prepare(
-                                                `INSERT OR IGNORE INTO sync_conflicts (conflict_type, primary_id, secondary_id, external_id, status)
-                                                 VALUES ('shared_imdb_id', ?, ?, ?, 'pending')`
-                                            ).run(existing.id, currentId, parentParams.imdbId);
-                                        } catch { /* ignore duplicate */ }
-                                        broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: two Jellyfin items share IMDb ID with "${existing.title}" — resolve in Settings`, logType: 'warning' });
+                                        // Skip if this external_id was already resolved/dismissed
+                                        const alreadyHandled = /** @type {any} */ (db.prepare(
+                                            `SELECT 1 FROM sync_conflicts WHERE conflict_type = 'shared_imdb_id' AND external_id = ? AND status = 'resolved' LIMIT 1`
+                                        ).get(parentParams.imdbId));
+                                        if (!alreadyHandled) {
+                                            try {
+                                                db.prepare(
+                                                    `INSERT OR IGNORE INTO sync_conflicts (conflict_type, primary_id, secondary_id, external_id, status)
+                                                     VALUES ('shared_imdb_id', ?, ?, ?, 'pending')`
+                                                ).run(existing.id, currentId, parentParams.imdbId);
+                                            } catch { /* ignore duplicate */ }
+                                            broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: two Jellyfin items share IMDb ID with "${existing.title}" — resolve in Settings`, logType: 'warning' });
+                                        }
                                     }
                                 } else {
                                     broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: unresolved IMDb conflict, synced without IMDb ID`, logType: 'warning' });

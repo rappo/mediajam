@@ -88,6 +88,16 @@
 	/** @type {ConflictDialog} */
 	let conflictDialog = $state();
 
+	// Allow any child page to open the conflict dialog via a custom event
+	$effect(() => {
+		/** @param {Event} e */
+		function onShowConflict(e) {
+			conflictDialog?.show();
+		}
+		window.addEventListener('show-conflict-dialog', onShowConflict);
+		return () => window.removeEventListener('show-conflict-dialog', onShowConflict);
+	});
+
 	// Jellyfin re-auth banner
 	let reauthPassword = $state('');
 	let reauthLoading = $state(false);
@@ -332,7 +342,7 @@
 							</a>
 						</li>
 						<li>
-							<a href="/settings/admin">
+							<a href="/settings/admin?tab=creds-local">
 								<svg
 									xmlns="http://www.w3.org/2000/svg"
 									class="h-4 w-4"
@@ -341,9 +351,24 @@
 									stroke="currentColor"
 									stroke-width="2"
 								>
-									<rect x="2" y="2" width="20" height="8" rx="2" ry="2" /><rect x="2" y="14" width="20" height="8" rx="2" ry="2" /><line x1="6" y1="6" x2="6.01" y2="6" /><line x1="6" y1="18" x2="6.01" y2="18" />
+									<path d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
 								</svg>
-								Admin
+								Credentials
+							</a>
+						</li>
+						<li>
+							<a href="/settings/admin?tab=sync">
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									class="h-4 w-4"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+								>
+									<path d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+								</svg>
+								Data
 							</a>
 						</li>
 						<li>

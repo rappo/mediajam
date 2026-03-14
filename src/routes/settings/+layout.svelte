@@ -94,10 +94,24 @@
         if (!currentTab) return sub.tab === item.defaultTab;
         return currentTab === sub.tab;
     }
+
+    // Derive active section + subsection labels for the <title>
+    let activeLabel = $derived.by(() => {
+        for (const item of navItems) {
+            if (isItemActive(item)) {
+                if (item.subsections) {
+                    const activeSub = item.subsections.find((/** @type {any} */ s) => isSubActive(item, s));
+                    if (activeSub) return `${activeSub.label} — ${item.label}`;
+                }
+                return item.label;
+            }
+        }
+        return 'Settings';
+    });
 </script>
 
 <svelte:head>
-    <title>Settings — Mediajam</title>
+    <title>{activeLabel} — Mediajam</title>
 </svelte:head>
 
 <div class="max-w-5xl mx-auto p-6 py-10">
