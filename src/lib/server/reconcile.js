@@ -712,3 +712,122 @@ export function reconcileFuzzyAlbums() {
 
     return { merged, historyMoved };
 }
+
+/**
+ * Merge duplicate person rows — same name (case-insensitive) but separate IDs
+ * (e.g. one from Jellyfin sync, another from TMDB enrichment).
+ * Keeps the best entry (tmdb_person_id > jellyfin_id > most credits),
+ * reassigns all references, merges metadata, deletes duplicates.
+ * @returns {{ merged: number, creditsMoved: number }}
+ */
+export function mergePersonDuplicates() {
+    // Find names that appear more than once (case-insensitive)
+    const dupeGroups = /** @type {any[]} */ (db.prepare(`
+        SELECT LOWER(name) as norm_name, GROUP_CONCAT(id) as ids, COUNT(*) as cnt
+        FROM persons
+        GROUP BY LOWER(name)
+        HAVING cnt > 1
+    `).all());
+
+    if (dupeGroups.length === 0) return { merged: 0, creditsMoved: 0 };
+
+    let merged = 0;
+    let creditsMoved = 0;
+
+    const countCredits = db.prepare('SELECT COUNT(*) as c FROM person_credits WHERE person_id = ?');
+
+    db.transaction(() => {
+        for (const group of dupeGroups) {
+            const ids = group.ids.split(',').map(Number);
+
+            // Fetch all person rows in this group
+            const persons = /** @type {any[]} */ (db.prepare(
+                `SELECT * FROM persons WHERE id IN (${ids.join(',')})`
+            ).all());
+
+            // Sort: prefer tmdb_person_id, then jellyfin_id, then most credits, then lowest id
+            persons.sort((a, b) => {
+                const aScore = (a.tmdb_person_id ? 100 : 0) + (a.jellyfin_id ? 50 : 0);
+                const bScore = (b.tmdb_person_id ? 100 : 0) + (b.jellyfin_id ? 50 : 0);
+                if (aScore !== bScore) return bScore - aScore;
+                const aCreds = /** @type {any} */ (countCredits.get(a.id))?.c || 0;
+                const bCreds = /** @type {any} */ (countCredits.get(b.id))?.c || 0;
+                if (aCreds !== bCreds) return bCreds - aCreds;
+                return a.id - b.id;
+            });
+
+            const keeper = persons[0];
+            const dupes = persons.slice(1);
+
+            for (const dupe of dupes) {
+                // Merge metadata from duplicate into keeper (fill in blanks)
+                const metaCols = ['tmdb_person_id', 'jellyfin_id', 'musicbrainz_artist_id',
+                    'imdb_person_id', 'photo_url', 'bio', 'bio_tmdb', 'bio_jellyfin',
+                    'birth_date', 'death_date', 'birth_place', 'wikipedia_summary',
+                    'wikipedia_url'];
+                for (const col of metaCols) {
+                    if (dupe[col] && !keeper[col]) {
+                        try {
+                            db.prepare(`UPDATE persons SET ${col} = ? WHERE id = ?`).run(dupe[col], keeper.id);
+                            keeper[col] = dupe[col];
+                        } catch {
+                            // UNIQUE constraint (e.g. tmdb_person_id) — skip
+                        }
+                    }
+                }
+
+                // Reassign person_credits (skip if exact credit already exists on keeper)
+                const dupeCredits = /** @type {any[]} */ (db.prepare(
+                    'SELECT * FROM person_credits WHERE person_id = ?'
+                ).all(dupe.id));
+
+                for (const credit of dupeCredits) {
+                    try {
+                        db.prepare(
+                            'UPDATE person_credits SET person_id = ? WHERE id = ?'
+                        ).run(keeper.id, credit.id);
+                        creditsMoved++;
+                    } catch {
+                        // UNIQUE constraint — keeper already has this exact credit
+                        db.prepare('DELETE FROM person_credits WHERE id = ?').run(credit.id);
+                    }
+                }
+
+                // Reassign external_ids
+                const dupeExtIds = /** @type {any[]} */ (db.prepare(
+                    'SELECT * FROM external_ids WHERE person_id = ?'
+                ).all(dupe.id));
+                for (const ext of dupeExtIds) {
+                    try {
+                        db.prepare('UPDATE external_ids SET person_id = ? WHERE person_id = ? AND source = ?')
+                            .run(keeper.id, dupe.id, ext.source);
+                    } catch {
+                        db.prepare('DELETE FROM external_ids WHERE person_id = ? AND source = ?')
+                            .run(dupe.id, ext.source);
+                    }
+                }
+
+                // Reassign person_discoveries (if table exists)
+                try {
+                    db.prepare('UPDATE person_discoveries SET person_id = ? WHERE person_id = ?')
+                        .run(keeper.id, dupe.id);
+                } catch {
+                    // Table might not exist or UNIQUE constraint
+                    try {
+                        db.prepare('DELETE FROM person_discoveries WHERE person_id = ?').run(dupe.id);
+                    } catch { /* table doesn't exist, fine */ }
+                }
+
+                // Delete the duplicate person row
+                db.prepare('DELETE FROM persons WHERE id = ?').run(dupe.id);
+                merged++;
+            }
+        }
+    })();
+
+    if (merged > 0) {
+        console.log(`[dedupe] Merged ${merged} duplicate persons, moved ${creditsMoved} credits`);
+    }
+
+    return { merged, creditsMoved };
+}

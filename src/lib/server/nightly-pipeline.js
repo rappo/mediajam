@@ -21,6 +21,7 @@ import { syncAllArr } from '$lib/server/arr-sync.js';
 import {
     deduplicateParents, deduplicateParentsByTitle, deduplicateChildren,
     deduplicatePlaybackHistory, mergeOrphanArtistsIntoAlbums, deduplicateExternalAlbums,
+    mergePersonDuplicates,
 } from '$lib/server/reconcile.js';
 import { warmCache } from '$lib/server/image-cache.js';
 import { startPeopleSync, startExternalIdsSync, startPeopleEnrichSync } from '$lib/server/people-sync-engine.js';
@@ -284,7 +285,11 @@ const PHASES = [
             const ea = deduplicateExternalAlbums();
             if (ea.deduped > 0) log(`  Merged ${ea.deduped} external album duplicates`);
 
-            const totalMerged = p.deduped + pt.deduped + c.deduped + ph.removed + oa.merged + ea.deduped;
+            log('Merging duplicate persons...');
+            const mp = mergePersonDuplicates();
+            if (mp.merged > 0) log(`  Merged ${mp.merged} duplicate persons, moved ${mp.creditsMoved} credits`);
+
+            const totalMerged = p.deduped + pt.deduped + c.deduped + ph.removed + oa.merged + ea.deduped + mp.merged;
             return totalMerged > 0
                 ? `Cleanup complete: ${totalMerged} total operations`
                 : 'No duplicates found';
