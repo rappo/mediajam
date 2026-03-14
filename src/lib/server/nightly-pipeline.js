@@ -478,6 +478,13 @@ Only return valid JSON, no explanation.`;
 
             log(`${needsEmbedding.length} overviews need embedding (${parents.length - needsEmbedding.length} up-to-date)...`);
 
+            // Hoist prepared statements outside loops
+            const deleteOverview = db.prepare('DELETE FROM overview_embeddings WHERE media_parent_id = CAST(? AS INTEGER)');
+            const insertOverview = db.prepare('INSERT INTO overview_embeddings (media_parent_id, overview_embedding) VALUES (CAST(? AS INTEGER), ?)');
+            const upsertHash = db.prepare("INSERT OR REPLACE INTO embedding_hashes (media_parent_id, content_hash, embedded_at) VALUES (?, ?, datetime('now'))");
+            const deleteTitle = db.prepare('DELETE FROM media_embeddings WHERE media_id = CAST(? AS INTEGER)');
+            const insertTitle = db.prepare('INSERT INTO media_embeddings (media_id, title_embedding) VALUES (CAST(? AS INTEGER), ?)');
+
             let overviewOk = 0;
             let overviewFail = 0;
             for (let i = 0; i < needsEmbedding.length; i++) {
@@ -488,13 +495,9 @@ Only return valid JSON, no explanation.`;
                     try {
                         const pid = parent.id;
                         const vecJson = JSON.stringify(embedding);
-                        try { db.prepare('DELETE FROM overview_embeddings WHERE media_parent_id = CAST(? AS INTEGER)').run(pid); } catch { /* may not exist */ }
-                        db.prepare(
-                            'INSERT INTO overview_embeddings (media_parent_id, overview_embedding) VALUES (CAST(? AS INTEGER), ?)'
-                        ).run(pid, vecJson);
-                        db.prepare(
-                            'INSERT OR REPLACE INTO embedding_hashes (media_parent_id, content_hash, embedded_at) VALUES (?, ?, datetime(\'now\'))'
-                        ).run(pid, parent._hash);
+                        try { deleteOverview.run(pid); } catch { /* may not exist */ }
+                        insertOverview.run(pid, vecJson);
+                        upsertHash.run(pid, parent._hash);
                         overviewOk++;
                     } catch {
                         overviewFail++;
@@ -521,10 +524,8 @@ Only return valid JSON, no explanation.`;
                 if (embedding) {
                     try {
                         const cid = child.id;
-                        try { db.prepare('DELETE FROM media_embeddings WHERE media_id = CAST(? AS INTEGER)').run(cid); } catch { /* */ }
-                        db.prepare(
-                            'INSERT INTO media_embeddings (media_id, title_embedding) VALUES (CAST(? AS INTEGER), ?)'
-                        ).run(cid, JSON.stringify(embedding));
+                        try { deleteTitle.run(cid); } catch { /* */ }
+                        insertTitle.run(cid, JSON.stringify(embedding));
                         titleOk++;
                     } catch { /* */ }
                 }

@@ -95,7 +95,7 @@ export function detectMoviePatterns(userId, prefs) {
 
     // Find unwatched movies by this person
     const unwatched = /** @type {any[]} */ (db.prepare(`
-        SELECT DISTINCT mp.id, mp.title, mp.poster_url, mp.release_year, mp.overview
+        SELECT DISTINCT mp.id, mp.title, mp.poster_url, mp.release_year
         FROM person_credits pc
         JOIN media_parents mp ON pc.media_parent_id = mp.id
         JOIN media_children mc ON mc.parent_id = mp.id
@@ -169,19 +169,33 @@ export function getPersonRecommendations(userId, prefs) {
         const movieIds = movies.map(m => m.id);
         const ph = movieIds.map(() => '?').join(',');
 
+        // Pre-compute which person IDs the user has watched (single flat query)
+        const watchedPersonIds = new Set(
+            /** @type {any[]} */ (db.prepare(`
+                SELECT DISTINCT pc.person_id
+                FROM playback_history ph2
+                JOIN media_children mc2 ON ph2.media_id = mc2.id
+                JOIN person_credits pc ON pc.media_parent_id = mc2.parent_id
+                WHERE ph2.user_id = ?
+            `).all(userId)).map(r => r.person_id)
+        );
+
         const credits = /** @type {any[]} */ (db.prepare(`
-            SELECT pc.media_parent_id, p.name, pc.role_type, p.is_favorite,
-                   (SELECT COUNT(*) FROM playback_history ph2
-                    JOIN media_children mc2 ON ph2.media_id = mc2.id
-                    JOIN person_credits pc2 ON pc2.media_parent_id = mc2.parent_id
-                    WHERE pc2.person_id = p.id AND ph2.user_id = ?) as user_watches
+            SELECT pc.media_parent_id, p.name, p.id as person_id, pc.role_type, p.is_favorite
             FROM person_credits pc
             JOIN persons p ON pc.person_id = p.id
             WHERE pc.media_parent_id IN (${ph})
               AND pc.person_id != ?
               AND pc.role_type IN ('actor', 'director', 'writer')
-            ORDER BY p.is_favorite DESC, user_watches DESC, pc.role_type ASC
-        `).all(userId, ...movieIds, sectionPersonId));
+            ORDER BY p.is_favorite DESC, pc.role_type ASC
+        `).all(...movieIds, sectionPersonId));
+
+        // Sort credits so watched/favorited people come first
+        credits.sort((a, b) => {
+            const aScore = (a.is_favorite ? 2 : 0) + (watchedPersonIds.has(a.person_id) ? 1 : 0);
+            const bScore = (b.is_favorite ? 2 : 0) + (watchedPersonIds.has(b.person_id) ? 1 : 0);
+            return bScore - aScore;
+        });
 
         /** @type {Map<number, any[]>} */
         const byMovie = new Map();
@@ -200,7 +214,7 @@ export function getPersonRecommendations(userId, prefs) {
             if (sectionRole === 'actor') {
                 const dir = mc.find(c => c.role_type === 'director');
                 const wr = mc.find(c => c.role_type === 'writer');
-                const coFav = mc.find(c => c.role_type === 'actor' && (c.is_favorite || c.user_watches > 0));
+                const coFav = mc.find(c => c.role_type === 'actor' && (c.is_favorite || watchedPersonIds.has(c.person_id)));
                 const coAny = mc.find(c => c.role_type === 'actor');
 
                 if (dir && !used.has(`d-${dir.name}`)) {
@@ -218,7 +232,7 @@ export function getPersonRecommendations(userId, prefs) {
                     reason = `also starring ${coAny.name}`;
                 }
             } else {
-                const favActor = mc.find(c => c.role_type === 'actor' && (c.is_favorite || c.user_watches > 0));
+                const favActor = mc.find(c => c.role_type === 'actor' && (c.is_favorite || watchedPersonIds.has(c.person_id)));
                 const lead = mc.find(c => c.role_type === 'actor');
 
                 if (favActor && !used.has(`s-${favActor.name}`)) {
@@ -236,14 +250,14 @@ export function getPersonRecommendations(userId, prefs) {
         }
     }
 
-    /** @type {Array<{person: string, personId: number, photoUrl: string|null, role: string, totalInLibrary: number, reason: string, sectionTitle: string, items: any[]}>} */
+    /** @type {Array<{person: string, personId: number, role: string, totalInLibrary: number, sectionTitle: string, items: any[]}>} */
     const eligible = [];
     /** @type {Set<string>} */
     const usedKeys = new Set();
 
     // ── Tier 1: Favorited people ────────────────────────────────────────
     const favorited = /** @type {any[]} */ (db.prepare(`
-        SELECT p.id as person_id, p.name, p.photo_url, pc.role_type,
+        SELECT p.id as person_id, p.name, pc.role_type,
                COUNT(DISTINCT pc.media_parent_id) as total_movies
         FROM persons p
         JOIN person_credits pc ON pc.person_id = p.id
@@ -263,17 +277,16 @@ export function getPersonRecommendations(userId, prefs) {
         enrichMovieReasons(unwatched, person.person_id, person.role_type);
         usedKeys.add(key);
         eligible.push({
-            person: person.name, personId: person.person_id, photoUrl: person.photo_url,
+            person: person.name, personId: person.person_id,
             role: person.role_type, totalInLibrary: person.total_movies,
             sectionTitle: `Because You Favorited ${person.name}`,
-            reason: '',
             items: unwatched,
         });
     }
 
     // ── Tier 2: Most-watched people (3+ movies watched) ────────────────
     const mostWatched = /** @type {any[]} */ (db.prepare(`
-        SELECT p.id as person_id, p.name, p.photo_url, pc.role_type,
+        SELECT p.id as person_id, p.name, pc.role_type,
                COUNT(DISTINCT mp.id) as watched_count,
                (SELECT COUNT(DISTINCT pc2.media_parent_id) FROM person_credits pc2
                 JOIN media_parents mp2 ON pc2.media_parent_id = mp2.id
@@ -299,42 +312,42 @@ export function getPersonRecommendations(userId, prefs) {
         enrichMovieReasons(unwatched, person.person_id, person.role_type);
         usedKeys.add(key);
         eligible.push({
-            person: person.name, personId: person.person_id, photoUrl: person.photo_url,
+            person: person.name, personId: person.person_id,
             role: person.role_type, totalInLibrary: person.total_movies,
             sectionTitle: `Because You've Watched ${person.name}`,
-            reason: '',
             items: unwatched,
         });
     }
 
-    // ── Tier 3: Most-credited people (fallback) ────────────────────────
-    const topCredited = /** @type {any[]} */ (db.prepare(`
-        SELECT p.id as person_id, p.name, p.photo_url, pc.role_type,
-               COUNT(DISTINCT pc.media_parent_id) as total_movies
-        FROM persons p
-        JOIN person_credits pc ON pc.person_id = p.id
-        JOIN media_parents mp ON pc.media_parent_id = mp.id
-        WHERE pc.role_type IN ('actor', 'director') AND mp.media_type = 'movie'
-        GROUP BY p.id, pc.role_type
-        HAVING total_movies >= 3
-        ORDER BY total_movies DESC
-        LIMIT 30
-    `).all());
+    // ── Tier 3: Most-credited people (fallback, skip if enough found) ──
+    if (eligible.length < prefs.maxPersonSections) {
+        const topCredited = /** @type {any[]} */ (db.prepare(`
+            SELECT p.id as person_id, p.name, pc.role_type,
+                   COUNT(DISTINCT pc.media_parent_id) as total_movies
+            FROM persons p
+            JOIN person_credits pc ON pc.person_id = p.id
+            JOIN media_parents mp ON pc.media_parent_id = mp.id
+            WHERE pc.role_type IN ('actor', 'director') AND mp.media_type = 'movie'
+            GROUP BY p.id, pc.role_type
+            HAVING total_movies >= 3
+            ORDER BY total_movies DESC
+            LIMIT 30
+        `).all());
 
-    for (const person of topCredited) {
-        const key = `${person.person_id}-${person.role_type}`;
-        if (usedKeys.has(key)) continue;
-        const unwatched = getUnwatchedByPerson(person.person_id, person.role_type);
-        if (unwatched.length < 2) continue;
-        enrichMovieReasons(unwatched, person.person_id, person.role_type);
-        usedKeys.add(key);
-        eligible.push({
-            person: person.name, personId: person.person_id, photoUrl: person.photo_url,
-            role: person.role_type, totalInLibrary: person.total_movies,
-            sectionTitle: `More from ${person.name}`,
-            reason: '',
-            items: unwatched,
-        });
+        for (const person of topCredited) {
+            const key = `${person.person_id}-${person.role_type}`;
+            if (usedKeys.has(key)) continue;
+            const unwatched = getUnwatchedByPerson(person.person_id, person.role_type);
+            if (unwatched.length < 2) continue;
+            enrichMovieReasons(unwatched, person.person_id, person.role_type);
+            usedKeys.add(key);
+            eligible.push({
+                person: person.name, personId: person.person_id,
+                role: person.role_type, totalInLibrary: person.total_movies,
+                sectionTitle: `More from ${person.name}`,
+                items: unwatched,
+            });
+        }
     }
 
     // Daily shuffle so it rotates which people are featured
@@ -370,8 +383,7 @@ export function getRecentlyWatchedMovies(userId, limit = 20) {
 export function getUnwatchedMovies(limit = 20) {
     // Fetch a larger pool so we can shuffle and still fill the section
     const pool = /** @type {any[]} */ (db.prepare(`
-        SELECT mp.id, mp.title, mp.poster_url, mp.release_year, mp.overview,
-               mp.arr_status, mp.collection_status
+        SELECT mp.id, mp.title, mp.poster_url, mp.release_year
         FROM media_parents mp
         JOIN media_children mc ON mc.parent_id = mp.id
         WHERE mp.media_type = 'movie'
@@ -418,7 +430,7 @@ export function getRecommendedMovies(userId, limit = 12) {
 
     // Step 3: Find unwatched movies that share these tags, scored by match count
     const candidates = /** @type {any[]} */ (db.prepare(`
-        SELECT mp.id, mp.title, mp.poster_url, mp.release_year, mp.overview,
+        SELECT mp.id, mp.title, mp.poster_url, mp.release_year,
                mp.community_rating,
                COUNT(DISTINCT mt.tag_value) as tag_matches,
                GROUP_CONCAT(DISTINCT mt.tag_value) as matched_tags
