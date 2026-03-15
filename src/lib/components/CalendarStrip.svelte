@@ -1,9 +1,10 @@
 <!--
-  CalendarStrip — multi-week upcoming episodes calendar with pagination.
-  Shows stacked episode pills per day column, grouped by week.
+  CalendarStrip — Option B: Large poster cards, tinted backgrounds, weekly grid.
   Supports navigating to past/future weeks via prev/next buttons.
 -->
 <script>
+    import { imgUrl } from "$lib/utils.js";
+
     /** @type {{ days: Array<{ date: string, episodes: any[] }>, onNavigate?: (offset: number) => void, weekOffset?: number }} */
     let { days, onNavigate, weekOffset = 0 } = $props();
 
@@ -17,37 +18,23 @@
         const today = new Date().toISOString().split('T')[0];
         const isPast = dateStr < today;
         return {
-            name: dayNames[(d.getDay() + 6) % 7], // Monday-based index
+            name: dayNames[(d.getDay() + 6) % 7],
             num: d.getDate(),
-            month: d.toLocaleString('en-US', { month: 'short' }),
             isToday: dateStr === today,
             isPast,
         };
     }
 
-    /**
-     * @param {any} ep
-     */
+    /** @param {any} ep */
     function epCode(ep) {
         return `S${String(ep.season_number).padStart(2, '0')}E${String(ep.item_number).padStart(2, '0')}`;
     }
 
-    /**
-     * @param {any} ep
-     */
-    function statusClass(ep) {
-        if (ep.status === 'downloaded') return 'pill-downloaded';
-        if (ep.status === 'available') return 'pill-available';
-        return 'pill-upcoming';
-    }
-
-    /**
-     * @param {any} ep
-     */
-    function statusDot(ep) {
-        if (ep.status === 'downloaded') return '▸';
-        if (ep.status === 'available') return '◆';
-        return '○';
+    /** @param {any} ep */
+    function cardClass(ep) {
+        if (ep.status === 'downloaded') return 'card-downloaded';
+        if (ep.status === 'available') return 'card-available';
+        return 'card-upcoming';
     }
 
     // Group days into weeks of 7
@@ -62,7 +49,6 @@
     });
 
     /**
-     * Format a week label like "MAR 10 – 16" or "MAR 17 – 23"
      * @param {Array<{ date: string }>} week
      */
     function weekLabel(week) {
@@ -80,26 +66,21 @@
 
 <!-- Navigation header -->
 <div class="cal-nav">
-    <button
-        class="nav-btn"
-        onclick={() => onNavigate?.(weekOffset - 3)}
-        title="Previous 3 weeks"
-    >← Prev</button>
+    <button class="nav-btn" onclick={() => onNavigate?.(weekOffset - 3)} title="Previous 3 weeks">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        Prev
+    </button>
     {#if weekOffset !== 0}
-        <button
-            class="nav-btn nav-today"
-            onclick={() => onNavigate?.(0)}
-        >Today</button>
+        <button class="nav-btn nav-today" onclick={() => onNavigate?.(0)}>Today</button>
     {/if}
-    <button
-        class="nav-btn"
-        onclick={() => onNavigate?.(weekOffset + 3)}
-        title="Next 3 weeks"
-    >Next →</button>
+    <button class="nav-btn" onclick={() => onNavigate?.(weekOffset + 3)} title="Next 3 weeks">
+        Next
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
 </div>
 
 <div class="cal-weeks">
-    {#each weeks as week, wi}
+    {#each weeks as week}
         <div class="cal-week">
             <div class="week-label">{weekLabel(week)}</div>
             <div class="cal-grid">
@@ -107,25 +88,38 @@
                     {@const info = formatDay(day.date)}
                     <div class="cal-col" class:col-today={info.isToday} class:col-past={info.isPast && !info.isToday}>
                         <!-- Day header -->
-                        <div class="col-head" class:head-today={info.isToday}>
-                            <span class="col-day-name">{info.name.toUpperCase()}</span>
+                        <div class="col-head">
+                            <span class="col-day-name" class:name-today={info.isToday}>{info.name}</span>
                             <span class="col-day-num" class:num-today={info.isToday}>{info.num}</span>
                         </div>
 
-                        <!-- Episode pills -->
-                        <div class="col-pills">
+                        <!-- Episode cards -->
+                        <div class="col-cards">
                             {#if day.episodes.length === 0}
                                 <div class="col-empty">—</div>
                             {:else}
                                 {#each day.episodes as ep}
                                     <a
                                         href="/tv/{ep.show_id}"
-                                        class="ep-pill {statusClass(ep)}"
+                                        class="ep-card {cardClass(ep)}"
                                         title="{ep.show_title} {epCode(ep)} — {ep.episode_title}"
                                     >
-                                        <span class="pill-dot">{statusDot(ep)}</span>
-                                        <span class="pill-text">{ep.show_title}</span>
-                                        <span class="pill-code">{epCode(ep)}</span>
+                                        <!-- Poster thumbnail -->
+                                        <div class="card-poster">
+                                            {#if ep.poster_url}
+                                                <img src={imgUrl(ep.poster_url, 80)} alt="" loading="lazy" />
+                                            {:else}
+                                                <div class="poster-fallback">📺</div>
+                                            {/if}
+                                        </div>
+                                        <!-- Info -->
+                                        <div class="card-info">
+                                            <span class="card-show">{ep.show_title}</span>
+                                            <span class="card-ep">{epCode(ep)}</span>
+                                            {#if ep.episode_title}
+                                                <span class="card-title">{ep.episode_title}</span>
+                                            {/if}
+                                        </div>
                                     </a>
                                 {/each}
                             {/if}
@@ -143,23 +137,27 @@
         display: flex;
         align-items: center;
         justify-content: flex-end;
-        gap: 8px;
-        margin-bottom: 12px;
+        gap: 6px;
+        margin-bottom: 14px;
     }
     .nav-btn {
-        background: oklch(var(--b2));
-        border: 1px solid oklch(var(--bc) / 0.1);
-        color: oklch(var(--bc) / 0.7);
-        padding: 4px 14px;
-        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        background: oklch(0.22 0.005 260);
+        border: 1px solid oklch(0.3 0.005 260);
+        color: oklch(var(--bc) / 0.65);
+        padding: 5px 14px;
+        border-radius: 8px;
         font-size: 0.7rem;
         font-weight: 600;
         cursor: pointer;
-        transition: background 0.15s, color 0.15s;
+        transition: background 0.15s, color 0.15s, border-color 0.15s;
     }
     .nav-btn:hover {
-        background: oklch(var(--bc) / 0.1);
+        background: oklch(0.28 0.01 260);
         color: oklch(var(--bc));
+        border-color: oklch(0.4 0.01 260);
     }
     .nav-today {
         background: oklch(var(--p) / 0.15);
@@ -170,45 +168,47 @@
         background: oklch(var(--p) / 0.25);
     }
 
-    /* ── Weeks container ── */
+    /* ── Weeks ── */
     .cal-weeks {
         display: flex;
         flex-direction: column;
-        gap: 20px;
+        gap: 28px;
     }
 
     .cal-week {
         display: flex;
         flex-direction: column;
-        gap: 4px;
+        gap: 6px;
     }
 
     .week-label {
-        font-size: 0.8rem;
+        font-size: 0.75rem;
         font-weight: 800;
         text-transform: uppercase;
-        letter-spacing: 0.06em;
-        color: oklch(var(--bc) / 0.55);
+        letter-spacing: 0.08em;
+        color: oklch(var(--bc) / 0.5);
         padding-left: 2px;
-        margin-bottom: 2px;
     }
 
     .cal-grid {
         display: grid;
         grid-template-columns: repeat(7, 1fr);
-        gap: 4px;
+        gap: 6px;
         width: 100%;
     }
 
     .cal-col {
         display: flex;
         flex-direction: column;
-        min-height: 70px;
-        overflow: hidden;
+        min-height: 80px;
     }
 
     .col-past {
         opacity: 0.35;
+    }
+
+    .col-today {
+        /* subtle column highlight */
     }
 
     /* ── Day header ── */
@@ -216,41 +216,43 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        padding: 3px 4px 5px;
-        gap: 0;
+        padding: 2px 4px 6px;
+        gap: 1px;
     }
     .col-day-name {
-        font-size: 0.55rem;
+        font-size: 0.6rem;
         font-weight: 700;
-        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
         color: oklch(var(--bc) / 0.35);
     }
+    .name-today {
+        color: oklch(var(--p));
+    }
+
     .col-day-num {
         font-size: 1rem;
         font-weight: 800;
         color: oklch(var(--bc) / 0.75);
-        line-height: 1.25;
-    }
-
-    .head-today .col-day-name {
-        color: oklch(var(--p));
+        line-height: 1;
     }
     .num-today {
         color: oklch(var(--pc)) !important;
         background: oklch(var(--p));
         border-radius: 50%;
-        width: 26px;
-        height: 26px;
+        width: 28px;
+        height: 28px;
         display: flex;
         align-items: center;
         justify-content: center;
         font-size: 0.85rem;
+        font-weight: 900;
     }
 
-    .col-pills {
+    .col-cards {
         display: flex;
         flex-direction: column;
-        gap: 3px;
+        gap: 5px;
         flex: 1;
     }
 
@@ -260,91 +262,119 @@
         justify-content: center;
         flex: 1;
         color: oklch(var(--bc) / 0.06);
-        font-size: 0.65rem;
+        font-size: 0.6rem;
     }
 
-    /* ── Episode pill — dark card style ── */
-    .ep-pill {
+    /* ── Episode card — Option B poster style ── */
+    .ep-card {
+        display: flex;
+        gap: 6px;
+        padding: 5px;
+        border-radius: 8px;
+        text-decoration: none;
+        color: oklch(var(--bc) / 0.85);
+        transition: transform 0.12s, box-shadow 0.15s, background 0.15s;
+        line-height: 1.2;
+        border: 1px solid transparent;
+    }
+    .ep-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 14px oklch(0 0 0 / 0.35);
+    }
+
+    /* Poster thumbnail */
+    .card-poster {
+        flex-shrink: 0;
+        width: 32px;
+        height: 46px;
+        border-radius: 4px;
+        overflow: hidden;
+        background: oklch(0.18 0 0);
+    }
+    .card-poster img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .poster-fallback {
+        width: 100%;
+        height: 100%;
         display: flex;
         align-items: center;
-        gap: 4px;
-        padding: 5px 7px;
-        border-radius: 6px;
-        text-decoration: none;
-        color: oklch(var(--bc) / 0.8);
-        transition: background 0.12s, transform 0.12s, box-shadow 0.15s;
-        line-height: 1.2;
-        background: oklch(0.22 0.005 260);
-        border: 1px solid oklch(0.3 0.005 260);
-        box-shadow: 0 1px 4px oklch(0 0 0 / 0.15);
-    }
-    .ep-pill:hover {
-        background: oklch(var(--bc) / 0.12);
-        transform: translateY(-1px);
-        box-shadow: 0 3px 10px oklch(0 0 0 / 0.25);
+        justify-content: center;
+        font-size: 0.7rem;
+        color: oklch(var(--bc) / 0.2);
     }
 
-    .pill-dot {
-        font-size: 0.5rem;
-        flex-shrink: 0;
-        line-height: 1;
+    /* Card info */
+    .card-info {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        min-width: 0;
+        overflow: hidden;
     }
-
-    /* Downloaded pills — green tint */
-    .pill-downloaded {
-        background: oklch(0.22 0.03 155);
-        border-color: oklch(0.35 0.06 155);
-    }
-    .pill-downloaded .pill-dot {
-        color: oklch(var(--su));
-    }
-    .pill-downloaded .pill-text {
-        color: oklch(var(--su) / 0.9);
-    }
-    .pill-downloaded .pill-code {
-        color: oklch(var(--su) / 0.5);
-    }
-
-    /* Available pills — amber tint */
-    .pill-available {
-        background: oklch(0.24 0.04 85);
-        border-color: oklch(0.38 0.06 85);
-    }
-    .pill-available .pill-dot {
-        color: oklch(var(--wa));
-    }
-    .pill-available .pill-text {
-        color: oklch(var(--wa) / 0.9);
-    }
-    .pill-available .pill-code {
-        color: oklch(var(--wa) / 0.5);
-    }
-
-    /* Upcoming pills — neutral dark card */
-    .pill-upcoming {
-        background: oklch(0.22 0.005 260);
-        border-color: oklch(0.3 0.005 260);
-    }
-    .pill-upcoming .pill-dot {
-        color: oklch(var(--bc) / 0.25);
-    }
-
-    .pill-text {
-        flex: 1;
+    .card-show {
         font-size: 0.6rem;
-        font-weight: 600;
+        font-weight: 700;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        min-width: 0;
     }
-
-    .pill-code {
+    .card-ep {
         font-size: 0.5rem;
         font-weight: 600;
-        color: oklch(var(--bc) / 0.3);
-        flex-shrink: 0;
-        letter-spacing: 0.02em;
+        color: oklch(var(--bc) / 0.4);
+        letter-spacing: 0.03em;
+    }
+    .card-title {
+        font-size: 0.48rem;
+        color: oklch(var(--bc) / 0.35);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    /* ── Status-based card backgrounds ── */
+
+    /* Downloaded — green tinted */
+    .card-downloaded {
+        background: oklch(0.2 0.035 155);
+        border-color: oklch(0.32 0.06 155);
+    }
+    .card-downloaded .card-show {
+        color: oklch(0.82 0.12 155);
+    }
+    .card-downloaded .card-ep {
+        color: oklch(0.65 0.08 155);
+    }
+
+    /* Available — amber tinted */
+    .card-available {
+        background: oklch(0.22 0.04 85);
+        border-color: oklch(0.35 0.06 85);
+    }
+    .card-available .card-show {
+        color: oklch(0.82 0.1 85);
+    }
+    .card-available .card-ep {
+        color: oklch(0.65 0.07 85);
+    }
+
+    /* Upcoming — neutral dark */
+    .card-upcoming {
+        background: oklch(0.2 0.008 260);
+        border-color: oklch(0.28 0.01 260);
+    }
+    .card-upcoming .card-show {
+        color: oklch(var(--bc) / 0.8);
+    }
+
+    @media (max-width: 1100px) {
+        .card-poster {
+            width: 26px;
+            height: 38px;
+        }
     }
 
     @media (max-width: 900px) {
