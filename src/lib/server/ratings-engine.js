@@ -27,6 +27,27 @@ const STALE_MS = 6 * 30 * 24 * 60 * 60 * 1000;
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 /**
+ * Process items concurrently with a pool of workers.
+ * @template T, R
+ * @param {T[]} items
+ * @param {number} concurrency
+ * @param {(item: T) => Promise<R>} fn
+ * @returns {Promise<R[]>}
+ */
+async function concurrentMap(items, concurrency, fn) {
+    const results = /** @type {R[]} */ (new Array(items.length));
+    let idx = 0;
+    const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+        while (idx < items.length) {
+            const i = idx++;
+            results[i] = await fn(items[i]);
+        }
+    });
+    await Promise.all(workers);
+    return results;
+}
+
+/**
  * Get API keys from settings
  * @returns {{ omdbApiKey: string|null, discogsToken: string|null, tmdbApiKey: string|null }}
  */
@@ -461,73 +482,108 @@ export function areRatingsStale(mediaParentId) {
 }
 
 /**
- * Batch-fetch ratings for ALL media parents that don't have ratings yet.
- * Streams progress via the onProgress callback.
+ * Batch-fetch ratings for media parents that need them.
+ * Uses concurrent processing for movies/shows, serial for music (Discogs rate limit).
  * @param {{ force?: boolean, onProgress?: (data: any) => void, signal?: AbortSignal }} options
- * @returns {Promise<{ total: number, fetched: number, errors: number }>}
+ * @returns {Promise<{ total: number, fetched: number, skipped: number, errors: number }>}
  */
 export async function fetchAllRatings({ force = false, onProgress, signal } = {}) {
-    const parents = /** @type {Array<{id: number, title: string, media_type: string}>} */ (
-        db.prepare(`SELECT id, title, media_type FROM media_parents ORDER BY title`).all()
-    );
+    // Only select items that actually need ratings (missing or stale)
+    const staleDate = new Date(Date.now() - STALE_MS).toISOString();
+    const parents = force
+        ? /** @type {Array<{id: number, title: string, media_type: string}>} */ (
+            db.prepare(`SELECT id, title, media_type FROM media_parents ORDER BY title`).all()
+          )
+        : /** @type {Array<{id: number, title: string, media_type: string}>} */ (
+            db.prepare(`
+                SELECT mp.id, mp.title, mp.media_type FROM media_parents mp
+                WHERE mp.id NOT IN (
+                    SELECT DISTINCT er.media_parent_id FROM external_ratings er
+                    WHERE er.fetched_at > ?
+                )
+                ORDER BY mp.title
+            `).all(staleDate)
+          );
 
     const total = parents.length;
     let fetched = 0;
+    let skipped = 0;
     let errorCount = 0;
 
     onProgress?.({ type: 'ratings_start', total });
 
-    for (let i = 0; i < parents.length; i++) {
+    // Split into movies/shows (can be concurrent) and artists (serial due to Discogs rate limit)
+    const movieShowParents = parents.filter(p => p.media_type === 'movie' || p.media_type === 'show');
+    const artistParents = parents.filter(p => p.media_type === 'artist');
+
+    // Process movies/shows concurrently (5 at a time)
+    const CONCURRENCY = 5;
+    let processed = 0;
+
+    for (let i = 0; i < movieShowParents.length; i += CONCURRENCY) {
         if (signal?.aborted) break;
+        const batch = movieShowParents.slice(i, i + CONCURRENCY);
 
-        const parent = parents[i];
+        const results = await Promise.allSettled(
+            batch.map(async (parent) => {
+                const result = await fetchRatingsForParent(parent.id, { force });
+                return { parent, result };
+            })
+        );
 
-        // Skip if already has non-stale ratings (unless force)
-        if (!force && !areRatingsStale(parent.id)) {
+        for (const r of results) {
+            processed++;
+            if (r.status === 'fulfilled') {
+                if (r.value.result.fetched.length > 0) fetched++;
+                if (r.value.result.errors.length > 0) errorCount++;
+            } else {
+                errorCount++;
+            }
+        }
+
+        if ((i + batch.length) % 50 < CONCURRENCY || i + CONCURRENCY >= movieShowParents.length) {
             onProgress?.({
                 type: 'ratings_progress',
-                current: i + 1,
+                current: processed,
                 total,
-                title: parent.title,
-                skipped: true,
+                title: batch[batch.length - 1].title,
                 fetched,
-                errors: errorCount
+                errorCount
             });
-            continue;
         }
+
+        // Small delay between batches to avoid hammering APIs
+        await sleep(100);
+    }
+
+    // Process artists serially (Discogs has strict 60/min rate limit)
+    for (let i = 0; i < artistParents.length; i++) {
+        if (signal?.aborted) break;
+        const parent = artistParents[i];
+        processed++;
 
         try {
             const result = await fetchRatingsForParent(parent.id, { force });
             if (result.fetched.length > 0) fetched++;
             if (result.errors.length > 0) errorCount++;
-
-            onProgress?.({
-                type: 'ratings_progress',
-                current: i + 1,
-                total,
-                title: parent.title,
-                sources: result.fetched,
-                errors: result.errors,
-                fetched,
-                errorCount
-            });
-        } catch (e) {
+        } catch {
             errorCount++;
+        }
+
+        if ((i + 1) % 10 === 0 || i === artistParents.length - 1) {
             onProgress?.({
                 type: 'ratings_progress',
-                current: i + 1,
+                current: processed,
                 total,
                 title: parent.title,
-                errors: [e instanceof Error ? e.message : String(e)],
                 fetched,
                 errorCount
             });
         }
-
-        // Rate limit between items (OMDb: 1000/day, TMDB is lenient, Discogs: 60/min)
-        await sleep(300);
     }
 
-    onProgress?.({ type: 'ratings_done', total, fetched, errors: errorCount });
-    return { total, fetched, errors: errorCount };
+    skipped = /** @type {any} */ (db.prepare('SELECT COUNT(*) as c FROM media_parents').get())?.c - total;
+
+    onProgress?.({ type: 'ratings_done', total, fetched, skipped, errors: errorCount });
+    return { total, fetched, skipped, errors: errorCount };
 }

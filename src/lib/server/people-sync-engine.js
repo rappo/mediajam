@@ -657,68 +657,67 @@ export async function startPeopleEnrichSync() {
         let skipped = 0;
         let errors = 0;
 
-        for (let i = 0; i < persons.length; i++) {
+        const ENRICH_CONCURRENCY = 4; // TMDB allows ~40 req/10s
+        for (let i = 0; i < persons.length; i += ENRICH_CONCURRENCY) {
             if (!engineState.running) break;
             await waitWhilePaused();
 
-            const person = persons[i];
-            try {
-                const tmdbRes = await tmdbFetch(
-                    `/person/${person.tmdb_person_id}`, { append_to_response: 'external_ids' }
-                );
-                if (tmdbRes.ok) {
-                    const d = await tmdbRes.json();
-                    const imdbId = d.imdb_id || d.external_ids?.imdb_id || null;
-                    const bio = d.biography || null;
-                    const birthDate = d.birthday || null;
-                    const deathDate = d.deathday || null;
-                    const photoUrl = d.profile_path ? `https://image.tmdb.org/t/p/w300${d.profile_path}` : null;
-                    const birthPlace = d.place_of_birth || null;
+            const batch = persons.slice(i, i + ENRICH_CONCURRENCY);
 
-                    // Check if there's actually new data
-                    const hasNew = (imdbId && !person.imdb_person_id) ||
-                        (bio && !person.bio_tmdb) ||
-                        (birthDate && !person.birth_date) ||
-                        (deathDate && !person.death_date) ||
-                        (photoUrl && !person.photo_url) ||
-                        (birthPlace && !person.birth_place);
+            await Promise.allSettled(batch.map(async (person) => {
+                try {
+                    const tmdbRes = await tmdbFetch(
+                        `/person/${person.tmdb_person_id}`, { append_to_response: 'external_ids' }
+                    );
+                    if (tmdbRes.ok) {
+                        const d = await tmdbRes.json();
+                        const imdbId = d.imdb_id || d.external_ids?.imdb_id || null;
+                        const bio = d.biography || null;
+                        const birthDate = d.birthday || null;
+                        const deathDate = d.deathday || null;
+                        const photoUrl = d.profile_path ? `https://image.tmdb.org/t/p/w300${d.profile_path}` : null;
+                        const birthPlace = d.place_of_birth || null;
 
-                    if (hasNew) {
-                        updatePerson.run({
-                            personId: person.id,
-                            imdbId, bio, birthDate, deathDate, photoUrl, birthPlace
-                        });
-                        enriched++;
+                        const hasNew = (imdbId && !person.imdb_person_id) ||
+                            (bio && !person.bio_tmdb) ||
+                            (birthDate && !person.birth_date) ||
+                            (deathDate && !person.death_date) ||
+                            (photoUrl && !person.photo_url) ||
+                            (birthPlace && !person.birth_place);
+
+                        if (hasNew) {
+                            updatePerson.run({
+                                personId: person.id,
+                                imdbId, bio, birthDate, deathDate, photoUrl, birthPlace
+                            });
+                            enriched++;
+                        } else {
+                            db.prepare(`UPDATE persons SET tmdb_enriched_at = datetime('now') WHERE id = ?`).run(person.id);
+                            skipped++;
+                        }
+                    } else if (tmdbRes.status === 429) {
+                        // Rate limited — will be retried on next run
+                        errors++;
                     } else {
-                        // Still stamp tmdb_enriched_at so we don't re-fetch next time
-                        db.prepare(`UPDATE persons SET tmdb_enriched_at = datetime('now') WHERE id = ?`).run(person.id);
-                        skipped++;
+                        errors++;
                     }
-                } else if (tmdbRes.status === 429) {
-                    // Rate limited — wait and retry
-                    broadcast({ type: 'progress', log: `⏳ TMDB rate limit hit, waiting 2s...`, logType: 'warning' });
-                    await sleep(2000);
-                    i--; // retry this person
-                    continue;
-                } else {
+                } catch (/** @type {any} */ err) {
+                    logError('people-sync', `Enrich error for '${person.name}'`, { error: err?.message || String(err) });
                     errors++;
                 }
-            } catch (/** @type {any} */ err) {
-                logError('people-sync', `Enrich error for '${person.name}'`, { error: err?.message || String(err) });
-                errors++;
-            }
+            }));
 
-            if ((i + 1) % 25 === 0 || i === persons.length - 1) {
-                const progress = Math.floor(((i + 1) / persons.length) * 100);
+            if ((i + ENRICH_CONCURRENCY) % 100 < ENRICH_CONCURRENCY || i + ENRICH_CONCURRENCY >= persons.length) {
+                const progress = Math.floor(((i + batch.length) / persons.length) * 100);
                 broadcast({
                     type: 'progress',
-                    log: `📝 ${i + 1}/${persons.length} — ${enriched} enriched, ${skipped} up-to-date, ${errors} errors`,
+                    log: `📝 ${Math.min(i + ENRICH_CONCURRENCY, persons.length)}/${persons.length} — ${enriched} enriched, ${skipped} up-to-date, ${errors} errors`,
                     logType: 'info',
                     progress, itemsSynced: enriched, errors
                 });
             }
-            // TMDB rate limit: ~40 req/10s, so ~250ms between requests
-            await sleep(250);
+            // Delay between batches — TMDB rate limit: ~40 req/10s
+            await sleep(300);
         }
 
         broadcast({

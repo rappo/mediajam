@@ -80,6 +80,7 @@ async function mbFetch(path) {
     await waitWhilePaused();
     if (!engineState.running) return null;
 
+    const start = Date.now();
     try {
         const res = await fetch(`${MB_API}${path}`, {
             headers: {
@@ -109,8 +110,10 @@ async function mbFetch(path) {
         }
         return null;
     } finally {
-        // Always respect rate limit
-        await sleep(MB_RATE_MS);
+        // Only sleep the remaining time to maintain rate limit spacing
+        const elapsed = Date.now() - start;
+        const remaining = MB_RATE_MS - elapsed;
+        if (remaining > 0) await sleep(remaining);
     }
 }
 
