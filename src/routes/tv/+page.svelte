@@ -150,7 +150,7 @@
     <title>Mediajam — TV Shows</title>
 </svelte:head>
 
-<div class="page-wrap">
+<div class="page-wrap max-w-6xl mx-auto">
     <DeleteToast />
 
     <!-- Header -->

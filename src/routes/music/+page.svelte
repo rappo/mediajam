@@ -136,7 +136,7 @@
     <title>Mediajam — Music</title>
 </svelte:head>
 
-<div class="space-y-8">
+<div class="space-y-8 max-w-6xl mx-auto">
     <DeleteToast />
 
     <!-- Header -->

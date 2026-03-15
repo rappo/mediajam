@@ -82,7 +82,7 @@
                     <div class="cal-col" class:col-today={info.isToday} class:col-past={info.isPast && !info.isToday}>
                         <!-- Day header -->
                         <div class="col-head" class:head-today={info.isToday}>
-                            <span class="col-day-name">{info.name}</span>
+                            <span class="col-day-name">{info.name.toUpperCase()}</span>
                             <span class="col-day-num">{info.num}</span>
                         </div>
 
@@ -98,7 +98,7 @@
                                         class="ep-pill {st.cls}"
                                         title="{ep.show_title} {epCode(ep)} — {ep.episode_title}"
                                     >
-                                        <span class="pill-dot">{st.icon}</span>
+                                        <span class="pill-icon">{st.icon}</span>
                                         <span class="pill-text">{ep.show_title}</span>
                                         <span class="pill-code">{epCode(ep)}</span>
                                     </a>
@@ -116,99 +116,79 @@
     .cal-weeks {
         display: flex;
         flex-direction: column;
-        gap: 20px;
+        gap: 24px;
     }
 
     .cal-week {
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 6px;
     }
 
     .week-label {
-        font-size: 0.7rem;
+        font-size: 0.75rem;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.08em;
-        color: oklch(var(--bc) / 0.45);
-        padding-left: 4px;
+        color: oklch(var(--bc) / 0.5);
+        padding-left: 2px;
     }
 
     .cal-grid {
         display: grid;
         grid-template-columns: repeat(7, 1fr);
-        gap: 8px;
+        gap: 6px;
         width: 100%;
     }
 
     .cal-col {
         display: flex;
         flex-direction: column;
-        border-radius: 14px;
-        background: oklch(var(--b2) / 0.6);
-        border: 1px solid oklch(var(--bc) / 0.06);
-        min-height: 100px;
+        min-height: 80px;
         overflow: hidden;
-        transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
-        backdrop-filter: blur(8px);
-    }
-    .cal-col:hover {
-        background: oklch(var(--b2) / 0.8);
-        border-color: oklch(var(--bc) / 0.1);
     }
 
     .col-today {
-        background: oklch(var(--p) / 0.08);
-        border-color: oklch(var(--p) / 0.35);
-        box-shadow: 0 0 16px oklch(var(--p) / 0.1), inset 0 1px 0 oklch(var(--p) / 0.1);
-    }
-    .col-today:hover {
-        background: oklch(var(--p) / 0.12);
+        /* Today column gets a subtle highlight */
     }
 
     .col-past {
-        opacity: 0.45;
+        opacity: 0.4;
     }
 
     .col-head {
         display: flex;
         flex-direction: column;
         align-items: center;
-        padding: 10px 4px 8px;
-        gap: 2px;
-        border-bottom: 1px solid oklch(var(--bc) / 0.05);
+        padding: 4px 4px 6px;
+        gap: 0;
     }
-    .head-today {
+    .head-today .col-day-name {
         color: oklch(var(--p));
-        border-bottom-color: oklch(var(--p) / 0.2);
+    }
+    .head-today .col-day-num {
+        color: oklch(var(--p));
+        font-weight: 900;
     }
 
     .col-day-name {
         font-size: 0.6rem;
         font-weight: 700;
-        text-transform: uppercase;
         letter-spacing: 0.08em;
-        color: oklch(var(--bc) / 0.45);
-    }
-    .head-today .col-day-name {
-        color: oklch(var(--p) / 0.8);
+        color: oklch(var(--bc) / 0.4);
     }
 
     .col-day-num {
-        font-size: 0.95rem;
+        font-size: 1.1rem;
         font-weight: 800;
-        color: oklch(var(--bc) / 0.75);
-    }
-    .head-today .col-day-num {
-        color: oklch(var(--p));
-        text-shadow: 0 0 8px oklch(var(--p) / 0.3);
+        color: oklch(var(--bc) / 0.8);
+        line-height: 1.2;
     }
 
     .col-pills {
         display: flex;
         flex-direction: column;
         gap: 4px;
-        padding: 6px 5px 8px;
         flex: 1;
     }
 
@@ -217,7 +197,7 @@
         align-items: center;
         justify-content: center;
         flex: 1;
-        color: oklch(var(--bc) / 0.1);
+        color: oklch(var(--bc) / 0.08);
         font-size: 0.7rem;
     }
 
@@ -226,55 +206,52 @@
         display: flex;
         align-items: center;
         gap: 5px;
-        padding: 6px 7px;
+        padding: 6px 8px;
         border-radius: 8px;
         text-decoration: none;
-        color: inherit;
+        color: oklch(var(--bc) / 0.85);
         transition: background 0.15s, transform 0.15s, box-shadow 0.15s;
-        line-height: 1;
-        background: oklch(var(--bc) / 0.03);
-        border-left: 3px solid transparent;
+        line-height: 1.2;
+        background: oklch(var(--b2) / 0.9);
+        border: 1px solid oklch(var(--bc) / 0.08);
     }
     .ep-pill:hover {
-        background: oklch(var(--bc) / 0.08);
+        background: oklch(var(--bc) / 0.12);
         transform: translateY(-1px);
-        box-shadow: 0 2px 8px oklch(0 0 0 / 0.15);
+        box-shadow: 0 2px 8px oklch(0 0 0 / 0.2);
     }
 
-    .pill-dot {
-        width: 16px;
-        height: 16px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 0.5rem;
+    .pill-icon {
+        font-size: 0.55rem;
         font-weight: 700;
         flex-shrink: 0;
     }
 
-    .pill-downloaded .pill-dot {
-        background: oklch(var(--su) / 0.2);
+    .pill-downloaded {
+        background: oklch(var(--su) / 0.12);
+        border-color: oklch(var(--su) / 0.25);
+    }
+    .pill-downloaded .pill-icon {
         color: oklch(var(--su));
     }
-    .pill-downloaded {
-        border-left-color: oklch(var(--su) / 0.6);
+    .pill-downloaded .pill-text {
+        color: oklch(var(--su) / 0.9);
     }
 
-    .pill-available .pill-dot {
-        background: oklch(var(--wa) / 0.2);
+    .pill-available {
+        background: oklch(var(--wa) / 0.12);
+        border-color: oklch(var(--wa) / 0.25);
+    }
+    .pill-available .pill-icon {
         color: oklch(var(--wa));
     }
-    .pill-available {
-        border-left-color: oklch(var(--wa) / 0.6);
-    }
 
-    .pill-upcoming .pill-dot {
-        background: oklch(var(--bc) / 0.08);
-        color: oklch(var(--bc) / 0.35);
-    }
     .pill-upcoming {
-        border-left-color: oklch(var(--bc) / 0.12);
+        background: oklch(var(--b2) / 0.9);
+        border-color: oklch(var(--bc) / 0.08);
+    }
+    .pill-upcoming .pill-icon {
+        color: oklch(var(--bc) / 0.3);
     }
 
     .pill-text {
@@ -290,7 +267,7 @@
     .pill-code {
         font-size: 0.55rem;
         font-weight: 500;
-        color: oklch(var(--bc) / 0.4);
+        color: oklch(var(--bc) / 0.35);
         flex-shrink: 0;
     }
 
