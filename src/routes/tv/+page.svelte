@@ -207,14 +207,15 @@
                     <div class="hero-posters">
                         {#each data.sections.behindOn as show}
                             <a href="/tv/{show.id}" class="progress-card" title="{show.title} — {show.total - show.watched} unwatched">
-                                {#if show.poster_url}
-                                    <img src={imgUrl(show.poster_url)} alt={show.title} class="progress-poster" loading="lazy" />
-                                {:else}
-                                    <div class="progress-poster poster-placeholder">📺</div>
-                                {/if}
-                                <!-- Thin progress bar at bottom of poster -->
-                                <div class="progress-bar-track">
-                                    <div class="progress-bar-fill" style="width: {Math.round((show.watched / Math.max(show.total, 1)) * 100)}%"></div>
+                                <div class="poster-wrap">
+                                    {#if show.poster_url}
+                                        <img src={imgUrl(show.poster_url)} alt={show.title} class="progress-poster" loading="lazy" />
+                                    {:else}
+                                        <div class="progress-poster poster-placeholder">📺</div>
+                                    {/if}
+                                    <div class="progress-bar-track">
+                                        <div class="progress-bar-fill" style="width: {Math.round((show.watched / Math.max(show.total, 1)) * 100)}%"></div>
+                                    </div>
                                 </div>
                                 <div class="progress-meta">
                                     <span class="progress-name">{show.title}</span>
@@ -235,15 +236,22 @@
                 </div>
                 <div class="poster-scroll">
                     {#each data.sections.recentlyWatched as show}
-                        <a href="/tv/{show.id}" class="poster-card" title={show.title}>
-                            {#if show.poster_url}
-                                <img src={imgUrl(show.poster_url)} alt={show.title} class="poster-img" loading="lazy" />
-                            {:else}
-                                <div class="poster-img poster-placeholder">📺</div>
-                            {/if}
+                        <a href="/tv/{show.id}" class="poster-card" title="{show.title} — {show.watched}/{show.total} episodes watched">
+                            <div class="poster-wrap">
+                                {#if show.poster_url}
+                                    <img src={imgUrl(show.poster_url)} alt={show.title} class="poster-img" loading="lazy" />
+                                {:else}
+                                    <div class="poster-img poster-placeholder">📺</div>
+                                {/if}
+                                {#if show.total > 0}
+                                    <div class="progress-bar-track">
+                                        <div class="progress-bar-fill" style="width: {Math.round((show.watched / Math.max(show.total, 1)) * 100)}%"></div>
+                                    </div>
+                                {/if}
+                            </div>
                             <div class="poster-meta">
                                 <span class="poster-name">{show.title}</span>
-                                <span class="poster-year">{timeAgo(show.last_watched)}</span>
+                                <span class="poster-year">{show.watched}/{show.total} · {timeAgo(show.last_watched)}</span>
                             </div>
                         </a>
                     {/each}
@@ -388,24 +396,30 @@
         box-shadow: 0 4px 16px oklch(0 0 0 / 0.4);
     }
 
-    /* Thin progress bar overlaid at bottom of poster */
+    /* Poster wrapper — contains image + progress bar */
+    .poster-wrap {
+        position: relative;
+        width: 100%;
+        border-radius: 10px;
+        overflow: hidden;
+    }
+
+    /* Progress bar overlaid at bottom of poster */
     .progress-bar-track {
         position: absolute;
-        bottom: 28px;
-        left: 4px;
-        right: 4px;
-        height: 5px;
-        border-radius: 3px;
-        background: oklch(var(--bc) / 0.2);
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 6px;
+        background: oklch(0 0 0 / 0.5);
         overflow: hidden;
-        box-shadow: 0 1px 4px oklch(0 0 0 / 0.3);
+        z-index: 2;
     }
     .progress-bar-fill {
         height: 100%;
-        border-radius: 3px;
         background: linear-gradient(90deg, oklch(var(--su)), oklch(var(--su) / 0.85));
         transition: width 0.4s ease;
-        box-shadow: 0 0 6px oklch(var(--su) / 0.5);
+        box-shadow: 0 0 8px oklch(var(--su) / 0.6);
     }
 
     .progress-meta {

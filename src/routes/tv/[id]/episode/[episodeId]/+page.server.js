@@ -1,5 +1,6 @@
 import db from '$lib/server/db.js';
 import { error } from '@sveltejs/kit';
+import { resolveBackdrop } from '$lib/server/backdrop.js';
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ params, locals }) {
@@ -204,6 +205,24 @@ export async function load({ params, locals }) {
     // Episode screenshot/thumbnail
     const screenshotUrl = jellyfinData?.screenshotUrl || jellyfinData?.thumbUrl || null;
 
+    // ── Resolve poster & backdrop the same way as the series page ──
+    // Poster: prefer Jellyfin Primary image, fall back to DB poster_url
+    const posterUrl = show.jellyfin_id
+        ? `${jellyfinUrl}/Items/${show.jellyfin_id}/Images/Primary?maxHeight=400`
+        : show.poster_url;
+
+    // Backdrop: prefer DB backdrop_url, fall back to Jellyfin Backdrop, then resolveBackdrop()
+    let backdropUrl = show.backdrop_url;
+    if (!backdropUrl && show.jellyfin_id) {
+        backdropUrl = `${jellyfinUrl}/Items/${show.jellyfin_id}/Images/Backdrop?maxWidth=1200`;
+    }
+    if (!show.backdrop_url && show.tmdb_id) {
+        try {
+            const resolved = await resolveBackdrop(show.id);
+            if (resolved) backdropUrl = resolved;
+        } catch { /* non-fatal */ }
+    }
+
     return {
         episode: {
             ...episode,
@@ -213,6 +232,8 @@ export async function load({ params, locals }) {
         show,
         jellyfinData,
         screenshotUrl,
+        posterUrl,
+        backdropUrl,
         history,
         stats: { totalPlays, firstWatched, lastWatched },
         cast,

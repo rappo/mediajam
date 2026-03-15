@@ -75,7 +75,25 @@ export async function POST({ params, request, locals }) {
             };
             endpoint = 'movie';
         } else if (service === 'sonarr') {
-            if (!media.tvdb_id) return json({ error: 'No TVDB ID — cannot add to Sonarr' }, { status: 400 });
+            let tvdbId = media.tvdb_id ? parseInt(media.tvdb_id) : null;
+
+            // If no TVDB ID, try to resolve via Sonarr's own lookup using TMDB ID
+            if (!tvdbId && media.tmdb_id) {
+                try {
+                    const lookupResults = await arrFetch(settings.url, settings.apiKey, service, `series/lookup?term=tmdb:${media.tmdb_id}`);
+                    if (lookupResults && lookupResults.length > 0) {
+                        tvdbId = lookupResults[0].tvdbId;
+                        // Persist resolved TVDB ID for future use
+                        if (tvdbId) {
+                            db.prepare('UPDATE media_parents SET tvdb_id = ? WHERE id = ?').run(String(tvdbId), mediaParentId);
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[arr] Sonarr TVDB lookup via TMDB failed:', e instanceof Error ? e.message : e);
+                }
+            }
+
+            if (!tvdbId) return json({ error: 'No TVDB ID — cannot add to Sonarr. Ensure the show has a TMDB or TVDB ID.' }, { status: 400 });
 
             let root = folder;
             if (!root) {
@@ -84,7 +102,7 @@ export async function POST({ params, request, locals }) {
             }
 
             addBody = {
-                tvdbId: parseInt(media.tvdb_id),
+                tvdbId,
                 qualityProfileId: profileId,
                 rootFolderPath: root,
                 monitored: true,
