@@ -198,6 +198,46 @@ export async function POST({ params, request, locals }) {
         return json({ success: true, arrId: result.id, title: result.title || media.title });
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
+
+        // Handle "already been added" — link the existing *arr entry to our DB
+        if (msg.includes('already been added') || msg.includes('already exists')) {
+            try {
+                const idColumn = service === 'radarr' ? 'radarr_id' : service === 'sonarr' ? 'sonarr_id' : 'lidarr_id';
+                let existingItem = null;
+
+                if (service === 'sonarr' && (media.tvdb_id || media.tmdb_id)) {
+                    // Look up the existing series in Sonarr
+                    const allSeries = await arrFetch(settings.url, settings.apiKey, service, 'series');
+                    existingItem = allSeries.find(/** @param {any} s */ (s) =>
+                        (media.tvdb_id && String(s.tvdbId) === String(media.tvdb_id)) ||
+                        (media.tmdb_id && String(s.tmdbId) === String(media.tmdb_id))
+                    );
+                } else if (service === 'radarr' && media.tmdb_id) {
+                    const allMovies = await arrFetch(settings.url, settings.apiKey, service, 'movie');
+                    existingItem = allMovies.find(/** @param {any} m */ (m) =>
+                        String(m.tmdbId) === String(media.tmdb_id)
+                    );
+                } else if (service === 'lidarr' && media.musicbrainz_id) {
+                    const allArtists = await arrFetch(settings.url, settings.apiKey, service, 'artist');
+                    existingItem = allArtists.find(/** @param {any} a */ (a) =>
+                        a.foreignArtistId === media.musicbrainz_id
+                    );
+                }
+
+                if (existingItem) {
+                    const slug = existingItem.titleSlug || existingItem.sortName || '';
+                    const qpName = existingItem.qualityProfile?.name || '';
+                    db.prepare(`UPDATE media_parents SET ${idColumn} = ?, arr_monitored = ?, arr_slug = ?, arr_quality_profile = ? WHERE id = ?`)
+                        .run(existingItem.id, existingItem.monitored ? 1 : 0, slug, qpName || null, mediaParentId);
+
+                    console.log(`[arr] "${media.title}" already in ${service} (ID: ${existingItem.id}), synced to DB`);
+                    return json({ success: true, arrId: existingItem.id, title: existingItem.title || media.title, alreadyExisted: true });
+                }
+            } catch (lookupErr) {
+                console.warn(`[arr] Failed to look up existing item in ${service}:`, lookupErr instanceof Error ? lookupErr.message : lookupErr);
+            }
+        }
+
         console.error(`[arr] Failed to add to ${service}:`, msg);
         logActivity({ category: 'arr', action: 'arr_item_failed', title: `Failed to add "${media.title}" to ${service}`, detail: msg, icon: '❌', status: 'error' });
         return json({ error: msg }, { status: 500 });
