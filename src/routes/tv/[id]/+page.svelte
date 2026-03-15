@@ -152,10 +152,13 @@
         syncStatus = "";
         syncError = "";
         try {
+            const syncBody = data.show.jellyfin_id
+                ? { jellyfinId: data.show.jellyfin_id }
+                : { mediaParentId: data.show.id, tmdbId: data.show.tmdb_id };
             const res = await fetch("/api/sync/item", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ jellyfinId: data.show.jellyfin_id }),
+                body: JSON.stringify(syncBody),
             });
             const result = await res.json();
             if (result.success) {
