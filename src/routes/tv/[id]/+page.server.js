@@ -241,11 +241,11 @@ export async function load({ params }) {
         }
     }
 
-    // ── Dedup: remove orphaned TMDB-only duplicate episodes ──────────────────
-    // When both Jellyfin sync and TMDB enrichment create the same episode,
-    // keep the Jellyfin one (has jellyfin_id, is_collected=1) and delete the TMDB one
-    const duplicates = /** @type {any[]} */ (db.prepare(`
-        SELECT mc1.id AS tmdb_id, mc2.id AS jellyfin_row_id
+    // ── Dedup: remove duplicate episodes with same season/episode number ──────
+    // Case 1: TMDB-only row (no jellyfin_id) + Jellyfin row → keep Jellyfin row
+    // Case 2: Two Jellyfin rows (both have jellyfin_id), one collected + one missing → keep collected
+    const tmdbDuplicates = /** @type {any[]} */ (db.prepare(`
+        SELECT mc1.id AS orphan_id, mc2.id AS keeper_id
         FROM media_children mc1
         JOIN media_children mc2
             ON mc1.parent_id = mc2.parent_id
@@ -257,24 +257,41 @@ export async function load({ params }) {
             AND mc2.jellyfin_id IS NOT NULL
     `).all(showId));
 
-    if (duplicates.length > 0) {
+    const jellyfinDuplicates = /** @type {any[]} */ (db.prepare(`
+        SELECT mc1.id AS orphan_id, mc2.id AS keeper_id
+        FROM media_children mc1
+        JOIN media_children mc2
+            ON mc1.parent_id = mc2.parent_id
+            AND mc1.season_number = mc2.season_number
+            AND mc1.item_number = mc2.item_number
+            AND mc1.id != mc2.id
+        WHERE mc1.parent_id = ?
+            AND mc1.jellyfin_id IS NOT NULL
+            AND mc2.jellyfin_id IS NOT NULL
+            AND mc1.is_collected = 0
+            AND mc2.is_collected = 1
+    `).all(showId));
+
+    const allDuplicates = [...tmdbDuplicates, ...jellyfinDuplicates];
+
+    if (allDuplicates.length > 0) {
         db.transaction(() => {
-            for (const dup of duplicates) {
-                // Move any useful metadata from TMDB row to Jellyfin row before deleting
-                const tmdbRow = /** @type {any} */ (db.prepare('SELECT overview, premiere_date, community_rating FROM media_children WHERE id = ?').get(dup.tmdb_id));
-                if (tmdbRow) {
+            for (const dup of allDuplicates) {
+                // Move any useful metadata from orphan to keeper before deleting
+                const orphanRow = /** @type {any} */ (db.prepare('SELECT overview, premiere_date, community_rating FROM media_children WHERE id = ?').get(dup.orphan_id));
+                if (orphanRow) {
                     db.prepare(`
                         UPDATE media_children SET
                             overview = COALESCE(overview, ?),
                             premiere_date = COALESCE(premiere_date, ?),
                             community_rating = COALESCE(community_rating, ?)
                         WHERE id = ?
-                    `).run(tmdbRow.overview, tmdbRow.premiere_date, tmdbRow.community_rating, dup.jellyfin_row_id);
+                    `).run(orphanRow.overview, orphanRow.premiere_date, orphanRow.community_rating, dup.keeper_id);
                 }
-                db.prepare('DELETE FROM media_children WHERE id = ?').run(dup.tmdb_id);
+                db.prepare('DELETE FROM media_children WHERE id = ?').run(dup.orphan_id);
             }
         })();
-        console.log(`[tv] Deduped ${duplicates.length} duplicate episodes for show ${showId}`);
+        console.log(`[tv] Deduped ${allDuplicates.length} duplicate episodes for show ${showId} (${tmdbDuplicates.length} TMDB + ${jellyfinDuplicates.length} Jellyfin virtual)`);
     }
 
     const episodes = /** @type {any[]} */ (db.prepare(`
