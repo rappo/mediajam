@@ -11,6 +11,23 @@
     import PosterRow from "$lib/components/PosterRow.svelte";
     import { imgUrl } from "$lib/utils.js";
 
+    let isDashboardHidden = $state(!!data.show.is_dashboard_hidden);
+
+    async function toggleDashboardHidden() {
+        const newVal = !isDashboardHidden;
+        isDashboardHidden = newVal;
+        try {
+            await fetch(`/api/media/${data.show.id}/dashboard-hide`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ hidden: newVal }),
+            });
+        } catch (e) {
+            console.error('Failed to toggle dashboard hidden:', e);
+            isDashboardHidden = !newVal; // revert on error
+        }
+    }
+
 
     function statusColor(status) {
         if (status === "watched") return "var(--color-success, #22c55e)";
@@ -422,6 +439,17 @@
                         onComplete={onArrAdded}
                     />
                 {/if}
+                <button
+                    class="btn btn-xs btn-ghost gap-1"
+                    onclick={toggleDashboardHidden}
+                    title={isDashboardHidden ? 'Show on TV dashboard' : 'Hide from TV dashboard'}
+                >
+                    {#if isDashboardHidden}
+                        👁 Unignore
+                    {:else}
+                        🚫 Ignore
+                    {/if}
+                </button>
             {/snippet}
         </MediaDetailHeader>
 

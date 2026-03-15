@@ -489,6 +489,7 @@ export function getAiringThisWeek(prefs) {
         FROM media_children mc
         JOIN media_parents mp ON mc.parent_id = mp.id
         WHERE mp.media_type = 'show'
+          AND mp.is_dashboard_hidden = 0
           AND mc.premiere_date IS NOT NULL
           AND date(mc.premiere_date) >= ?
           AND date(mc.premiere_date) <= ?
@@ -541,6 +542,7 @@ export function getNewUnwatchedEpisodes(_prefs, userId = 0, limit = 15) {
         FROM media_children mc
         JOIN media_parents mp ON mc.parent_id = mp.id
         WHERE mp.media_type = 'show'
+          AND mp.is_dashboard_hidden = 0
           AND mc.premiere_date IS NOT NULL
           AND date(mc.premiere_date) <= date('now')
           AND date(mc.premiere_date) >= date('now', '-30 days')
@@ -584,6 +586,7 @@ export function getBehindOnShows(_userId, limit = 12) {
                     ELSE 0 END as pct
         FROM media_parents mp
         WHERE mp.media_type = 'show'
+          AND mp.is_dashboard_hidden = 0
           AND mp.watched_children > 0
           AND mp.watched_children < mp.collected_children
           AND mp.collected_children > 0
@@ -621,6 +624,7 @@ function _fetchUpcoming(days, userId = 0) {
         FROM media_children mc
         JOIN media_parents mp ON mc.parent_id = mp.id
         WHERE mp.media_type = 'show'
+          AND mp.is_dashboard_hidden = 0
           AND mc.premiere_date IS NOT NULL
           AND date(mc.premiere_date) > date('now')
           AND date(mc.premiere_date) <= date('now', ?)
@@ -664,6 +668,7 @@ export function getRecentlyWatchedShows(userId, limit = 20) {
         JOIN media_children mc ON ph.media_id = mc.id
         JOIN media_parents mp ON mc.parent_id = mp.id
         WHERE mp.media_type = 'show' AND ph.user_id = ?
+          AND mp.is_dashboard_hidden = 0
           AND mp.poster_url IS NOT NULL AND ph.timestamp > '2000-01-01'
         GROUP BY mp.id
         ORDER BY last_watched DESC

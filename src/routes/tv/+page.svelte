@@ -10,6 +10,26 @@
 
     let showLibrary = $state(false);
 
+    /** @type {Set<number>} */
+    let hiddenShows = $state(new Set());
+
+    /** @param {number} showId @param {string} showTitle */
+    async function ignoreShow(showId, showTitle) {
+        if (!confirm(`Hide "${showTitle}" from the TV dashboard?\n\nYou can unignore it from the show's detail page.`)) return;
+        const next = new Set(hiddenShows);
+        next.add(showId);
+        hiddenShows = next;
+        try {
+            await fetch(`/api/media/${showId}/dashboard-hide`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ hidden: true }),
+            });
+        } catch (e) {
+            console.error('Failed to hide show:', e);
+        }
+    }
+
     /**
      * @param {string} dateStr
      */
@@ -205,8 +225,8 @@
                     <h2 class="hero-title">Continue Watching</h2>
                     <p class="hero-subtitle">{data.sections.behindOn.length} shows in progress</p>
                     <div class="hero-posters">
-                        {#each data.sections.behindOn as show}
-                            <a href="/tv/{show.id}" class="progress-card" title="{show.title} — {show.total - show.watched} unwatched">
+                        {#each data.sections.behindOn.filter((/** @type {any} */ s) => !hiddenShows.has(s.id)) as show}
+                            <a href="/tv/{show.id}" class="progress-card group" title="{show.title} — {show.total - show.watched} unwatched">
                                 <div class="poster-wrap">
                                     {#if show.poster_url}
                                         <img src={imgUrl(show.poster_url)} alt={show.title} class="progress-poster" loading="lazy" />
@@ -216,6 +236,11 @@
                                     <div class="progress-bar-track">
                                         <div class="progress-bar-fill" style="width: {Math.round((show.watched / Math.max(show.total, 1)) * 100)}%"></div>
                                     </div>
+                                    <button
+                                        class="ignore-btn"
+                                        title="Hide from dashboard"
+                                        onclick={(e) => { e.preventDefault(); e.stopPropagation(); ignoreShow(show.id, show.title); }}
+                                    >✕</button>
                                 </div>
                                 <div class="progress-meta">
                                     <span class="progress-name">{show.title}</span>
@@ -235,8 +260,8 @@
                     <h2 class="section-title">Recently Watched</h2>
                 </div>
                 <div class="poster-scroll">
-                    {#each data.sections.recentlyWatched as show}
-                        <a href="/tv/{show.id}" class="poster-card" title="{show.title} — {show.watched}/{show.total} episodes watched">
+                    {#each data.sections.recentlyWatched.filter((/** @type {any} */ s) => !hiddenShows.has(s.id)) as show}
+                        <a href="/tv/{show.id}" class="poster-card group" title="{show.title} — {show.watched}/{show.total} episodes watched">
                             <div class="poster-wrap">
                                 {#if show.poster_url}
                                     <img src={imgUrl(show.poster_url)} alt={show.title} class="poster-img" loading="lazy" />
@@ -248,6 +273,11 @@
                                         <div class="progress-bar-fill" style="width: {Math.round((show.watched / Math.max(show.total, 1)) * 100)}%"></div>
                                     </div>
                                 {/if}
+                                <button
+                                    class="ignore-btn"
+                                    title="Hide from dashboard"
+                                    onclick={(e) => { e.preventDefault(); e.stopPropagation(); ignoreShow(show.id, show.title); }}
+                                >✕</button>
                             </div>
                             <div class="poster-meta">
                                 <span class="poster-name">{show.title}</span>
@@ -270,14 +300,21 @@
             <section class="smart-section">
                 <h2 class="section-title">New Episodes</h2>
                 <div class="poster-scroll">
-                    {#each data.sections.newUnwatched as ep}
-                        <a href="/tv/{ep.show_id}" class="poster-card" title="{ep.show_title} {epCode(ep)} — {ep.episode_title}">
+                    {#each data.sections.newUnwatched.filter((/** @type {any} */ e) => !hiddenShows.has(e.show_id)) as ep}
+                        <a href="/tv/{ep.show_id}" class="poster-card group" title="{ep.show_title} {epCode(ep)} — {ep.episode_title}">
                             <span class="new-badge">NEW</span>
-                            {#if ep.poster_url}
-                                <img src={imgUrl(ep.poster_url)} alt={ep.show_title} class="poster-img" loading="lazy" />
-                            {:else}
-                                <div class="poster-img poster-placeholder">📺</div>
-                            {/if}
+                            <div class="poster-wrap">
+                                {#if ep.poster_url}
+                                    <img src={imgUrl(ep.poster_url)} alt={ep.show_title} class="poster-img" loading="lazy" />
+                                {:else}
+                                    <div class="poster-img poster-placeholder">📺</div>
+                                {/if}
+                                <button
+                                    class="ignore-btn"
+                                    title="Hide from dashboard"
+                                    onclick={(e) => { e.preventDefault(); e.stopPropagation(); ignoreShow(ep.show_id, ep.show_title); }}
+                                >✕</button>
+                            </div>
                             <div class="poster-meta">
                                 <span class="poster-name">{ep.show_title}</span>
                                 <span class="poster-ep">{epCode(ep)} — {ep.episode_title || 'TBA'}</span>
@@ -571,5 +608,35 @@
     }
     :global(.arr-upcoming) {
         border-left: 3px dashed oklch(0.8 0.15 75);
+    }
+
+    /* ── Ignore button (hover-only) ── */
+    .ignore-btn {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        z-index: 5;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        border: none;
+        background: oklch(0 0 0 / 0.7);
+        color: oklch(var(--bc) / 0.7);
+        font-size: 0.6rem;
+        font-weight: 700;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.15s, background 0.15s;
+        backdrop-filter: blur(4px);
+    }
+    :global(.group):hover .ignore-btn {
+        opacity: 1;
+    }
+    .ignore-btn:hover {
+        background: oklch(var(--er) / 0.8);
+        color: oklch(var(--erc));
     }
 </style>

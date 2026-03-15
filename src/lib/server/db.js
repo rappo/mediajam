@@ -496,6 +496,9 @@ for (const [col, type] of arrParentCols) {
 if (!mediaParentsCols.has('backdrop_url')) {
     db.exec("ALTER TABLE media_parents ADD COLUMN backdrop_url TEXT");
 }
+if (!mediaParentsCols.has('is_dashboard_hidden')) {
+    db.exec("ALTER TABLE media_parents ADD COLUMN is_dashboard_hidden INTEGER DEFAULT 0");
+}
 
 // -- Unique external-ID constraints (dedup existing data first) --
 const hasUniqueIdx = /** @type {any} */ (db.prepare(
