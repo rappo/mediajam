@@ -266,7 +266,12 @@
                                 </div>
                                 <div class="progress-meta">
                                     <span class="progress-name">{show.title}</span>
-                                    <span class="progress-count">{show.watched}/{show.total}</span>
+                                    <span class="progress-count">
+                                        {show.watched}/{show.total}
+                                        {#if show.missing > 0}
+                                            <span class="missing-badge">· {show.missing} missing</span>
+                                        {/if}
+                                    </span>
                                 </div>
                             </a>
                         {/each}
@@ -518,6 +523,10 @@
         font-size: 0.55rem;
         color: oklch(var(--bc) / 0.4);
         display: block;
+    }
+    .missing-badge {
+        color: oklch(var(--er));
+        font-weight: 700;
     }
 
     /* ── Sections ── */

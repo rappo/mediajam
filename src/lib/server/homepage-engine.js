@@ -577,20 +577,26 @@ export function getNewUnwatchedEpisodes(_prefs, userId = 0, limit = 15) {
  * @param {number} _userId
  * @param {number} limit
  */
-export function getBehindOnShows(_userId, limit = 12) {
+export function getBehindOnShows(_userId, limit = 20) {
     return /** @type {any[]} */ (db.prepare(`
         SELECT mp.id, mp.title, mp.poster_url,
                mp.watched_children as watched, mp.collected_children as total,
+               COALESCE(mp.total_released_children, mp.collected_children) as total_released,
+               COALESCE(mp.total_released_children, mp.collected_children) - mp.collected_children as missing,
                CASE WHEN mp.collected_children > 0
                     THEN ROUND(CAST(mp.watched_children AS REAL) / mp.collected_children * 100, 1)
-                    ELSE 0 END as pct
+                    ELSE 0 END as pct,
+               MAX(ph.timestamp) as last_watched
         FROM media_parents mp
+        JOIN media_children mc ON mc.parent_id = mp.id
+        JOIN playback_history ph ON ph.media_id = mc.id
         WHERE mp.media_type = 'show'
           AND mp.is_dashboard_hidden = 0
           AND mp.watched_children > 0
           AND mp.watched_children < mp.collected_children
           AND mp.collected_children > 0
-        ORDER BY pct DESC, mp.watched_children DESC
+        GROUP BY mp.id
+        ORDER BY last_watched DESC
         LIMIT ?
     `).all(limit));
 }
