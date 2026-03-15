@@ -83,9 +83,9 @@ export async function POST({ params, request, locals }) {
                     const lookupResults = await arrFetch(settings.url, settings.apiKey, service, `series/lookup?term=tmdb:${media.tmdb_id}`);
                     if (lookupResults && lookupResults.length > 0) {
                         tvdbId = lookupResults[0].tvdbId;
-                        // Persist resolved TVDB ID for future use
                         if (tvdbId) {
                             db.prepare('UPDATE media_parents SET tvdb_id = ? WHERE id = ?').run(String(tvdbId), mediaParentId);
+                            console.log(`[arr] Resolved TVDB ID ${tvdbId} for "${media.title}" via TMDB lookup`);
                         }
                     }
                 } catch (e) {
@@ -93,7 +93,28 @@ export async function POST({ params, request, locals }) {
                 }
             }
 
-            if (!tvdbId) return json({ error: 'No TVDB ID — cannot add to Sonarr. Ensure the show has a TMDB or TVDB ID.' }, { status: 400 });
+            // Fallback: search by title if TMDB lookup didn't work
+            if (!tvdbId && media.title) {
+                try {
+                    const titleResults = await arrFetch(settings.url, settings.apiKey, service, `series/lookup?term=${encodeURIComponent(media.title)}`);
+                    if (titleResults && titleResults.length > 0) {
+                        // Try to match by TMDB ID first for accuracy
+                        const tmdbMatch = media.tmdb_id
+                            ? titleResults.find(/** @param {any} r */ (r) => String(r.tmdbId) === String(media.tmdb_id))
+                            : null;
+                        const best = tmdbMatch || titleResults[0];
+                        tvdbId = best.tvdbId;
+                        if (tvdbId) {
+                            db.prepare('UPDATE media_parents SET tvdb_id = ? WHERE id = ?').run(String(tvdbId), mediaParentId);
+                            console.log(`[arr] Resolved TVDB ID ${tvdbId} for "${media.title}" via title search`);
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[arr] Sonarr TVDB lookup via title failed:', e instanceof Error ? e.message : e);
+                }
+            }
+
+            if (!tvdbId) return json({ error: `Could not resolve TVDB ID for "${media.title}". Sonarr requires a TVDB ID to add series. Try searching for it directly in Sonarr.` }, { status: 400 });
 
             let root = folder;
             if (!root) {
