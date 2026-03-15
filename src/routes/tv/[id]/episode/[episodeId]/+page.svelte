@@ -61,8 +61,8 @@
         backLabel={show.title}
         title={ep.title}
         subtitle="{epCode} · {show.title}"
-        posterUrl={data.posterUrl ? imgUrl(data.posterUrl) : null}
-        backdropUrl={data.backdropUrl ? imgUrl(data.backdropUrl) : (jf?.screenshotUrl || data.screenshotUrl || null)}
+        posterUrl={data.posterUrl || null}
+        backdropUrl={data.backdropUrl || jf?.screenshotUrl || data.screenshotUrl || null}
         year={show.release_year}
         overview={jf?.overview || null}
         overviewSource="Synopsis"

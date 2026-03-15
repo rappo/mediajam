@@ -410,16 +410,16 @@
         bottom: 0;
         left: 0;
         right: 0;
-        height: 6px;
-        background: oklch(0 0 0 / 0.5);
+        height: 8px;
+        background: oklch(0 0 0 / 0.7);
         overflow: hidden;
         z-index: 2;
     }
     .progress-bar-fill {
         height: 100%;
-        background: linear-gradient(90deg, oklch(var(--su)), oklch(var(--su) / 0.85));
+        background: linear-gradient(90deg, #36d399, #2dbd89);
         transition: width 0.4s ease;
-        box-shadow: 0 0 8px oklch(var(--su) / 0.6);
+        box-shadow: 0 0 10px rgba(54, 211, 153, 0.7);
     }
 
     .progress-meta {
