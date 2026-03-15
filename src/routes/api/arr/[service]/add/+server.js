@@ -82,10 +82,40 @@ export async function POST({ params, request, locals }) {
                 try {
                     const lookupResults = await arrFetch(settings.url, settings.apiKey, service, `series/lookup?term=tmdb:${media.tmdb_id}`);
                     if (lookupResults && lookupResults.length > 0) {
-                        tvdbId = lookupResults[0].tvdbId;
+                        const lookupMatch = lookupResults[0];
+                        tvdbId = lookupMatch.tvdbId;
                         if (tvdbId) {
-                            db.prepare('UPDATE media_parents SET tvdb_id = ? WHERE id = ?').run(String(tvdbId), mediaParentId);
-                            console.log(`[arr] Resolved TVDB ID ${tvdbId} for "${media.title}" via TMDB lookup`);
+                            // Check if this TVDB ID is already in Sonarr before persisting
+                            try {
+                                const allSeries = await arrFetch(settings.url, settings.apiKey, service, 'series');
+                                const existingInSonarr = allSeries.find(/** @param {any} s */ (s) => s.tvdbId === tvdbId);
+                                if (existingInSonarr) {
+                                    // The TVDB ID belongs to a show already in Sonarr
+                                    // Check if it's the same show by title similarity
+                                    const isLikelySameShow = existingInSonarr.title?.toLowerCase() === media.title?.toLowerCase();
+                                    if (isLikelySameShow) {
+                                        // Same show — just link it
+                                        const slug = existingInSonarr.titleSlug || '';
+                                        const qpName = existingInSonarr.qualityProfile?.name || '';
+                                        db.prepare('UPDATE media_parents SET sonarr_id = ?, arr_monitored = ?, arr_slug = ?, arr_quality_profile = ?, tvdb_id = ? WHERE id = ?')
+                                            .run(existingInSonarr.id, existingInSonarr.monitored ? 1 : 0, slug, qpName || null, String(tvdbId), mediaParentId);
+                                        console.log(`[arr] "${media.title}" already in Sonarr (ID: ${existingInSonarr.id}), linked`);
+                                        return json({ success: true, arrId: existingInSonarr.id, title: existingInSonarr.title, alreadyExisted: true });
+                                    } else {
+                                        // Different show has this TVDB ID — don't use it
+                                        console.warn(`[arr] TVDB ID ${tvdbId} resolved for "${media.title}" but belongs to "${existingInSonarr.title}" in Sonarr — skipping`);
+                                        tvdbId = null; // Reset so we don't use the wrong ID
+                                    }
+                                } else {
+                                    // TVDB ID not in Sonarr yet — safe to use
+                                    db.prepare('UPDATE media_parents SET tvdb_id = ? WHERE id = ?').run(String(tvdbId), mediaParentId);
+                                    console.log(`[arr] Resolved TVDB ID ${tvdbId} for "${media.title}" via TMDB lookup`);
+                                }
+                            } catch {
+                                // Can't check existing series — proceed with the resolved TVDB ID
+                                db.prepare('UPDATE media_parents SET tvdb_id = ? WHERE id = ?').run(String(tvdbId), mediaParentId);
+                                console.log(`[arr] Resolved TVDB ID ${tvdbId} for "${media.title}" via TMDB lookup`);
+                            }
                         }
                     }
                 } catch (e) {
