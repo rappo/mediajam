@@ -123,6 +123,7 @@ export async function POST({ params, request, locals }) {
             }
 
             addBody = {
+                title: media.title,
                 tvdbId,
                 qualityProfileId: profileId,
                 rootFolderPath: root,
