@@ -431,10 +431,11 @@
     .hero-posters {
         display: flex;
         gap: 16px;
-        justify-content: center;
         overflow-x: auto;
         scrollbar-width: none;
-        padding-bottom: 4px;
+        padding: 0 16px 4px;
+        scroll-snap-type: x proximity;
+        -webkit-overflow-scrolling: touch;
     }
     .hero-posters::-webkit-scrollbar { display: none; }
 
