@@ -274,8 +274,9 @@
         color: oklch(var(--bc) / 0.8);
         transition: background 0.12s, transform 0.12s, box-shadow 0.15s;
         line-height: 1.2;
-        background: oklch(var(--b2));
-        border: 1px solid oklch(var(--bc) / 0.07);
+        background: oklch(0.22 0.005 260);
+        border: 1px solid oklch(0.3 0.005 260);
+        box-shadow: 0 1px 4px oklch(0 0 0 / 0.15);
     }
     .ep-pill:hover {
         background: oklch(var(--bc) / 0.12);
@@ -291,8 +292,8 @@
 
     /* Downloaded pills — green tint */
     .pill-downloaded {
-        background: oklch(var(--su) / 0.1);
-        border-color: oklch(var(--su) / 0.2);
+        background: oklch(0.22 0.03 155);
+        border-color: oklch(0.35 0.06 155);
     }
     .pill-downloaded .pill-dot {
         color: oklch(var(--su));
@@ -306,8 +307,8 @@
 
     /* Available pills — amber tint */
     .pill-available {
-        background: oklch(var(--wa) / 0.1);
-        border-color: oklch(var(--wa) / 0.2);
+        background: oklch(0.24 0.04 85);
+        border-color: oklch(0.38 0.06 85);
     }
     .pill-available .pill-dot {
         color: oklch(var(--wa));
@@ -321,8 +322,8 @@
 
     /* Upcoming pills — neutral dark card */
     .pill-upcoming {
-        background: oklch(var(--b2));
-        border-color: oklch(var(--bc) / 0.07);
+        background: oklch(0.22 0.005 260);
+        border-color: oklch(0.3 0.005 260);
     }
     .pill-upcoming .pill-dot {
         color: oklch(var(--bc) / 0.25);

@@ -256,6 +256,7 @@
                                     {/if}
                                     <div class="progress-bar-track">
                                         <div class="progress-bar-fill" style="width: {Math.round((show.watched / Math.max(show.total, 1)) * 100)}%"></div>
+                                        <span class="progress-bar-label">{show.watched}/{show.total}</span>
                                     </div>
                                     <button
                                         class="ignore-btn"
@@ -292,6 +293,7 @@
                                 {#if show.total > 0}
                                     <div class="progress-bar-track">
                                         <div class="progress-bar-fill" style="width: {Math.round((show.watched / Math.max(show.total, 1)) * 100)}%"></div>
+                                        <span class="progress-bar-label">{show.watched}/{show.total}</span>
                                     </div>
                                 {/if}
                                 <button
@@ -312,12 +314,13 @@
 
         <!-- ▌UPCOMING EPISODES ─────────────────────────────────────── -->
         <section class="smart-section">
-            <h2 class="section-title">Upcoming Episodes</h2>
-            {#if calendarLoading}
-                <div class="calendar-loading"><span class="loading loading-spinner loading-md"></span></div>
-            {:else}
-                <CalendarStrip days={calendarDays} weekOffset={calendarOffset} onNavigate={navigateCalendar} />
-            {/if}
+            <h2 class="section-title">
+                Upcoming Episodes
+                {#if calendarLoading}
+                    <span class="loading loading-spinner loading-sm" style="margin-left: 8px; vertical-align: middle;"></span>
+                {/if}
+            </h2>
+            <CalendarStrip days={calendarDays} weekOffset={calendarOffset} onNavigate={navigateCalendar} />
         </section>
 
         <!-- ▌NEW EPISODES (poster scroll with NEW badges) ──────────── -->
@@ -472,7 +475,7 @@
         bottom: 0;
         left: 0;
         right: 0;
-        height: 8px;
+        height: 14px;
         background: oklch(0 0 0 / 0.7);
         overflow: hidden;
         z-index: 2;
@@ -482,6 +485,19 @@
         background: linear-gradient(90deg, #36d399, #2dbd89);
         transition: width 0.4s ease;
         box-shadow: 0 0 10px rgba(54, 211, 153, 0.7);
+    }
+    .progress-bar-label {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.5rem;
+        font-weight: 700;
+        color: white;
+        text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+        pointer-events: none;
+        letter-spacing: 0.03em;
     }
 
     .progress-meta {
@@ -663,12 +679,5 @@
     .ignore-btn:hover {
         background: oklch(var(--er) / 0.8);
         color: oklch(var(--erc));
-    }
-
-    .calendar-loading {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 40px 0;
     }
 </style>
