@@ -465,12 +465,12 @@ export function getRecommendedMovies(userId, limit = 12) {
  * Episodes airing in the next 3 weeks — grouped by date with download/availability status.
  * @param {typeof DEFAULTS} prefs
  */
-export function getAiringThisWeek(prefs) {
-    // Start from Monday of the current week
+export function getAiringThisWeek(prefs, weekOffset = 0) {
+    // Start from Monday of the current week, shifted by weekOffset * 7 days
     const now = new Date();
     const dayOfWeek = now.getDay();
     const monday = new Date(now);
-    monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+    monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1) + (weekOffset * 7));
     monday.setHours(0, 0, 0, 0);
     // 3 weeks = 21 days
     const endDate = new Date(monday);

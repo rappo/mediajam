@@ -13,6 +13,27 @@
     /** @type {Set<number>} */
     let hiddenShows = $state(new Set());
 
+    /** @type {Array<{ date: string, episodes: any[] }>} */
+    let calendarDays = $state(data.sections.airingThisWeek);
+    let calendarOffset = $state(0);
+    let calendarLoading = $state(false);
+
+    /** @param {number} newOffset */
+    async function navigateCalendar(newOffset) {
+        calendarOffset = newOffset;
+        calendarLoading = true;
+        try {
+            const res = await fetch(`/api/calendar?offset=${newOffset}`);
+            if (res.ok) {
+                const result = await res.json();
+                calendarDays = result.days;
+            }
+        } catch (e) {
+            console.error('Failed to fetch calendar:', e);
+        }
+        calendarLoading = false;
+    }
+
     /** @param {number} showId @param {string} showTitle */
     async function ignoreShow(showId, showTitle) {
         if (!confirm(`Hide "${showTitle}" from the TV dashboard?\n\nYou can unignore it from the show's detail page.`)) return;
@@ -292,7 +313,11 @@
         <!-- ▌UPCOMING EPISODES ─────────────────────────────────────── -->
         <section class="smart-section">
             <h2 class="section-title">Upcoming Episodes</h2>
-            <CalendarStrip days={data.sections.airingThisWeek} />
+            {#if calendarLoading}
+                <div class="calendar-loading"><span class="loading loading-spinner loading-md"></span></div>
+            {:else}
+                <CalendarStrip days={calendarDays} weekOffset={calendarOffset} onNavigate={navigateCalendar} />
+            {/if}
         </section>
 
         <!-- ▌NEW EPISODES (poster scroll with NEW badges) ──────────── -->
@@ -638,5 +663,12 @@
     .ignore-btn:hover {
         background: oklch(var(--er) / 0.8);
         color: oklch(var(--erc));
+    }
+
+    .calendar-loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 40px 0;
     }
 </style>
