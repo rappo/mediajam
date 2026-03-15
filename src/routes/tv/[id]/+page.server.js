@@ -81,8 +81,20 @@ export async function load({ params }) {
                 if (detail.backdrop_path && !show.backdrop_url) show.backdrop_url = `https://image.tmdb.org/t/p/w1280${detail.backdrop_path}`;
 
                 // Fetch episodes for each season
+                // Use upsert pattern: update existing episodes with TMDB metadata, only insert truly new ones
+                const findExisting = db.prepare(
+                    'SELECT id, jellyfin_id FROM media_children WHERE parent_id = ? AND season_number = ? AND item_number = ? LIMIT 1'
+                );
+                const updateExisting = db.prepare(`
+                    UPDATE media_children SET
+                        overview = COALESCE(overview, ?),
+                        premiere_date = COALESCE(premiere_date, ?),
+                        community_rating = COALESCE(community_rating, ?),
+                        title = CASE WHEN title LIKE 'Episode %' THEN ? ELSE title END
+                    WHERE id = ?
+                `);
                 const insertEp = db.prepare(`
-                    INSERT OR IGNORE INTO media_children
+                    INSERT INTO media_children
                     (parent_id, title, season_number, item_number, is_collected, watch_status, overview, premiere_date, community_rating)
                     VALUES (?, ?, ?, ?, 0, 'unwatched', ?, ?, ?)
                 `);
@@ -95,15 +107,28 @@ export async function load({ params }) {
                             const seasonData = await seasonRes.json();
                             db.transaction(() => {
                                 for (const ep of (seasonData.episodes || [])) {
-                                    insertEp.run(
-                                        showId,
-                                        ep.name || `Episode ${ep.episode_number}`,
-                                        sn,
-                                        ep.episode_number,
-                                        ep.overview || null,
-                                        ep.air_date || null,
-                                        ep.vote_average || null
-                                    );
+                                    const existing = /** @type {any} */ (findExisting.get(showId, sn, ep.episode_number));
+                                    if (existing) {
+                                        // Update existing episode with TMDB metadata
+                                        updateExisting.run(
+                                            ep.overview || null,
+                                            ep.air_date || null,
+                                            ep.vote_average || null,
+                                            ep.name || `Episode ${ep.episode_number}`,
+                                            existing.id
+                                        );
+                                    } else {
+                                        // No existing episode — insert new uncollected entry
+                                        insertEp.run(
+                                            showId,
+                                            ep.name || `Episode ${ep.episode_number}`,
+                                            sn,
+                                            ep.episode_number,
+                                            ep.overview || null,
+                                            ep.air_date || null,
+                                            ep.vote_average || null
+                                        );
+                                    }
                                 }
                             })();
                         }
@@ -214,6 +239,42 @@ export async function load({ params }) {
                 console.warn('[tv] Rating backfill failed:', e instanceof Error ? e.message : e);
             }
         }
+    }
+
+    // ── Dedup: remove orphaned TMDB-only duplicate episodes ──────────────────
+    // When both Jellyfin sync and TMDB enrichment create the same episode,
+    // keep the Jellyfin one (has jellyfin_id, is_collected=1) and delete the TMDB one
+    const duplicates = /** @type {any[]} */ (db.prepare(`
+        SELECT mc1.id AS tmdb_id, mc2.id AS jellyfin_row_id
+        FROM media_children mc1
+        JOIN media_children mc2
+            ON mc1.parent_id = mc2.parent_id
+            AND mc1.season_number = mc2.season_number
+            AND mc1.item_number = mc2.item_number
+            AND mc1.id != mc2.id
+        WHERE mc1.parent_id = ?
+            AND mc1.jellyfin_id IS NULL
+            AND mc2.jellyfin_id IS NOT NULL
+    `).all(showId));
+
+    if (duplicates.length > 0) {
+        db.transaction(() => {
+            for (const dup of duplicates) {
+                // Move any useful metadata from TMDB row to Jellyfin row before deleting
+                const tmdbRow = /** @type {any} */ (db.prepare('SELECT overview, premiere_date, community_rating FROM media_children WHERE id = ?').get(dup.tmdb_id));
+                if (tmdbRow) {
+                    db.prepare(`
+                        UPDATE media_children SET
+                            overview = COALESCE(overview, ?),
+                            premiere_date = COALESCE(premiere_date, ?),
+                            community_rating = COALESCE(community_rating, ?)
+                        WHERE id = ?
+                    `).run(tmdbRow.overview, tmdbRow.premiere_date, tmdbRow.community_rating, dup.jellyfin_row_id);
+                }
+                db.prepare('DELETE FROM media_children WHERE id = ?').run(dup.tmdb_id);
+            }
+        })();
+        console.log(`[tv] Deduped ${duplicates.length} duplicate episodes for show ${showId}`);
     }
 
     const episodes = /** @type {any[]} */ (db.prepare(`
