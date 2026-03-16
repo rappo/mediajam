@@ -37,5 +37,8 @@ jobs:
       - name: Deploy
         run: |
           docker compose -f docker-compose.yml -p mediajam pull
+          # Remove any pre-existing container not managed by this compose project
+          docker stop mediajam 2>/dev/null || true
+          docker rm mediajam 2>/dev/null || true
           docker compose -f docker-compose.yml -p mediajam up -d --force-recreate
           echo "✅ Deployed $(docker inspect --format='{{.Image}}' mediajam | cut -c1-12)"
