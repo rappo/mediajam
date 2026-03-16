@@ -169,16 +169,19 @@ export function getPersonRecommendations(userId, prefs) {
         const movieIds = movies.map(m => m.id);
         const ph = movieIds.map(() => '?').join(',');
 
-        // Pre-compute which person IDs the user has watched (single flat query)
-        const watchedPersonIds = new Set(
-            /** @type {any[]} */ (db.prepare(`
-                SELECT DISTINCT pc.person_id
-                FROM playback_history ph2
-                JOIN media_children mc2 ON ph2.media_id = mc2.id
-                JOIN person_credits pc ON pc.media_parent_id = mc2.parent_id
-                WHERE ph2.user_id = ?
-            `).all(userId)).map(r => r.person_id)
-        );
+        // Pre-compute which person IDs the user has watched (cached once for all sections)
+        if (!watchedPersonIdsCache) {
+            watchedPersonIdsCache = new Set(
+                /** @type {any[]} */ (db.prepare(`
+                    SELECT DISTINCT pc.person_id
+                    FROM playback_history ph2
+                    JOIN media_children mc2 ON ph2.media_id = mc2.id
+                    JOIN person_credits pc ON pc.media_parent_id = mc2.parent_id
+                    WHERE ph2.user_id = ?
+                `).all(userId)).map(r => r.person_id)
+            );
+        }
+        const watchedPersonIds = watchedPersonIdsCache;
 
         const credits = /** @type {any[]} */ (db.prepare(`
             SELECT pc.media_parent_id, p.name, p.id as person_id, pc.role_type, p.is_favorite
@@ -254,6 +257,9 @@ export function getPersonRecommendations(userId, prefs) {
     const eligible = [];
     /** @type {Set<string>} */
     const usedKeys = new Set();
+    /** @type {Set<number>|null} */
+    let watchedPersonIdsCache = null;
+    const maxSections = prefs.maxPersonSections;
 
     // ── Tier 1: Favorited people ────────────────────────────────────────
     const favorited = /** @type {any[]} */ (db.prepare(`
@@ -266,7 +272,7 @@ export function getPersonRecommendations(userId, prefs) {
           AND pc.role_type IN ('actor', 'director') AND mp.media_type = 'movie'
         GROUP BY p.id, pc.role_type
         ORDER BY total_movies DESC
-        LIMIT 20
+        LIMIT 5
     `).all());
 
     for (const person of favorited) {
@@ -282,6 +288,7 @@ export function getPersonRecommendations(userId, prefs) {
             sectionTitle: `Because You Favorited ${person.name}`,
             items: unwatched,
         });
+        if (eligible.length >= maxSections) break;
     }
 
     // ── Tier 2: Most-watched people (3+ movies watched) ────────────────
@@ -301,10 +308,12 @@ export function getPersonRecommendations(userId, prefs) {
         GROUP BY p.id, pc.role_type
         HAVING watched_count >= 3
         ORDER BY watched_count DESC
-        LIMIT 30
+        LIMIT 8
     `).all(userId));
 
+    if (eligible.length < maxSections) {
     for (const person of mostWatched) {
+        if (eligible.length >= maxSections) break;
         const key = `${person.person_id}-${person.role_type}`;
         if (usedKeys.has(key)) continue;
         const unwatched = getUnwatchedByPerson(person.person_id, person.role_type);
@@ -318,9 +327,10 @@ export function getPersonRecommendations(userId, prefs) {
             items: unwatched,
         });
     }
+    }
 
-    // ── Tier 3: Most-credited people (fallback, skip if enough found) ──
-    if (eligible.length < prefs.maxPersonSections) {
+    // ── Tier 3: Most-credited people (fallback, only if we need more) ──
+    if (eligible.length < maxSections) {
         const topCredited = /** @type {any[]} */ (db.prepare(`
             SELECT p.id as person_id, p.name, pc.role_type,
                    COUNT(DISTINCT pc.media_parent_id) as total_movies
@@ -331,10 +341,11 @@ export function getPersonRecommendations(userId, prefs) {
             GROUP BY p.id, pc.role_type
             HAVING total_movies >= 3
             ORDER BY total_movies DESC
-            LIMIT 30
+            LIMIT 8
         `).all());
 
         for (const person of topCredited) {
+            if (eligible.length >= maxSections) break;
             const key = `${person.person_id}-${person.role_type}`;
             if (usedKeys.has(key)) continue;
             const unwatched = getUnwatchedByPerson(person.person_id, person.role_type);
