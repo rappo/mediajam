@@ -20,28 +20,50 @@
 
     let showLibrary = $state(false);
 
-    // Deferred data loaded client-side
-    let loaded = $state(false);
-    let movies = $state([]);
-    let moviesByDecade = $state([]);
-    let moviesByYear = $state([]);
-    let mostRewatched = $state([]);
-    let sections = $state({ hero: null, recommended: [], personRecs: [], recentlyWatched: [], unwatched: [] });
+    // Smart sections — loaded on mount
+    let sectionsLoaded = $state(false);
+    let sections = $state(/** @type {any} */ ({ hero: null, recommended: [], personRecs: [], recentlyWatched: [], unwatched: [] }));
+
+    // Library data — loaded lazily on toggle
+    let libraryLoaded = $state(false);
+    let libraryLoading = $state(false);
+    let movies = $state(/** @type {any[]} */ ([]));
+    let moviesByDecade = $state(/** @type {any[]} */ ([]));
+    let moviesByYear = $state(/** @type {any[]} */ ([]));
+    let mostRewatched = $state(/** @type {any[]} */ ([]));
 
     onMount(async () => {
         try {
             const res = await fetch('/api/pages/movies');
             const d = await res.json();
-            movies = d.movies;
-            moviesByDecade = d.moviesByDecade;
-            moviesByYear = d.moviesByYear;
-            mostRewatched = d.mostRewatched;
             sections = d.sections;
         } catch (e) {
             console.error('[movies] Failed to load sections:', e);
         }
-        loaded = true;
+        sectionsLoaded = true;
     });
+
+    async function loadLibrary() {
+        if (libraryLoaded || libraryLoading) return;
+        libraryLoading = true;
+        try {
+            const res = await fetch('/api/pages/movies?view=library');
+            const d = await res.json();
+            movies = d.movies;
+            moviesByDecade = d.moviesByDecade;
+            moviesByYear = d.moviesByYear;
+            mostRewatched = d.mostRewatched;
+            libraryLoaded = true;
+        } catch (e) {
+            console.error('[movies] Failed to load library:', e);
+        }
+        libraryLoading = false;
+    }
+
+    function toggleLibrary() {
+        showLibrary = !showLibrary;
+        if (showLibrary && !libraryLoaded) loadLibrary();
+    }
 
     /** @param {string} ts */
     function timeAgo(ts) {
@@ -177,14 +199,14 @@
                 {data.totalMovies.toLocaleString()} films · {data.movieStats.watched.toLocaleString()} watched · {data.runtimeHours.toLocaleString()}h total runtime
             </p>
         </div>
-        <button class="btn btn-ghost btn-sm" onclick={() => showLibrary = !showLibrary}>
+        <button class="btn btn-ghost btn-sm" onclick={toggleLibrary}>
             {showLibrary ? '← Back to Home' : 'Library & Stats →'}
         </button>
     </div>
 
     {#if showLibrary}
         <!-- ═══ LIBRARY VIEW ═══ -->
-        {#if !loaded}
+        {#if libraryLoading || !libraryLoaded}
             <Skeleton type="stat-cards" />
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Skeleton type="chart" />
@@ -228,7 +250,7 @@
     {:else}
         <!-- ═══ SMART HOME VIEW ═══ -->
 
-        {#if !loaded}
+        {#if !sectionsLoaded}
             <!-- Skeleton placeholders while sections load -->
             <Skeleton type="poster-row" />
             <Skeleton type="poster-row" />

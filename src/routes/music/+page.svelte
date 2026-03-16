@@ -12,8 +12,14 @@
 
     let showLibrary = $state(false);
 
-    // Deferred data loaded client-side
-    let loaded = $state(false);
+    // Smart sections — loaded on mount
+    let sectionsLoaded = $state(false);
+    let sections = $state(/** @type {any} */ ({ recentListening: [], newFromFavorites: [], rediscover: [], heavyRotation: [], unplayedAlbums: [], itsBeenAWhile: [] }));
+    let timeFilters = $state(/** @type {any} */ ({ rotationTime: '30', recentTime: '0', awhileTime: '6' }));
+
+    // Library data — loaded lazily on toggle
+    let libraryLoaded = $state(false);
+    let libraryLoading = $state(false);
     let artists = $state(/** @type {any[]} */ ([]));
     let topArtistsByAlbums = $state(/** @type {any[]} */ ([]));
     let topArtistsByPlays = $state(/** @type {any[]} */ ([]));
@@ -23,12 +29,27 @@
     let pagination = $state(/** @type {any} */ ({ page: 1, perPage: 50, total: 0, totalPages: 0 }));
     let searchVal = $state('');
     let sortVal = $state('plays');
-    let sections = $state(/** @type {any} */ ({ recentListening: [], newFromFavorites: [], rediscover: [], heavyRotation: [], unplayedAlbums: [], itsBeenAWhile: [] }));
-    let timeFilters = $state(/** @type {any} */ ({ rotationTime: '30', recentTime: '0', awhileTime: '6' }));
 
     onMount(async () => {
         try {
-            const res = await fetch('/api/pages/music' + window.location.search);
+            const qs = window.location.search;
+            const res = await fetch('/api/pages/music' + qs);
+            const d = await res.json();
+            sections = d.sections;
+            timeFilters = d.timeFilters;
+        } catch (e) {
+            console.error('[music] Failed to load sections:', e);
+        }
+        sectionsLoaded = true;
+    });
+
+    async function loadLibrary() {
+        if (libraryLoaded || libraryLoading) return;
+        libraryLoading = true;
+        try {
+            const qs = window.location.search;
+            const sep = qs ? '&' : '?';
+            const res = await fetch(`/api/pages/music${qs}${sep}view=library`);
             const d = await res.json();
             artists = d.artists;
             topArtistsByAlbums = d.topArtistsByAlbums;
@@ -39,13 +60,17 @@
             pagination = d.pagination;
             searchVal = d.search || '';
             sortVal = d.sort || 'plays';
-            sections = d.sections;
-            timeFilters = d.timeFilters;
+            libraryLoaded = true;
         } catch (e) {
-            console.error('[music] Failed to load sections:', e);
+            console.error('[music] Failed to load library:', e);
         }
-        loaded = true;
-    });
+        libraryLoading = false;
+    }
+
+    function toggleLibrary() {
+        showLibrary = !showLibrary;
+        if (showLibrary && !libraryLoaded) loadLibrary();
+    }
 
     /** @param {string} ts */
     function timeAgo(ts) {
@@ -204,14 +229,14 @@
                 {data.totalArtists.toLocaleString()} artists · {data.totalAlbums.toLocaleString()} albums · {data.totalPlays.toLocaleString()} plays
             </p>
         </div>
-        <button class="btn btn-ghost btn-sm" onclick={() => showLibrary = !showLibrary}>
+        <button class="btn btn-ghost btn-sm" onclick={toggleLibrary}>
             {showLibrary ? '← Back to Home' : 'Library & Stats →'}
         </button>
     </div>
 
     {#if showLibrary}
         <!-- ═══ LIBRARY VIEW ═══ -->
-        {#if !loaded}
+        {#if libraryLoading || !libraryLoaded}
             <Skeleton type="stat-cards" />
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Skeleton type="chart" />
@@ -285,7 +310,7 @@
     {:else}
         <!-- ═══ SMART HOME VIEW ═══ -->
 
-        {#if !loaded}
+        {#if !sectionsLoaded}
             <Skeleton type="poster-row" />
             <Skeleton type="poster-row" />
             <Skeleton type="poster-row" />

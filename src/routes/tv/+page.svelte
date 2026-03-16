@@ -15,19 +15,37 @@
     /** @type {Set<number>} */
     let hiddenShows = $state(new Set());
 
-    // Deferred data loaded client-side
-    let loaded = $state(false);
+    // Smart sections — loaded on mount
+    let sectionsLoaded = $state(false);
+    let sections = $state(/** @type {any} */ ({ airingThisWeek: [], newUnwatched: [], behindOn: [], comingUp: [], recentlyWatched: [] }));
+
+    // Library data — loaded lazily on toggle
+    let libraryLoaded = $state(false);
+    let libraryLoading = $state(false);
     let shows = $state(/** @type {any[]} */ ([]));
     let topShowsByWatchCount = $state(/** @type {any[]} */ ([]));
     let showsByYear = $state(/** @type {any[]} */ ([]));
     let completionBuckets = $state(/** @type {any} */ ({}));
     let collectionBuckets = $state(/** @type {any} */ ({}));
     let collectionStats = $state(/** @type {any} */ ({ totalCollected: 0, totalReleased: 0, overallPct: 100 }));
-    let sections = $state(/** @type {any} */ ({ airingThisWeek: [], newUnwatched: [], behindOn: [], comingUp: [], recentlyWatched: [] }));
 
     onMount(async () => {
         try {
             const res = await fetch('/api/pages/tv');
+            const d = await res.json();
+            sections = d.sections;
+            calendarDays = d.sections.airingThisWeek || [];
+        } catch (e) {
+            console.error('[tv] Failed to load sections:', e);
+        }
+        sectionsLoaded = true;
+    });
+
+    async function loadLibrary() {
+        if (libraryLoaded || libraryLoading) return;
+        libraryLoading = true;
+        try {
+            const res = await fetch('/api/pages/tv?view=library');
             const d = await res.json();
             shows = d.shows;
             topShowsByWatchCount = d.topShowsByWatchCount;
@@ -35,13 +53,17 @@
             completionBuckets = d.completionBuckets;
             collectionBuckets = d.collectionBuckets;
             collectionStats = d.collectionStats;
-            sections = d.sections;
-            calendarDays = d.sections.airingThisWeek || [];
+            libraryLoaded = true;
         } catch (e) {
-            console.error('[tv] Failed to load sections:', e);
+            console.error('[tv] Failed to load library:', e);
         }
-        loaded = true;
-    });
+        libraryLoading = false;
+    }
+
+    function toggleLibrary() {
+        showLibrary = !showLibrary;
+        if (showLibrary && !libraryLoaded) loadLibrary();
+    }
 
     /** @type {Array<{ date: string, episodes: any[] }>} */
     let calendarDays = $state([]);
@@ -232,14 +254,14 @@
                 {data.totalShows} shows · {data.episodeStats.total.toLocaleString()} episodes · {data.runtimeHours.toLocaleString()}h total
             </p>
         </div>
-        <button class="btn btn-ghost btn-sm" onclick={() => showLibrary = !showLibrary}>
+        <button class="btn btn-ghost btn-sm" onclick={toggleLibrary}>
             {showLibrary ? '← Back to Home' : 'Library & Stats →'}
         </button>
     </div>
 
     {#if showLibrary}
         <!-- ═══ LIBRARY VIEW ═══ -->
-        {#if !loaded}
+        {#if libraryLoading || !libraryLoaded}
             <Skeleton type="stat-cards" />
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Skeleton type="chart" />
@@ -273,7 +295,7 @@
     {:else}
         <!-- ═══ SMART HOME VIEW ═══ -->
 
-        {#if !loaded}
+        {#if !sectionsLoaded}
             <Skeleton type="poster-row" />
             <Skeleton type="poster-row" />
             <Skeleton type="poster-row" />
@@ -407,7 +429,7 @@
                 </div>
             </section>
         {/if}
-        {/if} <!-- end loaded -->
+        {/if} <!-- end sectionsLoaded -->
     {/if}
 </div>
 

@@ -13,13 +13,9 @@ import { json } from '@sveltejs/kit';
 export function GET({ locals, url }) {
     const userId = locals.user?.id || 0;
     const prefs = getHomepagePrefs();
-    const page = parseInt(url.searchParams.get('page') || '1');
-    const perPage = 50;
-    const offset = (page - 1) * perPage;
-    const search = url.searchParams.get('q') || '';
-    const sort = url.searchParams.get('sort') || 'plays';
+    const view = url.searchParams.get('view') || 'smart';
 
-    // Time filter params
+    // Time filter params (used by both views)
     const TIME_MAP = { '7': 7, '30': 30, '90': 90, '180': 180, '365': 365, '0': 0 };
     const rotationTime = url.searchParams.get('rotation_time') || '30';
     const recentTime = url.searchParams.get('recent_time') || '0';
@@ -29,57 +25,61 @@ export function GET({ locals, url }) {
     const AWHILE_MAP = { '3': 3, '6': 6, '12': 12, '24': 24 };
     const awhileMonths = AWHILE_MAP[awhileTime] ?? 6;
 
-    // Build sort clause
-    let orderBy = 'total_plays DESC';
-    if (sort === 'albums') orderBy = 'mp.collected_children DESC';
-    else if (sort === 'name') orderBy = 'mp.title ASC';
+    if (view === 'library') {
+        // ── LIBRARY VIEW: table + charts ──────────────────────────
+        const page = parseInt(url.searchParams.get('page') || '1');
+        const perPage = 50;
+        const offset = (page - 1) * perPage;
+        const search = url.searchParams.get('q') || '';
+        const sort = url.searchParams.get('sort') || 'plays';
 
-    const searchFilter = search ? "AND mp.title LIKE '%' || ? || '%'" : '';
-    const searchParams = search ? [search] : [];
+        let orderBy = 'total_plays DESC';
+        if (sort === 'albums') orderBy = 'mp.collected_children DESC';
+        else if (sort === 'name') orderBy = 'mp.title ASC';
 
-    const totalArtists = /** @type {any} */ (
-        db.prepare('SELECT COUNT(*) as c FROM media_parents WHERE media_type = ?').get('artist')
-    ).c;
+        const searchFilter = search ? "AND mp.title LIKE '%' || ? || '%'" : '';
+        const searchParams = search ? [search] : [];
 
-    // Paginated artists
-    const artists = /** @type {any[]} */ (db.prepare(`
-        SELECT
-            mp.id, mp.title, mp.poster_url, mp.collection_status,
-            mp.collected_children as album_count, mp.total_released_children,
-            mp.arr_status, mp.musicbrainz_id,
-            COALESCE(pc.play_count, 0) as total_plays,
-            CASE WHEN mp.total_released_children > 0
-                THEN ROUND(CAST(mp.collected_children AS REAL) / mp.total_released_children * 100, 1)
-                ELSE NULL END as collection_pct
-        FROM media_parents mp
-        LEFT JOIN (
-            SELECT mc2.parent_id, COUNT(*) as play_count
-            FROM (
-                SELECT DISTINCT ph.media_id, CAST(strftime('%s', ph.timestamp) / 300 AS INTEGER) as time_bucket
-                FROM playback_history ph WHERE ph.user_id = ?
-            ) deduped
-            JOIN media_children mc2 ON deduped.media_id = mc2.id
-            GROUP BY mc2.parent_id
-        ) pc ON pc.parent_id = mp.id
-        WHERE mp.media_type = 'artist' ${searchFilter}
-        ORDER BY ${orderBy}
-        LIMIT ? OFFSET ?
-    `).all(userId, ...searchParams, perPage, offset));
+        const totalArtists = /** @type {any} */ (
+            db.prepare('SELECT COUNT(*) as c FROM media_parents WHERE media_type = ?').get('artist')
+        ).c;
 
-    for (const a of artists) { a.watch_count = a.total_plays; }
+        const artists = /** @type {any[]} */ (db.prepare(`
+            SELECT
+                mp.id, mp.title, mp.poster_url, mp.collection_status,
+                mp.collected_children as album_count, mp.total_released_children,
+                mp.arr_status, mp.musicbrainz_id,
+                COALESCE(pc.play_count, 0) as total_plays,
+                CASE WHEN mp.total_released_children > 0
+                    THEN ROUND(CAST(mp.collected_children AS REAL) / mp.total_released_children * 100, 1)
+                    ELSE NULL END as collection_pct
+            FROM media_parents mp
+            LEFT JOIN (
+                SELECT mc2.parent_id, COUNT(*) as play_count
+                FROM (
+                    SELECT DISTINCT ph.media_id, CAST(strftime('%s', ph.timestamp) / 300 AS INTEGER) as time_bucket
+                    FROM playback_history ph WHERE ph.user_id = ?
+                ) deduped
+                JOIN media_children mc2 ON deduped.media_id = mc2.id
+                GROUP BY mc2.parent_id
+            ) pc ON pc.parent_id = mp.id
+            WHERE mp.media_type = 'artist' ${searchFilter}
+            ORDER BY ${orderBy}
+            LIMIT ? OFFSET ?
+        `).all(userId, ...searchParams, perPage, offset));
 
-    const filteredTotal = search
-        ? /** @type {any} */ (db.prepare(
-            `SELECT COUNT(*) as c FROM media_parents WHERE media_type = 'artist' AND title LIKE '%' || ? || '%'`
-        ).get(search)).c
-        : totalArtists;
+        for (const a of artists) { a.watch_count = a.total_plays; }
 
-    const totalPages = Math.ceil(filteredTotal / perPage);
+        const filteredTotal = search
+            ? /** @type {any} */ (db.prepare(
+                `SELECT COUNT(*) as c FROM media_parents WHERE media_type = 'artist' AND title LIKE '%' || ? || '%'`
+            ).get(search)).c
+            : totalArtists;
 
-    // Charts
-    let topArtistsByAlbums = [], topArtistsByPlays = [], albumDistData = [];
-    if (page === 1 && !search) {
-        topArtistsByAlbums = /** @type {any[]} */ (db.prepare(`
+        const totalPages = Math.ceil(filteredTotal / perPage);
+
+        // Charts
+        const topArtistsByAlbums = /** @type {any[]} */ (db.prepare(`
             SELECT title, collected_children as album_count
             FROM media_parents WHERE media_type = 'artist'
             ORDER BY collected_children DESC LIMIT 15
@@ -88,7 +88,7 @@ export function GET({ locals, url }) {
             y: a.album_count
         }));
 
-        topArtistsByPlays = /** @type {any[]} */ (db.prepare(`
+        const topArtistsByPlays = /** @type {any[]} */ (db.prepare(`
             SELECT mp.title, COALESCE(SUM(mc.play_count), 0) as total_plays
             FROM media_parents mp
             LEFT JOIN media_children mc ON mc.parent_id = mp.id
@@ -100,7 +100,7 @@ export function GET({ locals, url }) {
             y: a.total_plays
         }));
 
-        albumDistData = /** @type {any[]} */ (db.prepare(`
+        const albumDistData = /** @type {any[]} */ (db.prepare(`
             SELECT
                 CASE WHEN collected_children >= 10 THEN '10+' ELSE CAST(collected_children AS TEXT) END as bucket,
                 COUNT(*) as cnt
@@ -111,21 +111,37 @@ export function GET({ locals, url }) {
             const bn = b.bucket === '10+' ? 10 : Number(b.bucket);
             return an - bn;
         }).map(r => ({ label: `${r.bucket} albums`, y: r.cnt }));
+
+        // Collection stats
+        let totalCollected = 0, totalReleased = 0;
+        const collectionBuckets = { complete: 0, partial: 0, missing: 0 };
+        for (const a of artists) {
+            totalCollected += a.album_count || 0;
+            totalReleased += a.total_released_children || 0;
+            if (a.collection_pct === null || a.collection_pct === undefined) { /* unknown */ }
+            else if (a.collection_pct >= 100) collectionBuckets.complete++;
+            else if (a.collection_pct > 0) collectionBuckets.partial++;
+            else collectionBuckets.missing++;
+        }
+
+        return json({
+            artists,
+            topArtistsByAlbums,
+            topArtistsByPlays,
+            albumDistData,
+            collectionBuckets,
+            collectionStats: {
+                totalCollected,
+                totalReleased,
+                overallPct: totalReleased > 0 ? Math.round((totalCollected / totalReleased) * 100) : 100
+            },
+            pagination: { page, perPage, total: filteredTotal, totalPages },
+            search,
+            sort,
+        });
     }
 
-    // Collection stats
-    let totalCollected = 0, totalReleased = 0;
-    const collectionBuckets = { complete: 0, partial: 0, missing: 0 };
-    for (const a of artists) {
-        totalCollected += a.album_count || 0;
-        totalReleased += a.total_released_children || 0;
-        if (a.collection_pct === null || a.collection_pct === undefined) { /* unknown */ }
-        else if (a.collection_pct >= 100) collectionBuckets.complete++;
-        else if (a.collection_pct > 0) collectionBuckets.partial++;
-        else collectionBuckets.missing++;
-    }
-
-    // Smart Sections
+    // ── SMART VIEW: just sections ─────────────────────────────
     let recentListening = [], newFromFavorites = [], rediscover = [];
     let heavyRotation = [], unplayedAlbums = [], itsBeenAWhile = [];
     try {
@@ -140,19 +156,6 @@ export function GET({ locals, url }) {
     }
 
     return json({
-        artists,
-        topArtistsByAlbums,
-        topArtistsByPlays,
-        albumDistData,
-        collectionBuckets,
-        collectionStats: {
-            totalCollected,
-            totalReleased,
-            overallPct: totalReleased > 0 ? Math.round((totalCollected / totalReleased) * 100) : 100
-        },
-        pagination: { page, perPage, total: filteredTotal, totalPages },
-        search,
-        sort,
         sections: { recentListening, newFromFavorites, rediscover, heavyRotation, unplayedAlbums, itsBeenAWhile },
         timeFilters: { rotationTime, recentTime, awhileTime },
     });
