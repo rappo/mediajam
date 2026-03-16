@@ -278,60 +278,17 @@ export async function syncJellyfinHistory(userId) {
         });
 
         // ── Audio ───────────────────────────────────────────────────────────
-        broadcast({ log: '🎵 Fetching played audio from Jellyfin...', logType: 'info' });
-        const audioRes = await itemsApi.getItems({
-            userId: jellyfinUserId,
-            includeItemTypes: ['Audio'],
-            isPlayed: true,
-            recursive: true,
-            fields: [],
-            enableUserData: true,
-            limit: 50000,
-        });
-
-        const tracks = audioRes.data.Items || [];
-        broadcast({ log: `🎵 Found ${tracks.length} played audio tracks`, logType: 'info' });
-        logInfo('jellyfin-history', `Found ${tracks.length} played audio tracks`);
-
-        const findTrackByJellyfinId = db.prepare(
-            'SELECT mc.id as media_child_id FROM tracks t JOIN media_children mc ON mc.id = t.album_id WHERE t.jellyfin_id = ?'
-        );
-
-        // Batch all audio inserts in a single transaction for performance
-        db.transaction(() => {
-            for (let idx = 0; idx < tracks.length; idx++) {
-                const track = tracks[idx];
-                let mediaId = null;
-                const trackRow = /** @type {any} */ (findTrackByJellyfinId.get(track.Id));
-                if (trackRow) {
-                    mediaId = trackRow.media_child_id;
-                } else {
-                    const child = /** @type {any} */ (findChildByJellyfinId.get(track.Id));
-                    if (child) mediaId = child.id;
-                }
-
-                if (!mediaId) { notFound++; continue; }
-
-                const playedDate = track.UserData?.LastPlayedDate || null;
-                if (!track.UserData?.LastPlayedDate) noDate++;
-
-                const eventId = `jellyfin:audio:${track.Id}`;
-                try {
-                    const result = insertHistory.run({ userId, mediaId, timestamp: playedDate, externalEventId: eventId });
-                    if (result.changes > 0) synced++;
-                    else skipped++;
-                } catch (e) {
-                    errors++;
-                    logError('jellyfin-history', `Error inserting track ${track.Name}: ${e instanceof Error ? e.message : String(e)}`);
-                }
-            }
-        })();
+        // SKIPPED: Audio playback is tracked by the Playback Reporting DB poller
+        // (pr-poller.js) which records per-play events with accurate timestamps
+        // and track names. Jellyfin's API only exposes LastPlayedDate (most recent
+        // play, not per-play), so importing audio here creates phantom entries for
+        // every historically-played track with today's date.
         broadcast({
             type: 'jellyfin_history_progress',
             phase: 'audio',
-            done: tracks.length,
-            total: tracks.length,
-            log: `🎵 Audio: ${tracks.length}/${tracks.length} (${synced} synced)`,
+            done: 0,
+            total: 0,
+            log: `🎵 Audio: skipped (handled by Playback Reporting poller)`,
             logType: 'info'
         });
 
@@ -347,7 +304,7 @@ export async function syncJellyfinHistory(userId) {
             noDate,
             notFound,
             errors,
-            total: movies.length + episodes.length + tracks.length,
+            total: movies.length + episodes.length,
         });
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);

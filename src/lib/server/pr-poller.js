@@ -1,7 +1,6 @@
 import db from '$lib/server/db.js';
 import Database from 'better-sqlite3';
 import { logInfo, logError } from '$lib/server/logger.js';
-import { getJellyfinApis, getItemsApi } from '$lib/server/jellyfin.js';
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const DEFAULT_PR_PATH = '/app/jellyfin/playback_reporting.db';
@@ -71,7 +70,7 @@ function pollForNewPlays() {
         const WATCHED_THRESHOLD_PCT = 80;
 
         const findChild = db.prepare('SELECT id FROM media_children WHERE jellyfin_id = ?');
-        const findTrack = db.prepare('SELECT t.album_id, t.title as track_title FROM tracks t WHERE t.jellyfin_id = ?');
+        const findTrack = db.prepare('SELECT t.album_id, t.title as track_title, t.runtime_ticks as track_runtime_ticks FROM tracks t WHERE t.jellyfin_id = ?');
         const findChildRuntime = db.prepare(
             'SELECT mc.runtime_ticks, mp.media_type FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mc.id = ?'
         );
@@ -108,12 +107,14 @@ function pollForNewPlays() {
                 let child = /** @type {any} */ (findChild.get(itemId));
                 if (!child) child = /** @type {any} */ (findChild.get(itemId + '_child'));
                 let trackName = null;
+                let trackRuntimeTicks = null;
                 if (!child) {
                     // Music: track IDs are stored in the tracks table, not media_children
                     const track = /** @type {any} */ (findTrack.get(itemId));
                     if (track) {
                         child = { id: track.album_id };
                         trackName = track.track_title;
+                        trackRuntimeTicks = track.track_runtime_ticks || null;
                     }
                 }
                 if (!child) { skipped++; continue; }
@@ -138,11 +139,26 @@ function pollForNewPlays() {
                 lastItemId = itemId;
 
                 // Calculate actual completion percentage from play duration vs runtime
+                // For music tracks, use the individual track runtime (not the album)
                 const childInfo = /** @type {any} */ (findChildRuntime.get(child.id));
-                const runtimeSeconds = childInfo?.runtime_ticks ? Math.round(childInfo.runtime_ticks / 10000000) : 0;
+                let runtimeSeconds = 0;
+                if (isTrack && trackRuntimeTicks) {
+                    // Individual track runtime from tracks table
+                    runtimeSeconds = Math.round(trackRuntimeTicks / 10000000);
+                } else if (childInfo?.runtime_ticks) {
+                    // Album or video runtime from media_children
+                    runtimeSeconds = Math.round(childInfo.runtime_ticks / 10000000);
+                }
                 let completionPct = 100;
                 if (runtimeSeconds > 0) {
                     completionPct = Math.min(100, Math.round((durationSeconds / runtimeSeconds) * 100));
+                }
+
+                // For music: skip tracks with low completion (likely skipped/browsed)
+                // Require either 50% of the track OR 240 seconds (for very long tracks)
+                if (isTrack && runtimeSeconds > 0 && completionPct < 50 && durationSeconds < 240) {
+                    skipped++;
+                    continue;
                 }
 
                 // DateCreated from PR DB is UTC without 'Z' suffix — normalize to ISO
@@ -198,89 +214,9 @@ function pollForNewPlays() {
     }
 }
 
-/**
- * Supplemental poll: query Jellyfin API for the 5 most recently played audio tracks.
- * Fills gaps where the Playback Reporting plugin doesn't record plays during
- * continuous album playback.
- */
-async function pollRecentAudio() {
-    try {
-        const settings = /** @type {any} */ (
-            db.prepare('SELECT jellyfin_url FROM app_settings WHERE id = 1').get()
-        );
-        const user = /** @type {any} */ (
-            db.prepare('SELECT id, jellyfin_access_token, jellyfin_user_id FROM users LIMIT 1').get()
-        );
-        if (!settings?.jellyfin_url || !user?.jellyfin_access_token || !user?.jellyfin_user_id) return;
-
-        const { api } = getJellyfinApis(settings.jellyfin_url, user.jellyfin_access_token);
-        const itemsApi = getItemsApi(api);
-
-        const res = await itemsApi.getItems({
-            userId: user.jellyfin_user_id,
-            includeItemTypes: ['Audio'],
-            isPlayed: true,
-            sortBy: ['DatePlayed'],
-            sortOrder: ['Descending'],
-            enableUserData: true,
-            limit: 50,
-            fields: [],
-            recursive: true,
-        });
-
-        const tracks = res.data.Items || [];
-        if (tracks.length === 0) return;
-
-        const findTrack = db.prepare(
-            'SELECT mc.id as media_child_id, t.title as track_title FROM tracks t JOIN media_children mc ON mc.id = t.album_id WHERE t.jellyfin_id = ?'
-        );
-        // Check if a play of this track (by same user, same album) already exists within 24 hours
-        const findRecentPlay = db.prepare(`
-            SELECT 1 FROM playback_history
-            WHERE user_id = ? AND media_id = ? AND track_name = ?
-              AND ABS(strftime('%s', timestamp) - strftime('%s', ?)) < 86400
-            LIMIT 1
-        `);
-        const insertHistory = db.prepare(`
-            INSERT OR IGNORE INTO playback_history
-                (user_id, media_id, source, timestamp, completion_pct, external_event_id, track_name)
-            VALUES (@userId, @mediaId, 'jellyfin_pr', @timestamp, 100, @externalEventId, @trackName)
-        `);
-
-        let imported = 0;
-        for (const track of tracks) {
-            const match = /** @type {any} */ (findTrack.get(track.Id));
-            if (!match) continue;
-
-            const playedDate = track.UserData?.LastPlayedDate;
-            if (!playedDate) continue;
-
-            // Skip if we already have a play of this track within 24 hours
-            // (PR DB poll is more accurate; Jellyfin LastPlayedDate can drift on re-scan)
-            const existing = findRecentPlay.get(user.id, match.media_child_id, match.track_title, playedDate);
-            if (existing) continue;
-
-            const eventId = `jellyfin_audio:${track.Id}:${playedDate}`;
-            const result = insertHistory.run({
-                userId: user.id,
-                mediaId: match.media_child_id,
-                timestamp: playedDate,
-                externalEventId: eventId,
-                trackName: match.track_title,
-            });
-            if (result.changes > 0) imported++;
-        }
-
-        if (imported > 0) {
-            console.log(`[pr-poller] Supplemental audio: ${imported} new plays from Jellyfin API`);
-            logInfo('pr-poller', `Supplemental audio: ${imported} new plays`);
-        }
-    } catch (e) {
-        // Non-fatal — PR DB poll is the primary source
-        const msg = e instanceof Error ? e.message : String(e);
-        console.warn(`[pr-poller] Supplemental audio poll failed:`, msg);
-    }
-}
+// pollRecentAudio removed — Jellyfin LastPlayedDate is not a reliable per-play
+// event source. It creates phantom entries when metadata is refreshed. The PR
+// DB poll above is the sole authoritative source for music play events.
 
 /**
  * Start the PR DB poller. Runs an initial poll, then every 5 minutes.
@@ -300,12 +236,10 @@ export function startPrPoller() {
     // Initial poll after short delay (let server finish booting)
     setTimeout(() => {
         pollForNewPlays();
-        pollRecentAudio();
     }, 5000);
 
     intervalId = setInterval(() => {
         pollForNewPlays();
-        pollRecentAudio();
     }, POLL_INTERVAL_MS);
 }
 
