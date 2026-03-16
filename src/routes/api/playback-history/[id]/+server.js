@@ -2,6 +2,28 @@ import db from '$lib/server/db.js';
 import { json, error } from '@sveltejs/kit';
 
 /** @type {import('./$types').RequestHandler} */
+export async function PATCH({ params, locals, request }) {
+    if (!locals.user) throw error(401, 'Unauthorized');
+
+    const historyId = parseInt(params.id);
+    if (!historyId) throw error(400, 'Invalid ID');
+
+    const body = await request.json();
+    if (!body.timestamp) throw error(400, 'Missing timestamp');
+
+    // Verify the entry belongs to this user
+    const entry = /** @type {any} */ (db.prepare(
+        'SELECT id FROM playback_history WHERE id = ? AND user_id = ?'
+    ).get(historyId, locals.user.id));
+
+    if (!entry) throw error(404, 'History entry not found');
+
+    db.prepare('UPDATE playback_history SET timestamp = ? WHERE id = ?').run(body.timestamp, historyId);
+
+    return json({ success: true });
+}
+
+/** @type {import('./$types').RequestHandler} */
 export async function DELETE({ params, locals }) {
     if (!locals.user) throw error(401, 'Unauthorized');
 

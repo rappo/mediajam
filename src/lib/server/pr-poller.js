@@ -161,16 +161,10 @@ function pollForNewPlays() {
                     continue;
                 }
 
-                // DateCreated from PR DB is in server LOCAL time (no timezone suffix).
-                // Parse through Date() which treats no-suffix strings as local time,
-                // then convert to UTC ISO string for consistent storage.
-                let rawTs = event.DateCreated || '';
-                let timestamp;
-                if (rawTs) {
-                    const localDate = new Date(rawTs.replace(' ', 'T'));
-                    timestamp = isNaN(localDate.getTime()) ? new Date().toISOString() : localDate.toISOString();
-                } else {
-                    timestamp = new Date().toISOString();
+                // DateCreated from PR DB is UTC without 'Z' suffix — normalize to ISO
+                let timestamp = event.DateCreated || new Date().toISOString();
+                if (timestamp && !timestamp.endsWith('Z') && !timestamp.includes('+')) {
+                    timestamp = timestamp.replace(' ', 'T') + 'Z';
                 }
                 const eventId = `jellyfin_pr:${event.rowid}`;
 
