@@ -29,7 +29,9 @@
     /** @param {number} ticks */
     function formatTicks(ticks) {
         if (!ticks) return "—";
-        const totalSeconds = Math.floor(ticks / 10000000);
+        let totalSeconds = Math.floor(ticks / 10000000);
+        // Some tracks have runtime_ticks stored 1000x too large — auto-correct
+        if (totalSeconds > 3600) totalSeconds = Math.floor(ticks / 10000000000);
         const mins = Math.floor(totalSeconds / 60);
         const secs = totalSeconds % 60;
         return `${mins}:${String(secs).padStart(2, "0")}`;
