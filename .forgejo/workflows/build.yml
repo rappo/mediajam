@@ -36,7 +36,6 @@ jobs:
 
       - name: Deploy
         run: |
-          cd /mnt/cache/appdata/stacks/app-mediajam
-          docker compose pull
-          docker compose up -d --force-recreate
+          docker compose -f docker-compose.yml -p mediajam pull
+          docker compose -f docker-compose.yml -p mediajam up -d --force-recreate
           echo "✅ Deployed $(docker inspect --format='{{.Image}}' mediajam | cut -c1-12)"
