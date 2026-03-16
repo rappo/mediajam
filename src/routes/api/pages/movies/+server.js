@@ -12,6 +12,8 @@ import { json } from '@sveltejs/kit';
 /** @type {import('./$types').RequestHandler} */
 export function GET({ locals }) {
     const t0 = Date.now();
+    /** @type {Record<string, number>} */
+    const timing = {};
     const userId = locals.user?.id || 0;
     const prefs = getHomepagePrefs();
 
@@ -50,7 +52,7 @@ export function GET({ locals }) {
         WHERE mp.media_type = 'movie'
         ORDER BY mp.title
     `).all(userId);
-    console.log(`[movies-api] movie list: ${Date.now() - t}ms (${movies.length} rows)`);
+    timing.movieList = Date.now() - t;
 
     // Charts
     t = Date.now();
@@ -78,46 +80,48 @@ export function GET({ locals }) {
         GROUP BY mp.id HAVING COUNT(*) > 1
         ORDER BY play_count DESC LIMIT 10
     `).all();
-    console.log(`[movies-api] charts: ${Date.now() - t}ms`);
+    timing.charts = Date.now() - t;
 
     // Smart Sections
     let hero = null, personRecs = [], recentlyWatched = [], unwatched = [], recommended = [];
+
     t = Date.now();
     try { hero = detectMoviePatterns(userId, prefs); } catch (e) {
         console.error('[movies] hero error:', e instanceof Error ? e.message : e);
     }
-    console.log(`[movies-api] detectMoviePatterns: ${Date.now() - t}ms`);
+    timing.detectMoviePatterns = Date.now() - t;
 
     t = Date.now();
     try { recommended = getRecommendedMovies(userId, prefs.maxItemsPerSection); } catch (e) {
         console.error('[movies] recommended error:', e instanceof Error ? e.message : e);
     }
-    console.log(`[movies-api] getRecommendedMovies: ${Date.now() - t}ms`);
+    timing.getRecommendedMovies = Date.now() - t;
 
     t = Date.now();
     try { personRecs = getPersonRecommendations(userId, prefs); } catch (e) {
         console.error('[movies] personRecs error:', e instanceof Error ? e.message : e);
     }
-    console.log(`[movies-api] getPersonRecommendations: ${Date.now() - t}ms`);
+    timing.getPersonRecommendations = Date.now() - t;
 
     t = Date.now();
     try { recentlyWatched = getRecentlyWatchedMovies(userId, prefs.maxItemsPerSection); } catch (e) {
         console.error('[movies] recentlyWatched error:', e instanceof Error ? e.message : e);
     }
-    console.log(`[movies-api] getRecentlyWatchedMovies: ${Date.now() - t}ms`);
+    timing.getRecentlyWatchedMovies = Date.now() - t;
 
     t = Date.now();
     try { unwatched = getUnwatchedMovies(prefs.maxItemsPerSection); } catch (e) {
         console.error('[movies] unwatched error:', e instanceof Error ? e.message : e);
     }
-    console.log(`[movies-api] getUnwatchedMovies: ${Date.now() - t}ms`);
-    console.log(`[movies-api] TOTAL: ${Date.now() - t0}ms`);
+    timing.getUnwatchedMovies = Date.now() - t;
+    timing.total = Date.now() - t0;
 
     return json({
         movies,
         moviesByDecade,
         moviesByYear,
         mostRewatched,
-        sections: { hero, recommended, personRecs, recentlyWatched, unwatched }
+        sections: { hero, recommended, personRecs, recentlyWatched, unwatched },
+        _timing: timing,
     });
 }
