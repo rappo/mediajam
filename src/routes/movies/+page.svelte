@@ -319,7 +319,14 @@
         {#each sections.personRecs as section}
             <section class="smart-section">
                 <div class="section-header">
-                    <h2 class="section-title">{section.sectionTitle || `More from ${section.person}`}</h2>
+                    <h2 class="section-title">
+                        {#if section.sectionTitle && section.personId}
+                            {@const parts = section.sectionTitle.split(section.person)}
+                            {parts[0]}<a href="/people/{section.personId}" class="person-link">{section.person}</a>{parts.slice(1).join(section.person)}
+                        {:else}
+                            {section.sectionTitle || `More from ${section.person}`}
+                        {/if}
+                    </h2>
                     <span class="section-count">{section.totalInLibrary} films in library · {section.items.length} unwatched</span>
                 </div>
                 <div class="poster-scroll">
@@ -333,7 +340,17 @@
                             {/if}
                             <div class="poster-meta">
                                 <span class="poster-name">{item.title}</span>
-                                <span class="poster-reason">{item.reason}</span>
+                                <span class="poster-reason">
+                                    {#if item.reasonPersonId && item.reasonPersonName && item.reason}
+                                        {@const rParts = item.reason.split(item.reasonPersonName)}
+                                        {rParts[0]}<span class="person-link" role="link" tabindex="0"
+                                            onclick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.href = `/people/${item.reasonPersonId}`; }}
+                                            onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); window.location.href = `/people/${item.reasonPersonId}`; }}}
+                                        >{item.reasonPersonName}</span>{rParts.slice(1).join(item.reasonPersonName)}
+                                    {:else}
+                                        {item.reason}
+                                    {/if}
+                                </span>
                             </div>
                         </a>
                     {/each}
@@ -550,6 +567,19 @@
         font-size: 0.58rem;
         color: oklch(var(--p) / 0.8);
         font-weight: 500;
+    }
+
+    /* Person name links in section titles and reasons */
+    .person-link {
+        color: oklch(var(--p));
+        text-decoration: none;
+        cursor: pointer;
+        transition: color 0.15s, text-decoration 0.15s;
+        font-weight: 600;
+    }
+    .person-link:hover {
+        text-decoration: underline;
+        color: oklch(var(--s));
     }
 
     /* Unwatched badge */

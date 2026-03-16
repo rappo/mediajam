@@ -213,6 +213,8 @@ export function getPersonRecommendations(userId, prefs) {
         for (const movie of movies) {
             const mc = byMovie.get(movie.id) || [];
             let reason = '';
+            let reasonPersonId = null;
+            let reasonPersonName = '';
 
             if (sectionRole === 'actor') {
                 const dir = mc.find(c => c.role_type === 'director');
@@ -222,17 +224,27 @@ export function getPersonRecommendations(userId, prefs) {
 
                 if (dir && !used.has(`d-${dir.name}`)) {
                     reason = `directed by ${dir.name}`;
+                    reasonPersonId = dir.person_id;
+                    reasonPersonName = dir.name;
                     used.add(`d-${dir.name}`);
                 } else if (coFav && !used.has(`s-${coFav.name}`)) {
                     reason = `also starring ${coFav.name}`;
+                    reasonPersonId = coFav.person_id;
+                    reasonPersonName = coFav.name;
                     used.add(`s-${coFav.name}`);
                 } else if (wr && !used.has(`w-${wr.name}`)) {
                     reason = `written by ${wr.name}`;
+                    reasonPersonId = wr.person_id;
+                    reasonPersonName = wr.name;
                     used.add(`w-${wr.name}`);
                 } else if (dir) {
                     reason = `directed by ${dir.name}`;
+                    reasonPersonId = dir.person_id;
+                    reasonPersonName = dir.name;
                 } else if (coAny) {
                     reason = `also starring ${coAny.name}`;
+                    reasonPersonId = coAny.person_id;
+                    reasonPersonName = coAny.name;
                 }
             } else {
                 const favActor = mc.find(c => c.role_type === 'actor' && (c.is_favorite || watchedPersonIds.has(c.person_id)));
@@ -240,16 +252,24 @@ export function getPersonRecommendations(userId, prefs) {
 
                 if (favActor && !used.has(`s-${favActor.name}`)) {
                     reason = `starring ${favActor.name}`;
+                    reasonPersonId = favActor.person_id;
+                    reasonPersonName = favActor.name;
                     used.add(`s-${favActor.name}`);
                 } else if (lead && !used.has(`s-${lead.name}`)) {
                     reason = `starring ${lead.name}`;
+                    reasonPersonId = lead.person_id;
+                    reasonPersonName = lead.name;
                     used.add(`s-${lead.name}`);
                 } else if (lead) {
                     reason = `starring ${lead.name}`;
+                    reasonPersonId = lead.person_id;
+                    reasonPersonName = lead.name;
                 }
             }
 
             movie.reason = reason || `${movie.release_year || ''}`;
+            movie.reasonPersonId = reasonPersonId;
+            movie.reasonPersonName = reasonPersonName;
         }
     }
 
