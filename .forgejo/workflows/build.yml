@@ -1,11 +1,11 @@
-name: Build and Push Docker Image
+name: Build, Push, and Deploy
 
 on:
   push:
     branches: [main]
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: docker
     steps:
       - name: Checkout
@@ -14,9 +14,9 @@ jobs:
       - name: Install Docker CLI
         run: |
           if command -v apk &> /dev/null; then
-            apk add --no-cache docker-cli
+            apk add --no-cache docker-cli docker-cli-compose
           elif command -v apt-get &> /dev/null; then
-            apt-get update && apt-get install -y --no-install-recommends docker.io
+            apt-get update && apt-get install -y --no-install-recommends docker.io docker-compose-plugin
           fi
 
       - name: Login to Forgejo Registry
@@ -28,3 +28,10 @@ jobs:
           docker build -t "${IMAGE}:latest" -t "${IMAGE}:${{ github.sha }}" .
           docker push "${IMAGE}:latest"
           docker push "${IMAGE}:${{ github.sha }}"
+
+      - name: Deploy
+        run: |
+          cd /mnt/cache/appdata/stacks/app-mediajam
+          docker compose pull
+          docker compose up -d --force-recreate
+          echo "✅ Deployed $(docker inspect --format='{{.Image}}' mediajam | cut -c1-12)"
