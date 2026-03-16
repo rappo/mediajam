@@ -225,6 +225,7 @@
                 <div class="poster-scroll">
                     {#each data.sections.recommended as item}
                         <a href="/movies/{item.id}" class="poster-card" title={item.title}>
+                            <span class="uwb">unwatched</span>
                             {#if item.poster_url}
                                 <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img" loading="lazy" />
                             {:else}
@@ -277,6 +278,7 @@
                 <div class="poster-scroll">
                     {#each data.sections.recentlyWatched as item}
                         <a href="/movies/{item.id}" class="poster-card" title={item.title}>
+                            <span class="wb">watched</span>
                             {#if item.poster_url}
                                 <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img" loading="lazy" />
                             {:else}
@@ -492,6 +494,27 @@
         background: oklch(var(--er) / 0.85);
         color: oklch(var(--erc));
         backdrop-filter: blur(4px);
+        text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+        border: 1px solid rgba(0,0,0,0.15);
+    }
+
+    /* Watched badge */
+    .wb {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        z-index: 2;
+        font-size: 0.5rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 2px 7px;
+        border-radius: 6px;
+        background: oklch(0.65 0.2 145 / 0.85);
+        color: #fff;
+        backdrop-filter: blur(4px);
+        text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+        border: 1px solid rgba(0,0,0,0.15);
     }
 
     /* Recently watched section has darker bg */
