@@ -1,33 +1,84 @@
 <script>
+    import { onMount } from 'svelte';
     import NowPlaying from "$lib/components/NowPlaying.svelte";
     import TimelineEntry from "$lib/components/TimelineEntry.svelte";
     import StatCard from "$lib/components/StatCard.svelte";
     import YearScrubber from "$lib/components/YearScrubber.svelte";
+    import Skeleton from "$lib/components/Skeleton.svelte";
     import { page } from "$app/stores";
     import { goto } from "$app/navigation";
 
     /** @type {{ data: import('./$types').PageData }} */
     let { data } = $props();
 
-    // Local filter state (synced from URL)
-    let filterType = $state(data.filters?.mediaType || "all");
-    let searchText = $state(data.filters?.search || "");
-    let fromDate = $state(data.filters?.from || "");
-    let toDate = $state(data.filters?.to || "");
+    // Deferred data loaded client-side
+    let loaded = $state(false);
+    let activeSessions = $state(/** @type {any[]} */ ([]));
+    let timeline = $state(/** @type {any[]} */ ([]));
+    let history = $state(/** @type {any[]} */ ([]));
+    let yearMap = $state(/** @type {any[]} */ ([]));
+    let stats = $state(/** @type {any} */ ({ totalPlays: 0, uniqueItems: 0, activeDays: 0, friendlyTime: '0', totalDaysSince: 0, activePct: 0, firstCheckInLabel: '', todayCount: 0, longestStreak: 0 }));
+    let filters = $state(/** @type {any} */ ({ from: '', to: '', search: '', mediaType: '' }));
+
+    async function loadData() {
+        loaded = false;
+        try {
+            const qs = window.location.search;
+            const res = await fetch('/api/pages/history' + qs);
+            const d = await res.json();
+            activeSessions = d.activeSessions;
+            timeline = d.timeline;
+            history = d.history;
+            yearMap = d.yearMap;
+            stats = d.stats;
+            filters = d.filters;
+            // Sync local filter state from response
+            filterType = d.filters?.mediaType || 'all';
+            searchText = d.filters?.search || '';
+            fromDate = d.filters?.from || '';
+            toDate = d.filters?.to || '';
+            showDateRange = !!(d.filters?.from || d.filters?.to);
+        } catch (e) {
+            console.error('[history] Failed to load data:', e);
+        }
+        loaded = true;
+    }
+
+    onMount(loadData);
+
+    // Local filter state
+    let filterType = $state('all');
+    let searchText = $state('');
+    let fromDate = $state('');
+    let toDate = $state('');
     let searchTimer = $state(/** @type {ReturnType<typeof setTimeout>|null} */ (null));
-    let showDateRange = $state(!!(data.filters?.from || data.filters?.to));
+    let showDateRange = $state(false);
 
     /**
-     * Push filter params to the URL (triggers server reload)
+     * Push filter params to the URL and refetch data
      */
-    function applyFilters() {
+    async function applyFilters() {
         const params = new URLSearchParams();
         if (filterType && filterType !== "all") params.set("type", filterType);
         if (searchText.trim()) params.set("q", searchText.trim());
         if (fromDate) params.set("from", fromDate);
         if (toDate) params.set("to", toDate);
         const qs = params.toString();
-        goto(`/history${qs ? "?" + qs : ""}`, { keepFocus: true });
+        // Update URL for bookmarkability (replaceState to avoid history spam)
+        window.history.replaceState({}, '', `/history${qs ? "?" + qs : ""}`);
+        // Refetch from API with new params
+        loaded = false;
+        try {
+            const res = await fetch('/api/pages/history' + (qs ? '?' + qs : ''));
+            const d = await res.json();
+            timeline = d.timeline;
+            history = d.history;
+            stats = d.stats;
+            activeSessions = d.activeSessions;
+        } catch (e) {
+            console.error('[history] Filter fetch failed:', e);
+        }
+        loaded = true;
     }
 
     /**
@@ -130,50 +181,56 @@
     </div>
 
     <!-- Now Playing -->
+    {#if loaded && activeSessions.length > 0}
     <div class="mb-6">
         <NowPlaying
-            sessions={data.activeSessions}
+            sessions={activeSessions}
             jellyfinUrl={data.jellyfinUrl}
             remoteControlEnabled={$page.data.remoteControlEnabled}
         />
     </div>
+    {/if}
 
     <!-- Stats Row -->
+    {#if !loaded}
+        <Skeleton type="stat-cards" />
+    {:else}
     <div class="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-8">
         <StatCard
             icon="▶"
             label="Total Plays"
-            value={data.stats.totalPlays}
+            value={stats.totalPlays}
             color="primary"
         />
         <StatCard
             icon="🎯"
             label="Unique Items"
-            value={data.stats.uniqueItems}
+            value={stats.uniqueItems}
             color="secondary"
         />
         <StatCard
             icon="📅"
             label="Active Days"
-            value={data.stats.activeDays}
-            sub={data.stats.totalDaysSince ? `/${data.stats.totalDaysSince.toLocaleString()} (${data.stats.activePct}%) since ${data.stats.firstCheckInLabel}` : ''}
+            value={stats.activeDays}
+            sub={stats.totalDaysSince ? `/${stats.totalDaysSince.toLocaleString()} (${stats.activePct}%) since ${stats.firstCheckInLabel}` : ''}
             color="accent"
         />
         <StatCard
             icon="⏱"
             label="Time Spent"
-            value={data.stats.friendlyTime}
+            value={stats.friendlyTime}
             color="info"
         />
         <StatCard
             icon="🔥"
             label="Longest Streak"
-            value={data.stats.longestStreak
-                ? `${data.stats.longestStreak} days`
+            value={stats.longestStreak
+                ? `${stats.longestStreak} days`
                 : "0"}
             color="warning"
         />
     </div>
+    {/if}
 
     <!-- Filter Bar -->
     <div class="card bg-base-200/30 border border-base-300/30 mb-6">
@@ -259,7 +316,7 @@
                 </div>
 
                 <div class="badge badge-ghost badge-sm shrink-0">
-                    {data.stats.todayCount} today
+                    {stats.todayCount} today
                 </div>
             </div>
 
@@ -315,7 +372,9 @@
     </div>
 
     <!-- Timeline -->
-    {#if data.timeline.length === 0}
+    {#if !loaded}
+        <Skeleton type="timeline" />
+    {:else if timeline.length === 0}
         <div class="card bg-base-200/30 border border-base-300/50">
             <div class="card-body items-center text-center py-16">
                 {#if hasActiveFilters}
@@ -343,7 +402,7 @@
         </div>
     {:else}
         <div class="space-y-6">
-            {#each data.timeline as group (group.date)}
+            {#each timeline as group (group.date)}
                 <div>
                     <!-- Date Header -->
                     <div class="flex items-center gap-3 mb-2">
@@ -389,4 +448,6 @@
 </div>
 
 <!-- Year Scrubber -->
-<YearScrubber yearMap={data.yearMap} />
+{#if loaded}
+    <YearScrubber yearMap={yearMap} />
+{/if}

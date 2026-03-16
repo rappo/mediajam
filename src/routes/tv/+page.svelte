@@ -1,9 +1,11 @@
 <script>
+    import { onMount } from 'svelte';
     import StatCard from "$lib/components/StatCard.svelte";
     import DataTable from "$lib/components/DataTable.svelte";
     import Chart from "$lib/components/Chart.svelte";
     import DeleteToast from "$lib/components/DeleteToast.svelte";
     import CalendarStrip from "$lib/components/CalendarStrip.svelte";
+    import Skeleton from "$lib/components/Skeleton.svelte";
     import { imgUrl } from "$lib/utils.js";
 
     let { data } = $props();
@@ -13,8 +15,36 @@
     /** @type {Set<number>} */
     let hiddenShows = $state(new Set());
 
+    // Deferred data loaded client-side
+    let loaded = $state(false);
+    let shows = $state(/** @type {any[]} */ ([]));
+    let topShowsByWatchCount = $state(/** @type {any[]} */ ([]));
+    let showsByYear = $state(/** @type {any[]} */ ([]));
+    let completionBuckets = $state(/** @type {any} */ ({}));
+    let collectionBuckets = $state(/** @type {any} */ ({}));
+    let collectionStats = $state(/** @type {any} */ ({ totalCollected: 0, totalReleased: 0, overallPct: 100 }));
+    let sections = $state(/** @type {any} */ ({ airingThisWeek: [], newUnwatched: [], behindOn: [], comingUp: [], recentlyWatched: [] }));
+
+    onMount(async () => {
+        try {
+            const res = await fetch('/api/pages/tv');
+            const d = await res.json();
+            shows = d.shows;
+            topShowsByWatchCount = d.topShowsByWatchCount;
+            showsByYear = d.showsByYear;
+            completionBuckets = d.completionBuckets;
+            collectionBuckets = d.collectionBuckets;
+            collectionStats = d.collectionStats;
+            sections = d.sections;
+            calendarDays = d.sections.airingThisWeek || [];
+        } catch (e) {
+            console.error('[tv] Failed to load sections:', e);
+        }
+        loaded = true;
+    });
+
     /** @type {Array<{ date: string, episodes: any[] }>} */
-    let calendarDays = $state(data.sections.airingThisWeek);
+    let calendarDays = $state([]);
     let calendarOffset = $state(0);
     let calendarLoading = $state(false);
 
@@ -86,8 +116,8 @@
         return `S${String(ep.season_number).padStart(2, '0')}E${String(ep.item_number).padStart(2, '0')}`;
     }
 
-    // Chart options (only used in library view)
-    const watchPieOptions = {
+    // Chart options — reactive since data loads async
+    let watchPieOptions = $derived({
         title: { text: "Episode Watch Status" },
         data: [{
             type: "doughnut", startAngle: 240,
@@ -100,16 +130,16 @@
                 { label: "In Progress", y: data.episodeStats.inProgress, color: "#fbbd23" },
             ],
         }],
-    };
+    });
 
-    const topShowsBarOptions = {
+    let topShowsBarOptions = $derived({
         title: { text: "Top 15 Shows by Watch Count" },
         axisX: { labelAngle: -45, labelFontSize: 11 },
         axisY: { title: "Watches", titleFontColor: "#a6adba" },
-        data: [{ type: "column", color: "#7c3aed", cornerRadius: 4, dataPoints: data.topShowsByWatchCount }],
-    };
+        data: [{ type: "column", color: "#7c3aed", cornerRadius: 4, dataPoints: topShowsByWatchCount }],
+    });
 
-    const completionPieOptions = {
+    let completionPieOptions = $derived({
         title: { text: "Watch Completion" },
         data: [{
             type: "pie", startAngle: 240,
@@ -117,14 +147,14 @@
             indexLabelFontFamily: "Inter, sans-serif",
             toolTipContent: "{label}: {y} shows",
             dataPoints: [
-                { label: "Fully Watched", y: data.completionBuckets.full, color: "#36d399" },
-                { label: "Partially Watched", y: data.completionBuckets.partial, color: "#fbbd23" },
-                { label: "Not Started", y: data.completionBuckets.none, color: "#6b7280" },
+                { label: "Fully Watched", y: completionBuckets.full || 0, color: "#36d399" },
+                { label: "Partially Watched", y: completionBuckets.partial || 0, color: "#fbbd23" },
+                { label: "Not Started", y: completionBuckets.none || 0, color: "#6b7280" },
             ],
         }],
-    };
+    });
 
-    const collectionPieOptions = {
+    let collectionPieOptions = $derived({
         title: { text: "Collection Status" },
         data: [{
             type: "pie", startAngle: 200,
@@ -132,20 +162,20 @@
             indexLabelFontFamily: "Inter, sans-serif",
             toolTipContent: "{label}: {y} shows",
             dataPoints: [
-                { label: "Complete", y: data.collectionBuckets.complete, color: "#22d3ee" },
-                { label: "Partial", y: data.collectionBuckets.partial, color: "#fb923c" },
-                { label: "Missing", y: data.collectionBuckets.missing, color: "#ef4444" },
+                { label: "Complete", y: collectionBuckets.complete || 0, color: "#22d3ee" },
+                { label: "Partial", y: collectionBuckets.partial || 0, color: "#fb923c" },
+                { label: "Missing", y: collectionBuckets.missing || 0, color: "#ef4444" },
             ],
         }],
-    };
+    });
 
-    const showsByYearOptions = {
+    let showsByYearOptions = $derived({
         title: { text: "Shows by Premiere Year" },
         axisX: { title: "Year", titleFontColor: "#a6adba", labelFontSize: 11, interval: 5, valueFormatString: "####" },
         axisY: { title: "Count", titleFontColor: "#a6adba" },
         data: [{ type: "column", color: "#7c3aed", cornerRadius: 4,
-            dataPoints: data.showsByYear.map((/** @type {any} */ d) => ({ x: d.year, y: d.count })) }],
-    };
+            dataPoints: showsByYear.map((/** @type {any} */ d) => ({ x: d.year, y: d.count })) }],
+    });
 
     const columns = [
         { key: "title", label: "Title", class: "font-medium",
@@ -209,12 +239,20 @@
 
     {#if showLibrary}
         <!-- ═══ LIBRARY VIEW ═══ -->
+        {#if !loaded}
+            <Skeleton type="stat-cards" />
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Skeleton type="chart" />
+                <Skeleton type="chart" />
+            </div>
+            <Skeleton type="table" />
+        {:else}
         <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
             <StatCard icon="📺" label="Shows" value={data.totalShows} sub="in your library" color="primary" />
             <StatCard icon="🎬" label="Episodes" value={data.episodeStats.total} sub="{data.runtimeHours.toLocaleString()}h runtime" color="secondary" />
-            <StatCard icon="📦" label="Collection" value="{data.collectionStats.overallPct}%" sub="{data.collectionStats.totalCollected.toLocaleString()} of {data.collectionStats.totalReleased.toLocaleString()} eps" color="info" />
+            <StatCard icon="📦" label="Collection" value="{collectionStats.overallPct}%" sub="{collectionStats.totalCollected.toLocaleString()} of {collectionStats.totalReleased.toLocaleString()} eps" color="info" />
             <StatCard icon="✅" label="Watched" value={data.episodeStats.watched} sub="{((data.episodeStats.watched / Math.max(data.episodeStats.total, 1)) * 100).toFixed(1)}% of episodes" color="success" />
-            <StatCard icon="⏸️" label="In Progress" value={data.episodeStats.inProgress} sub="{data.completionBuckets.partial} shows started" color="warning" />
+            <StatCard icon="⏸️" label="In Progress" value={data.episodeStats.inProgress} sub="{completionBuckets.partial || 0} shows started" color="warning" />
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -229,24 +267,31 @@
 
         <div class="space-y-2">
             <h2 class="text-xl font-bold">All Shows</h2>
-            <DataTable {columns} data={data.shows} searchKey="title" pageSize={25} hideCollectedKey="collection_pct" {rowClass} />
+            <DataTable {columns} data={shows} searchKey="title" pageSize={25} hideCollectedKey="collection_pct" {rowClass} />
         </div>
+        {/if}
     {:else}
         <!-- ═══ SMART HOME VIEW ═══ -->
 
+        {#if !loaded}
+            <Skeleton type="poster-row" />
+            <Skeleton type="poster-row" />
+            <Skeleton type="poster-row" />
+        {:else}
+
         <!-- ▌CONTINUE WATCHING (hero banner with progress rings) ─────── -->
-        {#if data.sections.behindOn.length > 0}
+        {#if sections.behindOn.length > 0}
             <section class="hero-banner">
                 <!-- Blurred backdrop from first show -->
-                {#if data.sections.behindOn[0]?.poster_url}
-                    <div class="hero-bg" style="background-image: url('{imgUrl(data.sections.behindOn[0].poster_url)}')"></div>
+                {#if sections.behindOn[0]?.poster_url}
+                    <div class="hero-bg" style="background-image: url('{imgUrl(sections.behindOn[0].poster_url)}')"></div>
                 {/if}
                 <div class="hero-overlay"></div>
                 <div class="hero-body">
                     <h2 class="hero-title">Continue Watching</h2>
-                    <p class="hero-subtitle">{data.sections.behindOn.length} shows in progress</p>
+                    <p class="hero-subtitle">{sections.behindOn.length} shows in progress</p>
                     <div class="hero-posters">
-                        {#each data.sections.behindOn.filter((/** @type {any} */ s) => !hiddenShows.has(s.id)) as show}
+                        {#each sections.behindOn.filter((/** @type {any} */ s) => !hiddenShows.has(s.id)) as show}
                             <a href="/tv/{show.id}" class="progress-card group" title="{show.title} — {show.total - show.watched} unwatched">
                                 <div class="poster-wrap">
                                     {#if show.poster_url}
@@ -281,13 +326,13 @@
         {/if}
 
         <!-- ▌RECENTLY WATCHED ──────────────────────────────────────── -->
-        {#if data.sections.recentlyWatched.length > 0}
+        {#if sections.recentlyWatched.length > 0}
             <section class="smart-section recently-watched-section">
                 <div class="section-header">
                     <h2 class="section-title">Recently Watched</h2>
                 </div>
                 <div class="poster-scroll">
-                    {#each data.sections.recentlyWatched.filter((/** @type {any} */ s) => !hiddenShows.has(s.id)) as show}
+                    {#each sections.recentlyWatched.filter((/** @type {any} */ s) => !hiddenShows.has(s.id)) as show}
                         <a href="/tv/{show.id}" class="poster-card group" title="{show.title} — {show.watched}/{show.total} episodes watched">
                             <div class="poster-wrap">
                                 {#if show.poster_url}
@@ -329,11 +374,11 @@
         </section>
 
         <!-- ▌NEW EPISODES (poster scroll with NEW badges) ──────────── -->
-        {#if data.sections.newUnwatched.length > 0}
+        {#if sections.newUnwatched.length > 0}
             <section class="smart-section">
                 <h2 class="section-title">New Episodes</h2>
                 <div class="poster-scroll">
-                    {#each data.sections.newUnwatched.filter((/** @type {any} */ e) => !hiddenShows.has(e.show_id)) as ep}
+                    {#each sections.newUnwatched.filter((/** @type {any} */ e) => !hiddenShows.has(e.show_id)) as ep}
                         <a href="/tv/{ep.show_id}" class="poster-card group" title="{ep.show_title} {epCode(ep)} — {ep.episode_title}">
                             <span class="new-badge">NEW</span>
                             <div class="poster-wrap">
@@ -362,6 +407,7 @@
                 </div>
             </section>
         {/if}
+        {/if} <!-- end loaded -->
     {/if}
 </div>
 

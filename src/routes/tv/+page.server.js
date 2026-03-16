@@ -1,18 +1,7 @@
 import db from '$lib/server/db.js';
-import {
-    getHomepagePrefs,
-    getAiringThisWeek,
-    getNewUnwatchedEpisodes,
-    getBehindOnShows,
-    getUpcomingEpisodes,
-    getRecentlyWatchedShows,
-} from '$lib/server/homepage-engine.js';
 
 /** @type {import('./$types').PageServerLoad} */
-export function load({ locals }) {
-    const userId = locals.user?.id || 0;
-    const prefs = getHomepagePrefs();
-
+export function load() {
     const totalShows = /** @type {any} */ (db.prepare('SELECT COUNT(*) as c FROM media_parents WHERE media_type = ?').get('show')).c;
 
     const episodeStats = /** @type {any} */ (db.prepare(`
@@ -30,101 +19,6 @@ export function load({ locals }) {
 
     const runtimeHours = Math.round((episodeStats.total_runtime || 0) / 10000000 / 3600);
 
-    // Shows sorted by episode count — for table view
-    const shows = db.prepare(`
-        WITH play_stats AS (
-            SELECT mc2.parent_id,
-                   COUNT(*) as watch_count,
-                   MAX(timestamp) as last_watched
-            FROM (
-                SELECT DISTINCT ph.media_id,
-                       CAST(strftime('%s', ph.timestamp) / 43200 AS INTEGER) as time_bucket,
-                       MAX(ph.timestamp) as timestamp
-                FROM playback_history ph
-                JOIN media_children mc2 ON ph.media_id = mc2.id
-                WHERE ph.user_id = ?
-                GROUP BY ph.media_id, time_bucket
-            ) deduped
-            JOIN media_children mc2 ON deduped.media_id = mc2.id
-            GROUP BY mc2.parent_id
-        )
-        SELECT
-            mp.id, mp.title, mp.release_year, mp.poster_url,
-            mp.collected_children, mp.watched_children, mp.total_released_children,
-            mp.overview, mp.tvdb_id, mp.tmdb_id, mp.imdb_id,
-            mp.collection_status, mp.arr_status,
-            CASE WHEN mp.collected_children > 0
-                THEN ROUND(CAST(mp.watched_children AS REAL) / mp.collected_children * 100, 1)
-                ELSE 0 END as completion,
-            CASE WHEN mp.total_released_children > 0
-                THEN ROUND(CAST(mp.collected_children AS REAL) / mp.total_released_children * 100, 1)
-                ELSE NULL END as collection_pct,
-            COALESCE(ps.watch_count, 0) as watch_count,
-            ps.last_watched
-        FROM media_parents mp
-        LEFT JOIN play_stats ps ON ps.parent_id = mp.id
-        WHERE mp.media_type = 'show'
-        ORDER BY mp.collected_children DESC
-    `).all(userId);
-
-    // Top 15 shows by watch count
-    const topShowsByWatchCount = /** @type {any[]} */ (db.prepare(`
-        SELECT mp.title, COUNT(*) as total_plays
-        FROM media_parents mp
-        JOIN media_children mc ON mc.parent_id = mp.id
-        JOIN (
-            SELECT DISTINCT media_id, CAST(strftime('%s', timestamp) / 43200 AS INTEGER) as time_bucket
-            FROM playback_history WHERE user_id = ?
-        ) deduped ON deduped.media_id = mc.id
-        WHERE mp.media_type = 'show'
-        GROUP BY mp.id ORDER BY total_plays DESC LIMIT 15
-    `).all(userId)).map(s => ({
-        label: s.title.length > 20 ? s.title.substring(0, 18) + '…' : s.title,
-        y: s.total_plays
-    }));
-
-    // Shows by year
-    const showsByYear = db.prepare(`
-        SELECT release_year as year, COUNT(*) as count
-        FROM media_parents WHERE media_type = 'show' AND release_year IS NOT NULL
-        GROUP BY release_year ORDER BY release_year
-    `).all();
-
-    // Completion distribution
-    const completionBuckets = { full: 0, partial: 0, none: 0 };
-    const collectionBuckets = { complete: 0, partial: 0, missing: 0 };
-    let totalCollected = 0;
-    let totalReleased = 0;
-    for (const s of shows) {
-        if (s.completion >= 100) completionBuckets.full++;
-        else if (s.completion > 0) completionBuckets.partial++;
-        else completionBuckets.none++;
-        totalCollected += s.collected_children || 0;
-        totalReleased += s.total_released_children || 0;
-        if (s.collection_pct === null || s.collection_pct === undefined) { /* unknown */ }
-        else if (s.collection_pct >= 100) collectionBuckets.complete++;
-        else if (s.collection_pct > 0) collectionBuckets.partial++;
-        else collectionBuckets.missing++;
-    }
-
-    // ── Smart Sections (each isolated so one failure doesn't block the rest) ──
-    let airingThisWeek = [], newUnwatched = [], behindOn = [], comingUp = [], recentlyWatched = [];
-    try { airingThisWeek = getAiringThisWeek(prefs); } catch (e) {
-        console.error('[tv] airingThisWeek error:', e instanceof Error ? e.message : e);
-    }
-    try { newUnwatched = getNewUnwatchedEpisodes(prefs, userId); } catch (e) {
-        console.error('[tv] newUnwatched error:', e instanceof Error ? e.message : e);
-    }
-    try { behindOn = getBehindOnShows(userId); } catch (e) {
-        console.error('[tv] behindOn error:', e instanceof Error ? e.message : e);
-    }
-    try { comingUp = getUpcomingEpisodes(prefs, userId); } catch (e) {
-        console.error('[tv] comingUp error:', e instanceof Error ? e.message : e);
-    }
-    try { recentlyWatched = getRecentlyWatchedShows(userId, prefs.maxItemsPerSection); } catch (e) {
-        console.error('[tv] recentlyWatched error:', e instanceof Error ? e.message : e);
-    }
-
     return {
         totalShows,
         episodeStats: {
@@ -135,16 +29,5 @@ export function load({ locals }) {
             totalPlays: episodeStats.total_plays || 0
         },
         runtimeHours,
-        shows,
-        topShowsByWatchCount,
-        showsByYear,
-        completionBuckets,
-        collectionBuckets,
-        collectionStats: {
-            totalCollected,
-            totalReleased,
-            overallPct: totalReleased > 0 ? Math.round((totalCollected / totalReleased) * 100) : 100
-        },
-        sections: { airingThisWeek, newUnwatched, behindOn, comingUp, recentlyWatched }
     };
 }

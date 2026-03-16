@@ -1,14 +1,51 @@
 <script>
+    import { onMount } from 'svelte';
     import StatCard from "$lib/components/StatCard.svelte";
     import DataTable from "$lib/components/DataTable.svelte";
     import Chart from "$lib/components/Chart.svelte";
     import DeleteToast from "$lib/components/DeleteToast.svelte";
     import PosterRow from "$lib/components/PosterRow.svelte";
     import ProgressCard from "$lib/components/ProgressCard.svelte";
+    import Skeleton from "$lib/components/Skeleton.svelte";
 
     let { data } = $props();
 
     let showLibrary = $state(false);
+
+    // Deferred data loaded client-side
+    let loaded = $state(false);
+    let artists = $state(/** @type {any[]} */ ([]));
+    let topArtistsByAlbums = $state(/** @type {any[]} */ ([]));
+    let topArtistsByPlays = $state(/** @type {any[]} */ ([]));
+    let albumDistData = $state(/** @type {any[]} */ ([]));
+    let collectionBuckets = $state(/** @type {any} */ ({}));
+    let collectionStats = $state(/** @type {any} */ ({ totalCollected: 0, totalReleased: 0, overallPct: 100 }));
+    let pagination = $state(/** @type {any} */ ({ page: 1, perPage: 50, total: 0, totalPages: 0 }));
+    let searchVal = $state('');
+    let sortVal = $state('plays');
+    let sections = $state(/** @type {any} */ ({ recentListening: [], newFromFavorites: [], rediscover: [], heavyRotation: [], unplayedAlbums: [], itsBeenAWhile: [] }));
+    let timeFilters = $state(/** @type {any} */ ({ rotationTime: '30', recentTime: '0', awhileTime: '6' }));
+
+    onMount(async () => {
+        try {
+            const res = await fetch('/api/pages/music' + window.location.search);
+            const d = await res.json();
+            artists = d.artists;
+            topArtistsByAlbums = d.topArtistsByAlbums;
+            topArtistsByPlays = d.topArtistsByPlays;
+            albumDistData = d.albumDistData;
+            collectionBuckets = d.collectionBuckets;
+            collectionStats = d.collectionStats;
+            pagination = d.pagination;
+            searchVal = d.search || '';
+            sortVal = d.sort || 'plays';
+            sections = d.sections;
+            timeFilters = d.timeFilters;
+        } catch (e) {
+            console.error('[music] Failed to load sections:', e);
+        }
+        loaded = true;
+    });
 
     /** @param {string} ts */
     function timeAgo(ts) {
@@ -23,16 +60,16 @@
         return `${Math.floor(diff / 365)}y ago`;
     }
 
-    // Chart options (library view only)
-    const albumBarOptions = data.topArtistsByAlbums.length > 0
+    // Chart options — reactive since data loads async
+    let albumBarOptions = $derived(topArtistsByAlbums.length > 0
         ? {
             title: { text: "Top 15 Artists by Album Count" },
             axisX: { labelAngle: -45, labelFontSize: 11 },
             axisY: { title: "Albums", titleFontColor: "#a6adba" },
-            data: [{ type: "column", color: "#22d3ee", cornerRadius: 4, dataPoints: data.topArtistsByAlbums }],
-        } : null;
+            data: [{ type: "column", color: "#22d3ee", cornerRadius: 4, dataPoints: topArtistsByAlbums }],
+        } : null);
 
-    const collectionPieOptions = {
+    let collectionPieOptions = $derived({
         title: { text: "Collection Status" },
         data: [{
             type: "pie", startAngle: 200,
@@ -40,28 +77,28 @@
             indexLabelFontFamily: "Inter, sans-serif",
             toolTipContent: "{label}: {y} artists",
             dataPoints: [
-                { label: "Complete", y: data.collectionBuckets.complete, color: "#22d3ee" },
-                { label: "Partial", y: data.collectionBuckets.partial, color: "#fb923c" },
-                { label: "Missing", y: data.collectionBuckets.missing, color: "#ef4444" },
+                { label: "Complete", y: collectionBuckets.complete || 0, color: "#22d3ee" },
+                { label: "Partial", y: collectionBuckets.partial || 0, color: "#fb923c" },
+                { label: "Missing", y: collectionBuckets.missing || 0, color: "#ef4444" },
             ],
         }],
-    };
+    });
 
-    const playsBarOptions = data.topArtistsByPlays.length > 0
+    let playsBarOptions = $derived(topArtistsByPlays.length > 0
         ? {
             title: { text: "Most Played Artists" },
             axisX: { labelAngle: -45, labelFontSize: 11 },
             axisY: { title: "Play Count", titleFontColor: "#a6adba" },
-            data: [{ type: "bar", color: "#a78bfa", cornerRadius: 4, dataPoints: data.topArtistsByPlays }],
-        } : null;
+            data: [{ type: "bar", color: "#a78bfa", cornerRadius: 4, dataPoints: topArtistsByPlays }],
+        } : null);
 
-    const distOptions = data.albumDistData.length > 0
+    let distOptions = $derived(albumDistData.length > 0
         ? {
             title: { text: "Artists by Album Count" },
-            data: [{ type: "column", color: "#f472b6", cornerRadius: 4, dataPoints: data.albumDistData }],
+            data: [{ type: "column", color: "#f472b6", cornerRadius: 4, dataPoints: albumDistData }],
             axisX: { labelFontSize: 11 },
             axisY: { title: "Number of Artists", titleFontColor: "#a6adba" },
-        } : null;
+        } : null);
 
     const columns = [
         { key: "title", label: "Artist", class: "font-medium",
@@ -87,49 +124,47 @@
         return ["continuing"].includes(row.arr_status) ? "arr-upcoming" : "arr-missing";
     }
 
-    const p = data.pagination;
-
     // ── Transform data for PosterRow (square aspect for music) ──
-    const recentPosterItems = data.sections.recentListening.map((/** @type {any} */ i) => ({
+    let recentPosterItems = $derived(sections.recentListening.map((/** @type {any} */ i) => ({
         href: `/music/${i.artist_id}/${i.album_id}`,
         poster_url: i.album_art,
         title: i.album_title,
         subtitle: `${i.artist_name} · ${timeAgo(i.last_played)}`,
         icon: '🎵',
-    }));
+    })));
 
-    const favoritePosterItems = data.sections.newFromFavorites.map((/** @type {any} */ i) => ({
+    let favoritePosterItems = $derived(sections.newFromFavorites.map((/** @type {any} */ i) => ({
         href: `/music/${i.artist_id}/${i.album_id}`,
         poster_url: i.album_art,
         title: i.album_title,
         subtitle: i.artist_name,
         icon: '🎵',
         badge: '★',
-    }));
+    })));
 
-    const heavyRotationItems = data.sections.heavyRotation.map((/** @type {any} */ i) => ({
+    let heavyRotationItems = $derived(sections.heavyRotation.map((/** @type {any} */ i) => ({
         href: `/music/${i.artist_id}/${i.album_id}`,
         poster_url: i.album_art,
         title: i.album_title,
         subtitle: `${i.artist_name} · ${i.recent_plays} plays`,
         icon: '🔥',
-    }));
+    })));
 
-    const unplayedItems = data.sections.unplayedAlbums.map((/** @type {any} */ i) => ({
+    let unplayedItems = $derived(sections.unplayedAlbums.map((/** @type {any} */ i) => ({
         href: `/music/${i.artist_id}/${i.album_id}`,
         poster_url: i.album_art,
         title: i.album_title,
         subtitle: i.artist_name,
         icon: '💿',
-    }));
+    })));
 
-    const itsBeenAWhileItems = data.sections.itsBeenAWhile.map((/** @type {any} */ i) => ({
+    let itsBeenAWhileItems = $derived(sections.itsBeenAWhile.map((/** @type {any} */ i) => ({
         href: `/music/${i.artist_id}/${i.album_id}`,
         poster_url: i.album_art,
         title: i.album_title,
         subtitle: `${i.artist_name} · ${i.total_plays} plays`,
         icon: '⏰',
-    }));
+    })));
 
     // Time filter option sets
     const ROTATION_OPTIONS = [
@@ -176,10 +211,18 @@
 
     {#if showLibrary}
         <!-- ═══ LIBRARY VIEW ═══ -->
+        {#if !loaded}
+            <Skeleton type="stat-cards" />
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Skeleton type="chart" />
+                <Skeleton type="chart" />
+            </div>
+            <Skeleton type="table" />
+        {:else}
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
             <StatCard icon="🎤" label="Artists" value={data.totalArtists} sub="in your library" color="primary" />
             <StatCard icon="💿" label="Albums" value={data.totalAlbums} sub="collected" color="secondary" />
-            <StatCard icon="📦" label="Collection" value="{data.collectionStats.overallPct}%" sub="{data.collectionStats.totalCollected} of {data.collectionStats.totalReleased} albums" color="info" />
+            <StatCard icon="📦" label="Collection" value="{collectionStats.overallPct}%" sub="{collectionStats.totalCollected} of {collectionStats.totalReleased} albums" color="info" />
             <StatCard icon="▶️" label="Total Plays" value={data.totalPlays} sub="across all albums" color="accent" />
         </div>
 
@@ -208,48 +251,55 @@
             <div class="flex items-center justify-between">
                 <h2 class="text-xl font-bold">All Artists</h2>
                 <form method="get" class="flex items-center gap-2">
-                    <input type="text" name="q" value={data.search} placeholder="Search artists…" class="input input-bordered input-sm w-48" />
+                    <input type="text" name="q" value={searchVal} placeholder="Search artists…" class="input input-bordered input-sm w-48" />
                     <select name="sort" class="select select-bordered select-sm" onchange={(e) => /** @type {any} */ (e.target).form.submit()}>
-                        <option value="plays" selected={data.sort === "plays"}>Most Plays</option>
-                        <option value="albums" selected={data.sort === "albums"}>Most Albums</option>
-                        <option value="name" selected={data.sort === "name"}>Name A-Z</option>
+                        <option value="plays" selected={sortVal === "plays"}>Most Plays</option>
+                        <option value="albums" selected={sortVal === "albums"}>Most Albums</option>
+                        <option value="name" selected={sortVal === "name"}>Name A-Z</option>
                     </select>
                     <button type="submit" class="btn btn-sm btn-primary">Search</button>
-                    {#if data.search}
+                    {#if searchVal}
                         <a href="/music" class="btn btn-sm btn-ghost">Clear</a>
                     {/if}
                 </form>
             </div>
 
-            <DataTable {columns} data={data.artists} pageSize={50} hideCollectedKey="collection_pct" {rowClass} />
+            <DataTable {columns} data={artists} pageSize={50} hideCollectedKey="collection_pct" {rowClass} />
 
-            {#if p.totalPages > 1}
+            {#if pagination.totalPages > 1}
                 <div class="flex items-center justify-center gap-2 pt-2">
-                    {#if p.page > 1}
-                        <a href="/music?page={p.page - 1}{data.search ? '&q=' + data.search : ''}{data.sort !== 'albums' ? '&sort=' + data.sort : ''}" class="btn btn-sm btn-ghost">← Prev</a>
+                    {#if pagination.page > 1}
+                        <a href="/music?page={pagination.page - 1}{searchVal ? '&q=' + searchVal : ''}{sortVal !== 'albums' ? '&sort=' + sortVal : ''}" class="btn btn-sm btn-ghost">← Prev</a>
                     {/if}
                     <span class="text-sm text-base-content/50">
-                        Page {p.page} of {p.totalPages}
-                        <span class="text-base-content/30">({p.total} artists)</span>
+                        Page {pagination.page} of {pagination.totalPages}
+                        <span class="text-base-content/30">({pagination.total} artists)</span>
                     </span>
-                    {#if p.page < p.totalPages}
-                        <a href="/music?page={p.page + 1}{data.search ? '&q=' + data.search : ''}{data.sort !== 'albums' ? '&sort=' + data.sort : ''}" class="btn btn-sm btn-ghost">Next →</a>
+                    {#if pagination.page < pagination.totalPages}
+                        <a href="/music?page={pagination.page + 1}{searchVal ? '&q=' + searchVal : ''}{sortVal !== 'albums' ? '&sort=' + sortVal : ''}" class="btn btn-sm btn-ghost">Next →</a>
                     {/if}
                 </div>
             {/if}
         </div>
+        {/if}
     {:else}
         <!-- ═══ SMART HOME VIEW ═══ -->
+
+        {#if !loaded}
+            <Skeleton type="poster-row" />
+            <Skeleton type="poster-row" />
+            <Skeleton type="poster-row" />
+        {:else}
 
         <!-- Heavy Rotation -->
         {#if heavyRotationItems.length > 0}
             <PosterRow title="🔥 Heavy Rotation" items={heavyRotationItems} square
-                timeFilter={{ paramName: 'rotation_time', value: data.timeFilters.rotationTime, options: ROTATION_OPTIONS }} />
+                timeFilter={{ paramName: 'rotation_time', value: timeFilters.rotationTime, options: ROTATION_OPTIONS }} />
         {/if}
 
         <!-- Your Recent Listening -->
         <PosterRow title="Your Recent Listening" items={recentPosterItems} square
-            timeFilter={{ paramName: 'recent_time', value: data.timeFilters.recentTime, options: RECENT_OPTIONS }} />
+            timeFilter={{ paramName: 'recent_time', value: timeFilters.recentTime, options: RECENT_OPTIONS }} />
 
         <!-- Unlisted from Your Favorites -->
         <PosterRow title="Unlisted from Your Favorites" items={favoritePosterItems} square />
@@ -257,7 +307,7 @@
         <!-- It's Been a While -->
         {#if itsBeenAWhileItems.length > 0}
             <PosterRow title="⏰ It's Been a While" items={itsBeenAWhileItems} square
-                timeFilter={{ paramName: 'awhile_time', value: data.timeFilters.awhileTime, options: AWHILE_OPTIONS }} />
+                timeFilter={{ paramName: 'awhile_time', value: timeFilters.awhileTime, options: AWHILE_OPTIONS }} />
         {/if}
 
         <!-- Unplayed Albums -->
@@ -266,11 +316,11 @@
         {/if}
 
         <!-- Rediscover -->
-        {#if data.sections.rediscover.length > 0}
+        {#if sections.rediscover.length > 0}
             <section class="smart-section">
                 <h2 class="text-lg font-bold">Rediscover</h2>
                 <div class="progress-grid">
-                    {#each data.sections.rediscover as artist}
+                    {#each sections.rediscover as artist}
                         <ProgressCard
                             title={artist.title}
                             watched={artist.played_albums}
@@ -288,9 +338,9 @@
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
             <StatCard icon="🎤" label="Artists" value={data.totalArtists} sub="in your library" color="primary" />
             <StatCard icon="💿" label="Albums" value={data.totalAlbums} sub="collected" color="secondary" />
-            <StatCard icon="📦" label="Collection" value="{data.collectionStats.overallPct}%" sub="{data.collectionStats.totalCollected} of {data.collectionStats.totalReleased}" color="info" />
             <StatCard icon="▶️" label="Total Plays" value={data.totalPlays} sub="across all albums" color="accent" />
         </div>
+        {/if} <!-- end loaded -->
     {/if}
 </div>
 

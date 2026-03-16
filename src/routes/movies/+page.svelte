@@ -1,8 +1,10 @@
 <script>
+    import { onMount } from 'svelte';
     import StatCard from "$lib/components/StatCard.svelte";
     import DataTable from "$lib/components/DataTable.svelte";
     import Chart from "$lib/components/Chart.svelte";
     import DeleteToast from "$lib/components/DeleteToast.svelte";
+    import Skeleton from "$lib/components/Skeleton.svelte";
     import { imgUrl } from "$lib/utils.js";
 
     let { data } = $props();
@@ -18,6 +20,29 @@
 
     let showLibrary = $state(false);
 
+    // Deferred data loaded client-side
+    let loaded = $state(false);
+    let movies = $state([]);
+    let moviesByDecade = $state([]);
+    let moviesByYear = $state([]);
+    let mostRewatched = $state([]);
+    let sections = $state({ hero: null, recommended: [], personRecs: [], recentlyWatched: [], unwatched: [] });
+
+    onMount(async () => {
+        try {
+            const res = await fetch('/api/pages/movies');
+            const d = await res.json();
+            movies = d.movies;
+            moviesByDecade = d.moviesByDecade;
+            moviesByYear = d.moviesByYear;
+            mostRewatched = d.mostRewatched;
+            sections = d.sections;
+        } catch (e) {
+            console.error('[movies] Failed to load sections:', e);
+        }
+        loaded = true;
+    });
+
     /** @param {string} ts */
     function timeAgo(ts) {
         if (!ts) return '';
@@ -31,7 +56,8 @@
         return `${Math.floor(diff / 365)}y ago`;
     }
 
-    const watchPieOptions = {
+    // Chart options are reactive since data loads async
+    let watchPieOptions = $derived({
         title: { text: "Watch Status" },
         data: [{
             type: "doughnut", startAngle: 240,
@@ -44,41 +70,41 @@
                 { label: "In Progress", y: data.movieStats.inProgress, color: "#fbbd23" },
             ],
         }],
-    };
+    });
 
-    const decadeBarOptions = {
+    let decadeBarOptions = $derived({
         title: { text: "Movies by Decade" },
         axisX: { labelFontSize: 11 },
         axisY: { title: "Count", titleFontColor: "#a6adba" },
         data: [{
             type: "column", color: "#f472b6", cornerRadius: 4,
-            dataPoints: data.moviesByDecade.map((/** @type {any} */ d) => ({ label: `${d.decade}s`, y: d.count })),
+            dataPoints: moviesByDecade.map((/** @type {any} */ d) => ({ label: `${d.decade}s`, y: d.count })),
         }],
-    };
+    });
 
-    const yearBarOptions = {
+    let yearBarOptions = $derived({
         title: { text: "Movies by Year" },
         axisX: { title: "Year", titleFontColor: "#a6adba", labelFontSize: 11, interval: 2, valueFormatString: "####" },
         axisY: { title: "Count", titleFontColor: "#a6adba" },
         data: [{
             type: "column", color: "#f472b6", cornerRadius: 4,
-            dataPoints: data.moviesByYear.map((/** @type {any} */ d) => ({ x: d.year, y: d.count })),
+            dataPoints: moviesByYear.map((/** @type {any} */ d) => ({ x: d.year, y: d.count })),
         }],
-    };
+    });
 
-    const rewatchedBarOptions = data.mostRewatched.length > 0
+    let rewatchedBarOptions = $derived(mostRewatched.length > 0
         ? {
             title: { text: "Most Rewatched" },
             axisX: { labelAngle: -45, labelFontSize: 11 },
             axisY: { title: "Play Count", titleFontColor: "#a6adba" },
             data: [{
                 type: "bar", color: "#a78bfa", cornerRadius: 4,
-                dataPoints: data.mostRewatched.map((/** @type {any} */ m) => ({
+                dataPoints: mostRewatched.map((/** @type {any} */ m) => ({
                     label: m.title.length > 25 ? m.title.substring(0, 23) + "…" : m.title,
                     y: m.play_count,
                 })),
             }],
-        } : null;
+        } : null);
 
     /** @param {string} status */
     function watchBadge(status) {
@@ -158,6 +184,14 @@
 
     {#if showLibrary}
         <!-- ═══ LIBRARY VIEW ═══ -->
+        {#if !loaded}
+            <Skeleton type="stat-cards" />
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Skeleton type="chart" />
+                <Skeleton type="chart" />
+            </div>
+            <Skeleton type="table" />
+        {:else}
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
             <StatCard icon="🎬" label="Movies" value={data.totalMovies} sub="in your library" color="primary" />
             <StatCard icon="✅" label="Watched" value={data.movieStats.watched} sub="{watchPct}% of collection" color="success" />
@@ -166,10 +200,18 @@
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Chart options={watchPieOptions} height={320} />
-            <Chart options={decadeBarOptions} height={320} />
+            {#if moviesByDecade.length > 0}
+                <Chart options={decadeBarOptions} height={320} />
+            {:else}
+                <Skeleton type="chart" />
+            {/if}
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Chart options={yearBarOptions} height={320} />
+            {#if moviesByYear.length > 0}
+                <Chart options={yearBarOptions} height={320} />
+            {:else}
+                <Skeleton type="chart" />
+            {/if}
             {#if rewatchedBarOptions}
                 <Chart options={rewatchedBarOptions} height={320} />
             {:else}
@@ -180,24 +222,32 @@
         </div>
         <div class="space-y-2">
             <h2 class="text-xl font-bold">All Movies</h2>
-            <DataTable {columns} data={data.movies} searchKey="title" pageSize={25} hideCollectedKey="collection_pct" {rowClass} />
+            <DataTable {columns} data={movies} searchKey="title" pageSize={25} hideCollectedKey="collection_pct" {rowClass} />
         </div>
+        {/if}
     {:else}
         <!-- ═══ SMART HOME VIEW ═══ -->
 
+        {#if !loaded}
+            <!-- Skeleton placeholders while sections load -->
+            <Skeleton type="poster-row" />
+            <Skeleton type="poster-row" />
+            <Skeleton type="poster-row" />
+        {:else}
+
         <!-- ▌HERO: Pattern Detection ──────────────────────────────── -->
-        {#if data.sections.hero && data.sections.hero.items.length > 0}
+        {#if sections.hero && sections.hero.items.length > 0}
             <section class="hero-banner">
                 <!-- Background faded poster -->
-                {#if data.sections.hero.items[0]?.poster_url}
-                    <div class="hero-bg" style="background-image: url('{imgUrl(data.sections.hero.items[0].poster_url)}')"></div>
+                {#if sections.hero.items[0]?.poster_url}
+                    <div class="hero-bg" style="background-image: url('{imgUrl(sections.hero.items[0].poster_url)}')"></div>
                 {/if}
                 <div class="hero-overlay"></div>
                 <div class="hero-body">
-                    <h2 class="hero-title">{data.sections.hero.title}</h2>
-                    <p class="hero-subtitle">{data.sections.hero.subtitle}</p>
+                    <h2 class="hero-title">{sections.hero.title}</h2>
+                    <p class="hero-subtitle">{sections.hero.subtitle}</p>
                     <div class="hero-posters">
-                        {#each data.sections.hero.items.slice(0, 6) as item}
+                        {#each sections.hero.items.slice(0, 6) as item}
                             <a href="/movies/{item.id}" class="poster-card" title={item.title}>
                                 {#if item.poster_url}
                                     <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img" loading="lazy" />
@@ -216,14 +266,14 @@
         {/if}
 
         <!-- ▌RECOMMENDED FOR YOU ──────────────────────────────────── -->
-        {#if data.sections.recommended.length > 0}
+        {#if sections.recommended.length > 0}
             <section class="smart-section">
                 <div class="section-header">
                     <h2 class="section-title">🎯 Recommended For You</h2>
                     <span class="section-count">based on what you watch</span>
                 </div>
                 <div class="poster-scroll">
-                    {#each data.sections.recommended as item}
+                    {#each sections.recommended as item}
                         <a href="/movies/{item.id}" class="poster-card" title={item.title}>
                             <span class="uwb">unwatched</span>
                             {#if item.poster_url}
@@ -244,7 +294,7 @@
         {/if}
 
         <!-- ▌PERSON RECOMMENDATIONS ────────────────────────────── -->
-        {#each data.sections.personRecs as section}
+        {#each sections.personRecs as section}
             <section class="smart-section">
                 <div class="section-header">
                     <h2 class="section-title">{section.sectionTitle || `More from ${section.person}`}</h2>
@@ -270,13 +320,13 @@
         {/each}
 
         <!-- ▌RECENTLY WATCHED ─────────────────────────────────────── -->
-        {#if data.sections.recentlyWatched.length > 0}
+        {#if sections.recentlyWatched.length > 0}
             <section class="smart-section recently-watched-section">
                 <div class="section-header">
                     <h2 class="section-title">Recently Watched</h2>
                 </div>
                 <div class="poster-scroll">
-                    {#each data.sections.recentlyWatched as item}
+                    {#each sections.recentlyWatched as item}
                         <a href="/movies/{item.id}" class="poster-card" title={item.title}>
                             <span class="wb">watched</span>
                             {#if item.poster_url}
@@ -295,14 +345,14 @@
         {/if}
 
         <!-- ▌UNWATCHED IN LIBRARY ─────────────────────────────────── -->
-        {#if data.sections.unwatched.length > 0}
+        {#if sections.unwatched.length > 0}
             <section class="smart-section">
                 <div class="section-header">
                     <h2 class="section-title">Unwatched in Your Library</h2>
                     <span class="section-count">{data.movieStats.unwatched} total</span>
                 </div>
                 <div class="poster-scroll">
-                    {#each data.sections.unwatched as item}
+                    {#each sections.unwatched as item}
                         <a href="/movies/{item.id}" class="poster-card" title={item.title}>
                             {#if item.poster_url}
                                 <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img" loading="lazy" />
@@ -318,6 +368,7 @@
                 </div>
             </section>
         {/if}
+        {/if} <!-- end loaded -->
     {/if}
 </div>
 
