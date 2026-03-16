@@ -689,9 +689,16 @@ export function getRecentlyWatchedShows(userId, limit = 20) {
  * @param {number} userId
  * @param {number} limit
  */
-export function getRecentListening(userId, limit = 12) {
+export function getRecentListening(userId, limit = 12, days = 0) {
     const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_url FROM app_settings WHERE id = 1').get());
     const jfUrl = settings?.jellyfin_url || '';
+
+    let cutoffClause = "AND ph.timestamp > '2000-01-01'";
+    if (days > 0) {
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - days);
+        cutoffClause = `AND ph.timestamp > '${cutoff.toISOString()}'`;
+    }
 
     const rows = /** @type {any[]} */ (db.prepare(`
         SELECT mc.id as album_id, mc.title as album_title,
@@ -704,7 +711,7 @@ export function getRecentListening(userId, limit = 12) {
         JOIN media_children mc ON ph.media_id = mc.id
         JOIN media_parents mp ON mc.parent_id = mp.id
         WHERE mp.media_type = 'artist' AND ph.user_id = ?
-          AND ph.timestamp > '2000-01-01'
+          ${cutoffClause}
         GROUP BY mc.id
         ORDER BY last_played DESC
         LIMIT ?
@@ -805,12 +812,12 @@ export function getRediscoverArtists(userId, prefs, limit = 8) {
  * @param {number} userId
  * @param {number} limit
  */
-export function getHeavyRotation(userId, limit = 12) {
+export function getHeavyRotation(userId, limit = 12, days = 30) {
     const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_url FROM app_settings WHERE id = 1').get());
     const jfUrl = settings?.jellyfin_url || '';
 
     const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 30);
+    cutoff.setDate(cutoff.getDate() - days);
     const cutoffISO = cutoff.toISOString();
 
     const rows = /** @type {any[]} */ (db.prepare(`
@@ -917,6 +924,51 @@ export function getDeepCuts(userId, limit = 12) {
         ORDER BY top_artists.total_plays DESC, RANDOM()
         LIMIT ?
     `).all(userId, userId, limit));
+
+    return rows.map(r => ({
+        ...r,
+        album_art: r.album_jellyfin_id
+            ? `${jfUrl}/Items/${r.album_jellyfin_id}/Images/Primary?maxHeight=300`
+            : (r.album_poster_url || r.artist_poster || null),
+    }));
+}
+
+/**
+ * "It's Been a While" — albums you've listened to multiple times but not recently.
+ * Finds albums with ≥3 historical plays where last play was before the cutoff.
+ * @param {number} userId
+ * @param {number} sinceMonths - how many months of silence qualifies
+ * @param {number} limit
+ */
+export function getItsBeenAWhile(userId, sinceMonths = 6, limit = 12) {
+    const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_url FROM app_settings WHERE id = 1').get());
+    const jfUrl = settings?.jellyfin_url || '';
+
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - sinceMonths);
+    const cutoffISO = cutoff.toISOString();
+
+    const rows = /** @type {any[]} */ (db.prepare(`
+        SELECT mc.id as album_id, mc.title as album_title,
+               mc.jellyfin_id as album_jellyfin_id, mc.poster_url as album_poster_url,
+               mp.id as artist_id, mp.title as artist_name,
+               mp.jellyfin_id as artist_jellyfin_id, mp.poster_url as artist_poster,
+               COUNT(DISTINCT deduped.time_bucket) as total_plays,
+               MAX(ph.timestamp) as last_played
+        FROM playback_history ph
+        JOIN media_children mc ON ph.media_id = mc.id
+        JOIN media_parents mp ON mc.parent_id = mp.id
+        JOIN (
+            SELECT ph2.media_id,
+                   CAST(strftime('%s', ph2.timestamp) / 300 AS INTEGER) as time_bucket
+            FROM playback_history ph2 WHERE ph2.user_id = ?
+        ) deduped ON deduped.media_id = mc.id
+        WHERE mp.media_type = 'artist' AND ph.user_id = ?
+        GROUP BY mc.id
+        HAVING total_plays >= 3 AND last_played < ?
+        ORDER BY total_plays DESC, last_played ASC
+        LIMIT ?
+    `).all(userId, userId, cutoffISO, limit));
 
     return rows.map(r => ({
         ...r,

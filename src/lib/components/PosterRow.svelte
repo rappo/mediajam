@@ -1,7 +1,8 @@
 <script>
     import { imgUrl } from "$lib/utils.js";
-    /** @type {{ title: string, items: any[], emptyText?: string, square?: boolean }} */
-    let { title, items, emptyText = '', square = false } = $props();
+    import { goto } from "$app/navigation";
+    /** @type {{ title: string, items: any[], emptyText?: string, square?: boolean, timeFilter?: { paramName: string, value: string, options: {label: string, value: string}[] } }} */
+    let { title, items, emptyText = '', square = false, timeFilter = undefined } = $props();
     /** @type {HTMLDivElement|null} */
     let scrollContainer = $state(null);
     let canScrollLeft = $state(false);
@@ -16,11 +17,26 @@
     function scrollBy(dir) {
         scrollContainer?.scrollBy({ left: dir * 400, behavior: 'smooth' });
     }
+
+    function onTimeChange(e) {
+        const url = new URL(window.location.href);
+        url.searchParams.set(timeFilter.paramName, e.target.value);
+        goto(url.toString(), { invalidateAll: true });
+    }
 </script>
 
 {#if items.length > 0}
     <div class="poster-section">
-        <h3 class="poster-section-title">{title}</h3>
+        <div class="poster-title-row">
+            <h3 class="poster-section-title">{title}</h3>
+            {#if timeFilter}
+                <select class="time-select" value={timeFilter.value} onchange={onTimeChange}>
+                    {#each timeFilter.options as opt}
+                        <option value={opt.value} selected={opt.value === timeFilter.value}>{opt.label}</option>
+                    {/each}
+                </select>
+            {/if}
+        </div>
         <div class="poster-row-wrapper">
             {#if canScrollLeft}
                 <button class="poster-scroll-btn left" onclick={() => scrollBy(-1)}>‹</button>
@@ -65,11 +81,29 @@
     .poster-section {
         margin-bottom: 1.5rem;
     }
+    .poster-title-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
     .poster-section-title {
         font-size: 1.1rem;
         font-weight: 700;
-        margin-bottom: 0.5rem;
         opacity: 0.9;
+    }
+    .time-select {
+        font-size: 0.7rem;
+        padding: 0.15rem 0.4rem;
+        border-radius: 0.3rem;
+        border: 1px solid oklch(var(--bc) / 0.15);
+        background: oklch(var(--b2));
+        color: oklch(var(--bc) / 0.7);
+        cursor: pointer;
+        outline: none;
+    }
+    .time-select:hover {
+        border-color: oklch(var(--bc) / 0.3);
     }
     .poster-row-wrapper {
         position: relative;

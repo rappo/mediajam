@@ -10,7 +10,7 @@
 	import ChatWidget from "$lib/components/ChatWidget.svelte";
 	import { addToast } from "$lib/stores/toast.js";
 	import { jellyfinAuthInvalid } from "$lib/stores/auth.js";
-	import { page } from "$app/stores";
+	import { page, navigating } from "$app/stores";
 	import { afterNavigate } from "$app/navigation";
 
 	// Scroll to top on every navigation
@@ -522,6 +522,11 @@
 				</div>
 			</div>
 		</nav>
+
+		<!-- Global loading bar -->
+		{#if $navigating}
+			<div class="nav-loading-bar"></div>
+		{/if}
 
 		<!-- Jellyfin Re-auth Banner -->
 		{#if $jellyfinAuthInvalid && !reauthDismissed}

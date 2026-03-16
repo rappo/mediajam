@@ -123,13 +123,35 @@
         icon: '💿',
     }));
 
-    const deepCutsItems = data.sections.deepCuts.map((/** @type {any} */ i) => ({
+    const itsBeenAWhileItems = data.sections.itsBeenAWhile.map((/** @type {any} */ i) => ({
         href: `/music/${i.artist_id}/${i.album_id}`,
         poster_url: i.album_art,
         title: i.album_title,
-        subtitle: `${i.artist_name} · ${i.artist_plays} plays from this artist`,
-        icon: '💎',
+        subtitle: `${i.artist_name} · ${i.total_plays} plays`,
+        icon: '⏰',
     }));
+
+    // Time filter option sets
+    const ROTATION_OPTIONS = [
+        { label: 'Past Week', value: '7' },
+        { label: '1 Month', value: '30' },
+        { label: '3 Months', value: '90' },
+        { label: '6 Months', value: '180' },
+        { label: '1 Year', value: '365' },
+    ];
+    const RECENT_OPTIONS = [
+        { label: 'All Time', value: '0' },
+        { label: 'Past Week', value: '7' },
+        { label: '1 Month', value: '30' },
+        { label: '3 Months', value: '90' },
+        { label: '1 Year', value: '365' },
+    ];
+    const AWHILE_OPTIONS = [
+        { label: '3 Months', value: '3' },
+        { label: '6 Months', value: '6' },
+        { label: '1 Year', value: '12' },
+        { label: '2 Years', value: '24' },
+    ];
 </script>
 
 <svelte:head>
@@ -221,18 +243,21 @@
 
         <!-- Heavy Rotation -->
         {#if heavyRotationItems.length > 0}
-            <PosterRow title="🔥 Heavy Rotation" items={heavyRotationItems} square />
+            <PosterRow title="🔥 Heavy Rotation" items={heavyRotationItems} square
+                timeFilter={{ paramName: 'rotation_time', value: data.timeFilters.rotationTime, options: ROTATION_OPTIONS }} />
         {/if}
 
         <!-- Your Recent Listening -->
-        <PosterRow title="Your Recent Listening" items={recentPosterItems} square />
+        <PosterRow title="Your Recent Listening" items={recentPosterItems} square
+            timeFilter={{ paramName: 'recent_time', value: data.timeFilters.recentTime, options: RECENT_OPTIONS }} />
 
-        <!-- New from Your Favorites -->
-        <PosterRow title="New from Your Favorites" items={favoritePosterItems} square />
+        <!-- Unlisted from Your Favorites -->
+        <PosterRow title="Unlisted from Your Favorites" items={favoritePosterItems} square />
 
-        <!-- Deep Cuts -->
-        {#if deepCutsItems.length > 0}
-            <PosterRow title="💎 Deep Cuts" items={deepCutsItems} square />
+        <!-- It's Been a While -->
+        {#if itsBeenAWhileItems.length > 0}
+            <PosterRow title="⏰ It's Been a While" items={itsBeenAWhileItems} square
+                timeFilter={{ paramName: 'awhile_time', value: data.timeFilters.awhileTime, options: AWHILE_OPTIONS }} />
         {/if}
 
         <!-- Unplayed Albums -->

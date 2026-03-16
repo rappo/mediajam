@@ -6,7 +6,7 @@ import {
     getRediscoverArtists,
     getHeavyRotation,
     getUnplayedAlbums,
-    getDeepCuts,
+    getItsBeenAWhile,
 } from '$lib/server/homepage-engine.js';
 
 /** @type {import('./$types').PageServerLoad} */
@@ -18,6 +18,16 @@ export function load({ locals, url }) {
     const offset = (page - 1) * perPage;
     const search = url.searchParams.get('q') || '';
     const sort = url.searchParams.get('sort') || 'plays';
+
+    // Time filter params
+    const TIME_MAP = { '7': 7, '30': 30, '90': 90, '180': 180, '365': 365, '0': 0 };
+    const rotationTime = url.searchParams.get('rotation_time') || '30';
+    const recentTime = url.searchParams.get('recent_time') || '0';
+    const awhileTime = url.searchParams.get('awhile_time') || '6';
+    const rotationDays = TIME_MAP[rotationTime] ?? 30;
+    const recentDays = TIME_MAP[recentTime] ?? 0;
+    const AWHILE_MAP = { '3': 3, '6': 6, '12': 12, '24': 24 };
+    const awhileMonths = AWHILE_MAP[awhileTime] ?? 6;
 
     // Total counts
     const totalArtists = /** @type {any} */ (
@@ -130,14 +140,14 @@ export function load({ locals, url }) {
 
     // ── Smart Sections (graceful degradation) ──
     let recentListening = [], newFromFavorites = [], rediscover = [];
-    let heavyRotation = [], unplayedAlbums = [], deepCuts = [];
+    let heavyRotation = [], unplayedAlbums = [], itsBeenAWhile = [];
     try {
-        recentListening = getRecentListening(userId, prefs.maxItemsPerSection);
+        recentListening = getRecentListening(userId, prefs.maxItemsPerSection, recentDays);
         newFromFavorites = getNewFromFavorites(userId, prefs.maxItemsPerSection);
         rediscover = getRediscoverArtists(userId, prefs);
-        heavyRotation = getHeavyRotation(userId, prefs.maxItemsPerSection);
+        heavyRotation = getHeavyRotation(userId, prefs.maxItemsPerSection, rotationDays);
         unplayedAlbums = getUnplayedAlbums(userId, prefs.maxItemsPerSection);
-        deepCuts = getDeepCuts(userId, prefs.maxItemsPerSection);
+        itsBeenAWhile = getItsBeenAWhile(userId, awhileMonths, prefs.maxItemsPerSection);
     } catch (e) {
         console.error('[music] Smart section error:', e instanceof Error ? e.message : e);
     }
@@ -159,6 +169,7 @@ export function load({ locals, url }) {
         pagination: { page, perPage, total: filteredTotal, totalPages },
         search,
         sort,
-        sections: { recentListening, newFromFavorites, rediscover, heavyRotation, unplayedAlbums, deepCuts }
+        sections: { recentListening, newFromFavorites, rediscover, heavyRotation, unplayedAlbums, itsBeenAWhile },
+        timeFilters: { rotationTime, recentTime, awhileTime },
     };
 }
