@@ -11,12 +11,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Docker CLI
+      - name: Install Docker CLI + Compose
         run: |
           if command -v apk &> /dev/null; then
             apk add --no-cache docker-cli docker-cli-compose
           elif command -v apt-get &> /dev/null; then
-            apt-get update && apt-get install -y --no-install-recommends docker.io docker-compose-plugin
+            apt-get update && apt-get install -y --no-install-recommends docker.io curl
+            # Install docker compose v2 plugin manually (not in bullseye repos)
+            mkdir -p /usr/local/lib/docker/cli-plugins
+            curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64" \
+              -o /usr/local/lib/docker/cli-plugins/docker-compose
+            chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
           fi
 
       - name: Login to Forgejo Registry
