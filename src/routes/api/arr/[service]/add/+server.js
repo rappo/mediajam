@@ -201,7 +201,10 @@ export async function POST({ params, request, locals }) {
 
         // Update local DB with the new *arr ID, slug, and quality profile
         const idColumn = service === 'radarr' ? 'radarr_id' : service === 'sonarr' ? 'sonarr_id' : 'lidarr_id';
-        const slug = result.titleSlug || result.sortName || '';
+        // For Lidarr, use foreignArtistId (MusicBrainz ID) as slug since that's the URL path
+        const slug = service === 'lidarr'
+            ? (result.foreignArtistId || result.titleSlug || result.sortName || '')
+            : (result.titleSlug || result.sortName || '');
         const qpName = result.qualityProfile?.name || '';
         db.prepare(`UPDATE media_parents SET ${idColumn} = ?, arr_monitored = 1, arr_slug = ?, arr_quality_profile = ? WHERE id = ?`)
             .run(result.id, slug, qpName || null, mediaParentId);

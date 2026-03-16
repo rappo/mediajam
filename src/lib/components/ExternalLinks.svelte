@@ -121,12 +121,23 @@
             };
             const cfg = arrConfig[arr_service];
             if (cfg) {
+                // For Lidarr, use musicbrainz_id (foreignArtistId) for the URL, not the title slug
+                const arrPath = arr_service === 'lidarr' && musicbrainz_id
+                    ? musicbrainz_id
+                    : arr_slug;
                 result.push({
                     label: cfg.label,
-                    url: `${String(arr_url).replace(/\/+$/, '')}/${cfg.path}/${arr_slug}`,
+                    url: `${String(arr_url).replace(/\/+$/, '')}/${cfg.path}/${arrPath}`,
                     service: arr_service,
                 });
             }
+        } else if (!arr_slug && arr_url && arr_service === 'lidarr' && musicbrainz_id) {
+            // Not yet in Lidarr — show search link using MB ID
+            result.push({
+                label: "Lidarr Search",
+                url: `${String(arr_url).replace(/\/+$/, '')}/add/search?term=lidarr%3A${musicbrainz_id}`,
+                service: "lidarr",
+            });
         }
 
         // Wikipedia

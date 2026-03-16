@@ -290,7 +290,9 @@ export async function syncArrService(service, url, apiKey) {
             }
 
             if (match) {
-                const slug = item.titleSlug || item.foreignArtistId || null;
+                const slug = service === 'lidarr'
+                    ? (item.foreignArtistId || item.titleSlug || null)
+                    : (item.titleSlug || item.foreignArtistId || null);
                 updateStmt.run(
                     item.id,
                     item.monitored ? 1 : 0,
@@ -313,7 +315,9 @@ export async function syncArrService(service, url, apiKey) {
                 const overview = meta.extractOverview(item);
                 const poster = meta.extractPoster(item);
                 const ids = meta.extractExternalIds(item);
-                const slug = item.titleSlug || item.foreignArtistId || null;
+                const slug = service === 'lidarr'
+                    ? (item.foreignArtistId || item.titleSlug || null)
+                    : (item.titleSlug || item.foreignArtistId || null);
 
                 // Try to find an existing wanted stub by external IDs
                 let existingStub = /** @type {any} */ (findWantedByExternalId.get(
