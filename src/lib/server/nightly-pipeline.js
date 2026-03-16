@@ -24,6 +24,16 @@ import {
     mergePersonDuplicates,
 } from '$lib/server/reconcile.js';
 import { warmCache } from '$lib/server/image-cache.js';
+import { getPrecomputed, setPrecomputed, invalidatePrecomputed } from '$lib/server/section-cache.js';
+import {
+    getHomepagePrefs,
+    detectMoviePatterns, getPersonRecommendations, getRecentlyWatchedMovies,
+    getUnwatchedMovies, getRecommendedMovies,
+    getAiringThisWeek, getNewUnwatchedEpisodes, getBehindOnShows,
+    getUpcomingEpisodes, getRecentlyWatchedShows,
+    getRecentListening, getNewFromFavorites, getRediscoverArtists,
+    getHeavyRotation, getUnplayedAlbums, getItsBeenAWhile,
+} from '$lib/server/homepage-engine.js';
 import { startPeopleSync, startExternalIdsSync, startPeopleEnrichSync } from '$lib/server/people-sync-engine.js';
 import { startMusicBrainzEnrich } from '$lib/server/musicbrainz-engine.js';
 import { autoMergeMediumPlus, enrichUnmatchedAlbums, backfillOriginalYears } from '$lib/server/album-matcher.js';
@@ -309,6 +319,67 @@ const PHASES = [
             log(`Found ${urls.length} images to warm...`);
             await warmCache(urls, 5);
             return `Warmed ${urls.length} images`;
+        },
+    },
+    {
+        id: 'sections-cache',
+        label: 'Rebuild Smart Sections',
+        schedule: 'nightly',
+        async run(log) {
+            const users = /** @type {any[]} */ (db.prepare('SELECT id FROM users').all());
+            const prefs = getHomepagePrefs();
+            let built = 0;
+
+            for (const user of users) {
+                const userId = user.id;
+
+                // Movies
+                try {
+                    let hero = null, personRecs = [], recentlyWatched = [], unwatched = [], recommended = [];
+                    try { hero = detectMoviePatterns(userId, prefs); } catch { /* */ }
+                    try { recommended = getRecommendedMovies(userId, prefs.maxItemsPerSection); } catch { /* */ }
+                    try { personRecs = getPersonRecommendations(userId, prefs); } catch { /* */ }
+                    try { recentlyWatched = getRecentlyWatchedMovies(userId, prefs.maxItemsPerSection); } catch { /* */ }
+                    try { unwatched = getUnwatchedMovies(prefs.maxItemsPerSection); } catch { /* */ }
+                    setPrecomputed(`movies-smart-${userId}`, {
+                        sections: { hero, recommended, personRecs, recentlyWatched, unwatched },
+                    });
+                    built++;
+                } catch (e) { log(`Movies sections failed for user ${userId}: ${e instanceof Error ? e.message : e}`); }
+
+                // TV
+                try {
+                    let airingThisWeek = [], newUnwatched = [], behindOn = [], comingUp = [], recentlyWatchedTV = [];
+                    try { airingThisWeek = getAiringThisWeek(prefs, userId); } catch { /* */ }
+                    try { newUnwatched = getNewUnwatchedEpisodes(prefs, userId); } catch { /* */ }
+                    try { behindOn = getBehindOnShows(userId); } catch { /* */ }
+                    try { comingUp = getUpcomingEpisodes(prefs, userId); } catch { /* */ }
+                    try { recentlyWatchedTV = getRecentlyWatchedShows(userId, prefs.maxItemsPerSection); } catch { /* */ }
+                    setPrecomputed(`tv-smart-${userId}`, {
+                        sections: { airingThisWeek, newUnwatched, behindOn, comingUp, recentlyWatched: recentlyWatchedTV },
+                    });
+                    built++;
+                } catch (e) { log(`TV sections failed for user ${userId}: ${e instanceof Error ? e.message : e}`); }
+
+                // Music
+                try {
+                    let recentListening = [], newFromFav = [], rediscover = [];
+                    let heavyRotation = [], unplayedAlbums = [], itsBeenAWhile = [];
+                    try { recentListening = getRecentListening(userId, prefs.maxItemsPerSection, 0); } catch { /* */ }
+                    try { newFromFav = getNewFromFavorites(userId, prefs.maxItemsPerSection); } catch { /* */ }
+                    try { rediscover = getRediscoverArtists(userId, prefs); } catch { /* */ }
+                    try { heavyRotation = getHeavyRotation(userId, prefs.maxItemsPerSection, 30); } catch { /* */ }
+                    try { unplayedAlbums = getUnplayedAlbums(userId, prefs.maxItemsPerSection); } catch { /* */ }
+                    try { itsBeenAWhile = getItsBeenAWhile(userId, 6, prefs.maxItemsPerSection); } catch { /* */ }
+                    setPrecomputed(`music-smart-${userId}`, {
+                        sections: { recentListening, newFromFavorites: newFromFav, rediscover, heavyRotation, unplayedAlbums, itsBeenAWhile },
+                        timeFilters: { rotationTime: '30', recentTime: '0', awhileTime: '6' },
+                    });
+                    built++;
+                } catch (e) { log(`Music sections failed for user ${userId}: ${e instanceof Error ? e.message : e}`); }
+            }
+
+            return `Built ${built} section caches for ${users.length} user(s)`;
         },
     },
 

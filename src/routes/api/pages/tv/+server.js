@@ -8,6 +8,7 @@ import {
     getRecentlyWatchedShows,
 } from '$lib/server/homepage-engine.js';
 import { json } from '@sveltejs/kit';
+import { getPrecomputed, setPrecomputed } from '$lib/server/section-cache.js';
 
 export function GET({ locals, url }) {
     const userId = locals.user?.id || 0;
@@ -130,7 +131,14 @@ export function GET({ locals, url }) {
         });
     }
 
-    // ── SMART VIEW: just sections ─────────────────────────────
+    // ── SMART VIEW: serve from precomputed cache, fallback to live ──
+    const cacheKey = `tv-smart-${userId}`;
+    const cached = getPrecomputed(cacheKey);
+    if (cached) {
+        return json(cached.data);
+    }
+
+    // Cache miss — compute live, save for next time
     let airingThisWeek = [], newUnwatched = [], behindOn = [], comingUp = [], recentlyWatched = [];
     try { airingThisWeek = getAiringThisWeek(prefs, userId); } catch (e) {
         console.error('[tv] airingThisWeek error:', e instanceof Error ? e.message : e);
@@ -148,7 +156,12 @@ export function GET({ locals, url }) {
         console.error('[tv] recentlyWatched error:', e instanceof Error ? e.message : e);
     }
 
-    return json({
+    const result = {
         sections: { airingThisWeek, newUnwatched, behindOn, comingUp, recentlyWatched }
-    });
+    };
+
+    try { setPrecomputed(cacheKey, result); } catch { /* non-fatal */ }
+
+    return json(result);
 }
+

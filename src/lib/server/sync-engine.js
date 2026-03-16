@@ -1399,6 +1399,15 @@ export async function startSync(libraryId = null, force = false) {
             } catch (dedupErr) {
                 console.warn('[sync] Post-sync dedup failed:', dedupErr instanceof Error ? dedupErr.message : dedupErr);
             }
+
+            // Invalidate precomputed sections so next page load gets fresh data
+            try {
+                const { invalidatePrecomputed } = await import('$lib/server/section-cache.js');
+                invalidatePrecomputed();
+                broadcast({ type: 'progress', log: '🔄 Smart section cache invalidated (will rebuild on next page load)', logType: 'info' });
+            } catch (e) {
+                console.warn('[sync] Section cache invalidation failed:', e instanceof Error ? e.message : e);
+            }
         }
 
     } catch (e) {

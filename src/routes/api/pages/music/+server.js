@@ -9,6 +9,7 @@ import {
     getItsBeenAWhile,
 } from '$lib/server/homepage-engine.js';
 import { json } from '@sveltejs/kit';
+import { getPrecomputed, setPrecomputed } from '$lib/server/section-cache.js';
 
 export function GET({ locals, url }) {
     const userId = locals.user?.id || 0;
@@ -141,7 +142,18 @@ export function GET({ locals, url }) {
         });
     }
 
-    // ── SMART VIEW: just sections ─────────────────────────────
+    // ── SMART VIEW: serve from precomputed cache (default filters only) ──
+    const isDefaultFilters = rotationTime === '30' && recentTime === '0' && awhileTime === '6';
+    const cacheKey = `music-smart-${userId}`;
+
+    if (isDefaultFilters) {
+        const cached = getPrecomputed(cacheKey);
+        if (cached) {
+            return json(cached.data);
+        }
+    }
+
+    // Cache miss or custom filters — compute live
     let recentListening = [], newFromFavorites = [], rediscover = [];
     let heavyRotation = [], unplayedAlbums = [], itsBeenAWhile = [];
     try {
@@ -155,8 +167,15 @@ export function GET({ locals, url }) {
         console.error('[music] Smart section error:', e instanceof Error ? e.message : e);
     }
 
-    return json({
+    const result = {
         sections: { recentListening, newFromFavorites, rediscover, heavyRotation, unplayedAlbums, itsBeenAWhile },
         timeFilters: { rotationTime, recentTime, awhileTime },
-    });
+    };
+
+    // Save to cache when using default filters
+    if (isDefaultFilters) {
+        try { setPrecomputed(cacheKey, result); } catch { /* non-fatal */ }
+    }
+
+    return json(result);
 }

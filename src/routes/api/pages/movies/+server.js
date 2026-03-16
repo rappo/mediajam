@@ -8,59 +8,51 @@ import {
     getRecommendedMovies,
 } from '$lib/server/homepage-engine.js';
 import { json } from '@sveltejs/kit';
+import { getPrecomputed, setPrecomputed } from '$lib/server/section-cache.js';
 
 /** @type {import('./$types').RequestHandler} */
 export function GET({ locals, url }) {
     const userId = locals.user?.id || 0;
+    const view = url.searchParams.get('view') || 'smart';
     const prefs = getHomepagePrefs();
-    const view = url.searchParams.get('view') || 'smart'; // 'smart' | 'library'
 
     if (view === 'library') {
-        // ── LIBRARY VIEW: table + charts ──────────────────────────
+        // ── LIBRARY VIEW: table + charts ──────────────────────
         const movies = db.prepare(`
-            WITH play_stats AS (
-                SELECT media_id,
-                       COUNT(*) as watch_count,
-                       MAX(timestamp) as last_watched
-                FROM (
-                    SELECT DISTINCT media_id,
-                           CAST(strftime('%s', timestamp) / 43200 AS INTEGER) as time_bucket,
-                           MAX(timestamp) as timestamp
-                    FROM playback_history WHERE user_id = ?
-                    GROUP BY media_id, time_bucket
-                )
-                GROUP BY media_id
-            )
-            SELECT
-                mp.id, mp.title, mp.release_year, mp.poster_url, mp.overview,
-                mp.tmdb_id, mp.imdb_id, mp.collected_children, mp.total_released_children,
-                mp.collection_status, mp.arr_status,
-                CASE
-                    WHEN mp.collection_status = 'wanted' THEN 'wanted'
-                    WHEN COALESCE(ps.watch_count, 0) > 0 THEN 'watched'
-                    ELSE mc.watch_status
-                END as watch_status,
-                COALESCE(ps.watch_count, 0) as play_count,
-                COALESCE(ROUND(mc.runtime_ticks / 10000000.0 / 60, 0), mp.runtime_minutes) as runtime_minutes,
-                COALESCE(ps.watch_count, 0) as watch_count,
-                ps.last_watched
+            SELECT mp.id, mp.title, mp.release_year, mp.poster_url,
+                   mp.tmdb_id, mp.imdb_id, mp.jellyfin_id,
+                   mp.collection_status, mp.arr_status,
+                   COALESCE(pc.play_count, 0) as play_count,
+                   pc.last_played
             FROM media_parents mp
-            LEFT JOIN media_children mc ON mc.parent_id = mp.id
-            LEFT JOIN play_stats ps ON ps.media_id = mc.id
+            LEFT JOIN (
+                SELECT mc2.parent_id, COUNT(*) as play_count, MAX(deduped.timestamp) as last_played
+                FROM (
+                    SELECT DISTINCT ph.media_id,
+                           CAST(strftime('%s', ph.timestamp) / 43200 AS INTEGER) as time_bucket,
+                           MAX(ph.timestamp) as timestamp
+                    FROM playback_history ph
+                    JOIN media_children mc2 ON ph.media_id = mc2.id
+                    WHERE ph.user_id = ?
+                    GROUP BY ph.media_id, time_bucket
+                ) deduped
+                JOIN media_children mc2 ON deduped.media_id = mc2.id
+                GROUP BY mc2.parent_id
+            ) pc ON pc.parent_id = mp.id
             WHERE mp.media_type = 'movie'
             ORDER BY mp.title
         `).all(userId);
 
         const moviesByDecade = db.prepare(`
-            SELECT (release_year / 10) * 10 as decade, COUNT(*) as count
+            SELECT (release_year / 10) * 10 as decade, count(*) as count
             FROM media_parents WHERE media_type = 'movie' AND release_year IS NOT NULL
             GROUP BY decade ORDER BY decade
         `).all();
 
         const moviesByYear = db.prepare(`
-            SELECT release_year as year, COUNT(*) as count
+            SELECT release_year as year, count(*) as count
             FROM media_parents WHERE media_type = 'movie' AND release_year IS NOT NULL
-            GROUP BY release_year ORDER BY release_year
+            GROUP BY year ORDER BY year
         `).all();
 
         const mostRewatched = db.prepare(`
@@ -72,14 +64,21 @@ export function GET({ locals, url }) {
                 FROM playback_history
             ) deduped ON deduped.media_id = mc.id
             WHERE mp.media_type = 'movie'
-            GROUP BY mp.id HAVING COUNT(*) > 1
-            ORDER BY play_count DESC LIMIT 10
+            GROUP BY mp.id HAVING play_count > 1
+            ORDER BY play_count DESC LIMIT 15
         `).all();
 
         return json({ movies, moviesByDecade, moviesByYear, mostRewatched });
     }
 
-    // ── SMART VIEW: just sections (fastest possible) ──────────
+    // ── SMART VIEW: serve from precomputed cache, fallback to live ──
+    const cacheKey = `movies-smart-${userId}`;
+    const cached = getPrecomputed(cacheKey);
+    if (cached) {
+        return json(cached.data);
+    }
+
+    // Cache miss — compute live, save for next time
     let hero = null, personRecs = [], recentlyWatched = [], unwatched = [], recommended = [];
 
     try { hero = detectMoviePatterns(userId, prefs); } catch (e) {
@@ -98,7 +97,12 @@ export function GET({ locals, url }) {
         console.error('[movies] unwatched error:', e instanceof Error ? e.message : e);
     }
 
-    return json({
+    const result = {
         sections: { hero, recommended, personRecs, recentlyWatched, unwatched },
-    });
+    };
+
+    // Save result to cache for next time
+    try { setPrecomputed(cacheKey, result); } catch { /* non-fatal */ }
+
+    return json(result);
 }
