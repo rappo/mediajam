@@ -26,7 +26,7 @@ import {
 import { warmCache } from '$lib/server/image-cache.js';
 import { startPeopleSync, startExternalIdsSync, startPeopleEnrichSync } from '$lib/server/people-sync-engine.js';
 import { startMusicBrainzEnrich } from '$lib/server/musicbrainz-engine.js';
-import { autoMergeMediumPlus, enrichUnmatchedAlbums } from '$lib/server/album-matcher.js';
+import { autoMergeMediumPlus, enrichUnmatchedAlbums, backfillOriginalYears } from '$lib/server/album-matcher.js';
 import { fetchAllRatings } from '$lib/server/ratings-engine.js';
 import { backfillWikipedia } from '$lib/server/wikipedia-backfill.js';
 import { generate, embed, isEmbeddingAvailable } from '$lib/server/llm.js';
@@ -353,7 +353,11 @@ const PHASES = [
             log('Enriching remaining unmatched albums...');
             await enrichUnmatchedAlbums();
 
-            return `MB enrich done, ${merged?.merged ?? 0} albums auto-merged, unmatched enriched`;
+            log('Backfilling original release years from MusicBrainz...');
+            const years = await backfillOriginalYears();
+            if (years.updated > 0) log(`  Fixed ${years.updated} album years`);
+
+            return `MB enrich done, ${merged?.merged ?? 0} albums auto-merged, unmatched enriched, ${years.updated} years fixed`;
         },
     },
     {

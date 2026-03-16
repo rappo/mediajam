@@ -804,3 +804,100 @@ export async function enrichUnmatchedAlbums({ artistId, dryRun = false } = {}) {
     return { enriched, notFound, details };
 }
 
+/**
+ * Backfill original release years from MusicBrainz for all albums.
+ * Jellyfin's ProductionYear often reflects the remaster/reissue year.
+ * MusicBrainz release-group's `first-release-date` gives the original year.
+ *
+ * @param {{ dryRun?: boolean }} options
+ * @returns {Promise<{ updated: number, skipped: number, errors: number, details: any[] }>}
+ */
+export async function backfillOriginalYears({ dryRun = false } = {}) {
+    // Get all albums with a musicbrainz_id (release group ID)
+    const albums = /** @type {any[]} */ (db.prepare(`
+        SELECT mc.id, mc.title, mc.musicbrainz_id, mc.item_number as current_year,
+               mp.title as artist_name
+        FROM media_children mc
+        JOIN media_parents mp ON mc.parent_id = mp.id
+        WHERE mp.media_type = 'artist'
+          AND mc.musicbrainz_id IS NOT NULL AND mc.musicbrainz_id != ''
+        ORDER BY mp.title, mc.title
+    `).all());
+
+    let updated = 0;
+    let skipped = 0;
+    let errors = 0;
+    /** @type {any[]} */
+    const details = [];
+
+    console.log(`[backfill-years] Checking ${albums.length} albums with MusicBrainz IDs...`);
+
+    for (const album of albums) {
+        const mbId = album.musicbrainz_id;
+
+        try {
+            const res = await fetch(`${MB_API}/release-group/${mbId}?fmt=json`, {
+                headers: { 'User-Agent': MB_USER_AGENT, 'Accept': 'application/json' },
+                signal: AbortSignal.timeout(15000)
+            });
+
+            if (res.status === 503 || res.status === 429) {
+                console.log(`[backfill-years] Rate limited, waiting 3s...`);
+                await new Promise(r => setTimeout(r, 3000));
+                skipped++;
+                continue;
+            }
+
+            if (!res.ok) {
+                errors++;
+                continue;
+            }
+
+            const data = await res.json();
+            await new Promise(r => setTimeout(r, MB_RATE_MS));
+
+            const firstReleaseDate = data['first-release-date'];
+            if (!firstReleaseDate) {
+                skipped++;
+                continue;
+            }
+
+            const originalYear = parseInt(firstReleaseDate.substring(0, 4));
+            if (isNaN(originalYear) || originalYear < 1900) {
+                skipped++;
+                continue;
+            }
+
+            // Skip if already correct
+            if (album.current_year === originalYear) {
+                skipped++;
+                continue;
+            }
+
+            if (!dryRun) {
+                db.prepare('UPDATE media_children SET item_number = ? WHERE id = ?')
+                    .run(originalYear, album.id);
+            }
+
+            updated++;
+            details.push({
+                action: dryRun ? 'would_update' : 'updated',
+                albumTitle: album.title,
+                artistName: album.artist_name,
+                oldYear: album.current_year,
+                newYear: originalYear
+            });
+
+            if (album.current_year !== originalYear) {
+                console.log(`[backfill-years] ${album.artist_name} — ${album.title}: ${album.current_year || '?'} → ${originalYear}`);
+            }
+
+        } catch (err) {
+            console.error(`[backfill-years] Error for "${album.title}":`, err instanceof Error ? err.message : err);
+            errors++;
+        }
+    }
+
+    console.log(`[backfill-years] Done: ${updated} updated, ${skipped} skipped, ${errors} errors`);
+    return { updated, skipped, errors, details };
+}
