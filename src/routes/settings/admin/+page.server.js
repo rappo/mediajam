@@ -100,6 +100,7 @@ export function load() {
             hasLastfmApiKey: !!settings?.lastfm_api_key,
             hasLastfmSharedSecret: !!settings?.lastfm_shared_secret,
             jellyfinPrDbPath: settings?.jellyfin_pr_db_path || '',
+            jellyfinTimezone: settings?.jellyfin_timezone || '',
             jellyfinSyncCheck: settings?.jellyfin_sync_check ?? 1,
             ollamaUrl: settings?.ollama_url || '',
             ollamaEmbedModel: settings?.ollama_embed_model || 'nomic-embed-text',

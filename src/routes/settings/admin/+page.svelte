@@ -38,6 +38,7 @@
     let lastfmApiKey = $state("");
     let lastfmSharedSecret = $state("");
     let jellyfinPrDbPath = $state(data.settings.jellyfinPrDbPath || "/app/jellyfin/playback_reporting.db");
+    let jellyfinTimezone = $state(data.settings.jellyfinTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
     let jellyfinSyncCheck = $state(!!data.settings.jellyfinSyncCheck);
 
     // Jellyfin PR DB Validation
@@ -536,6 +537,7 @@
             if (lastfmSharedSecret)
                 payload.lastfm_shared_secret = lastfmSharedSecret;
             payload.jellyfin_pr_db_path = jellyfinPrDbPath;
+            payload.jellyfin_timezone = jellyfinTimezone;
             payload.jellyfin_sync_check = jellyfinSyncCheck ? 1 : 0;
             payload.ollama_url = ollamaUrl || null;
             payload.ollama_embed_model = ollamaEmbedModel || "nomic-embed-text";
@@ -2326,6 +2328,36 @@
                         </div>
                     </div>
                 {/if}
+            </div>
+
+            <!-- Jellyfin Timezone -->
+            <div class="divider my-2"></div>
+            <div class="form-control">
+                <label class="label" for="settings-jf-timezone">
+                    <span class="label-text font-medium">Jellyfin Server Timezone</span>
+                </label>
+                <p class="text-xs text-base-content/50 mb-2">
+                    The timezone your Jellyfin server runs in. Used to correctly interpret playback timestamps from the Playback Reporting database. Defaults to this server's timezone.
+                </p>
+                <select
+                    id="settings-jf-timezone"
+                    class="select select-bordered select-sm w-full max-w-xs"
+                    bind:value={jellyfinTimezone}
+                >
+                    {#each [
+                        'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+                        'America/Anchorage', 'Pacific/Honolulu', 'America/Phoenix',
+                        'America/Toronto', 'America/Vancouver',
+                        'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Europe/Moscow',
+                        'Asia/Tokyo', 'Asia/Shanghai', 'Asia/Kolkata', 'Asia/Dubai',
+                        'Australia/Sydney', 'Australia/Perth',
+                        'Pacific/Auckland',
+                        'UTC'
+                    ] as tz}
+                        <option value={tz}>{tz.replace(/_/g, ' ')}</option>
+                    {/each}
+                </select>
+                <p class="text-xs text-base-content/30 mt-1">Currently: {jellyfinTimezone}</p>
             </div>
         </div>
     </div>

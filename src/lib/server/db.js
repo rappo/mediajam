@@ -388,6 +388,7 @@ const newAppCols = [
     ['lastfm_api_key', 'TEXT'],
     ['lastfm_shared_secret', 'TEXT'],
     ['jellyfin_pr_db_path', 'TEXT'],
+    ['jellyfin_timezone', "TEXT DEFAULT ''"],
     ['jellyfin_sync_check', 'INTEGER DEFAULT 1'],
     ['ollama_url', 'TEXT'],
     ['ollama_embed_model', "TEXT DEFAULT 'nomic-embed-text'"],
@@ -663,7 +664,43 @@ if (!historyCols.has('track_id')) {
     }
 }
 
-// -- Migrate existing Jellyfin user IDs into user_identities --
+// -- One-time fix: correct jellyfin_pr timestamps stored as UTC instead of ET --
+// The container was running in UTC so PR DB local timestamps were treated as UTC.
+// This migration adds the correct offset (5h EST, 4h EDT) to fix them.
+{
+    // Check if already migrated via a simple flag
+    try { db.exec("ALTER TABLE app_settings ADD COLUMN pr_tz_migrated INTEGER DEFAULT 0"); } catch { /* already exists */ }
+    const migrated = /** @type {any} */ (db.prepare("SELECT pr_tz_migrated FROM app_settings WHERE id = 1").get());
+    if (!migrated?.pr_tz_migrated) {
+        const prEntries = /** @type {any[]} */ (db.prepare(
+            "SELECT id, timestamp FROM playback_history WHERE source = 'jellyfin_pr'"
+        ).all());
+        if (prEntries.length > 0) {
+            // DST 2026: Mar 8, 2:00 AM EST → 3:00 AM EDT
+            // In UTC terms: entries before 2026-03-08T07:00:00Z are EST (+5h), after are EDT (+4h)
+            const dstBoundary = new Date('2026-03-08T07:00:00Z').getTime();
+            const updateStmt = db.prepare("UPDATE playback_history SET timestamp = ? WHERE id = ?");
+            const txn = db.transaction(() => {
+                let fixed = 0;
+                for (const entry of prEntries) {
+                    const ts = entry.timestamp;
+                    if (!ts) continue;
+                    const d = new Date(ts);
+                    if (isNaN(d.getTime())) continue;
+                    const offsetHours = d.getTime() < dstBoundary ? 5 : 4;
+                    const corrected = new Date(d.getTime() + offsetHours * 3600000);
+                    updateStmt.run(corrected.toISOString(), entry.id);
+                    fixed++;
+                }
+                return fixed;
+            });
+            const count = txn();
+            console.log(`[db] Fixed ${count} jellyfin_pr timestamps (UTC→ET correction)`);
+        }
+        db.prepare("UPDATE app_settings SET pr_tz_migrated = 1 WHERE id = 1").run();
+    }
+}
+
 /** @type {Array<{id: number, jellyfin_user_id: string, jellyfin_access_token: string}>} */
 const usersWithJellyfin = /** @type {any} */ (db.prepare(
     'SELECT id, jellyfin_user_id, jellyfin_access_token FROM users WHERE jellyfin_user_id IS NOT NULL'

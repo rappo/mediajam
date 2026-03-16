@@ -20,6 +20,42 @@ function getPrDbPath() {
 }
 
 /**
+ * Get the configured Jellyfin timezone (IANA format), falling back to server TZ.
+ * @returns {string}
+ */
+function getJellyfinTimezone() {
+    const settings = /** @type {any} */ (
+        db.prepare('SELECT jellyfin_timezone FROM app_settings WHERE id = 1').get()
+    );
+    return settings?.jellyfin_timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+/**
+ * Calculate the UTC offset in milliseconds for a given date in a given timezone.
+ * Returns a NEGATIVE value (e.g. -18000000 for UTC-5) so that:
+ *   new Date(dateAsUTC.getTime() + offsetMs) = correct UTC time
+ *
+ * @param {Date} date - The date to check (interpreted as UTC)
+ * @param {string} tz - IANA timezone string
+ * @returns {number}
+ */
+function getTimezoneOffsetMs(date, tz) {
+    // Format the date in the target timezone to extract the offset
+    const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: tz,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+        hour12: false
+    });
+    const parts = formatter.formatToParts(date);
+    const get = (/** @type {string} */ type) => parseInt(parts.find(p => p.type === type)?.value || '0');
+    const localInTz = new Date(Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second')));
+    // offsetMs = localInTz - date; if local is behind UTC, offset is negative
+    // We want: trueUTC = dateAsUTC - offset  →  offset = -(localInTz - date)
+    return -(localInTz.getTime() - date.getTime());
+}
+
+/**
  * Initialize lastPollRowid from the highest rowid we've already imported.
  * This prevents re-importing old events on first boot.
  */
@@ -162,15 +198,22 @@ function pollForNewPlays() {
                 }
 
                 // DateCreated from PR DB is in the Jellyfin container's LOCAL time
-                // (no timezone suffix). Parse via Date() which treats no-suffix as local,
-                // then .toISOString() converts to proper UTC.
-                // Confirmed by Rashomon test: movie finished at midnight ET but appending
-                // 'Z' showed it as "6h ago" — a 4-hour shift matching the ET→UTC offset.
+                // (no timezone suffix). Convert using the configured jellyfin_timezone.
                 let rawTs = event.DateCreated || '';
                 let timestamp;
                 if (rawTs) {
-                    const localDate = new Date(rawTs.replace(' ', 'T'));
-                    timestamp = isNaN(localDate.getTime()) ? new Date().toISOString() : localDate.toISOString();
+                    const jfTimezone = getJellyfinTimezone();
+                    const localStr = rawTs.replace(' ', 'T');
+                    // Parse as UTC first, then calculate the offset for the JF timezone
+                    const asUtc = new Date(localStr + 'Z');
+                    if (isNaN(asUtc.getTime())) {
+                        timestamp = new Date().toISOString();
+                    } else {
+                        // Get the UTC offset for the Jellyfin timezone at this point in time
+                        // by comparing the formatted local time with the UTC time
+                        const offsetMs = getTimezoneOffsetMs(asUtc, jfTimezone);
+                        timestamp = new Date(asUtc.getTime() + offsetMs).toISOString();
+                    }
                 } else {
                     timestamp = new Date().toISOString();
                 }
