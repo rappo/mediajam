@@ -530,7 +530,7 @@
                 Upcoming
             </p>
 
-            <div class="overflow-x-auto" style="overflow-y: visible; padding-top: 2.5rem;">
+            <div style="overflow: visible; padding-top: 2.5rem;">
                 <div class="grid-container">
                     {#each data.seasons as season}
                         <div class="grid-row">
@@ -1027,15 +1027,29 @@
         gap: 2px;
     }
 
-    /* Fix tooltip clipping on left/right edge episode cells */
-    .grid-container :global(.tooltip::before) {
-        white-space: nowrap;
-        max-width: 240px;
-        overflow: hidden;
-        text-overflow: ellipsis;
+    /* Fix tooltip clipping — ensure tooltips can escape container bounds */
+    .grid-container,
+    .grid-row,
+    .episode-cells {
+        overflow: visible;
     }
     .episode-cells :global(.tooltip) {
         position: relative;
+        /* Lift hovered tooltip above all siblings */
+    }
+    .episode-cells :global(.tooltip:hover) {
+        z-index: 50;
+    }
+    .episode-cells :global(.tooltip::before) {
+        white-space: nowrap;
+        max-width: 260px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        z-index: 50;
+        /* Force tooltip above the row, shift to right so left-edge cells aren't clipped */
+        left: 0;
+        transform: translateY(-100%);
+        translate: 0;
     }
 
     .grid-row {
