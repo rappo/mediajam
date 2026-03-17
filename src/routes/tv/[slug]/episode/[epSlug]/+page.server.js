@@ -1,14 +1,53 @@
 import db from '$lib/server/db.js';
-import { error } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
 import { resolveBackdrop } from '$lib/server/backdrop.js';
+import { slugify, ensureUniqueSlug } from '$lib/server/slugify.js';
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ params, locals }) {
-    const showId = parseInt(params.id);
-    const episodeId = parseInt(params.episodeId);
     const userId = locals.user?.id || 0;
     const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_url, sonarr_url, tmdb_api_key FROM app_settings WHERE id = 1').get());
     const jellyfinUrl = settings?.jellyfin_url || '';
+
+    // Resolve show via slug or numeric ID
+    let showId;
+    const showParam = params.slug;
+    if (/^\d+$/.test(showParam)) {
+        const row = /** @type {any} */ (db.prepare('SELECT id, slug FROM media_parents WHERE id = ? AND media_type = \'show\'').get(parseInt(showParam)));
+        if (!row) throw error(404, 'Show not found');
+        showId = row.id;
+    } else {
+        const row = /** @type {any} */ (db.prepare('SELECT id FROM media_parents WHERE slug = ? AND media_type = \'show\'').get(showParam));
+        if (!row) throw error(404, 'Show not found');
+        showId = row.id;
+    }
+
+    // Resolve episode via slug or numeric ID
+    let episodeId;
+    const epParam = params.epSlug;
+    if (/^\d+$/.test(epParam)) {
+        const row = /** @type {any} */ (db.prepare('SELECT id, slug FROM media_children WHERE id = ? AND parent_id = ?').get(parseInt(epParam), showId));
+        if (!row) throw error(404, 'Episode not found');
+        const showRow = /** @type {any} */ (db.prepare('SELECT slug FROM media_parents WHERE id = ?').get(showId));
+        const showSlug = showRow?.slug || showId;
+        if (row.slug) throw redirect(301, `/tv/${showSlug}/episode/${row.slug}`);
+        const ep = /** @type {any} */ (db.prepare('SELECT title, season_number, item_number FROM media_children WHERE id = ?').get(row.id));
+        const base = slugify(ep.title || `s${ep.season_number}e${ep.item_number}`);
+        const slug = ensureUniqueSlug(db, 'media_children', base, row.id);
+        db.prepare('UPDATE media_children SET slug = ? WHERE id = ?').run(slug, row.id);
+        throw redirect(301, `/tv/${showSlug}/episode/${slug}`);
+    } else {
+        const row = /** @type {any} */ (db.prepare('SELECT id FROM media_children WHERE slug = ? AND parent_id = ?').get(epParam, showId));
+        if (!row) throw error(404, 'Episode not found');
+        episodeId = row.id;
+    }
+
+    // Also redirect if show param was numeric
+    if (/^\d+$/.test(showParam)) {
+        const showRow = /** @type {any} */ (db.prepare('SELECT slug FROM media_parents WHERE id = ?').get(showId));
+        const epRow = /** @type {any} */ (db.prepare('SELECT slug FROM media_children WHERE id = ?').get(episodeId));
+        if (showRow?.slug && epRow?.slug) throw redirect(301, `/tv/${showRow.slug}/episode/${epRow.slug}`);
+    }
 
     // Load the episode (media_children row)
     const episode = /** @type {any} */ (db.prepare(`

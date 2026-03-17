@@ -2,6 +2,7 @@ import db from '$lib/server/db.js';
 import { getJellyfinApis, getItemsApi, getSystemApi, getTvShowsApi } from '$lib/server/jellyfin.js';
 import { logError, logInfo, logWarn } from '$lib/server/logger.js';
 import { logActivity } from '$lib/server/activity-log.js';
+import { slugify, ensureUniqueSlug } from '$lib/server/slugify.js';
 
 /** @type {Set<(data: any) => void>} */
 const listeners = new Set();
@@ -402,6 +403,66 @@ export async function startSync(libraryId = null, force = false) {
         'UPDATE media_parents SET total_released_children = ? WHERE id = ?'
     );
 
+    /**
+     * Ensure a media_parents row has a slug; generate and save one if missing.
+     * @param {number} parentId
+     * @param {string} title
+     * @param {string} mediaType
+     * @param {number|null} releaseYear
+     */
+    function ensureParentSlug(parentId, title, mediaType, releaseYear) {
+        const row = /** @type {any} */ (db.prepare('SELECT slug FROM media_parents WHERE id = ?').get(parentId));
+        if (row?.slug) return; // already has a slug
+        const addYear = (mediaType === 'movie' || mediaType === 'show') ? releaseYear : null;
+        const base = slugify(title || 'untitled', addYear);
+        const slug = ensureUniqueSlug(db, 'media_parents', base, parentId);
+        db.prepare('UPDATE media_parents SET slug = ? WHERE id = ?').run(slug, parentId);
+    }
+
+    /**
+     * When merging rows, adopt the older row's slug onto the surviving row.
+     * This preserves URLs that users may have bookmarked.
+     * @param {string} table - 'media_parents' or 'persons'
+     * @param {number} oldId - Row being deleted
+     * @param {number} survivingId - Row being kept
+     */
+    function adoptSlug(table, oldId, survivingId) {
+        const oldRow = /** @type {any} */ (db.prepare(`SELECT slug FROM ${table} WHERE id = ?`).get(oldId));
+        if (!oldRow?.slug) return;
+        const survivingRow = /** @type {any} */ (db.prepare(`SELECT slug FROM ${table} WHERE id = ?`).get(survivingId));
+        // Only adopt if surviving row has no slug or a generic one
+        if (!survivingRow?.slug || survivingRow.slug.startsWith('untitled')) {
+            db.prepare(`UPDATE ${table} SET slug = ? WHERE id = ?`).run(oldRow.slug, survivingId);
+        }
+    }
+
+    /**
+     * Ensure a persons row has a slug; generate and save one if missing.
+     * @param {number} personId
+     * @param {string} name
+     */
+    function ensurePersonSlug(personId, name) {
+        const row = /** @type {any} */ (db.prepare('SELECT slug FROM persons WHERE id = ?').get(personId));
+        if (row?.slug) return;
+        const base = slugify(name || 'unknown');
+        const slug = ensureUniqueSlug(db, 'persons', base, personId);
+        db.prepare('UPDATE persons SET slug = ? WHERE id = ?').run(slug, personId);
+    }
+
+    /**
+     * Ensure a media_children row has a slug; generate and save one if missing.
+     * @param {number} childId
+     * @param {string} title
+     */
+    function ensureChildSlug(childId, title) {
+        const row = /** @type {any} */ (db.prepare('SELECT slug, parent_id FROM media_children WHERE id = ?').get(childId));
+        if (row?.slug) return;
+        const base = slugify(title || 'untitled');
+        // Children slugs are scoped per parent — use global unique check for now
+        const slug = ensureUniqueSlug(db, 'media_children', base, childId);
+        db.prepare('UPDATE media_children SET slug = ? WHERE id = ?').run(slug, childId);
+    }
+
     // Person upsert: check-then-insert/update to avoid ON CONFLICT with partial unique indexes
     const findPersonByTmdb = db.prepare('SELECT id FROM persons WHERE tmdb_person_id = ?');
     const findPersonByJellyfin = db.prepare('SELECT id FROM persons WHERE jellyfin_id = ?');
@@ -497,6 +558,7 @@ export async function startSync(libraryId = null, force = false) {
                 }
 
                 if (personId) {
+                    ensurePersonSlug(personId, name);
                     upsertCredit.run({
                         personId,
                         mediaParentId,
@@ -671,6 +733,9 @@ export async function startSync(libraryId = null, force = false) {
                         }
 
                         upsertParent.run(parentParams);
+                        // Ensure slug exists for newly inserted parents
+                        const upsertedRow = /** @type {any} */ (getParentId.get(item.Id));
+                        if (upsertedRow) ensureParentSlug(upsertedRow.id, parentParams.title, parentParams.mediaType, parentParams.releaseYear);
                     } catch (upsertErr) {
                         const errStr = String(upsertErr);
                         if (errStr.includes('UNIQUE constraint')) {
@@ -704,6 +769,8 @@ export async function startSync(libraryId = null, force = false) {
                                             // Delete source person_credits (target will re-sync its own)
                                             db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?')
                                                 .run(existing.id);
+                                            // Adopt slug from deleted entry before removing it
+                                            adoptSlug('media_parents', existing.id, currentId);
                                             // Delete the external parent
                                             db.prepare('DELETE FROM media_parents WHERE id = ?').run(existing.id);
                                             // Apply the correct musicbrainz_id to the Jellyfin entry
@@ -768,6 +835,8 @@ export async function startSync(libraryId = null, force = false) {
                                         }
                                         db.prepare('DELETE FROM media_children WHERE parent_id = ?').run(currentRow.id);
                                         db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?').run(currentRow.id);
+                                        // Adopt slug from deleted entry before removing it
+                                        adoptSlug('media_parents', currentRow.id, existing.id);
                                         db.prepare('DELETE FROM media_parents WHERE id = ?').run(currentRow.id);
 
                                         // Now update the existing entry with fresh metadata and the current jellyfin_id
@@ -902,6 +971,8 @@ export async function startSync(libraryId = null, force = false) {
                                             // Delete source person_credits (target will re-sync its own)
                                             db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?')
                                                 .run(existing.id);
+                                            // Adopt slug from deleted entry before removing it
+                                            adoptSlug('media_parents', existing.id, currentId);
                                             db.prepare('DELETE FROM media_parents WHERE id = ?').run(existing.id);
                                             db.prepare('UPDATE media_parents SET imdb_id = ? WHERE id = ?')
                                                 .run(parentParams.imdbId, currentId);

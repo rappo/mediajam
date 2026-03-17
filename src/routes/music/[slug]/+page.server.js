@@ -1,13 +1,31 @@
 import db from '$lib/server/db.js';
-import { error } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
 import { checkJellyfinFavorite } from '$lib/server/jellyfin-favorites.js';
 import { resolveBackdrop, resolvePoster } from '$lib/server/backdrop.js';
+import { slugify, ensureUniqueSlug } from '$lib/server/slugify.js';
 
 export async function load({ params, locals }) {
-    const artistId = parseInt(params.id);
+    const paramSlug = params.slug;
     const userId = locals.user?.id || 0;
     const settings = db.prepare('SELECT jellyfin_url, lidarr_url, lidarr_external_url FROM app_settings WHERE id = 1').get();
     const jellyfinUrl = settings?.jellyfin_url || '';
+
+    // Slug lookup with numeric ID fallback
+    let artistId;
+    if (/^\d+$/.test(paramSlug)) {
+        const row = /** @type {any} */ (db.prepare('SELECT id, slug FROM media_parents WHERE id = ? AND media_type = \'artist\'').get(parseInt(paramSlug)));
+        if (!row) throw error(404, 'Artist not found');
+        if (row.slug) throw redirect(301, `/music/${row.slug}`);
+        const mp = /** @type {any} */ (db.prepare('SELECT title FROM media_parents WHERE id = ?').get(row.id));
+        const base = slugify(mp.title || 'untitled');
+        const slug = ensureUniqueSlug(db, 'media_parents', base, row.id);
+        db.prepare('UPDATE media_parents SET slug = ? WHERE id = ?').run(slug, row.id);
+        throw redirect(301, `/music/${slug}`);
+    } else {
+        const row = /** @type {any} */ (db.prepare('SELECT id FROM media_parents WHERE slug = ? AND media_type = \'artist\'').get(paramSlug));
+        if (!row) throw error(404, 'Artist not found');
+        artistId = row.id;
+    }
 
     const artist = db.prepare(`
         SELECT

@@ -1,4 +1,5 @@
 import db from '$lib/server/db.js';
+import { slugify, ensureUniqueSlug } from '$lib/server/slugify.js';
 
 /**
  * Reconcile external media_children (created by Last.fm/Trakt) with Jellyfin-synced entries.
@@ -155,6 +156,14 @@ export function deduplicateParents() {
 
                 db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?').run(staleId);
                 db.prepare('DELETE FROM media_children WHERE parent_id = ?').run(staleId);
+                // Adopt slug from deleted entry before removing it
+                const staleSlug = /** @type {any} */ (db.prepare('SELECT slug FROM media_parents WHERE id = ?').get(staleId));
+                if (staleSlug?.slug) {
+                    const keepSlug = /** @type {any} */ (db.prepare('SELECT slug FROM media_parents WHERE id = ?').get(keepId));
+                    if (!keepSlug?.slug || keepSlug.slug.startsWith('untitled')) {
+                        db.prepare('UPDATE media_parents SET slug = ? WHERE id = ?').run(staleSlug.slug, keepId);
+                    }
+                }
                 db.prepare('DELETE FROM media_parents WHERE id = ?').run(staleId);
                 deletedIds.add(staleId);
                 deduped++;

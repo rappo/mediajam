@@ -946,6 +946,92 @@ if (!pCols3.has('tmdb_enriched_at')) {
     console.log('[db] Added tmdb_enriched_at column to persons');
 }
 
+// -- URL Slugs for stable URLs --
+import { slugify, ensureUniqueSlug } from '$lib/server/slugify.js';
+
+const mpCols4 = new Set(db.prepare("PRAGMA table_info(media_parents)").all().map((/** @type {any} */ c) => c.name));
+if (!mpCols4.has('slug')) {
+    db.exec("ALTER TABLE media_parents ADD COLUMN slug TEXT");
+    console.log('[db] Added slug column to media_parents');
+
+    // Backfill slugs for all existing media_parents
+    const parents = /** @type {any[]} */ (db.prepare('SELECT id, title, release_year, media_type FROM media_parents').all());
+    const updateSlug = db.prepare('UPDATE media_parents SET slug = ? WHERE id = ?');
+    const usedSlugs = new Set();
+    db.transaction(() => {
+        for (const p of parents) {
+            const addYear = (p.media_type === 'movie' || p.media_type === 'show') ? p.release_year : null;
+            let base = slugify(p.title || 'untitled', addYear);
+            let slug = base;
+            let suffix = 2;
+            while (usedSlugs.has(slug)) {
+                slug = `${base}-${suffix++}`;
+            }
+            usedSlugs.add(slug);
+            updateSlug.run(slug, p.id);
+        }
+    })();
+    console.log(`[db] Backfilled slugs for ${parents.length} media_parents`);
+
+    try { db.exec("CREATE UNIQUE INDEX idx_media_parents_slug ON media_parents(slug)"); } catch { /* index may already exist */ }
+}
+
+const mcCols2 = new Set(db.prepare("PRAGMA table_info(media_children)").all().map((/** @type {any} */ c) => c.name));
+if (!mcCols2.has('slug')) {
+    db.exec("ALTER TABLE media_children ADD COLUMN slug TEXT");
+    console.log('[db] Added slug column to media_children');
+
+    // Backfill slugs for all existing media_children
+    const children = /** @type {any[]} */ (db.prepare('SELECT id, title, parent_id FROM media_children').all());
+    const updateChildSlug = db.prepare('UPDATE media_children SET slug = ? WHERE id = ?');
+    // Slugs need to be unique per parent
+    /** @type {Map<number, Set<string>>} */
+    const usedByParent = new Map();
+    db.transaction(() => {
+        for (const c of children) {
+            if (!usedByParent.has(c.parent_id)) usedByParent.set(c.parent_id, new Set());
+            const parentSlugs = /** @type {Set<string>} */ (usedByParent.get(c.parent_id));
+            let base = slugify(c.title || 'untitled');
+            let slug = base;
+            let suffix = 2;
+            while (parentSlugs.has(slug)) {
+                slug = `${base}-${suffix++}`;
+            }
+            parentSlugs.add(slug);
+            updateChildSlug.run(slug, c.id);
+        }
+    })();
+    console.log(`[db] Backfilled slugs for ${children.length} media_children`);
+
+    try { db.exec("CREATE INDEX idx_media_children_slug ON media_children(parent_id, slug)"); } catch { /* index may already exist */ }
+}
+
+const pCols4 = new Set(db.prepare("PRAGMA table_info(persons)").all().map((/** @type {any} */ c) => c.name));
+if (!pCols4.has('slug')) {
+    db.exec("ALTER TABLE persons ADD COLUMN slug TEXT");
+    console.log('[db] Added slug column to persons');
+
+    // Backfill slugs for all persons
+    const persons = /** @type {any[]} */ (db.prepare('SELECT id, name FROM persons').all());
+    const updatePersonSlug = db.prepare('UPDATE persons SET slug = ? WHERE id = ?');
+    const usedPersonSlugs = new Set();
+    db.transaction(() => {
+        for (const p of persons) {
+            let base = slugify(p.name || 'unknown');
+            let slug = base;
+            let suffix = 2;
+            while (usedPersonSlugs.has(slug)) {
+                slug = `${base}-${suffix++}`;
+            }
+            usedPersonSlugs.add(slug);
+            updatePersonSlug.run(slug, p.id);
+        }
+    })();
+    console.log(`[db] Backfilled slugs for ${persons.length} persons`);
+
+    try { db.exec("CREATE UNIQUE INDEX idx_persons_slug ON persons(slug)"); } catch { /* index may already exist */ }
+}
+
 // -- LLM Embedding & Tagging Tables --
 try {
     db.exec(`

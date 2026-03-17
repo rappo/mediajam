@@ -1,15 +1,54 @@
 import db from '$lib/server/db.js';
-import { error } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
 import { enrichAlbumFromLidarr } from '$lib/server/lidarr-enrich.js';
+import { slugify, ensureUniqueSlug } from '$lib/server/slugify.js';
 
 export async function load({ params, locals, fetch }) {
-    const artistId = parseInt(params.id);
-    const albumId = parseInt(params.albumId);
     const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_url, jellyfin_sync_check, lidarr_url, lidarr_external_url FROM app_settings WHERE id = 1').get());
     const jellyfinUrl = settings?.jellyfin_url || '';
     const syncCheckEnabled = !!(settings?.jellyfin_sync_check ?? 1);
     const userId = locals.user?.id || 0;
 
+    // Resolve artist via slug or numeric ID
+    let artistId;
+    const artistParam = params.slug;
+    if (/^\d+$/.test(artistParam)) {
+        const row = /** @type {any} */ (db.prepare('SELECT id, slug FROM media_parents WHERE id = ? AND media_type = \'artist\'').get(parseInt(artistParam)));
+        if (!row) throw error(404, 'Artist not found');
+        // We'll redirect after resolving albumSlug too
+        artistId = row.id;
+    } else {
+        const row = /** @type {any} */ (db.prepare('SELECT id FROM media_parents WHERE slug = ? AND media_type = \'artist\'').get(artistParam));
+        if (!row) throw error(404, 'Artist not found');
+        artistId = row.id;
+    }
+
+    // Resolve album via slug or numeric ID
+    let albumId;
+    const albumParam = params.albumSlug;
+    if (/^\d+$/.test(albumParam)) {
+        const row = /** @type {any} */ (db.prepare('SELECT id, slug FROM media_children WHERE id = ? AND parent_id = ?').get(parseInt(albumParam), artistId));
+        if (!row) throw error(404, 'Album not found');
+        // Redirect to slug URL
+        const artistRow = /** @type {any} */ (db.prepare('SELECT slug FROM media_parents WHERE id = ?').get(artistId));
+        const artistSlug = artistRow?.slug || artistId;
+        if (row.slug) throw redirect(301, `/music/${artistSlug}/${row.slug}`);
+        const base = slugify(row.title || 'untitled');
+        const slug = ensureUniqueSlug(db, 'media_children', base, row.id);
+        db.prepare('UPDATE media_children SET slug = ? WHERE id = ?').run(slug, row.id);
+        throw redirect(301, `/music/${artistSlug}/${slug}`);
+    } else {
+        const row = /** @type {any} */ (db.prepare('SELECT id FROM media_children WHERE slug = ? AND parent_id = ?').get(albumParam, artistId));
+        if (!row) throw error(404, 'Album not found');
+        albumId = row.id;
+    }
+
+    // Also redirect if artist param was numeric
+    if (/^\d+$/.test(artistParam)) {
+        const artistRow = /** @type {any} */ (db.prepare('SELECT slug FROM media_parents WHERE id = ?').get(artistId));
+        const albumRow = /** @type {any} */ (db.prepare('SELECT slug FROM media_children WHERE id = ?').get(albumId));
+        if (artistRow?.slug && albumRow?.slug) throw redirect(301, `/music/${artistRow.slug}/${albumRow.slug}`);
+    }
 
     // Get artist
     const artist = /** @type {any} */ (db.prepare(`

@@ -1,14 +1,32 @@
 import db from '$lib/server/db.js';
-import { error } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
 import { checkJellyfinFavorite } from '$lib/server/jellyfin-favorites.js';
 import { resolveBackdrop } from '$lib/server/backdrop.js';
 import { tmdbFetch, getTmdbKey } from '$lib/server/tmdb.js';
+import { slugify, ensureUniqueSlug } from '$lib/server/slugify.js';
 
 export async function load({ params }) {
-    const showId = parseInt(params.id);
+    const paramSlug = params.slug;
     const settings = /** @type {any} */ (db.prepare('SELECT include_specials, jellyfin_url, sonarr_url, sonarr_external_url FROM app_settings WHERE id = 1').get());
     const includeSpecials = settings?.include_specials === 1;
     const jellyfinUrl = settings?.jellyfin_url || '';
+
+    // Slug lookup with numeric ID fallback
+    let showId;
+    if (/^\d+$/.test(paramSlug)) {
+        const row = /** @type {any} */ (db.prepare('SELECT id, slug FROM media_parents WHERE id = ? AND media_type = \'show\'').get(parseInt(paramSlug)));
+        if (!row) throw error(404, 'Show not found');
+        if (row.slug) throw redirect(301, `/tv/${row.slug}`);
+        const mp = /** @type {any} */ (db.prepare('SELECT title, release_year FROM media_parents WHERE id = ?').get(row.id));
+        const base = slugify(mp.title || 'untitled', mp.release_year);
+        const slug = ensureUniqueSlug(db, 'media_parents', base, row.id);
+        db.prepare('UPDATE media_parents SET slug = ? WHERE id = ?').run(slug, row.id);
+        throw redirect(301, `/tv/${slug}`);
+    } else {
+        const row = /** @type {any} */ (db.prepare('SELECT id FROM media_parents WHERE slug = ? AND media_type = \'show\'').get(paramSlug));
+        if (!row) throw error(404, 'Show not found');
+        showId = row.id;
+    }
 
     const show = /** @type {any} */ (db.prepare(`
         SELECT
@@ -440,7 +458,7 @@ export async function load({ params }) {
                     const tmdbIds = recs.map(/** @param {any} r */ (r) => String(r.id));
                     const placeholders = tmdbIds.map(() => '?').join(',');
                     const inLib = /** @type {any[]} */ (db.prepare(
-                        `SELECT id, tmdb_id, title, poster_url, release_year, jellyfin_id, collection_status, arr_has_file
+                        `SELECT id, slug, tmdb_id, title, poster_url, release_year, jellyfin_id, collection_status, arr_has_file
                          FROM media_parents
                          WHERE tmdb_id IN (${placeholders}) AND media_type = 'show'`
                     ).all(...tmdbIds));
@@ -469,7 +487,7 @@ export async function load({ params }) {
                                 ? `${jellyfinUrl}/Items/${localMatch.jellyfin_id}/Images/Primary?maxHeight=400`
                                 : localMatch.poster_url;
                             const item = {
-                                href: `/tv/${localMatch.id}`,
+                                href: `/tv/${localMatch.slug || localMatch.id}`,
                                 poster_url: pUrl,
                                 title: localMatch.title,
                                 subtitle: localMatch.release_year ? String(localMatch.release_year) : '',
@@ -502,7 +520,7 @@ export async function load({ params }) {
                                 }
                                 if (existing) {
                                     similarYouMightLike.push({
-                                        href: `/tv/${existing.id}`,
+                                        href: `/tv/${existing.slug || existing.id}`,
                                         poster_url: existing.poster_url || posterUrl,
                                         title: stubParams.title,
                                         subtitle: rec.first_air_date ? rec.first_air_date.slice(0, 4) : '',

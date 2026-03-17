@@ -1,15 +1,35 @@
 import db from '$lib/server/db.js';
-import { error } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
 import { checkJellyfinFavorite } from '$lib/server/jellyfin-favorites.js';
 import { resolveBackdrop } from '$lib/server/backdrop.js';
 import { tmdbFetch, getTmdbKey } from '$lib/server/tmdb.js';
+import { slugify, ensureUniqueSlug } from '$lib/server/slugify.js';
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ params, locals }) {
-    const movieId = parseInt(params.id);
+    const paramSlug = params.slug;
     const userId = locals.user?.id || 0;
     const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_url, radarr_url, radarr_external_url FROM app_settings WHERE id = 1').get());
     const jellyfinUrl = settings?.jellyfin_url || '';
+
+    // Slug lookup with numeric ID fallback
+    let movieId;
+    if (/^\d+$/.test(paramSlug)) {
+        // Numeric param — look up by ID, redirect to slug
+        const row = /** @type {any} */ (db.prepare('SELECT id, slug FROM media_parents WHERE id = ? AND media_type = \'movie\'').get(parseInt(paramSlug)));
+        if (!row) throw error(404, 'Movie not found');
+        if (row.slug) throw redirect(301, `/movies/${row.slug}`);
+        // Generate slug on the fly if missing (shouldn't happen after migration)
+        const mp = /** @type {any} */ (db.prepare('SELECT title, release_year FROM media_parents WHERE id = ?').get(row.id));
+        const base = slugify(mp.title || 'untitled', mp.release_year);
+        const slug = ensureUniqueSlug(db, 'media_parents', base, row.id);
+        db.prepare('UPDATE media_parents SET slug = ? WHERE id = ?').run(slug, row.id);
+        throw redirect(301, `/movies/${slug}`);
+    } else {
+        const row = /** @type {any} */ (db.prepare('SELECT id FROM media_parents WHERE slug = ? AND media_type = \'movie\'').get(paramSlug));
+        if (!row) throw error(404, 'Movie not found');
+        movieId = row.id;
+    }
 
     // Movie parent + child info
     const movie = /** @type {any} */ (db.prepare(`
@@ -297,7 +317,7 @@ export async function load({ params, locals }) {
                     const tmdbIds = recs.map(/** @param {any} r */ (r) => String(r.id));
                     const placeholders = tmdbIds.map(() => '?').join(',');
                     const inLib = /** @type {any[]} */ (db.prepare(
-                        `SELECT id, tmdb_id, title, poster_url, release_year, jellyfin_id, collection_status, arr_has_file
+                        `SELECT id, slug, tmdb_id, title, poster_url, release_year, jellyfin_id, collection_status, arr_has_file
                          FROM media_parents
                          WHERE tmdb_id IN (${placeholders}) AND media_type = 'movie'`
                     ).all(...tmdbIds));
@@ -326,7 +346,7 @@ export async function load({ params, locals }) {
                                 ? `${jellyfinUrl}/Items/${localMatch.jellyfin_id}/Images/Primary?maxHeight=400`
                                 : localMatch.poster_url;
                             const item = {
-                                href: `/movies/${localMatch.id}`,
+                                href: `/movies/${localMatch.slug || localMatch.id}`,
                                 poster_url: pUrl,
                                 title: localMatch.title,
                                 subtitle: localMatch.release_year ? String(localMatch.release_year) : '',
@@ -359,7 +379,7 @@ export async function load({ params, locals }) {
                                 }
                                 if (existing) {
                                     similarYouMightLike.push({
-                                        href: `/movies/${existing.id}`,
+                                        href: `/movies/${existing.slug || existing.id}`,
                                         poster_url: existing.poster_url || posterUrl,
                                         title: stubParams.title,
                                         subtitle: rec.release_date ? rec.release_date.slice(0, 4) : '',

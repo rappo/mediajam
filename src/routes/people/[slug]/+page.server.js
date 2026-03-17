@@ -1,13 +1,31 @@
 import db from '$lib/server/db.js';
-import { error } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
 import { checkJellyfinFavorite } from '$lib/server/jellyfin-favorites.js';
+import { slugify, ensureUniqueSlug } from '$lib/server/slugify.js';
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ params, locals }) {
-    const personId = parseInt(params.id);
+    const paramSlug = params.slug;
     const userId = locals.user?.id || 0;
     const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_url FROM app_settings WHERE id = 1').get());
     const jellyfinUrl = settings?.jellyfin_url || '';
+
+    // Slug lookup with numeric ID fallback
+    let personId;
+    if (/^\d+$/.test(paramSlug)) {
+        const row = /** @type {any} */ (db.prepare('SELECT id, slug FROM persons WHERE id = ?').get(parseInt(paramSlug)));
+        if (!row) throw error(404, 'Person not found');
+        if (row.slug) throw redirect(301, `/people/${row.slug}`);
+        const p = /** @type {any} */ (db.prepare('SELECT name FROM persons WHERE id = ?').get(row.id));
+        const base = slugify(p.name || 'unknown');
+        const slug = ensureUniqueSlug(db, 'persons', base, row.id);
+        db.prepare('UPDATE persons SET slug = ? WHERE id = ?').run(slug, row.id);
+        throw redirect(301, `/people/${slug}`);
+    } else {
+        const row = /** @type {any} */ (db.prepare('SELECT id FROM persons WHERE slug = ?').get(paramSlug));
+        if (!row) throw error(404, 'Person not found');
+        personId = row.id;
+    }
 
     const person = /** @type {any} */ (db.prepare(`
         SELECT * FROM persons WHERE id = ?
