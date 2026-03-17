@@ -96,6 +96,31 @@
         if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
 
+    // DEBUG: Force-apply inline styles to active search result
+    $effect(() => {
+        const idx = selectedIdx;
+        // Clear all previous debug highlights
+        document.querySelectorAll('[data-search-idx]').forEach(el => {
+            /** @type {HTMLElement} */ (el).style.removeProperty('background');
+            /** @type {HTMLElement} */ (el).style.removeProperty('outline');
+            /** @type {HTMLElement} */ (el).style.removeProperty('outline-offset');
+        });
+        if (idx >= 0) {
+            const el = /** @type {HTMLElement|null} */ (document.querySelector(`[data-search-idx="${idx}"]`));
+            if (el) {
+                console.log('[SearchBar DEBUG] selectedIdx =', idx, 'el classes =', el.className, 'has active class =', el.classList.contains('search-result-active'));
+                // Force inline styles as debug fallback
+                el.style.background = 'oklch(var(--p) / 0.25)';
+                el.style.outline = '2px solid oklch(var(--p) / 0.6)';
+                el.style.outlineOffset = '-2px';
+            } else {
+                console.log('[SearchBar DEBUG] selectedIdx =', idx, 'but no element found with data-search-idx');
+            }
+        } else {
+            console.log('[SearchBar DEBUG] selectedIdx =', idx, '(nothing selected)');
+        }
+    });
+
 
 
     function close() {
