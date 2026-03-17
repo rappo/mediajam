@@ -157,12 +157,20 @@ export function GET({ locals, url }) {
     let recentListening = [], newFromFavorites = [], rediscover = [];
     let heavyRotation = [], unplayedAlbums = [], itsBeenAWhile = [];
     try {
+        const t0 = Date.now();
         recentListening = getRecentListening(userId, prefs.maxItemsPerSection, recentDays);
+        const t1 = Date.now();
         newFromFavorites = getNewFromFavorites(userId, prefs.maxItemsPerSection);
+        const t2 = Date.now();
         rediscover = getRediscoverArtists(userId, prefs);
+        const t3 = Date.now();
         heavyRotation = getHeavyRotation(userId, prefs.maxItemsPerSection, rotationDays);
+        const t4 = Date.now();
         unplayedAlbums = getUnplayedAlbums(userId, prefs.maxItemsPerSection);
+        const t5 = Date.now();
         itsBeenAWhile = getItsBeenAWhile(userId, awhileMonths, prefs.maxItemsPerSection);
+        const t6 = Date.now();
+        console.log(`[music] Smart section timings: recentListening=${t1-t0}ms newFromFavorites=${t2-t1}ms rediscover=${t3-t2}ms heavyRotation=${t4-t3}ms unplayedAlbums=${t5-t4}ms itsBeenAWhile=${t6-t5}ms TOTAL=${t6-t0}ms`);
     } catch (e) {
         console.error('[music] Smart section error:', e instanceof Error ? e.message : e);
     }
