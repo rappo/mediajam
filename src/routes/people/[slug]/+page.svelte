@@ -1363,6 +1363,11 @@
                                             )}</span
                                         >
                                     {/if}
+                                    {#if item.episode_count && item.media_type === 'show'}
+                                        <span class="text-[10px] text-base-content/40"
+                                            >{item.episode_count} ep</span
+                                        >
+                                    {/if}
                                 </div>
                                 {#if item.roles?.length}
                                     <div

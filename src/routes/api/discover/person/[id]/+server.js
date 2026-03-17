@@ -62,6 +62,7 @@ export async function GET({ params, locals }) {
                     overview: item.overview || '',
                     popularity: item.popularity || 0,
                     vote_average: item.vote_average || 0,
+                    episode_count: item.episode_count || null,
                     roles: [],
                     departments: new Set(),
                     in_library: false,
@@ -70,6 +71,10 @@ export async function GET({ params, locals }) {
             }
 
             const entry = seen.get(key);
+            // Update episode_count if this credit has a higher one (crew + cast may differ)
+            if (item.episode_count && (!entry.episode_count || item.episode_count > entry.episode_count)) {
+                entry.episode_count = item.episode_count;
+            }
             // Track the department for filtering (Acting, Directing, Writing, Production, etc.)
             if (item.character !== undefined) {
                 // Cast credit — split "Self" appearances from real acting roles
