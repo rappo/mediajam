@@ -21,30 +21,21 @@
 
     onMount(() => {
         /** @param {KeyboardEvent} e */
-        function handleGlobalKeys(e) {
+        function handleKeydown(e) {
+            // Ctrl+K to toggle search
             if (e.ctrlKey && e.key === "k") {
                 e.preventDefault();
                 open = !open;
                 if (open) setTimeout(() => inputEl?.focus(), 50);
                 return;
             }
-        }
-        document.addEventListener('keydown', handleGlobalKeys);
-        return () => document.removeEventListener('keydown', handleGlobalKeys);
-    });
 
-    // ── Keyboard navigation: attach directly to the input element ──
-    // We must use raw addEventListener because the input lives in a
-    // portal (moved to document.body), which breaks Svelte's event delegation.
-    $effect(() => {
-        const inp = inputEl;
-        if (!inp) return;
+            // All other shortcuts only apply when search is open
+            if (!open) return;
 
-        /** @param {KeyboardEvent} e */
-        function onKeydown(e) {
-            // Find result items by querying the DOM (reactive bindings don't work in portal)
-            const items = /** @type {NodeListOf<HTMLElement>} */ (
-                document.querySelectorAll('.search-result-item')
+            // Find all result items in the search dialog
+            const items = /** @type {HTMLElement[]} */ (
+                [...document.querySelectorAll('.search-result-item')]
             );
             const count = items.length;
 
@@ -52,55 +43,44 @@
                 e.preventDefault();
                 if (count > 0) {
                     selectedIdx = Math.min(selectedIdx + 1, count - 1);
-                    applySelection(items);
+                    highlightItem(items, selectedIdx);
                 }
             } else if (e.key === 'ArrowUp') {
                 e.preventDefault();
                 if (count > 0) {
                     selectedIdx = Math.max(selectedIdx - 1, -1);
-                    applySelection(items);
+                    highlightItem(items, selectedIdx);
                 }
-            } else if (e.key === 'Enter') {
-                if (count > 0) {
-                    e.preventDefault();
-                    const target = selectedIdx >= 0 && selectedIdx < count
-                        ? items[selectedIdx]
-                        : items[0];
-                    target.click();
-                }
+            } else if (e.key === 'Enter' && count > 0) {
+                e.preventDefault();
+                const target = selectedIdx >= 0 && selectedIdx < count
+                    ? items[selectedIdx]
+                    : items[0];
+                target.click();
             } else if (e.key === 'Escape') {
                 e.preventDefault();
                 close();
             }
         }
 
-        /** @param {Event} _e */
-        function onInput(_e) {
-            selectedIdx = -1;
-        }
-
-        inp.addEventListener('keydown', onKeydown);
-        inp.addEventListener('input', onInput);
-
-        return () => {
-            inp.removeEventListener('keydown', onKeydown);
-            inp.removeEventListener('input', onInput);
-        };
+        document.addEventListener('keydown', handleKeydown);
+        return () => document.removeEventListener('keydown', handleKeydown);
     });
 
     /**
-     * Apply visual selection via classList (since Svelte bindings don't work in portal)
-     * @param {NodeListOf<HTMLElement>} items
+     * Highlight the selected item and scroll it into view.
+     * @param {HTMLElement[]} items
+     * @param {number} idx
      */
-    function applySelection(items) {
-        items.forEach((el, i) => {
-            if (i === selectedIdx) {
-                el.classList.add('selected');
-                el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    function highlightItem(items, idx) {
+        for (let i = 0; i < items.length; i++) {
+            if (i === idx) {
+                items[i].classList.add('selected');
+                items[i].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
             } else {
-                el.classList.remove('selected');
+                items[i].classList.remove('selected');
             }
-        });
+        }
     }
 
 
@@ -157,6 +137,7 @@
     }
 
     function handleInput() {
+        selectedIdx = -1;
         if (debounceTimer) clearTimeout(debounceTimer);
         if (query.length < 2) {
             results = null;
@@ -180,7 +161,7 @@
                     const data = await res.json();
                     results = data;
                 }
-                // selection reset is handled by portal input listener
+                selectedIdx = -1;
             } catch (/** @type {any} */ err) {
                 addToast({
                     type: "error",
