@@ -296,6 +296,8 @@
     // ─── Remote Playback ─────────────────────────────────────────────────────────
     /** @type {any[]} */
     let remotePlayers = $state([]);
+    let remoteRefreshing = $state(false);
+    let remoteRefreshError = $state('');
     let remoteEnabled = $state($page.data.remoteControlEnabled || false);
     /** @type {any[]} */
     let savedPlayers = $state($page.data.userPreferences?.savedPlayers || []);
@@ -304,12 +306,25 @@
     );
 
     async function fetchRemotePlayers() {
+        remoteRefreshing = true;
+        remoteRefreshError = '';
         try {
             const res = await fetch("/api/jellyfin/sessions");
             const d = await res.json();
-            remotePlayers = d.sessions || [];
+            if (d.error) {
+                remoteRefreshError = d.error;
+                remotePlayers = [];
+            } else {
+                remotePlayers = d.sessions || [];
+                if (remotePlayers.length === 0) {
+                    remoteRefreshError = 'No active Jellyfin sessions found. Make sure a player is running and logged in.';
+                }
+            }
         } catch {
+            remoteRefreshError = 'Failed to connect to Jellyfin. Check your settings.';
             remotePlayers = [];
+        } finally {
+            remoteRefreshing = false;
         }
     }
 
@@ -1067,10 +1082,21 @@
                             <span class="text-sm font-medium">My Players</span>
                             <button
                                 class="btn btn-ghost btn-xs gap-1"
-                                onclick={fetchRemotePlayers}>🔄 Refresh</button
+                                disabled={remoteRefreshing}
+                                onclick={fetchRemotePlayers}
                             >
+                                {#if remoteRefreshing}
+                                    <span class="loading loading-spinner loading-xs"></span>
+                                    Scanning…
+                                {:else}
+                                    🔄 Refresh
+                                {/if}
+                            </button>
                         </div>
-                        {#if displayPlayerList.saved.length === 0}
+                        {#if remoteRefreshError}
+                            <p class="text-xs text-warning mb-2">{remoteRefreshError}</p>
+                        {/if}
+                        {#if displayPlayerList.saved.length === 0 && !remoteRefreshError}
                             <p class="text-xs text-base-content/40">
                                 No players saved yet. Discover players below and
                                 add them.
