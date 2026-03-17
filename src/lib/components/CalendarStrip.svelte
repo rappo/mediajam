@@ -98,8 +98,10 @@
 
 <div class="cal-weeks">
     {#each weeks as week}
+        {@const weekHasItems = week.some(d => d.episodes?.length > 0)}
         <div class="cal-week">
             <div class="week-label">{weekLabel(week)}</div>
+            {#if weekHasItems}
             <div class="cal-grid">
                 {#each week as day}
                     {@const info = formatDay(day.date)}
@@ -149,6 +151,9 @@
                     </div>
                 {/each}
             </div>
+            {:else}
+                <p class="text-xs text-base-content/30 py-2 pl-1">No releases this week</p>
+            {/if}
         </div>
     {/each}
 </div>

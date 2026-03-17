@@ -838,13 +838,11 @@ export function getNewFromFavorites(userId, limit = 12) {
                mp.jellyfin_id as artist_jellyfin_id, mp.poster_url as artist_poster
         FROM media_parents mp
         JOIN media_children mc ON mc.parent_id = mp.id
+        LEFT JOIN playback_history ph ON ph.media_id = mc.id AND ph.user_id = ?
         WHERE mp.media_type = 'artist'
           AND mp.is_favorite = 1
           AND mc.play_count = 0
-          AND NOT EXISTS (
-              SELECT 1 FROM playback_history ph
-              WHERE ph.media_id = mc.id AND ph.user_id = ?
-          )
+          AND ph.id IS NULL
         ORDER BY mp.title ASC, mc.item_number DESC
         LIMIT ?
     `).all(userId, limit));
@@ -961,14 +959,12 @@ export function getUnplayedAlbums(userId, limit = 12) {
                mp.is_favorite
         FROM media_children mc
         JOIN media_parents mp ON mc.parent_id = mp.id
+        LEFT JOIN playback_history ph ON ph.media_id = mc.id AND ph.user_id = ?
         WHERE mp.media_type = 'artist'
           AND mc.play_count = 0
           AND mc.jellyfin_id IS NOT NULL
-          AND NOT EXISTS (
-              SELECT 1 FROM playback_history ph
-              WHERE ph.media_id = mc.id AND ph.user_id = ?
-          )
-        ORDER BY mp.is_favorite DESC, RANDOM()
+          AND ph.id IS NULL
+        ORDER BY mp.is_favorite DESC, SUBSTR(hex(mc.id * 2654435761), 1, 8)
         LIMIT ?
     `).all(userId, limit));
 
@@ -1049,22 +1045,17 @@ export function getItsBeenAWhile(userId, sinceMonths = 6, limit = 12) {
                mc.jellyfin_id as album_jellyfin_id, mc.poster_url as album_poster_url,
                mp.id as artist_id, mp.title as artist_name,
                mp.jellyfin_id as artist_jellyfin_id, mp.poster_url as artist_poster,
-               COUNT(DISTINCT deduped.time_bucket) as total_plays,
+               mc.play_count as total_plays,
                MAX(ph.timestamp) as last_played
         FROM playback_history ph
         JOIN media_children mc ON ph.media_id = mc.id
         JOIN media_parents mp ON mc.parent_id = mp.id
-        JOIN (
-            SELECT ph2.media_id,
-                   CAST(strftime('%s', ph2.timestamp) / 300 AS INTEGER) as time_bucket
-            FROM playback_history ph2 WHERE ph2.user_id = ?
-        ) deduped ON deduped.media_id = mc.id
         WHERE mp.media_type = 'artist' AND ph.user_id = ?
         GROUP BY mc.id
-        HAVING total_plays >= 3 AND last_played < ?
-        ORDER BY total_plays DESC, last_played ASC
+        HAVING mc.play_count >= 3 AND last_played < ?
+        ORDER BY mc.play_count DESC, last_played ASC
         LIMIT ?
-    `).all(userId, userId, cutoffISO, limit));
+    `).all(userId, cutoffISO, limit));
 
     return rows.map(r => ({
         ...r,

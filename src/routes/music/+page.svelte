@@ -342,6 +342,7 @@
         {:else}
 
         <!-- ▌UPCOMING RELEASES ─────────────────────────────────────── -->
+        {#if calendarDays.some(d => d.episodes?.length > 0)}
         <section class="smart-section">
             <h2 class="section-title text-lg font-bold">
                 Upcoming Releases
@@ -351,6 +352,7 @@
             </h2>
             <CalendarStrip mode="music" days={calendarDays} weekOffset={calendarOffset} onNavigate={navigateCalendar} />
         </section>
+        {/if}
 
         <!-- Heavy Rotation -->
         {#if heavyRotationItems.length > 0}
