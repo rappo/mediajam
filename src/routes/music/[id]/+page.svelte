@@ -5,6 +5,8 @@
     import HeartBorder from "$lib/components/HeartBorder.svelte";
     import MediaDetailHeader from "$lib/components/MediaDetailHeader.svelte";
     import InteractiveSearchDialog from "$lib/components/InteractiveSearchDialog.svelte";
+    import RemotePlayButton from "$lib/components/RemotePlayButton.svelte";
+    import { page } from "$app/stores";
     let { data } = $props();
     let expandedAlbum = $state(null);
     let albumTracks = $state({});
@@ -491,6 +493,14 @@
                         service="lidarr"
                         mediaParentId={data.artist.id}
                         onComplete={onArrAdded}
+                    />
+                {/if}
+                {#if data.artist.jellyfin_id}
+                    <RemotePlayButton
+                        jellyfinId={data.artist.jellyfin_id}
+                        enabled={$page.data.remoteControlEnabled}
+                        savedPlayers={$page.data.userPreferences?.savedPlayers || []}
+                        defaultPlayerId={$page.data.userPreferences?.defaultPlayerId || ''}
                     />
                 {/if}
 

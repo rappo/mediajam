@@ -6,10 +6,12 @@
     import ArrAddDialog from "$lib/components/ArrAddDialog.svelte";
     import HeartBorder from "$lib/components/HeartBorder.svelte";
     import FavoriteButton from "$lib/components/FavoriteButton.svelte";
+    import RemotePlayButton from "$lib/components/RemotePlayButton.svelte";
     import MediaDetailHeader from "$lib/components/MediaDetailHeader.svelte";
     import InteractiveSearchDialog from "$lib/components/InteractiveSearchDialog.svelte";
     import PosterRow from "$lib/components/PosterRow.svelte";
     import { imgUrl } from "$lib/utils.js";
+    import { page } from "$app/stores";
 
     let isDashboardHidden = $state(!!data.show.is_dashboard_hidden);
 
@@ -453,6 +455,14 @@
                         🚫 Ignore
                     {/if}
                 </button>
+                {#if data.show.jellyfin_id}
+                    <RemotePlayButton
+                        jellyfinId={data.show.jellyfin_id}
+                        enabled={$page.data.remoteControlEnabled}
+                        savedPlayers={$page.data.userPreferences?.savedPlayers || []}
+                        defaultPlayerId={$page.data.userPreferences?.defaultPlayerId || ''}
+                    />
+                {/if}
             {/snippet}
         </MediaDetailHeader>
 

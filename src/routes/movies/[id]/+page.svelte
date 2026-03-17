@@ -566,6 +566,14 @@
                         📊 Fetch Ratings
                     {/if}
                 </button>
+                {#if data.movie.jellyfin_id}
+                    <RemotePlayButton
+                        jellyfinId={data.movie.jellyfin_id}
+                        enabled={$page.data.remoteControlEnabled}
+                        savedPlayers={$page.data.userPreferences?.savedPlayers || []}
+                        defaultPlayerId={$page.data.userPreferences?.defaultPlayerId || ''}
+                    />
+                {/if}
             {/snippet}
         </MediaDetailHeader>
 
