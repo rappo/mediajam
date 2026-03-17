@@ -57,19 +57,38 @@ if (existsSync(DB_PATH)) {
 
     if (bootBackupEnabled && bootBackupKeepCount > 0) {
         try {
-            const now = new Date();
-            const ts = now.toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
-            const backupFile = join(backupDir, `mediajam-boot-${ts}.sqlite`);
-            copyFileSync(DB_PATH, backupFile);
-            console.log(`[db] Boot backup created: ${basename(backupFile)}`);
-
-            // Prune old boot backups beyond keep count
+            // Skip backup if the most recent one is less than 5 minutes old (crash loop protection)
             const bootFiles = readdirSync(backupDir)
                 .filter(f => f.startsWith('mediajam-boot-') && f.endsWith('.sqlite'))
                 .sort()
                 .reverse(); // newest first
-            if (bootFiles.length > bootBackupKeepCount) {
-                for (const old of bootFiles.slice(bootBackupKeepCount)) {
+
+            const newestBackup = bootFiles[0];
+            let skipBackup = false;
+            if (newestBackup) {
+                const newestPath = join(backupDir, newestBackup);
+                const age = Date.now() - statSync(newestPath).mtimeMs;
+                if (age < 5 * 60 * 1000) {
+                    skipBackup = true;
+                    console.log(`[db] Skipping boot backup (last one ${Math.round(age / 1000)}s ago)`);
+                }
+            }
+
+            if (!skipBackup) {
+                const now = new Date();
+                const ts = now.toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
+                const backupFile = join(backupDir, `mediajam-boot-${ts}.sqlite`);
+                copyFileSync(DB_PATH, backupFile);
+                console.log(`[db] Boot backup created: ${basename(backupFile)}`);
+            }
+
+            // Prune old boot backups beyond keep count (always, even if we skipped backup)
+            const allBootFiles = readdirSync(backupDir)
+                .filter(f => f.startsWith('mediajam-boot-') && f.endsWith('.sqlite'))
+                .sort()
+                .reverse();
+            if (allBootFiles.length > bootBackupKeepCount) {
+                for (const old of allBootFiles.slice(bootBackupKeepCount)) {
                     unlinkSync(join(backupDir, old));
                     console.log(`[db] Pruned old boot backup: ${old}`);
                 }
