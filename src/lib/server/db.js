@@ -683,6 +683,31 @@ if (!historyCols.has('track_id')) {
     }
 }
 
+// -- Fix bare-UTC timestamps from webhook source --
+// datetime('now') produces "YYYY-MM-DD HH:MM:SS" without Z, which JavaScript
+// misinterprets as local time when TZ env is set. Convert to ISO-Z format.
+{
+    const bareUtcCount = /** @type {any} */ (db.prepare(`
+        SELECT COUNT(*) as c FROM playback_history
+        WHERE source = 'webhook'
+        AND timestamp NOT LIKE '%Z'
+        AND timestamp NOT LIKE '%+%'
+        AND timestamp NOT LIKE '%-%-%-%'
+        AND timestamp LIKE '____-__-__ __:__:__'
+    `).get())?.c || 0;
+
+    if (bareUtcCount > 0) {
+        db.exec(`
+            UPDATE playback_history
+            SET timestamp = REPLACE(timestamp, ' ', 'T') || 'Z'
+            WHERE source = 'webhook'
+            AND timestamp NOT LIKE '%Z'
+            AND timestamp NOT LIKE '%+%'
+            AND timestamp LIKE '____-__-__ __:__:__'
+        `);
+        console.log(`[db] Fixed ${bareUtcCount} webhook timestamps: added Z suffix for UTC`);
+    }
+}
 // -- Deduplicate tracks and add composite unique index --
 // Lidarr enrichment was inserting tracks without jellyfin_id (NULL), bypassing
 // the UNIQUE(jellyfin_id) constraint. This migration dedupes and prevents recurrence.

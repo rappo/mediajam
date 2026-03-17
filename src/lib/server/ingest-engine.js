@@ -54,7 +54,7 @@ const deleteSession = db.prepare(`
 
 const insertHistory = db.prepare(`
     INSERT OR IGNORE INTO playback_history (user_id, media_id, source, timestamp, duration_consumed_seconds, completion_pct, external_event_id, track_name)
-    VALUES (@userId, @mediaId, 'webhook', datetime('now'), @durationSeconds, @completionPct, @externalEventId, @trackName)
+    VALUES (@userId, @mediaId, 'webhook', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), @durationSeconds, @completionPct, @externalEventId, @trackName)
 `);
 
 const findMediaByJellyfinId = db.prepare(`

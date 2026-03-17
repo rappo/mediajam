@@ -31,7 +31,9 @@
             }
 
             // All other shortcuts only apply when search is open
-            if (!open) return;
+            // Check DOM instead of $state because Svelte 5 reactivity
+            // may not work correctly inside plain event handler closures
+            if (!document.querySelector('.search-dialog')) return;
 
             // Find all result items in the search dialog
             const items = /** @type {HTMLElement[]} */ (
