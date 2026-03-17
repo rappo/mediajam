@@ -24,6 +24,8 @@
      *   service: 'radarr' | 'sonarr' | 'lidarr',
      *   jellyfinId: string | null,
      *   tmdbId: number | null,
+     *   collectedCount?: number | null,
+     *   missingCount?: number | null,
      *   onStatusChange?: () => void,
      * }}
      */
@@ -40,6 +42,8 @@
         service = 'radarr',
         jellyfinId = null,
         tmdbId = null,
+        collectedCount = null,
+        missingCount = null,
         onStatusChange,
     } = $props();
 
@@ -51,6 +55,11 @@
         // Already in library with files → no banner
         if (inLibrary && hasFile) return null;
         if (collectionStatus === 'collected' && hasFile) return null;
+
+        // For shows: if we have most episodes but some are missing, show partial status
+        if (mediaType === 'show' && collectedCount && collectedCount > 0 && missingCount && missingCount > 0) {
+            return 'partial_missing';
+        }
 
         // Not yet released
         const now = new Date();
@@ -126,6 +135,14 @@
             textColor: 'text-error',
             showActions: true,
         },
+        partial_missing: {
+            icon: '⚠️',
+            label: 'Some Files Missing',
+            description: '', // dynamically set below
+            color: 'border-warning/30 bg-warning/5',
+            textColor: 'text-warning',
+            showActions: true,
+        },
     };
 
     let status = $derived(deriveStatus());
@@ -188,7 +205,13 @@
                 <span class="banner-icon">{config.icon}</span>
                 <div class="banner-text">
                     <span class="banner-label {config.textColor}">{config.label}</span>
-                    <span class="banner-desc">{config.description}</span>
+                    <span class="banner-desc">
+                        {#if status === 'partial_missing' && missingCount}
+                            {missingCount} episode{missingCount === 1 ? ' is' : 's are'} missing from your library.
+                        {:else}
+                            {config.description}
+                        {/if}
+                    </span>
                 </div>
             </div>
 

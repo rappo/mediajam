@@ -481,6 +481,8 @@
             service="sonarr"
             jellyfinId={data.show.jellyfin_id}
             tmdbId={data.show.tmdb_id}
+            collectedCount={data.totalEpisodes}
+            missingCount={data.totalMissing}
             onStatusChange={() => invalidateAll()}
         />
 
