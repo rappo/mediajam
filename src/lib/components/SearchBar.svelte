@@ -17,7 +17,7 @@
     /** @type {HTMLInputElement | null} */
     let inputEl = $state(null);
     /** Currently highlighted result index, -1 = nothing selected */
-    let selectedIdx = -1;
+    let selectedIdx = $state(-1);
 
     onMount(() => {
         /** @param {KeyboardEvent} e */
@@ -34,33 +34,34 @@
             const dialog = document.querySelector('.search-dialog');
             if (!dialog) return;
 
-            // Find all result items in the search dialog
-            const items = /** @type {HTMLElement[]} */ (
-                [...document.querySelectorAll('.search-result-item')]
-            );
-            const count = items.length;
-
             if (e.key === 'ArrowDown') {
                 e.preventDefault();
                 e.stopPropagation();
+                const count = flatResults().length;
                 if (count > 0) {
                     selectedIdx = Math.min(selectedIdx + 1, count - 1);
-                    highlightItem(items, selectedIdx);
+                    setTimeout(() => scrollToSelected(selectedIdx), 0);
                 }
             } else if (e.key === 'ArrowUp') {
                 e.preventDefault();
                 e.stopPropagation();
-                if (count > 0) {
-                    selectedIdx = Math.max(selectedIdx - 1, -1);
-                    highlightItem(items, selectedIdx);
+                if (selectedIdx > 0) {
+                    selectedIdx = Math.max(selectedIdx - 1, 0);
+                    setTimeout(() => scrollToSelected(selectedIdx), 0);
+                } else {
+                    selectedIdx = -1;
+                    inputEl?.focus();
                 }
-            } else if (e.key === 'Enter' && count > 0) {
+            } else if (e.key === 'Enter') {
                 e.preventDefault();
                 e.stopPropagation();
-                const target = selectedIdx >= 0 && selectedIdx < count
-                    ? items[selectedIdx]
-                    : items[0];
-                target.click();
+                const flat = flatResults();
+                if (flat.length > 0) {
+                    const target = selectedIdx >= 0 && selectedIdx < flat.length
+                        ? flat[selectedIdx]
+                        : flat[0];
+                    navigateToResult(target.item);
+                }
             } else if (e.key === 'Escape') {
                 e.preventDefault();
                 close();
@@ -72,25 +73,27 @@
     });
 
     /**
-     * Highlight the selected item and scroll it into view.
-     * Uses inline styles because Svelte's CSS scoping prevents
-     * class-based styles from applying to DOM changes made via JS.
-     * @param {HTMLElement[]} items
-     * @param {number} idx
+     * Flatten all result items into a single ordered list for keyboard nav.
+     * @returns {Array<{item: any, category: string}>}
      */
-    function highlightItem(items, idx) {
-        for (let i = 0; i < items.length; i++) {
-            if (i === idx) {
-                items[i].style.background = 'oklch(var(--p) / 0.18)';
-                items[i].style.outline = '2px solid oklch(var(--p) / 0.4)';
-                items[i].style.outlineOffset = '-2px';
-                items[i].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-            } else {
-                items[i].style.background = '';
-                items[i].style.outline = '';
-                items[i].style.outlineOffset = '';
+    function flatResults() {
+        if (!results?.results) return [];
+        const items = /** @type {Array<{item: any, category: string}>} */ ([]);
+        for (const category of ['shows', 'movies', 'music', 'albums', 'people', 'children', 'history']) {
+            for (const item of (results.results[category] || [])) {
+                items.push({ item, category });
             }
         }
+        return items;
+    }
+
+    /**
+     * Scroll the selected item into view.
+     * @param {number} idx
+     */
+    function scrollToSelected(idx) {
+        const el = document.querySelector(`[data-search-idx="${idx}"]`);
+        if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
 
 
@@ -390,54 +393,56 @@
             <!-- Results -->
             <div class="search-results">
                 {#if results && results.totalCount > 0}
-                    {#each ["shows", "movies", "music", "albums", "people", "children", "history"] as category}
-                        {#if results.results[category]?.length > 0}
+                    {@const flat = flatResults()}
+                    {#each flat as entry, idx}
+                        {#if idx === 0 || entry.category !== flat[idx - 1].category}
                             <div class="search-category-label">
-                                {category === "children"
+                                {entry.category === "children"
                                     ? "Episodes & Tracks"
-                                    : category === "music"
+                                    : entry.category === "music"
                                       ? "Artists"
-                                      : category === "albums"
+                                      : entry.category === "albums"
                                         ? "Albums"
-                                        : category === "people"
+                                        : entry.category === "people"
                                           ? "People"
-                                          : category}
+                                          : entry.category}
                             </div>
-                            {#each results.results[category] as item}
-                                <button
-                                    class="search-result-item"
-                                    onclick={() => navigateToResult(item)}
-                                >
-                                    {#if item.poster_url}
-                                        <img
-                                            src={imgUrl(item.poster_url)}
-                                            alt=""
-                                            class="search-thumb"
-                                            class:search-thumb-round={item.type ===
-                                                "person"}
-                                        />
-                                    {:else}
-                                        <span class="search-thumb-placeholder">
-                                            {TYPE_ICONS[item.type] || "🔍"}
-                                        </span>
-                                    {/if}
-                                    <div class="search-result-text">
-                                        <div class="search-result-title">
-                                            {itemLabel(item)}
-                                        </div>
-                                        {#if itemSubLabel(item)}
-                                            <div class="search-result-sub">
-                                                {itemSubLabel(item)}
-                                            </div>
-                                        {/if}
-                                    </div>
-                                    <span class="search-result-type"
-                                        >{TYPE_LABELS[item.type] ||
-                                            item.type}</span
-                                    >
-                                </button>
-                            {/each}
                         {/if}
+                        <button
+                            class="search-result-item"
+                            class:search-result-active={selectedIdx === idx}
+                            data-search-idx={idx}
+                            onclick={() => navigateToResult(entry.item)}
+                            onmouseenter={() => { selectedIdx = idx; }}
+                        >
+                            {#if entry.item.poster_url}
+                                <img
+                                    src={imgUrl(entry.item.poster_url)}
+                                    alt=""
+                                    class="search-thumb"
+                                    class:search-thumb-round={entry.item.type ===
+                                        "person"}
+                                />
+                            {:else}
+                                <span class="search-thumb-placeholder">
+                                    {TYPE_ICONS[entry.item.type] || "🔍"}
+                                </span>
+                            {/if}
+                            <div class="search-result-text">
+                                <div class="search-result-title">
+                                    {itemLabel(entry.item)}
+                                </div>
+                                {#if itemSubLabel(entry.item)}
+                                    <div class="search-result-sub">
+                                        {itemSubLabel(entry.item)}
+                                    </div>
+                                {/if}
+                            </div>
+                            <span class="search-result-type"
+                                >{TYPE_LABELS[entry.item.type] ||
+                                    entry.item.type}</span
+                            >
+                        </button>
                     {/each}
                 {:else if results && results.totalCount === 0 && query.length >= 2}
                     <div class="search-empty">
@@ -618,6 +623,11 @@
     }
     .search-result-item:hover {
         background: oklch(var(--p) / 0.12);
+    }
+    .search-result-active {
+        background: oklch(var(--p) / 0.18) !important;
+        outline: 2px solid oklch(var(--p) / 0.4);
+        outline-offset: -2px;
     }
     .search-thumb {
         width: 2rem;

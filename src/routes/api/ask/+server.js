@@ -377,7 +377,7 @@ export async function POST({ request, locals }) {
 
 IMPORTANT: If the conversation has been about recommendations and the user is continuing that thread (corrections, follow-ups, refinements), classify as "discovery". But factual lookups about people/directors/actors/specific titles are always "data".
 
-Examples: "how many movies?" → data | "recommend something dark" → discovery | "something like Breaking Bad" → discovery | "what should I watch?" → discovery | "hello" → chat | "what did I watch today?" → data | "tell me about Inception" → data | "what is Ran about?" → data | "thanks!" → chat | "what's a good movie based on my history?" → discovery | "suggest something like what I've been watching" → discovery | "list my recently watched" → data | "two of those aren't movies" → discovery | "why did you pick those?" → discovery | "only movies please" → discovery | "who stars in kurosawa films?" → data | "do I have more movies from Nolan?" → data | "what else has that actor been in?" → data | "movies directed by Spielberg" → data | "what movies did I watch this week?" → data
+Examples: "how many movies?" → data | "recommend something dark" → discovery | "something like Breaking Bad" → discovery | "what should I watch?" → discovery | "hello" → chat | "what did I watch today?" → data | "tell me about Inception" → data | "what is Ran about?" → data | "thanks!" → chat | "what's a good movie based on my history?" → discovery | "suggest something like what I've been watching" → discovery | "list my recently watched" → data | "why do you say that?" → discovery | "only movies please" → discovery | "who stars in kurosawa films?" → data | "do I have more movies from Nolan?" → data | "what else has that actor been in?" → data | "movies directed by Spielberg" → data | "what movies did I watch this week?" → data | "I only watched X once" → chat | "that's wrong" → chat | "two of those aren't movies" → discovery
 
 ${historyContext ? `Recent conversation:\n${historyContext}\n` : ''}Reply with ONLY the word "data", "discovery", or "chat".
 
@@ -430,16 +430,24 @@ ${ragContext.context}
 
 ${typeInstruction}CRITICAL: Only recommend UNWATCHED items. Never recommend something the user has already watched — if it says "watched" or has a play count, skip it. Recommend 2-4 specific UNWATCHED titles from the list above. For each, give a one-line reason why it matches. Be conversational and brief — no more than 4-5 sentences total.`;
 
-            const discoveryResponse = await generate(discoveryPrompt, {
+            let discoveryResponse = await generate(discoveryPrompt, {
                 temperature: 0.4,
                 num_predict: 250,
                 system: 'You are Mediajam, a media library assistant. You recommend ONLY UNWATCHED items from the user\'s actual library (provided in context). NEVER recommend something they already watched. Be specific and concise — no filler, no questions back. Just give the picks with brief reasons. Pay close attention to the type of media the user is asking for (movies vs shows vs music).',
             });
 
+            // If generation failed (LLM timeout), fall back to a chat-style response with history context
+            if (!discoveryResponse && historyContext) {
+                discoveryResponse = await generate(
+                    `${historyContext}\nUser: ${question}\n\nRespond conversationally to the user's follow-up about the previous recommendation discussion. Be brief.`,
+                    { temperature: 0.5, num_predict: 200, system: 'You are Mediajam, a friendly media library assistant. Answer follow-up questions by referencing the conversation context. Be concise and conversational.' }
+                );
+            }
+
             return json({
                 question,
                 type: 'discovery',
-                summary: discoveryResponse || 'I found some matches but couldn\'t generate a recommendation. Try rephrasing your question.',
+                summary: discoveryResponse || 'I had trouble generating a response. Could you try rephrasing or asking a more specific question?',
                 sources: ragContext.sources.slice(0, 8),
             });
         }
