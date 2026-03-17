@@ -40,15 +40,12 @@
             );
             const count = items.length;
 
-            console.log('[search-kbd]', e.key, 'dialog=', !!dialog, 'items=', count, 'selectedIdx=', selectedIdx);
-
             if (e.key === 'ArrowDown') {
                 e.preventDefault();
                 e.stopPropagation();
                 if (count > 0) {
                     selectedIdx = Math.min(selectedIdx + 1, count - 1);
                     highlightItem(items, selectedIdx);
-                    console.log('[search-kbd] ArrowDown → selectedIdx=', selectedIdx);
                 }
             } else if (e.key === 'ArrowUp') {
                 e.preventDefault();
@@ -56,7 +53,6 @@
                 if (count > 0) {
                     selectedIdx = Math.max(selectedIdx - 1, -1);
                     highlightItem(items, selectedIdx);
-                    console.log('[search-kbd] ArrowUp → selectedIdx=', selectedIdx);
                 }
             } else if (e.key === 'Enter' && count > 0) {
                 e.preventDefault();
@@ -64,7 +60,6 @@
                 const target = selectedIdx >= 0 && selectedIdx < count
                     ? items[selectedIdx]
                     : items[0];
-                console.log('[search-kbd] Enter → clicking', target);
                 target.click();
             } else if (e.key === 'Escape') {
                 e.preventDefault();
@@ -78,16 +73,22 @@
 
     /**
      * Highlight the selected item and scroll it into view.
+     * Uses inline styles because Svelte's CSS scoping prevents
+     * class-based styles from applying to DOM changes made via JS.
      * @param {HTMLElement[]} items
      * @param {number} idx
      */
     function highlightItem(items, idx) {
         for (let i = 0; i < items.length; i++) {
             if (i === idx) {
-                items[i].classList.add('selected');
+                items[i].style.background = 'oklch(var(--p) / 0.18)';
+                items[i].style.outline = '2px solid oklch(var(--p) / 0.4)';
+                items[i].style.outlineOffset = '-2px';
                 items[i].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
             } else {
-                items[i].classList.remove('selected');
+                items[i].style.background = '';
+                items[i].style.outline = '';
+                items[i].style.outlineOffset = '';
             }
         }
     }
@@ -615,8 +616,7 @@
         cursor: pointer;
         transition: background 0.1s;
     }
-    .search-result-item:hover,
-    .search-result-item.selected {
+    .search-result-item:hover {
         background: oklch(var(--p) / 0.12);
     }
     .search-thumb {
