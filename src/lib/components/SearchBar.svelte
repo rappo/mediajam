@@ -40,16 +40,22 @@
                 const count = flatResults().length;
                 if (count > 0) {
                     selectedIdx = Math.min(selectedIdx + 1, count - 1);
-                    setTimeout(() => scrollToSelected(selectedIdx), 0);
+                    scrollToSelected(selectedIdx);
                 }
             } else if (e.key === 'ArrowUp') {
                 e.preventDefault();
                 e.stopPropagation();
                 if (selectedIdx > 0) {
                     selectedIdx = Math.max(selectedIdx - 1, 0);
-                    setTimeout(() => scrollToSelected(selectedIdx), 0);
+                    scrollToSelected(selectedIdx);
                 } else {
                     selectedIdx = -1;
+                    // Clear all highlights when going back to input
+                    document.querySelectorAll('[data-search-idx]').forEach(el => {
+                        /** @type {HTMLElement} */ (el).style.removeProperty('background');
+                        /** @type {HTMLElement} */ (el).style.removeProperty('outline');
+                        /** @type {HTMLElement} */ (el).style.removeProperty('outline-offset');
+                    });
                     inputEl?.focus();
                 }
             } else if (e.key === 'Enter') {
@@ -88,38 +94,28 @@
     }
 
     /**
-     * Scroll the selected item into view.
+     * Scroll the selected item into view and apply highlight styles.
+     * We apply styles imperatively here because Svelte's reactive class:
+     * directives may not update on portaled elements when state is changed
+     * from vanilla addEventListener callbacks.
      * @param {number} idx
      */
     function scrollToSelected(idx) {
-        const el = document.querySelector(`[data-search-idx="${idx}"]`);
-        if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    }
-
-    // DEBUG: Force-apply inline styles to active search result
-    $effect(() => {
-        const idx = selectedIdx;
-        // Clear all previous debug highlights
+        // Clear previous highlights
         document.querySelectorAll('[data-search-idx]').forEach(el => {
             /** @type {HTMLElement} */ (el).style.removeProperty('background');
             /** @type {HTMLElement} */ (el).style.removeProperty('outline');
             /** @type {HTMLElement} */ (el).style.removeProperty('outline-offset');
         });
-        if (idx >= 0) {
-            const el = /** @type {HTMLElement|null} */ (document.querySelector(`[data-search-idx="${idx}"]`));
-            if (el) {
-                console.log('[SearchBar DEBUG] selectedIdx =', idx, 'el classes =', el.className, 'has active class =', el.classList.contains('search-result-active'));
-                // Force inline styles as debug fallback
-                el.style.background = 'oklch(var(--p) / 0.25)';
-                el.style.outline = '2px solid oklch(var(--p) / 0.6)';
-                el.style.outlineOffset = '-2px';
-            } else {
-                console.log('[SearchBar DEBUG] selectedIdx =', idx, 'but no element found with data-search-idx');
-            }
-        } else {
-            console.log('[SearchBar DEBUG] selectedIdx =', idx, '(nothing selected)');
+        // Apply highlight to current
+        const el = /** @type {HTMLElement|null} */ (document.querySelector(`[data-search-idx="${idx}"]`));
+        if (el) {
+            el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            el.style.background = 'oklch(var(--p) / 0.18)';
+            el.style.outline = '2px solid oklch(var(--p) / 0.4)';
+            el.style.outlineOffset = '-2px';
         }
-    });
+    }
 
 
 

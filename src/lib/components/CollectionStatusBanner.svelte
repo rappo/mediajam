@@ -52,9 +52,13 @@
         const inLibrary = jellyfinId && collectionStatus === 'collected';
         const hasFile = !!arrHasFile;
 
+        // For shows: treat as "has files" if we have collected episodes in the library,
+        // even if arr_has_file is 0 (Sonarr may report no files when specials are missing)
+        const effectiveHasFile = hasFile || (mediaType === 'show' && inLibrary && collectedCount && collectedCount > 0);
+
         // Already in library with files → no banner
-        if (inLibrary && hasFile) return null;
-        if (collectionStatus === 'collected' && hasFile) return null;
+        if (inLibrary && effectiveHasFile) return null;
+        if (collectionStatus === 'collected' && effectiveHasFile) return null;
 
         // For shows: if we have most episodes but some are missing, show partial status
         if (mediaType === 'show' && collectedCount && collectedCount > 0 && missingCount && missingCount > 0) {
@@ -74,22 +78,22 @@
         if (collectionStatus === 'external' && !arrId) return 'not_tracked';
 
         // Wanted (in *arr or marked wanted, no file)
-        if (collectionStatus === 'wanted' && !hasFile) return 'wanted';
+        if (collectionStatus === 'wanted' && !effectiveHasFile) return 'wanted';
 
         // In *arr but no file
-        if (arrId && !hasFile) {
+        if (arrId && !effectiveHasFile) {
             if (arrMonitored) return 'searching';
             return 'missing';
         }
 
         // Has *arr file but not in Jellyfin yet
-        if (arrId && hasFile && !jellyfinId) return null; // will appear after sync
+        if (arrId && effectiveHasFile && !jellyfinId) return null; // will appear after sync
 
         // External with no *arr
         if (collectionStatus === 'external') return 'not_tracked';
 
         // Fallback: collected but missing file somehow
-        if (!hasFile && !jellyfinId) return 'not_tracked';
+        if (!effectiveHasFile && !jellyfinId) return 'not_tracked';
 
         return null;
     }
@@ -112,7 +116,7 @@
             showActions: true,
         },
         wanted: {
-            icon: '☆',
+            icon: '📡',
             label: 'Wanted',
             description: 'Added to your wanted list but not yet downloaded.',
             color: 'border-info/30 bg-info/5',
