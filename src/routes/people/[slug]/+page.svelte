@@ -216,6 +216,7 @@
     let discoveryLimit = $state(24);
     let discoverySearch = $state('');
     let discoveryRoleFilter = $state('all');
+    let discoverySort = $state('rating');
     let addingToArr = $state(/** @type {string|null} */ (null));
     let navigatingItem = $state(/** @type {string|null} */ (null));
 
@@ -294,7 +295,20 @@
                 const q = discoverySearch.trim().toLowerCase();
                 items = items.filter((i) => i.title?.toLowerCase().includes(q));
             }
-            return items.toSorted((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
+            // Sort based on selected sort option
+            switch (discoverySort) {
+                case 'rating':
+                    return items.toSorted((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
+                case 'newest':
+                    return items.toSorted((a, b) => (parseInt(b.release_year) || 0) - (parseInt(a.release_year) || 0));
+                case 'oldest':
+                    return items.toSorted((a, b) => (parseInt(a.release_year) || 9999) - (parseInt(b.release_year) || 9999));
+                case 'episodes':
+                    return items.toSorted((a, b) => (b.episode_count || 0) - (a.episode_count || 0));
+                case 'popularity':
+                default:
+                    return items.toSorted((a, b) => (b.popularity || 0) - (a.popularity || 0));
+            }
         })()
     );
 
@@ -1226,6 +1240,19 @@
                             {/each}
                         </select>
                     {/if}
+                    <select
+                        class="select select-bordered select-xs"
+                        bind:value={discoverySort}
+                        onchange={() => { discoveryLimit = 24; }}
+                    >
+                        <option value="rating">★ Rating</option>
+                        <option value="popularity">🔥 Popularity</option>
+                        <option value="newest">📅 Newest</option>
+                        <option value="oldest">📅 Oldest</option>
+                        {#if discoveryFilter !== 'movie'}
+                            <option value="episodes">📺 Most Episodes</option>
+                        {/if}
+                    </select>
                     <div class="join">
                         <button
                             class="join-item btn btn-xs"
@@ -1235,7 +1262,7 @@
                         <button
                             class="join-item btn btn-xs"
                             class:btn-active={discoveryFilter === "movie"}
-                            onclick={() => { discoveryFilter = "movie"; discoveryLimit = 24; }}
+                            onclick={() => { discoveryFilter = "movie"; discoveryLimit = 24; if (discoverySort === 'episodes') discoverySort = 'rating'; }}
                             >Movies</button
                         >
                         <button
