@@ -45,6 +45,19 @@
         return m > 0 ? `${h}h ${m}m` : `${h}h`;
     }
 
+    /** @param {string} ts */
+    function timeAgo(ts) {
+        if (!ts) return '';
+        const d = new Date(ts);
+        const diff = Math.floor((Date.now() - d.getTime()) / 86400000);
+        if (diff === 0) return 'Today';
+        if (diff === 1) return 'Yesterday';
+        if (diff < 7) return `${diff}d ago`;
+        if (diff < 30) return `${Math.floor(diff / 7)}w ago`;
+        if (diff < 365) return `${Math.floor(diff / 30)}mo ago`;
+        return d.toLocaleDateString();
+    }
+
     let syncing = $state(false);
     let syncStatus = $state("");
     let syncError = $state("");
@@ -765,6 +778,34 @@
         {/if}
     </div>
 
+    <!-- Listening History -->
+    {#if data.listeningHistory && data.listeningHistory.length > 0}
+        <div class="space-y-3">
+            <h2 class="text-xl font-bold">🎧 Listening History</h2>
+            <div class="listening-history">
+                {#each data.listeningHistory as entry}
+                    <a
+                        href="/music/{data.artist.id}/{entry.album_id}"
+                        class="history-entry"
+                    >
+                        <div class="history-art">
+                            {#if entry.album_art}
+                                <img src={entry.album_art} alt="" loading="lazy" />
+                            {:else}
+                                <div class="history-art-fallback">🎵</div>
+                            {/if}
+                        </div>
+                        <div class="history-info">
+                            <span class="history-track">{entry.track_name || 'Unknown Track'}</span>
+                            <span class="history-album">{entry.album_title}</span>
+                        </div>
+                        <span class="history-time">{timeAgo(entry.timestamp)}</span>
+                    </a>
+                {/each}
+            </div>
+        </div>
+    {/if}
+
     <!-- Band Members & Credits -->
     {#if data.members.length > 0 || data.crew.length > 0 || data.artist.musicbrainz_id}
         {@const MEMBER_LIMIT = 16}
@@ -1283,5 +1324,85 @@
             transparent 100%
         );
         color: white;
+    }
+
+    /* ── Listening History ── */
+    .listening-history {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        max-height: 500px;
+        overflow-y: auto;
+        border-radius: 12px;
+        background: oklch(0.18 0.005 260);
+        border: 1px solid oklch(0.25 0.005 260);
+    }
+
+    .history-entry {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        text-decoration: none;
+        color: oklch(var(--bc) / 0.85);
+        transition: background 0.12s;
+    }
+    .history-entry:hover {
+        background: oklch(0.22 0.01 260);
+    }
+    .history-entry:not(:last-child) {
+        border-bottom: 1px solid oklch(0.22 0.003 260);
+    }
+
+    .history-art {
+        flex-shrink: 0;
+        width: 36px;
+        height: 36px;
+        border-radius: 6px;
+        overflow: hidden;
+        background: oklch(0.15 0 0);
+    }
+    .history-art img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .history-art-fallback {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.75rem;
+        color: oklch(var(--bc) / 0.2);
+    }
+
+    .history-info {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        min-width: 0;
+        flex: 1;
+    }
+    .history-track {
+        font-size: 0.8rem;
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .history-album {
+        font-size: 0.65rem;
+        color: oklch(var(--bc) / 0.4);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .history-time {
+        flex-shrink: 0;
+        font-size: 0.65rem;
+        color: oklch(var(--bc) / 0.35);
+        white-space: nowrap;
     }
 </style>

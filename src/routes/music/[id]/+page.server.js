@@ -167,6 +167,30 @@ export async function load({ params, locals }) {
         ORDER BY pc.sort_order ASC
     `).all(artistId));
 
+    // Listening history — recent plays across all albums by this artist
+    const listeningHistory = /** @type {any[]} */ (db.prepare(`
+        SELECT
+            ph.track_name,
+            ph.timestamp,
+            mc.id as album_id,
+            mc.title as album_title,
+            mc.jellyfin_id as album_jellyfin_id,
+            mc.poster_url as album_poster
+        FROM playback_history ph
+        JOIN media_children mc ON ph.media_id = mc.id
+        WHERE mc.parent_id = ? AND ph.user_id = ?
+        GROUP BY ph.track_name, CAST(strftime('%s', ph.timestamp) / 300 AS INTEGER)
+        ORDER BY ph.timestamp DESC
+        LIMIT 50
+    `).all(artistId, userId));
+
+    // Add album art URLs to history
+    for (const entry of listeningHistory) {
+        entry.album_art = entry.album_jellyfin_id
+            ? `${jellyfinUrl}/Items/${entry.album_jellyfin_id}/Images/Primary?maxHeight=60`
+            : entry.album_poster || null;
+    }
+
     return {
         artist: { ...artist, is_favorite: liveFavorite ?? artist.is_favorite, total_plays: totalPlays, imageUrl: artistImageUrl, backdropUrl },
         albums: albumsWithRatings,
@@ -176,6 +200,7 @@ export async function load({ params, locals }) {
         totalPlayed,
         totalRuntimeMinutes: Math.round(totalRuntime / 600000000),
         members,
-        crew
+        crew,
+        listeningHistory,
     };
 }

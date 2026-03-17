@@ -15,8 +15,12 @@ export async function load({ params, locals }) {
 
     if (!person) throw error(404, 'Person not found');
 
-    // Photo URL
-    const photoUrl = person.photo_url || null;
+    // Photo URL — with IMDb headshot fallback
+    let photoUrl = person.photo_url || null;
+    if (!photoUrl && person.imdb_person_id) {
+        // IMDb headshots are publicly accessible at this URL pattern
+        photoUrl = `https://m.media-amazon.com/images/M/${person.imdb_person_id}._V1_SX300.jpg`;
+    }
 
     // All credits grouped by media type
     const rawCredits = /** @type {any[]} */ (db.prepare(`
@@ -122,9 +126,10 @@ export async function load({ params, locals }) {
     const needsEnrichment = !displayBio || !person.birth_date || !person.tmdb_person_id;
 
     // Backdrop: try multiple strategies in order
-    // 1. Check if any credit has a cached TMDB backdrop (reliable, no 404 risk)
-    // 2. Fall back to constructing Jellyfin backdrop URL (may 404 if item has no backdrop)
-    // 3. Use TMDB person profile as last resort
+    // 1. Check if any movie/show credit has a cached TMDB backdrop
+    // 2. Jellyfin backdrop from best movie/show credit
+    // 3. For music-only people, use artist poster/backdrop from the band
+    // 4. TMDB person profile as last resort
     const creditsForBackdrop = [...movies, ...shows]
         .sort((a, b) => {
             // Prefer watched items
@@ -158,7 +163,28 @@ export async function load({ params, locals }) {
         }
     }
 
-    // Strategy 3: TMDB person profile as backdrop (portrait, not ideal but better than nothing)
+    // Strategy 3: For music-only people, grab backdrop from their band/artist
+    if (!backdropUrl && artists.length > 0) {
+        for (const artist of artists) {
+            const parentData = /** @type {any} */ (db.prepare(
+                'SELECT backdrop_url, poster_url, jellyfin_id FROM media_parents WHERE id = ?'
+            ).get(artist.media_id));
+            if (parentData?.backdrop_url) {
+                backdropUrl = parentData.backdrop_url;
+                break;
+            }
+            if (parentData?.poster_url) {
+                backdropUrl = parentData.poster_url;
+                break;
+            }
+            if (parentData?.jellyfin_id) {
+                backdropUrl = `${jellyfinUrl}/Items/${parentData.jellyfin_id}/Images/Primary?maxWidth=1200`;
+                break;
+            }
+        }
+    }
+
+    // Strategy 4: TMDB person profile as backdrop (portrait, not ideal but better than nothing)
     if (!backdropUrl && person.tmdb_person_id) {
         const { fetchTmdbPersonBackdrop } = await import('$lib/server/backdrop.js');
         const tmdbBackdrop = await fetchTmdbPersonBackdrop(person.tmdb_person_id);

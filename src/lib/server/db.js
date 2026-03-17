@@ -664,6 +664,41 @@ if (!historyCols.has('track_id')) {
     }
 }
 
+// -- Deduplicate tracks and add composite unique index --
+// Lidarr enrichment was inserting tracks without jellyfin_id (NULL), bypassing
+// the UNIQUE(jellyfin_id) constraint. This migration dedupes and prevents recurrence.
+{
+    const dupeCount = /** @type {any} */ (db.prepare(`
+        SELECT COUNT(*) as c FROM (
+            SELECT album_id, disc_number, track_number, COUNT(*) as cnt
+            FROM tracks GROUP BY album_id, disc_number, track_number HAVING cnt > 1
+        )
+    `).get())?.c || 0;
+
+    if (dupeCount > 0) {
+        // Keep lowest id for each (album_id, disc_number, track_number) group
+        const deleted = db.prepare(`
+            DELETE FROM tracks WHERE id NOT IN (
+                SELECT MIN(id) FROM tracks GROUP BY album_id, disc_number, track_number
+            )
+        `).run();
+        console.log(`[db] Deduplicated tracks: removed ${deleted.changes} duplicate rows from ${dupeCount} groups`);
+    }
+
+    // Add composite unique index (idempotent)
+    try {
+        db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_tracks_album_disc_track ON tracks(album_id, disc_number, track_number)');
+    } catch {
+        // Index may fail if there are still dupes somehow — try harder
+        db.exec(`
+            DELETE FROM tracks WHERE id NOT IN (
+                SELECT MIN(id) FROM tracks GROUP BY album_id, disc_number, track_number
+            )
+        `);
+        db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_tracks_album_disc_track ON tracks(album_id, disc_number, track_number)');
+    }
+}
+
 // -- UNDO incorrect pr_tz migration (v1 wrongly added +4/5h) --
 // The Jellyfin PR plugin stores DateCreated in UTC (DateTime.UtcNow), so
 // the original stored values were already correct. The v1 migration broke them

@@ -120,7 +120,10 @@ export async function enrichAlbumFromLidarr(albumId, artistId) {
                 const upsertTrack = db.prepare(`
                     INSERT INTO tracks (album_id, title, track_number, disc_number, runtime_ticks, musicbrainz_id)
                     VALUES (?, ?, ?, ?, ?, ?)
-                    ON CONFLICT DO NOTHING
+                    ON CONFLICT(album_id, disc_number, track_number) DO UPDATE SET
+                        title = excluded.title,
+                        runtime_ticks = excluded.runtime_ticks,
+                        musicbrainz_id = COALESCE(excluded.musicbrainz_id, tracks.musicbrainz_id)
                 `);
                 db.transaction(() => {
                     for (const t of lidarrTracks) {
