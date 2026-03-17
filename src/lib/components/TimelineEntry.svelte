@@ -4,10 +4,26 @@
     /** @type {{ entry: any, jellyfinUrl?: string, albumGroups?: Array<{albumTitle: string, albumArtUrl: string|null, albumId: number|null, tracks: any[]}> | null }} */
     let { entry, jellyfinUrl = "", albumGroups = null } = $props();
 
+    /**
+     * Ensure timestamp string is parsed as UTC.
+     * SQLite stores UTC timestamps without a Z suffix, so new Date() would
+     * interpret them as local time otherwise.
+     * @param {string} ts
+     * @returns {Date}
+     */
+    function parseUTC(ts) {
+        if (!ts) return new Date(NaN);
+        // Already has timezone info (Z, +, or -offset)
+        if (/Z|[+-]\d{2}:\d{2}$/.test(ts)) return new Date(ts);
+        // Replace space separator with T and add Z
+        return new Date(ts.replace(' ', 'T') + 'Z');
+    }
+
     /** @param {string} timestamp */
     function timeAgo(timestamp) {
         if (!timestamp) return "";
-        const diff = Date.now() - new Date(timestamp).getTime();
+        const diff = Date.now() - parseUTC(timestamp).getTime();
+        if (isNaN(diff)) return "";
         const minutes = Math.floor(diff / 60000);
         if (minutes < 1) return "Just now";
         if (minutes < 60) return `${minutes}m ago`;
@@ -15,13 +31,13 @@
         if (hours < 24) return `${hours}h ago`;
         const days = Math.floor(hours / 24);
         if (days < 7) return `${days}d ago`;
-        return new Date(timestamp).toLocaleDateString();
+        return parseUTC(timestamp).toLocaleDateString();
     }
 
     /** @param {string} timestamp */
     function formatTime(timestamp) {
         if (!timestamp) return "";
-        return new Date(timestamp).toLocaleTimeString([], {
+        return parseUTC(timestamp).toLocaleTimeString([], {
             hour: "2-digit",
             minute: "2-digit",
         });

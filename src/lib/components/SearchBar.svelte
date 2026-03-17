@@ -16,6 +16,8 @@
     let debounceTimer = null;
     /** @type {HTMLInputElement | null} */
     let inputEl = $state(null);
+    /** Currently highlighted result index, -1 = nothing selected */
+    let selectedIdx = -1;
 
     onMount(() => {
         /** @param {KeyboardEvent} e */
@@ -31,6 +33,76 @@
         return () => document.removeEventListener('keydown', handleGlobalKeys);
     });
 
+    // ── Keyboard navigation: attach directly to the input element ──
+    // We must use raw addEventListener because the input lives in a
+    // portal (moved to document.body), which breaks Svelte's event delegation.
+    $effect(() => {
+        const inp = inputEl;
+        if (!inp) return;
+
+        /** @param {KeyboardEvent} e */
+        function onKeydown(e) {
+            // Find result items by querying the DOM (reactive bindings don't work in portal)
+            const items = /** @type {NodeListOf<HTMLElement>} */ (
+                document.querySelectorAll('.search-result-item')
+            );
+            const count = items.length;
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (count > 0) {
+                    selectedIdx = Math.min(selectedIdx + 1, count - 1);
+                    applySelection(items);
+                }
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (count > 0) {
+                    selectedIdx = Math.max(selectedIdx - 1, -1);
+                    applySelection(items);
+                }
+            } else if (e.key === 'Enter') {
+                if (count > 0) {
+                    e.preventDefault();
+                    const target = selectedIdx >= 0 && selectedIdx < count
+                        ? items[selectedIdx]
+                        : items[0];
+                    target.click();
+                }
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                close();
+            }
+        }
+
+        /** @param {Event} _e */
+        function onInput(_e) {
+            selectedIdx = -1;
+        }
+
+        inp.addEventListener('keydown', onKeydown);
+        inp.addEventListener('input', onInput);
+
+        return () => {
+            inp.removeEventListener('keydown', onKeydown);
+            inp.removeEventListener('input', onInput);
+        };
+    });
+
+    /**
+     * Apply visual selection via classList (since Svelte bindings don't work in portal)
+     * @param {NodeListOf<HTMLElement>} items
+     */
+    function applySelection(items) {
+        items.forEach((el, i) => {
+            if (i === selectedIdx) {
+                el.classList.add('selected');
+                el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            } else {
+                el.classList.remove('selected');
+            }
+        });
+    }
+
 
 
     function close() {
@@ -39,6 +111,7 @@
         results = null;
         externalResults = null;
         externalLoading = false;
+        selectedIdx = -1;
     }
 
     async function searchExternal() {
@@ -143,19 +216,6 @@
         }
     }
 
-    /** @param {any} r */
-    function flatResults(r) {
-        if (!r?.results) return [];
-        return [
-            ...(r.results.shows || []),
-            ...(r.results.movies || []),
-            ...(r.results.music || []),
-            ...(r.results.albums || []),
-            ...(r.results.people || []),
-            ...(r.results.children || []),
-            ...(r.results.history || []),
-        ];
-    }
 
 
 
@@ -256,70 +316,9 @@
                 .replace("rgb(", "rgba(");
         }
 
-        // ── Single keyboard navigation system ──────────────────────────────
-        // This runs on the portaled DOM directly (Svelte reactive bindings
-        // don't work after the node is moved to document.body).
-        let selectedIdx = -1;
-
-        function getItems() {
-            return /** @type {NodeListOf<HTMLElement>} */ (node.querySelectorAll('.search-result-item'));
-        }
-
-        function applySelection() {
-            const items = getItems();
-            items.forEach((el, i) => {
-                if (i === selectedIdx) {
-                    el.classList.add('selected');
-                    el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-                } else {
-                    el.classList.remove('selected');
-                }
-            });
-        }
-
-        /** @param {KeyboardEvent} e */
-        function onKeydown(e) {
-            const items = getItems();
-            const count = items.length;
-
-            if (e.key === 'ArrowDown' && count > 0) {
-                e.preventDefault();
-                e.stopPropagation();
-                selectedIdx = Math.min(selectedIdx + 1, count - 1);
-                applySelection();
-            } else if (e.key === 'ArrowUp' && count > 0) {
-                e.preventDefault();
-                e.stopPropagation();
-                selectedIdx = Math.max(selectedIdx - 1, -1);
-                applySelection();
-            } else if (e.key === 'Enter') {
-                e.preventDefault();
-                e.stopPropagation();
-                if (count > 0) {
-                    const target = selectedIdx >= 0 && selectedIdx < count
-                        ? items[selectedIdx]
-                        : items[0];
-                    target.click();
-                }
-            } else if (e.key === 'Escape') {
-                e.preventDefault();
-                close();
-            }
-        }
-
-        // Listen on the whole portal node (captures keys from input + any child)
-        node.addEventListener('keydown', onKeydown);
-
-        // Reset selection when input changes (new results coming in)
-        const inp = node.querySelector('.search-input');
-        /** @param {Event} _e */
-        function onInput(_e) { selectedIdx = -1; }
-        if (inp) inp.addEventListener('input', onInput);
 
         return {
             destroy() {
-                node.removeEventListener('keydown', onKeydown);
-                if (inp) inp.removeEventListener('input', onInput);
                 node.remove();
             },
         };
