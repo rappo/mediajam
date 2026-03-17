@@ -53,19 +53,41 @@
     }
 
     onMount(async () => {
-        // Load smart sections and calendar in parallel
-        const sectionsPromise = fetch('/api/pages/music' + window.location.search)
-            .then(r => r.json())
-            .then(d => { sections = d.sections; timeFilters = d.timeFilters; })
-            .catch(e => console.error('[music] Failed to load sections:', e))
-            .finally(() => { sectionsLoaded = true; });
-
-        const calendarPromise = fetch('/api/calendar/music')
+        // Load calendar independently
+        fetch('/api/calendar/music')
             .then(r => r.json())
             .then(d => { calendarDays = d.days || []; })
             .catch(e => console.error('[music] Failed to load calendar:', e));
 
-        await Promise.all([sectionsPromise, calendarPromise]);
+        // Try loading all sections at once (fast when cached)
+        const qs = window.location.search;
+        try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 3000);
+            const res = await fetch('/api/pages/music' + qs, { signal: controller.signal });
+            clearTimeout(timeout);
+            const d = await res.json();
+            sections = d.sections;
+            timeFilters = d.timeFilters;
+            sectionsLoaded = true;
+        } catch {
+            // Timed out or failed — load each section individually in parallel
+            const sectionNames = ['recentListening', 'heavyRotation', 'newFromFavorites', 'rediscover', 'unplayedAlbums', 'itsBeenAWhile'];
+            sectionsLoaded = true; // show UI immediately with empty sections
+            await Promise.allSettled(sectionNames.map(async (name) => {
+                try {
+                    const sep = qs ? '&' : '?';
+                    const res = await fetch(`/api/pages/music${qs}${sep}section=${name}`);
+                    const d = await res.json();
+                    if (d.sections?.[name]) {
+                        sections = { ...sections, [name]: d.sections[name] };
+                    }
+                    if (d.timeFilters) timeFilters = d.timeFilters;
+                } catch (e) {
+                    console.error(`[music] Failed to load section ${name}:`, e);
+                }
+            }));
+        }
     });
 
     async function loadLibrary() {
