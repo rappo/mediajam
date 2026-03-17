@@ -31,9 +31,8 @@
             }
 
             // All other shortcuts only apply when search is open
-            // Check DOM instead of $state because Svelte 5 reactivity
-            // may not work correctly inside plain event handler closures
-            if (!document.querySelector('.search-dialog')) return;
+            const dialog = document.querySelector('.search-dialog');
+            if (!dialog) return;
 
             // Find all result items in the search dialog
             const items = /** @type {HTMLElement[]} */ (
@@ -41,23 +40,31 @@
             );
             const count = items.length;
 
+            console.log('[search-kbd]', e.key, 'dialog=', !!dialog, 'items=', count, 'selectedIdx=', selectedIdx);
+
             if (e.key === 'ArrowDown') {
                 e.preventDefault();
+                e.stopPropagation();
                 if (count > 0) {
                     selectedIdx = Math.min(selectedIdx + 1, count - 1);
                     highlightItem(items, selectedIdx);
+                    console.log('[search-kbd] ArrowDown → selectedIdx=', selectedIdx);
                 }
             } else if (e.key === 'ArrowUp') {
                 e.preventDefault();
+                e.stopPropagation();
                 if (count > 0) {
                     selectedIdx = Math.max(selectedIdx - 1, -1);
                     highlightItem(items, selectedIdx);
+                    console.log('[search-kbd] ArrowUp → selectedIdx=', selectedIdx);
                 }
             } else if (e.key === 'Enter' && count > 0) {
                 e.preventDefault();
+                e.stopPropagation();
                 const target = selectedIdx >= 0 && selectedIdx < count
                     ? items[selectedIdx]
                     : items[0];
+                console.log('[search-kbd] Enter → clicking', target);
                 target.click();
             } else if (e.key === 'Escape') {
                 e.preventDefault();
@@ -65,8 +72,8 @@
             }
         }
 
-        document.addEventListener('keydown', handleKeydown);
-        return () => document.removeEventListener('keydown', handleKeydown);
+        document.addEventListener('keydown', handleKeydown, true);
+        return () => document.removeEventListener('keydown', handleKeydown, true);
     });
 
     /**
