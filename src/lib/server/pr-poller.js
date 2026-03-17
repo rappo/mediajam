@@ -197,18 +197,28 @@ function pollForNewPlays() {
                     continue;
                 }
 
-                // DateCreated from Jellyfin PR plugin is stored in UTC
-                // (the plugin uses DateTime.UtcNow). Just normalize to ISO format.
+                // DateCreated from Jellyfin PR plugin is in Jellyfin server's
+                // LOCAL timezone (not UTC). Parse as local and convert to UTC.
                 let rawTs = event.DateCreated || '';
                 let timestamp;
                 if (rawTs) {
                     const isoStr = rawTs.replace(' ', 'T');
-                    // Append Z if no timezone suffix (PR DB stores bare UTC)
-                    const utcStr = isoStr.endsWith('Z') || isoStr.includes('+') || /\d{2}:\d{2}$/.test(isoStr) === false
-                        ? isoStr + (isoStr.endsWith('Z') ? '' : 'Z')
-                        : isoStr;
-                    const d = new Date(utcStr);
-                    timestamp = isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+                    // Parse as UTC first to get the numeric component
+                    const hasZone = isoStr.endsWith('Z') || isoStr.includes('+') || isoStr.includes('-', 10);
+                    const parseStr = hasZone ? isoStr : isoStr + 'Z';
+                    const asUtc = new Date(parseStr);
+                    if (isNaN(asUtc.getTime())) {
+                        timestamp = new Date().toISOString();
+                    } else if (hasZone) {
+                        // Already has timezone info — use as-is
+                        timestamp = asUtc.toISOString();
+                    } else {
+                        // Bare timestamp = Jellyfin local time. Convert to UTC.
+                        const jellyfinTz = getJellyfinTimezone();
+                        const offsetMs = getTimezoneOffsetMs(asUtc, jellyfinTz);
+                        const correctedUtc = new Date(asUtc.getTime() + offsetMs);
+                        timestamp = correctedUtc.toISOString();
+                    }
                 } else {
                     timestamp = new Date().toISOString();
                 }

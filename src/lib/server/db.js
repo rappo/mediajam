@@ -784,9 +784,9 @@ if (!historyCols.has('track_id')) {
 }
 
 // -- UNDO incorrect pr_tz migration (v1 wrongly added +4/5h) --
-// The Jellyfin PR plugin stores DateCreated in UTC (DateTime.UtcNow), so
-// the original stored values were already correct. The v1 migration broke them
-// by adding 4-5 hours. This v2 migration subtracts those hours back.
+// The Jellyfin PR plugin stores DateCreated in Jellyfin server's LOCAL timezone.
+// v1 correctly tried to convert but had bugs. v2 reverted v1.
+// v3 (below) properly converts local→UTC using Intl timezone math.
 {
     try { db.exec("ALTER TABLE app_settings ADD COLUMN pr_tz_migrated INTEGER DEFAULT 0"); } catch { /* already exists */ }
     try { db.exec("ALTER TABLE app_settings ADD COLUMN pr_tz_v2_migrated INTEGER DEFAULT 0"); } catch { /* already exists */ }
@@ -826,6 +826,64 @@ if (!historyCols.has('track_id')) {
             console.log(`[db] Reverted ${count} jellyfin_pr timestamps (undid incorrect +4/5h shift)`);
         }
         db.prepare("UPDATE app_settings SET pr_tz_v2_migrated = 1 WHERE id = 1").run();
+    }
+}
+
+// -- v3: Convert jellyfin_pr timestamps from Jellyfin local time → UTC --
+// The PR plugin stores DateCreated in Jellyfin server's local timezone (not UTC).
+// Previous code appended 'Z' treating local as UTC, causing a 4-5h shift.
+// This migration properly converts using the configured Jellyfin timezone.
+{
+    try { db.exec("ALTER TABLE app_settings ADD COLUMN pr_tz_v3_migrated INTEGER DEFAULT 0"); } catch { /* already exists */ }
+    const v3Flag = /** @type {any} */ (db.prepare("SELECT pr_tz_v3_migrated FROM app_settings WHERE id = 1").get());
+    if (!v3Flag?.pr_tz_v3_migrated) {
+        const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_timezone FROM app_settings WHERE id = 1').get());
+        const jellyfinTz = settings?.jellyfin_timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+        const prEntries = /** @type {any[]} */ (db.prepare(
+            "SELECT id, timestamp FROM playback_history WHERE source = 'jellyfin_pr' AND timestamp IS NOT NULL AND timestamp != ''"
+        ).all());
+
+        if (prEntries.length > 0) {
+            // Timezone offset calculation (same logic as pr-poller getTimezoneOffsetMs)
+            const formatter = new Intl.DateTimeFormat('en-US', {
+                timeZone: jellyfinTz,
+                year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit', second: '2-digit',
+                hour12: false
+            });
+
+            /** @param {Date} date */
+            function getOffsetMs(date) {
+                const parts = formatter.formatToParts(date);
+                const get = (/** @type {string} */ type) => parseInt(parts.find(p => p.type === type)?.value || '0');
+                const localInTz = new Date(Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second')));
+                return -(localInTz.getTime() - date.getTime());
+            }
+
+            const updateStmt = db.prepare("UPDATE playback_history SET timestamp = ? WHERE id = ?");
+            const txn = db.transaction(() => {
+                let fixed = 0;
+                for (const entry of prEntries) {
+                    const ts = entry.timestamp;
+                    if (!ts) continue;
+                    const d = new Date(ts);
+                    if (isNaN(d.getTime())) continue;
+
+                    // Current timestamp was stored as local-time-with-Z-suffix.
+                    // The numeric value is local time interpreted as UTC.
+                    // Apply the offset to get true UTC.
+                    const offsetMs = getOffsetMs(d);
+                    const correctedUtc = new Date(d.getTime() + offsetMs);
+                    updateStmt.run(correctedUtc.toISOString(), entry.id);
+                    fixed++;
+                }
+                return fixed;
+            });
+            const count = txn();
+            console.log(`[db] v3 migration: converted ${count} jellyfin_pr timestamps from ${jellyfinTz} local → UTC`);
+        }
+        db.prepare("UPDATE app_settings SET pr_tz_v3_migrated = 1 WHERE id = 1").run();
     }
 }
 
