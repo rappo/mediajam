@@ -1,12 +1,13 @@
 <!--
-  CalendarStrip — Option B: Large poster cards, tinted backgrounds, weekly grid.
+  CalendarStrip — Shared calendar component for TV episodes and music releases.
   Supports navigating to past/future weeks via prev/next buttons.
+  Use `mode="tv"` (default) or `mode="music"` to control rendering.
 -->
 <script>
     import { imgUrl } from "$lib/utils.js";
 
-    /** @type {{ days: Array<{ date: string, episodes: any[] }>, onNavigate?: (offset: number) => void, weekOffset?: number }} */
-    let { days, onNavigate, weekOffset = 0 } = $props();
+    /** @type {{ days: Array<{ date: string, episodes: any[] }>, onNavigate?: (offset: number) => void, weekOffset?: number, mode?: 'tv' | 'music' }} */
+    let { days, onNavigate, weekOffset = 0, mode = 'tv' } = $props();
 
     const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -30,11 +31,27 @@
         return `S${String(ep.season_number).padStart(2, '0')}E${String(ep.item_number).padStart(2, '0')}`;
     }
 
-    /** @param {any} ep */
-    function cardClass(ep) {
-        if (ep.status === 'downloaded') return 'card-downloaded';
-        if (ep.status === 'available') return 'card-available';
+    /** @param {any} item */
+    function cardClass(item) {
+        if (item.status === 'downloaded') return 'card-downloaded';
+        if (item.status === 'available') return 'card-available';
         return 'card-upcoming';
+    }
+
+    /** @param {any} item */
+    function itemLink(item) {
+        if (mode === 'music') {
+            return `/music/${item.artist_id}/${item.album_id || item.show_id}`;
+        }
+        return `/tv/${item.show_id}`;
+    }
+
+    /** @param {any} item */
+    function itemTitle(item) {
+        if (mode === 'music') {
+            return `${item.artist_title || item.show_title} — ${item.album_title || item.episode_title}`;
+        }
+        return `${item.show_title} ${epCode(item)} — ${item.episode_title}`;
     }
 
     // Group days into weeks of 7
@@ -93,31 +110,36 @@
                             <span class="col-day-num" class:num-today={info.isToday}>{info.num}</span>
                         </div>
 
-                        <!-- Episode cards -->
+                        <!-- Cards -->
                         <div class="col-cards">
                             {#if day.episodes.length === 0}
                                 <div class="col-empty">—</div>
                             {:else}
-                                {#each day.episodes as ep}
+                                {#each day.episodes as item}
                                     <a
-                                        href="/tv/{ep.show_id}"
-                                        class="ep-card {cardClass(ep)}"
-                                        title="{ep.show_title} {epCode(ep)} — {ep.episode_title}"
+                                        href={itemLink(item)}
+                                        class="ep-card {cardClass(item)} {mode === 'music' ? 'music-card' : ''}"
+                                        title={itemTitle(item)}
                                     >
                                         <!-- Poster thumbnail -->
-                                        <div class="card-poster">
-                                            {#if ep.poster_url}
-                                                <img src={imgUrl(ep.poster_url, 80)} alt="" loading="lazy" />
+                                        <div class="card-poster" class:poster-square={mode === 'music'}>
+                                            {#if item.poster_url}
+                                                <img src={imgUrl(item.poster_url, 80)} alt="" loading="lazy" />
                                             {:else}
-                                                <div class="poster-fallback">📺</div>
+                                                <div class="poster-fallback">{mode === 'music' ? '🎵' : '📺'}</div>
                                             {/if}
                                         </div>
                                         <!-- Info -->
                                         <div class="card-info">
-                                            <span class="card-show">{ep.show_title}</span>
-                                            <span class="card-ep">{epCode(ep)}</span>
-                                            {#if ep.episode_title}
-                                                <span class="card-title">{ep.episode_title}</span>
+                                            {#if mode === 'music'}
+                                                <span class="card-show">{item.artist_title || item.show_title}</span>
+                                                <span class="card-title">{item.album_title || item.episode_title}</span>
+                                            {:else}
+                                                <span class="card-show">{item.show_title}</span>
+                                                <span class="card-ep">{epCode(item)}</span>
+                                                {#if item.episode_title}
+                                                    <span class="card-title">{item.episode_title}</span>
+                                                {/if}
                                             {/if}
                                         </div>
                                     </a>
@@ -265,7 +287,7 @@
         font-size: 0.6rem;
     }
 
-    /* ── Episode card — Option B poster style ── */
+    /* ── Card ── */
     .ep-card {
         display: flex;
         gap: 6px;
@@ -290,6 +312,11 @@
         border-radius: 4px;
         overflow: hidden;
         background: oklch(0.18 0 0);
+    }
+    .card-poster.poster-square {
+        width: 40px;
+        height: 40px;
+        border-radius: 6px;
     }
     .card-poster img {
         width: 100%;
@@ -337,7 +364,7 @@
 
     /* ── Status-based card backgrounds ── */
 
-    /* Downloaded — green tinted */
+    /* Downloaded / Collected — green tinted */
     .card-downloaded {
         background: oklch(0.2 0.035 155);
         border-color: oklch(0.32 0.06 155);
@@ -370,10 +397,37 @@
         color: oklch(var(--bc) / 0.8);
     }
 
+    /* ── Music-mode card overrides — violet tint ── */
+    .music-card.card-downloaded {
+        background: oklch(0.2 0.04 290);
+        border-color: oklch(0.32 0.06 290);
+    }
+    .music-card.card-downloaded .card-show {
+        color: oklch(0.82 0.1 290);
+    }
+    .music-card.card-available {
+        background: oklch(0.22 0.04 55);
+        border-color: oklch(0.35 0.06 55);
+    }
+    .music-card.card-available .card-show {
+        color: oklch(0.82 0.1 55);
+    }
+    .music-card.card-upcoming {
+        background: oklch(0.2 0.015 290);
+        border-color: oklch(0.28 0.025 290);
+    }
+    .music-card.card-upcoming .card-show {
+        color: oklch(0.82 0.08 290);
+    }
+
     @media (max-width: 1100px) {
         .card-poster {
             width: 26px;
             height: 38px;
+        }
+        .card-poster.poster-square {
+            width: 34px;
+            height: 34px;
         }
     }
 

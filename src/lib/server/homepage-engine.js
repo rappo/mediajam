@@ -555,6 +555,71 @@ export function getAiringThisWeek(prefs, weekOffset = 0) {
 }
 
 /**
+ * Upcoming album releases — calendar view for the music page.
+ * Mirrors getAiringThisWeek() but queries albums (media_children) under artists.
+ * @param {typeof DEFAULTS} _prefs
+ * @param {number} weekOffset
+ */
+export function getUpcomingAlbums(_prefs, weekOffset = 0) {
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1) + (weekOffset * 7));
+    monday.setHours(0, 0, 0, 0);
+    const endDate = new Date(monday);
+    endDate.setDate(monday.getDate() + 20);
+    endDate.setHours(23, 59, 59);
+
+    const mondayISO = monday.toISOString().split('T')[0];
+    const endISO = endDate.toISOString().split('T')[0];
+
+    const albums = /** @type {any[]} */ (db.prepare(`
+        SELECT mc.id as album_id, mc.title as album_title,
+               mc.premiere_date, mc.is_collected, mc.poster_url as album_poster,
+               mp.id as artist_id, mp.title as artist_title, mp.poster_url
+        FROM media_children mc
+        JOIN media_parents mp ON mc.parent_id = mp.id
+        WHERE mp.media_type = 'artist'
+          AND mp.is_dashboard_hidden = 0
+          AND mc.premiere_date IS NOT NULL
+          AND date(mc.premiere_date) >= ?
+          AND date(mc.premiere_date) <= ?
+        ORDER BY mc.premiere_date ASC, mp.title ASC
+    `).all(mondayISO, endISO));
+
+    // Group by date — same shape as TV calendar
+    /** @type {Record<string, any[]>} */
+    const byDate = {};
+    for (let i = 0; i < 21; i++) {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        const key = d.toISOString().split('T')[0];
+        byDate[key] = [];
+    }
+
+    for (const album of albums) {
+        const dateKey = album.premiere_date.split('T')[0];
+        if (!byDate[dateKey]) byDate[dateKey] = [];
+        let status = 'not_aired';
+        const releaseDate = new Date(album.premiere_date);
+        if (releaseDate <= now) {
+            status = album.is_collected ? 'downloaded' : 'available';
+        }
+        byDate[dateKey].push({
+            ...album,
+            // Map to CalendarStrip expected fields
+            show_id: album.artist_id,
+            show_title: album.artist_title,
+            episode_title: album.album_title,
+            poster_url: album.album_poster || album.poster_url,
+            status,
+        });
+    }
+
+    return Object.entries(byDate).map(([date, episodes]) => ({ date, episodes }));
+}
+
+/**
  * Recently aired unwatched episodes — what you need to catch up on.
  * @param {typeof DEFAULTS} _prefs
  * @param {number} limit

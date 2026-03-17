@@ -7,10 +7,16 @@
     import PosterRow from "$lib/components/PosterRow.svelte";
     import ProgressCard from "$lib/components/ProgressCard.svelte";
     import Skeleton from "$lib/components/Skeleton.svelte";
+    import CalendarStrip from "$lib/components/CalendarStrip.svelte";
 
     let { data } = $props();
 
     let showLibrary = $state(false);
+
+    // Calendar state
+    let calendarDays = $state(/** @type {any[]} */ ([]));
+    let calendarOffset = $state(0);
+    let calendarLoading = $state(false);
 
     // Smart sections — loaded on mount
     let sectionsLoaded = $state(false);
@@ -30,17 +36,36 @@
     let searchVal = $state('');
     let sortVal = $state('plays');
 
-    onMount(async () => {
+    /** @param {number} newOffset */
+    async function navigateCalendar(newOffset) {
+        calendarOffset = newOffset;
+        calendarLoading = true;
         try {
-            const qs = window.location.search;
-            const res = await fetch('/api/pages/music' + qs);
-            const d = await res.json();
-            sections = d.sections;
-            timeFilters = d.timeFilters;
+            const res = await fetch(`/api/calendar/music?offset=${newOffset}`);
+            if (res.ok) {
+                const result = await res.json();
+                calendarDays = result.days;
+            }
         } catch (e) {
-            console.error('[music] Failed to load sections:', e);
+            console.error('[music] Failed to fetch calendar:', e);
         }
-        sectionsLoaded = true;
+        calendarLoading = false;
+    }
+
+    onMount(async () => {
+        // Load smart sections and calendar in parallel
+        const sectionsPromise = fetch('/api/pages/music' + window.location.search)
+            .then(r => r.json())
+            .then(d => { sections = d.sections; timeFilters = d.timeFilters; })
+            .catch(e => console.error('[music] Failed to load sections:', e))
+            .finally(() => { sectionsLoaded = true; });
+
+        const calendarPromise = fetch('/api/calendar/music')
+            .then(r => r.json())
+            .then(d => { calendarDays = d.days || []; })
+            .catch(e => console.error('[music] Failed to load calendar:', e));
+
+        await Promise.all([sectionsPromise, calendarPromise]);
     });
 
     async function loadLibrary() {
@@ -315,6 +340,17 @@
             <Skeleton type="poster-row" />
             <Skeleton type="poster-row" />
         {:else}
+
+        <!-- ▌UPCOMING RELEASES ─────────────────────────────────────── -->
+        <section class="smart-section">
+            <h2 class="section-title text-lg font-bold">
+                Upcoming Releases
+                {#if calendarLoading}
+                    <span class="loading loading-spinner loading-sm" style="margin-left: 8px; vertical-align: middle;"></span>
+                {/if}
+            </h2>
+            <CalendarStrip mode="music" days={calendarDays} weekOffset={calendarOffset} onNavigate={navigateCalendar} />
+        </section>
 
         <!-- Heavy Rotation -->
         {#if heavyRotationItems.length > 0}
