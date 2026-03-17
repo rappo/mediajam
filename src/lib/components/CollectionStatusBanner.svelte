@@ -108,9 +108,9 @@
             showActions: false,
         },
         not_tracked: {
-            icon: '📡',
+            icon: '❔',
             label: 'Not in Library',
-            description: 'This title is not in your library.',
+            description: 'This hasn\'t been added to your collection yet.',
             color: 'border-warning/30 bg-warning/5',
             textColor: 'text-warning',
             showActions: true,
