@@ -676,7 +676,20 @@ if (!historyCols.has('track_id')) {
     `).get())?.c || 0;
 
     if (dupeCount > 0) {
-        // Keep lowest id for each (album_id, disc_number, track_number) group
+        // First, reassign playback_history.track_id from dupe tracks to the survivor (MIN id)
+        // so the DELETE doesn't violate FK constraints
+        db.exec(`
+            UPDATE playback_history SET track_id = (
+                SELECT MIN(t2.id) FROM tracks t2
+                WHERE t2.album_id = (SELECT album_id FROM tracks WHERE id = playback_history.track_id)
+                  AND t2.disc_number = (SELECT disc_number FROM tracks WHERE id = playback_history.track_id)
+                  AND t2.track_number = (SELECT track_number FROM tracks WHERE id = playback_history.track_id)
+            )
+            WHERE track_id IS NOT NULL
+              AND track_id NOT IN (SELECT MIN(id) FROM tracks GROUP BY album_id, disc_number, track_number)
+        `);
+
+        // Now safe to delete duplicates
         const deleted = db.prepare(`
             DELETE FROM tracks WHERE id NOT IN (
                 SELECT MIN(id) FROM tracks GROUP BY album_id, disc_number, track_number
@@ -689,7 +702,17 @@ if (!historyCols.has('track_id')) {
     try {
         db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_tracks_album_disc_track ON tracks(album_id, disc_number, track_number)');
     } catch {
-        // Index may fail if there are still dupes somehow — try harder
+        // Index may fail if there are still dupes — reassign FKs and retry
+        db.exec(`
+            UPDATE playback_history SET track_id = (
+                SELECT MIN(t2.id) FROM tracks t2
+                WHERE t2.album_id = (SELECT album_id FROM tracks WHERE id = playback_history.track_id)
+                  AND t2.disc_number = (SELECT disc_number FROM tracks WHERE id = playback_history.track_id)
+                  AND t2.track_number = (SELECT track_number FROM tracks WHERE id = playback_history.track_id)
+            )
+            WHERE track_id IS NOT NULL
+              AND track_id NOT IN (SELECT MIN(id) FROM tracks GROUP BY album_id, disc_number, track_number)
+        `);
         db.exec(`
             DELETE FROM tracks WHERE id NOT IN (
                 SELECT MIN(id) FROM tracks GROUP BY album_id, disc_number, track_number
