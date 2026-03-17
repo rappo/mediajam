@@ -9,7 +9,6 @@
     /** @type {any} */
     let results = $state(null);
     let loading = $state(false);
-    let selectedIndex = $state(-1);
     /** @type {any} */
     let externalResults = $state(null);
     let externalLoading = $state(false);
@@ -18,47 +17,18 @@
     /** @type {HTMLInputElement | null} */
     let inputEl = $state(null);
 
-    // Use a plain object ref so native event listeners always see current state
-    const stateRef = { open: false, results: null, selectedIndex: -1 };
-    $effect(() => { stateRef.open = open; });
-    $effect(() => { stateRef.results = results; });
-    $effect(() => { stateRef.selectedIndex = selectedIndex; });
-
     onMount(() => {
         /** @param {KeyboardEvent} e */
-        function handleKeys(e) {
+        function handleGlobalKeys(e) {
             if (e.ctrlKey && e.key === "k") {
                 e.preventDefault();
                 open = !open;
                 if (open) setTimeout(() => inputEl?.focus(), 50);
                 return;
             }
-            if (e.key === "Escape" && stateRef.open) {
-                close();
-                return;
-            }
-            if (stateRef.open && stateRef.results) {
-                const items = flatResults(stateRef.results);
-                if (e.key === "ArrowDown" && items.length > 0) {
-                    e.preventDefault();
-                    selectedIndex = Math.min(stateRef.selectedIndex + 1, items.length - 1);
-                    scrollSelectedIntoView();
-                } else if (e.key === "ArrowUp" && items.length > 0) {
-                    e.preventDefault();
-                    selectedIndex = Math.max(stateRef.selectedIndex - 1, -1);
-                    scrollSelectedIntoView();
-                } else if (e.key === "Enter" && items.length > 0) {
-                    e.preventDefault();
-                    if (stateRef.selectedIndex >= 0 && stateRef.selectedIndex < items.length) {
-                        navigateToResult(items[stateRef.selectedIndex]);
-                    } else {
-                        navigateToResult(items[0]);
-                    }
-                }
-            }
         }
-        document.addEventListener('keydown', handleKeys);
-        return () => document.removeEventListener('keydown', handleKeys);
+        document.addEventListener('keydown', handleGlobalKeys);
+        return () => document.removeEventListener('keydown', handleGlobalKeys);
     });
 
 
@@ -69,7 +39,6 @@
         results = null;
         externalResults = null;
         externalLoading = false;
-        selectedIndex = -1;
     }
 
     async function searchExternal() {
@@ -138,7 +107,7 @@
                     const data = await res.json();
                     results = data;
                 }
-                selectedIndex = -1;
+                // selection reset is handled by portal input listener
             } catch (/** @type {any} */ err) {
                 addToast({
                     type: "error",
@@ -189,13 +158,6 @@
     }
 
 
-    function scrollSelectedIntoView() {
-        // Wait a tick for the DOM to update with the new selected class
-        setTimeout(() => {
-            const el = document.querySelector(".search-result-item.selected");
-            el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-        }, 0);
-    }
 
     /** @type {Record<string, string>} */
     const TYPE_ICONS = {
@@ -294,14 +256,19 @@
                 .replace("rgb(", "rgba(");
         }
 
-        // Attach keyboard handler directly to the input element in the portal
-        const inp = /** @type {HTMLInputElement|null} */ (node.querySelector('.search-input'));
-        let portalSelectedIdx = -1;
+        // ── Single keyboard navigation system ──────────────────────────────
+        // This runs on the portaled DOM directly (Svelte reactive bindings
+        // don't work after the node is moved to document.body).
+        let selectedIdx = -1;
 
-        function updatePortalSelection() {
-            const allItems = node.querySelectorAll('.search-result-item');
-            allItems.forEach((el, i) => {
-                if (i === portalSelectedIdx) {
+        function getItems() {
+            return /** @type {NodeListOf<HTMLElement>} */ (node.querySelectorAll('.search-result-item'));
+        }
+
+        function applySelection() {
+            const items = getItems();
+            items.forEach((el, i) => {
+                if (i === selectedIdx) {
                     el.classList.add('selected');
                     el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
                 } else {
@@ -311,34 +278,48 @@
         }
 
         /** @param {KeyboardEvent} e */
-        function handlePortalKeydown(e) {
-            const allItems = node.querySelectorAll('.search-result-item');
-            const count = allItems.length;
+        function onKeydown(e) {
+            const items = getItems();
+            const count = items.length;
+
             if (e.key === 'ArrowDown' && count > 0) {
                 e.preventDefault();
-                portalSelectedIdx = Math.min(portalSelectedIdx + 1, count - 1);
-                updatePortalSelection();
+                e.stopPropagation();
+                selectedIdx = Math.min(selectedIdx + 1, count - 1);
+                applySelection();
             } else if (e.key === 'ArrowUp' && count > 0) {
                 e.preventDefault();
-                portalSelectedIdx = Math.max(portalSelectedIdx - 1, -1);
-                updatePortalSelection();
-            } else if (e.key === 'Enter' && count > 0) {
+                e.stopPropagation();
+                selectedIdx = Math.max(selectedIdx - 1, -1);
+                applySelection();
+            } else if (e.key === 'Enter') {
                 e.preventDefault();
-                const target = portalSelectedIdx >= 0 ? allItems[portalSelectedIdx] : allItems[0];
-                if (target) /** @type {HTMLElement} */ (target).click();
+                e.stopPropagation();
+                if (count > 0) {
+                    const target = selectedIdx >= 0 && selectedIdx < count
+                        ? items[selectedIdx]
+                        : items[0];
+                    target.click();
+                }
             } else if (e.key === 'Escape') {
+                e.preventDefault();
                 close();
             }
         }
-        if (inp) {
-            // Reset selection index when input changes (new results)
-            inp.addEventListener('input', () => { portalSelectedIdx = -1; });
-            inp.addEventListener('keydown', handlePortalKeydown);
-        }
+
+        // Listen on the whole portal node (captures keys from input + any child)
+        node.addEventListener('keydown', onKeydown);
+
+        // Reset selection when input changes (new results coming in)
+        const inp = node.querySelector('.search-input');
+        /** @param {Event} _e */
+        function onInput(_e) { selectedIdx = -1; }
+        if (inp) inp.addEventListener('input', onInput);
 
         return {
             destroy() {
-                if (inp) inp.removeEventListener('keydown', handlePortalKeydown);
+                node.removeEventListener('keydown', onKeydown);
+                if (inp) inp.removeEventListener('input', onInput);
                 node.remove();
             },
         };
@@ -419,7 +400,6 @@
             <!-- Results -->
             <div class="search-results">
                 {#if results && results.totalCount > 0}
-                    {@const flat = flatResults(results)}
                     {#each ["shows", "movies", "music", "albums", "people", "children", "history"] as category}
                         {#if results.results[category]?.length > 0}
                             <div class="search-category-label">
@@ -434,10 +414,8 @@
                                           : category}
                             </div>
                             {#each results.results[category] as item}
-                                {@const globalIdx = flat.indexOf(item)}
                                 <button
                                     class="search-result-item"
-                                    class:selected={globalIdx === selectedIndex}
                                     onclick={() => navigateToResult(item)}
                                 >
                                     {#if item.poster_url}
