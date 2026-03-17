@@ -197,23 +197,18 @@ function pollForNewPlays() {
                     continue;
                 }
 
-                // DateCreated from PR DB is in the Jellyfin container's LOCAL time
-                // (no timezone suffix). Convert using the configured jellyfin_timezone.
+                // DateCreated from Jellyfin PR plugin is stored in UTC
+                // (the plugin uses DateTime.UtcNow). Just normalize to ISO format.
                 let rawTs = event.DateCreated || '';
                 let timestamp;
                 if (rawTs) {
-                    const jfTimezone = getJellyfinTimezone();
-                    const localStr = rawTs.replace(' ', 'T');
-                    // Parse as UTC first, then calculate the offset for the JF timezone
-                    const asUtc = new Date(localStr + 'Z');
-                    if (isNaN(asUtc.getTime())) {
-                        timestamp = new Date().toISOString();
-                    } else {
-                        // Get the UTC offset for the Jellyfin timezone at this point in time
-                        // by comparing the formatted local time with the UTC time
-                        const offsetMs = getTimezoneOffsetMs(asUtc, jfTimezone);
-                        timestamp = new Date(asUtc.getTime() + offsetMs).toISOString();
-                    }
+                    const isoStr = rawTs.replace(' ', 'T');
+                    // Append Z if no timezone suffix (PR DB stores bare UTC)
+                    const utcStr = isoStr.endsWith('Z') || isoStr.includes('+') || /\d{2}:\d{2}$/.test(isoStr) === false
+                        ? isoStr + (isoStr.endsWith('Z') ? '' : 'Z')
+                        : isoStr;
+                    const d = new Date(utcStr);
+                    timestamp = isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
                 } else {
                     timestamp = new Date().toISOString();
                 }

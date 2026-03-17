@@ -664,20 +664,25 @@ if (!historyCols.has('track_id')) {
     }
 }
 
-// -- One-time fix: correct jellyfin_pr timestamps stored as UTC instead of ET --
-// The container was running in UTC so PR DB local timestamps were treated as UTC.
-// This migration adds the correct offset (5h EST, 4h EDT) to fix them.
+// -- UNDO incorrect pr_tz migration (v1 wrongly added +4/5h) --
+// The Jellyfin PR plugin stores DateCreated in UTC (DateTime.UtcNow), so
+// the original stored values were already correct. The v1 migration broke them
+// by adding 4-5 hours. This v2 migration subtracts those hours back.
 {
-    // Check if already migrated via a simple flag
     try { db.exec("ALTER TABLE app_settings ADD COLUMN pr_tz_migrated INTEGER DEFAULT 0"); } catch { /* already exists */ }
-    const migrated = /** @type {any} */ (db.prepare("SELECT pr_tz_migrated FROM app_settings WHERE id = 1").get());
-    if (!migrated?.pr_tz_migrated) {
+    try { db.exec("ALTER TABLE app_settings ADD COLUMN pr_tz_v2_migrated INTEGER DEFAULT 0"); } catch { /* already exists */ }
+    const flags = /** @type {any} */ (db.prepare("SELECT pr_tz_migrated, pr_tz_v2_migrated FROM app_settings WHERE id = 1").get());
+    // Only run v2 if v1 already ran (broke things) and v2 hasn't run yet
+    if (flags?.pr_tz_migrated && !flags?.pr_tz_v2_migrated) {
         const prEntries = /** @type {any[]} */ (db.prepare(
             "SELECT id, timestamp FROM playback_history WHERE source = 'jellyfin_pr'"
         ).all());
         if (prEntries.length > 0) {
-            // DST 2026: Mar 8, 2:00 AM EST → 3:00 AM EDT
-            // In UTC terms: entries before 2026-03-08T07:00:00Z are EST (+5h), after are EDT (+4h)
+            // Reverse the v1 migration: subtract the same offsets it added
+            // v1 used dstBoundary = 2026-03-08T07:00:00Z on the ORIGINAL timestamps,
+            // but now timestamps are shifted. An entry originally at 06:00Z on Mar 8
+            // is now at 11:00Z (after +5h). So we check: if current - 5h < boundary → was EST (+5h),
+            // else was EDT (+4h). Subtract accordingly.
             const dstBoundary = new Date('2026-03-08T07:00:00Z').getTime();
             const updateStmt = db.prepare("UPDATE playback_history SET timestamp = ? WHERE id = ?");
             const txn = db.transaction(() => {
@@ -687,17 +692,21 @@ if (!historyCols.has('track_id')) {
                     if (!ts) continue;
                     const d = new Date(ts);
                     if (isNaN(d.getTime())) continue;
-                    const offsetHours = d.getTime() < dstBoundary ? 5 : 4;
-                    const corrected = new Date(d.getTime() + offsetHours * 3600000);
-                    updateStmt.run(corrected.toISOString(), entry.id);
+                    // Try both offsets and see which original value is below/above boundary
+                    const orig5 = d.getTime() - 5 * 3600000;
+                    const orig4 = d.getTime() - 4 * 3600000;
+                    // If subtracting 5h puts us below the DST boundary, v1 added 5h (EST)
+                    const offsetHours = orig5 < dstBoundary ? 5 : 4;
+                    const restored = new Date(d.getTime() - offsetHours * 3600000);
+                    updateStmt.run(restored.toISOString(), entry.id);
                     fixed++;
                 }
                 return fixed;
             });
             const count = txn();
-            console.log(`[db] Fixed ${count} jellyfin_pr timestamps (UTC→ET correction)`);
+            console.log(`[db] Reverted ${count} jellyfin_pr timestamps (undid incorrect +4/5h shift)`);
         }
-        db.prepare("UPDATE app_settings SET pr_tz_migrated = 1 WHERE id = 1").run();
+        db.prepare("UPDATE app_settings SET pr_tz_v2_migrated = 1 WHERE id = 1").run();
     }
 }
 
