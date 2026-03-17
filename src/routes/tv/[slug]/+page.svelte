@@ -8,6 +8,7 @@
     import FavoriteButton from "$lib/components/FavoriteButton.svelte";
     import RemotePlayButton from "$lib/components/RemotePlayButton.svelte";
     import MediaDetailHeader from "$lib/components/MediaDetailHeader.svelte";
+    import CollectionStatusBanner from "$lib/components/CollectionStatusBanner.svelte";
     import InteractiveSearchDialog from "$lib/components/InteractiveSearchDialog.svelte";
     import PosterRow from "$lib/components/PosterRow.svelte";
     import { imgUrl } from "$lib/utils.js";
@@ -465,6 +466,23 @@
                 {/if}
             {/snippet}
         </MediaDetailHeader>
+
+        <!-- Collection Status Banner -->
+        <CollectionStatusBanner
+            mediaParentId={data.show.id}
+            mediaType="show"
+            title={data.show.title}
+            collectionStatus={data.show.collection_status}
+            arrHasFile={data.show.arr_has_file}
+            arrId={data.show.sonarr_id}
+            arrMonitored={data.show.arr_monitored}
+            releaseYear={data.show.release_year}
+            premiereDate={null}
+            service="sonarr"
+            jellyfinId={data.show.jellyfin_id}
+            tmdbId={data.show.tmdb_id}
+            onStatusChange={() => invalidateAll()}
+        />
 
     <!-- Episode Grid / List -->
     <div class="space-y-2">

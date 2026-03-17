@@ -52,6 +52,7 @@ export async function load({ params }) {
             mp.wikipedia_url,
             mp.backdrop_url,
             mp.is_dashboard_hidden,
+            mp.collection_status,
             CASE WHEN mp.collected_children > 0
                 THEN ROUND(CAST(mp.watched_children AS REAL) / mp.collected_children * 100, 1)
                 ELSE 0 END as completion,

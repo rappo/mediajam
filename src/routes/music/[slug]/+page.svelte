@@ -4,6 +4,7 @@
     import ArrAddDialog from "$lib/components/ArrAddDialog.svelte";
     import HeartBorder from "$lib/components/HeartBorder.svelte";
     import MediaDetailHeader from "$lib/components/MediaDetailHeader.svelte";
+    import CollectionStatusBanner from "$lib/components/CollectionStatusBanner.svelte";
     import InteractiveSearchDialog from "$lib/components/InteractiveSearchDialog.svelte";
     import RemotePlayButton from "$lib/components/RemotePlayButton.svelte";
     import { page } from "$app/stores";
@@ -506,6 +507,23 @@
 
             {/snippet}
         </MediaDetailHeader>
+
+        <!-- Collection Status Banner -->
+        <CollectionStatusBanner
+            mediaParentId={data.artist.id}
+            mediaType="artist"
+            title={data.artist.title}
+            collectionStatus={data.artist.collection_status}
+            arrHasFile={data.artist.arr_has_file}
+            arrId={data.artist.lidarr_id}
+            arrMonitored={data.artist.arr_monitored}
+            releaseYear={null}
+            premiereDate={null}
+            service="lidarr"
+            jellyfinId={data.artist.jellyfin_id}
+            tmdbId={null}
+            onStatusChange={() => invalidateAll()}
+        />
 
     <!-- Albums -->
     <div class="space-y-3">

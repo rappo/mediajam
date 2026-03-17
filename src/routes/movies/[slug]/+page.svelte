@@ -8,6 +8,7 @@
     import ServiceIcon from "$lib/components/ServiceIcon.svelte";
     import InteractiveSearchDialog from "$lib/components/InteractiveSearchDialog.svelte";
     import MediaDetailHeader from "$lib/components/MediaDetailHeader.svelte";
+    import CollectionStatusBanner from "$lib/components/CollectionStatusBanner.svelte";
     import PosterRow from "$lib/components/PosterRow.svelte";
     import { invalidateAll, goto } from "$app/navigation";
     import { page } from "$app/stores";
@@ -576,6 +577,23 @@
                 {/if}
             {/snippet}
         </MediaDetailHeader>
+
+        <!-- Collection Status Banner -->
+        <CollectionStatusBanner
+            mediaParentId={data.movie.id}
+            mediaType="movie"
+            title={data.movie.title}
+            collectionStatus={data.movie.collection_status}
+            arrHasFile={data.movie.arr_has_file}
+            arrId={data.movie.radarr_id}
+            arrMonitored={data.movie.arr_monitored}
+            releaseYear={data.movie.release_year}
+            premiereDate={null}
+            service="radarr"
+            jellyfinId={data.movie.jellyfin_id}
+            tmdbId={data.movie.tmdb_id}
+            onStatusChange={() => invalidateAll()}
+        />
 
         <!-- External Ratings (new layout) -->
         {#if externalRatings.length > 0}
