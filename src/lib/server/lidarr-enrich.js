@@ -133,7 +133,7 @@ export async function enrichAlbumFromLidarr(albumId, artistId) {
                                 t.title || 'Unknown Track',
                                 t.trackNumber || t.absoluteTrackNumber || 0,
                                 t.mediumNumber || 1,
-                                (t.duration || 0) * 10000000, // Lidarr duration is in ms, convert to ticks
+                                (t.duration || 0) * 10000, // Lidarr duration is in ms; .NET ticks = 10,000/ms
                                 t.foreignTrackId || null
                             );
                         } catch { /* skip dupes */ }

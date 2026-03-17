@@ -699,6 +699,23 @@ if (!historyCols.has('track_id')) {
     }
 }
 
+// -- Fix runtime_ticks stored 1000x too large --
+// Lidarr enrichment multiplied ms duration by 10,000,000 instead of 10,000,
+// producing values 1000x too large. Any runtime_ticks > 36 billion (1 hour)
+// is almost certainly inflated. Normal 5-min track = ~3 billion ticks.
+{
+    const inflatedCount = /** @type {any} */ (db.prepare(
+        'SELECT COUNT(*) as c FROM tracks WHERE runtime_ticks > 36000000000'
+    ).get())?.c || 0;
+
+    if (inflatedCount > 0) {
+        db.prepare(
+            'UPDATE tracks SET runtime_ticks = runtime_ticks / 1000 WHERE runtime_ticks > 36000000000'
+        ).run();
+        console.log(`[db] Fixed ${inflatedCount} tracks with 1000x inflated runtime_ticks`);
+    }
+}
+
 // -- UNDO incorrect pr_tz migration (v1 wrongly added +4/5h) --
 // The Jellyfin PR plugin stores DateCreated in UTC (DateTime.UtcNow), so
 // the original stored values were already correct. The v1 migration broke them
