@@ -44,10 +44,6 @@
                     flushSync(() => {
                         selectedIdx = Math.min(selectedIdx + 1, count - 1);
                     });
-                    const el = document.querySelector(`[data-search-idx="${selectedIdx}"]`);
-                    const hasClass = el?.classList.contains('search-result-active');
-                    const bg = el ? getComputedStyle(el).background : 'N/A';
-                    console.log(`[search-nav] ArrowDown idx=${selectedIdx} text="${el?.textContent?.trim()?.slice(0,40)}" hasActiveClass=${hasClass} bg=${bg}`);
                     scrollToIdx(selectedIdx);
                 }
             } else if (e.key === 'ArrowUp') {
@@ -57,10 +53,6 @@
                     flushSync(() => {
                         selectedIdx = Math.max(selectedIdx - 1, 0);
                     });
-                    const el = document.querySelector(`[data-search-idx="${selectedIdx}"]`);
-                    const hasClass2 = el?.classList.contains('search-result-active');
-                    const bg2 = el ? getComputedStyle(el).background : 'N/A';
-                    console.log(`[search-nav] ArrowUp idx=${selectedIdx} text="${el?.textContent?.trim()?.slice(0,40)}" hasActiveClass=${hasClass2} bg=${bg2}`);
                     scrollToIdx(selectedIdx);
                 } else {
                     selectedIdx = -1;
@@ -642,7 +634,7 @@
     .search-result-item:hover {
         background: oklch(var(--p) / 0.12);
     }
-    .search-result-active {
+    :global(.search-result-active) {
         background: oklch(var(--p) / 0.18) !important;
         outline: 2px solid oklch(var(--p) / 0.4);
         outline-offset: -2px;

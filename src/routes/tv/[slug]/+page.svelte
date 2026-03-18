@@ -207,9 +207,51 @@
     });
 
     let showDeleteConfirm = $state(false);
+    let showMergeDialog = $state(false);
+    let mergeSearchQuery = $state('');
+    /** @type {any[]} */
+    let mergeSearchResults = $state([]);
+    let mergeSearching = $state(false);
+    let merging = $state(false);
     let showAllCast = $state(false);
     let showAllCrew = $state(false);
     let deleting = $state(false);
+
+    async function searchMergeTarget() {
+        if (mergeSearchQuery.length < 2) { mergeSearchResults = []; return; }
+        mergeSearching = true;
+        try {
+            const res = await fetch(`/api/search?q=${encodeURIComponent(mergeSearchQuery)}`);
+            if (res.ok) {
+                const d = await res.json();
+                mergeSearchResults = (d.results?.shows || []).filter(/** @param {any} s */ (s) => s.id !== data.show.id);
+            }
+        } catch (e) { console.error(e); }
+        mergeSearching = false;
+    }
+
+    /** @param {any} target */
+    async function mergeInto(target) {
+        if (!confirm(`Merge "${data.show.title}" into "${target.title}"?\n\nAll episodes, watch history, and credits will be moved.`)) return;
+        merging = true;
+        try {
+            const res = await fetch(`/api/media/merge-parents`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sourceId: data.show.id, targetId: target.id }),
+            });
+            const result = await res.json();
+            if (result.success) {
+                goto(`/tv/${result.slug || target.id}`);
+            } else {
+                alert(result.error || 'Merge failed');
+            }
+        } catch (e) {
+            alert(e instanceof Error ? e.message : 'Merge failed');
+        }
+        merging = false;
+        showMergeDialog = false;
+    }
 
     async function deleteItem() {
         deleting = true;
@@ -464,6 +506,13 @@
                         defaultPlayerId={$page.data.userPreferences?.defaultPlayerId || ''}
                     />
                 {/if}
+                <button
+                    class="btn btn-xs btn-ghost gap-1"
+                    onclick={() => { showMergeDialog = true; mergeSearchQuery = ''; mergeSearchResults = []; }}
+                    title="Merge this show into another"
+                >
+                    🔀 Merge
+                </button>
             {/snippet}
         </MediaDetailHeader>
 
@@ -1017,6 +1066,54 @@
             </div>
         </div>
         <div class="modal-backdrop" onclick={() => (showDeleteConfirm = false)}></div>
+    </div>
+{/if}
+
+<!-- Merge Modal -->
+{#if showMergeDialog}
+    <div class="modal modal-open">
+        <div class="modal-box">
+            <h3 class="font-bold text-lg">Merge "{data.show.title}" into...</h3>
+            <p class="text-sm text-base-content/60 mt-1">All episodes, history, and credits will be moved to the target show. This show will be deleted.</p>
+            <div class="form-control mt-4">
+                <input
+                    type="text"
+                    placeholder="Search for target show..."
+                    class="input input-bordered input-sm w-full"
+                    bind:value={mergeSearchQuery}
+                    oninput={searchMergeTarget}
+                />
+            </div>
+            {#if mergeSearching}
+                <div class="flex justify-center py-4"><span class="loading loading-spinner loading-sm"></span></div>
+            {:else if mergeSearchResults.length > 0}
+                <div class="mt-3 max-h-60 overflow-y-auto space-y-1">
+                    {#each mergeSearchResults as target}
+                        <button
+                            class="flex items-center gap-3 w-full p-2 rounded-lg hover:bg-base-300/50 transition-colors text-left"
+                            onclick={() => mergeInto(target)}
+                            disabled={merging}
+                        >
+                            {#if target.poster_url}
+                                <img src={imgUrl(target.poster_url, 80)} alt="" class="w-10 h-14 rounded object-cover shrink-0" />
+                            {:else}
+                                <div class="w-10 h-14 bg-base-300 rounded flex items-center justify-center">📺</div>
+                            {/if}
+                            <div class="min-w-0">
+                                <div class="font-medium text-sm truncate">{target.title}</div>
+                                <div class="text-xs text-base-content/50">{target.release_year || ''} · {target.episode_count || 0} episodes</div>
+                            </div>
+                        </button>
+                    {/each}
+                </div>
+            {:else if mergeSearchQuery.length >= 2}
+                <p class="text-sm text-base-content/40 py-4 text-center">No matching shows found</p>
+            {/if}
+            <div class="modal-action">
+                <button class="btn btn-sm" onclick={() => (showMergeDialog = false)}>Cancel</button>
+            </div>
+        </div>
+        <div class="modal-backdrop" onclick={() => (showMergeDialog = false)}></div>
     </div>
 {/if}
 
