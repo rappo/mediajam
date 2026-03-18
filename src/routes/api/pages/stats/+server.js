@@ -160,18 +160,26 @@ export function GET({ locals }) {
         WHERE user_id = ? AND timestamp >= date('now', 'start of month')
     `).get(userId))?.c || 0;
 
-    // Average rating (user ratings if available, otherwise community)
-    const avgRating = /** @type {any} */ (db.prepare(`
-        SELECT ROUND(AVG(user_rating), 1) as avg FROM media_parents WHERE user_rating IS NOT NULL
-    `).get())?.avg || /** @type {any} */ (db.prepare(`
-        SELECT ROUND(AVG(community_rating), 1) as avg FROM media_parents WHERE community_rating IS NOT NULL
-    `).get())?.avg || null;
+    // Average rating (from community_rating on episodes/albums)
+    let avgRating = null;
+    try {
+        avgRating = /** @type {any} */ (db.prepare(`
+            SELECT ROUND(AVG(community_rating), 1) as avg FROM media_children WHERE community_rating IS NOT NULL
+        `).get())?.avg || null;
+    } catch (e) {
+        // Column may not exist in all DBs
+    }
 
     // Library growth rate (items added in last 30 days)
-    const recentAdds = /** @type {any} */ (db.prepare(`
-        SELECT COUNT(*) as c FROM media_parents WHERE created_at >= date('now', '-30 days')
-    `).get())?.c || 0;
-    const growthRate = Math.round(recentAdds / 4.3); // per week
+    let growthRate = 0;
+    try {
+        const recentAdds = /** @type {any} */ (db.prepare(`
+            SELECT COUNT(*) as c FROM media_parents WHERE created_at >= date('now', '-30 days')
+        `).get())?.c || 0;
+        growthRate = Math.round(recentAdds / 4.3); // per week
+    } catch (e) {
+        // created_at may not exist
+    }
 
     return json({
         sankey: { nodes, links },
