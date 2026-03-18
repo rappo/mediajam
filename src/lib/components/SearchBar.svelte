@@ -1,6 +1,7 @@
 <script>
     import { goto } from "$app/navigation";
-    import { onMount, tick } from "svelte";
+    import { onMount } from "svelte";
+    import { flushSync } from "svelte";
     import { addToast } from "$lib/stores/toast.js";
     import { imgUrl } from "$lib/utils.js";
 
@@ -21,7 +22,7 @@
 
     onMount(() => {
         /** @param {KeyboardEvent} e */
-        async function handleKeydown(e) {
+        function handleKeydown(e) {
             // Ctrl+K to toggle search
             if (e.ctrlKey && e.key === "k") {
                 e.preventDefault();
@@ -39,17 +40,23 @@
                 e.stopPropagation();
                 const count = flatResults().length;
                 if (count > 0) {
-                    selectedIdx = Math.min(selectedIdx + 1, count - 1);
-                    // Wait for Svelte to flush the class:search-result-active binding
-                    await tick();
+                    // Use flushSync to force Svelte to apply class:search-result-active NOW
+                    flushSync(() => {
+                        selectedIdx = Math.min(selectedIdx + 1, count - 1);
+                    });
+                    const el = document.querySelector(`[data-search-idx="${selectedIdx}"]`);
+                    console.log('[search-nav] ArrowDown idx=', selectedIdx, 'el=', el, 'classes=', el?.className);
                     scrollToIdx(selectedIdx);
                 }
             } else if (e.key === 'ArrowUp') {
                 e.preventDefault();
                 e.stopPropagation();
                 if (selectedIdx > 0) {
-                    selectedIdx = Math.max(selectedIdx - 1, 0);
-                    await tick();
+                    flushSync(() => {
+                        selectedIdx = Math.max(selectedIdx - 1, 0);
+                    });
+                    const el = document.querySelector(`[data-search-idx="${selectedIdx}"]`);
+                    console.log('[search-nav] ArrowUp idx=', selectedIdx, 'el=', el, 'classes=', el?.className);
                     scrollToIdx(selectedIdx);
                 } else {
                     selectedIdx = -1;
