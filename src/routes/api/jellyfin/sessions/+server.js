@@ -52,8 +52,21 @@ export async function GET({ locals }) {
             });
 
         return json({ sessions: all });
-    } catch (e) {
-        console.error('[sessions] Error fetching Jellyfin sessions:', e);
-        return json({ sessions: [], error: 'Failed to fetch sessions' });
+    } catch (/** @type {any} */ e) {
+        const status = e?.response?.status;
+        const detail = e?.response?.data?.Message || e?.response?.data || e?.message || String(e);
+        console.error(`[sessions] Error fetching Jellyfin sessions (${settings.jellyfin_url}):`, status || '', detail);
+
+        let userMessage = 'Failed to fetch sessions';
+        if (status === 401 || status === 403) {
+            userMessage = 'Jellyfin auth token is invalid or expired. Try reconnecting in System Settings.';
+        } else if (e?.code === 'ECONNREFUSED' || e?.code === 'ENOTFOUND') {
+            userMessage = `Cannot reach Jellyfin server at ${settings.jellyfin_url}. Is it running?`;
+        } else if (status) {
+            userMessage = `Jellyfin returned HTTP ${status}: ${typeof detail === 'string' ? detail : JSON.stringify(detail)}`;
+        } else if (e?.message) {
+            userMessage = `Jellyfin error: ${e.message}`;
+        }
+        return json({ sessions: [], error: userMessage });
     }
 }

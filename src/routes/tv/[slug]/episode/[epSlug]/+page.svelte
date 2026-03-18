@@ -145,11 +145,12 @@
             <h2 class="text-xl font-bold">Guest Stars</h2>
             <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                 {#each jf.guestStars as guest}
-                    {@const Tag = guest.personId ? "a" : "div"}
+                    {@const guestHref = guest.personSlug ? `/people/${guest.personSlug}` : guest.personId ? `/people/${guest.personId}` : null}
+                    {@const Tag = guestHref ? "a" : "div"}
                     <svelte:element
                         this={Tag}
-                        href={guest.personId ? `/people/${guest.personId}` : undefined}
-                        class="flex items-center gap-3 bg-base-200 rounded-lg p-2 {guest.personId ? 'hover:bg-base-300 transition-colors' : ''}"
+                        href={guestHref || undefined}
+                        class="flex items-center gap-3 bg-base-200 rounded-lg p-2 {guestHref ? 'hover:bg-base-300 transition-colors' : ''}"
                     >
                         {#if guest.photoUrl}
                             <img src={imgUrl(guest.photoUrl)} alt={guest.name} class="w-10 h-10 rounded-full object-cover shrink-0" />
@@ -174,7 +175,7 @@
             <h2 class="text-xl font-bold">Series Cast</h2>
             <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                 {#each data.cast.slice(0, 15) as person}
-                    <a href="/people/{person.id}" class="flex items-center gap-3 bg-base-200 rounded-lg p-2 hover:bg-base-300 transition-colors">
+                    <a href="/people/{person.slug || person.id}" class="flex items-center gap-3 bg-base-200 rounded-lg p-2 hover:bg-base-300 transition-colors">
                         {#if person.photo_url}
                             <img src={imgUrl(person.photo_url)} alt={person.name} class="w-10 h-10 rounded-full object-cover shrink-0" />
                         {:else}
@@ -203,7 +204,7 @@
             <h2 class="text-xl font-bold">Crew</h2>
             <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                 {#each data.crew as person}
-                    <a href="/people/{person.id}" class="flex items-center gap-3 bg-base-200 rounded-lg p-2 hover:bg-base-300 transition-colors">
+                    <a href="/people/{person.slug || person.id}" class="flex items-center gap-3 bg-base-200 rounded-lg p-2 hover:bg-base-300 transition-colors">
                         {#if person.photo_url}
                             <img src={imgUrl(person.photo_url)} alt={person.name} class="w-10 h-10 rounded-full object-cover shrink-0" />
                         {:else}

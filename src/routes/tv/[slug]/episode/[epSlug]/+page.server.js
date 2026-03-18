@@ -130,23 +130,29 @@ export async function load({ params, locals }) {
         ORDER BY season_number ASC, item_number ASC LIMIT 1
     `).get(showId, episode.season_number, episode.item_number, episode.season_number));
 
-    // Show-level cast & crew (from person_credits)
+    // Show-level cast & crew (from person_credits), deduplicated by person
     const cast = /** @type {any[]} */ (db.prepare(`
-        SELECT p.id, p.name, p.photo_url, p.tmdb_person_id,
-               pc.role_type, pc.character_name, pc.sort_order
+        SELECT p.id, p.name, p.photo_url, p.tmdb_person_id, p.slug,
+               pc.role_type,
+               GROUP_CONCAT(DISTINCT pc.character_name) as character_name,
+               MIN(pc.sort_order) as sort_order
         FROM person_credits pc
         JOIN persons p ON pc.person_id = p.id
-        WHERE pc.media_parent_id = ? AND pc.role_type = 'actor'
-        ORDER BY pc.sort_order ASC
+        WHERE pc.media_parent_id = ? AND pc.role_type IN ('actor', 'guest')
+        GROUP BY p.id
+        ORDER BY MIN(pc.sort_order) ASC
     `).all(showId));
 
     const crew = /** @type {any[]} */ (db.prepare(`
-        SELECT p.id, p.name, p.photo_url, p.tmdb_person_id,
-               pc.role_type, pc.character_name, pc.sort_order
+        SELECT p.id, p.name, p.photo_url, p.tmdb_person_id, p.slug,
+               pc.role_type,
+               GROUP_CONCAT(DISTINCT pc.character_name) as character_name,
+               MIN(pc.sort_order) as sort_order
         FROM person_credits pc
         JOIN persons p ON pc.person_id = p.id
-        WHERE pc.media_parent_id = ? AND pc.role_type != 'actor'
-        ORDER BY pc.sort_order ASC
+        WHERE pc.media_parent_id = ? AND pc.role_type NOT IN ('actor', 'guest')
+        GROUP BY p.id, pc.role_type
+        ORDER BY MIN(pc.sort_order) ASC
     `).all(showId));
 
     // ── Jellyfin enrichment (synopsis, screenshot, guest stars, community rating) ──
@@ -174,11 +180,12 @@ export async function load({ params, locals }) {
                         guestStars: (item.People || [])
                             .filter((/** @type {any} */ p) => p.Type === 'GuestStar' || p.Type === 'Actor')
                             .map((/** @type {any} */ p) => {
-                                const local = /** @type {any} */ (db.prepare('SELECT id FROM persons WHERE name = ? LIMIT 1').get(p.Name));
+                                const local = /** @type {any} */ (db.prepare('SELECT id, slug FROM persons WHERE name = ? LIMIT 1').get(p.Name));
                                 return {
                                     name: p.Name,
                                     role: p.Role || null,
                                     personId: local?.id || null,
+                                    personSlug: local?.slug || null,
                                     photoUrl: p.PrimaryImageTag && p.Id
                                         ? `${jellyfinUrl}/Items/${p.Id}/Images/Primary?maxHeight=120`
                                         : null
@@ -195,6 +202,37 @@ export async function load({ params, locals }) {
                     if (jellyfinData.communityRating) {
                         db.prepare('UPDATE media_children SET community_rating = ? WHERE id = ?')
                             .run(jellyfinData.communityRating, episodeId);
+                    }
+
+                    // Persist guest star credits to person_credits so they appear on people pages
+                    const upsertGuestCredit = db.prepare(`
+                        INSERT OR IGNORE INTO person_credits (person_id, media_parent_id, role_type, character_name, sort_order)
+                        VALUES (?, ?, 'guest', ?, 999)
+                    `);
+                    for (const person of (item.People || [])) {
+                        if (person.Type !== 'GuestStar' || !person.Name) continue;
+                        try {
+                            // Find existing person by Jellyfin ID first, then by name
+                            let personRow = person.Id
+                                ? /** @type {any} */ (db.prepare('SELECT id FROM persons WHERE jellyfin_id = ?').get(person.Id))
+                                : null;
+                            if (!personRow) {
+                                personRow = /** @type {any} */ (db.prepare('SELECT id FROM persons WHERE name = ? LIMIT 1').get(person.Name));
+                            }
+                            if (!personRow && person.Id) {
+                                // Create a minimal person record
+                                const photoUrl = person.PrimaryImageTag
+                                    ? `${jellyfinUrl}/Items/${person.Id}/Images/Primary`
+                                    : null;
+                                db.prepare(
+                                    'INSERT OR IGNORE INTO persons (name, jellyfin_id, photo_url) VALUES (?, ?, ?)'
+                                ).run(person.Name, person.Id, photoUrl);
+                                personRow = /** @type {any} */ (db.prepare('SELECT id FROM persons WHERE jellyfin_id = ?').get(person.Id));
+                            }
+                            if (personRow) {
+                                upsertGuestCredit.run(personRow.id, showId, person.Role || null);
+                            }
+                        } catch { /* non-fatal */ }
                     }
                 }
             } catch (e) {
@@ -214,11 +252,12 @@ export async function load({ params, locals }) {
             if (res.ok) {
                 const tmdbEp = await res.json();
                 const guestStars = (tmdbEp.guest_stars || []).slice(0, 10).map((/** @type {any} */ g) => {
-                    const local = /** @type {any} */ (db.prepare('SELECT id FROM persons WHERE name = ? LIMIT 1').get(g.name));
+                    const local = /** @type {any} */ (db.prepare('SELECT id, slug FROM persons WHERE name = ? LIMIT 1').get(g.name));
                     return {
                         name: g.name,
                         role: g.character || null,
                         personId: local?.id || null,
+                        personSlug: local?.slug || null,
                         photoUrl: g.profile_path ? `https://image.tmdb.org/t/p/w185${g.profile_path}` : null
                     };
                 });
@@ -236,6 +275,17 @@ export async function load({ params, locals }) {
                 if (jellyfinData.communityRating) {
                     db.prepare('UPDATE media_children SET community_rating = ? WHERE id = ?')
                         .run(jellyfinData.communityRating, episodeId);
+                }
+
+                // Persist TMDb guest star credits to person_credits
+                const upsertTmdbGuestCredit = db.prepare(`
+                    INSERT OR IGNORE INTO person_credits (person_id, media_parent_id, role_type, character_name, sort_order)
+                    VALUES (?, ?, 'guest', ?, 999)
+                `);
+                for (const g of guestStars) {
+                    if (g.personId) {
+                        try { upsertTmdbGuestCredit.run(g.personId, showId, g.role); } catch { /* non-fatal */ }
+                    }
                 }
             }
         } catch { /* fallback: no TMDb data */ }
