@@ -100,8 +100,18 @@
      * @param {number} idx
      */
     function scrollToIdx(idx) {
+        // Clear previous imperative highlights
+        document.querySelectorAll('[data-search-idx]').forEach(el => {
+            /** @type {HTMLElement} */ (el).style.background = '';
+            /** @type {HTMLElement} */ (el).style.outline = '';
+            /** @type {HTMLElement} */ (el).style.outlineOffset = '';
+        });
+        // Apply imperative highlight to current
         const el = document.querySelector(`[data-search-idx="${idx}"]`);
         if (el) {
+            /** @type {HTMLElement} */ (el).style.background = 'oklch(0.55 0.2 270 / 0.22)';
+            /** @type {HTMLElement} */ (el).style.outline = '2px solid oklch(0.6 0.2 270 / 0.4)';
+            /** @type {HTMLElement} */ (el).style.outlineOffset = '-2px';
             el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }
     }
