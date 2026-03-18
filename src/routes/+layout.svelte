@@ -315,7 +315,22 @@
 						</svg>
 						Music
 					</a>
-				</div>
+				<a href="/stats" role="tab" class="tab tab-sm font-medium {currentPath === '/stats' ? 'tab-active' : ''}">
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						class="h-4 w-4 mr-1.5"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
+						<path d="M18 20V10" /><path d="M12 20V4" /><path d="M6 20v-6" />
+					</svg>
+					Stats
+				</a>
+			</div>
 			</div>
 
 			<!-- Search & Profile -->

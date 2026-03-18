@@ -275,6 +275,21 @@ export async function POST({ request, locals }) {
             })();
 
             results.albums = childCount;
+
+            // Sync band members if MusicBrainz ID is available
+            const freshParentForMb = /** @type {any} */ (db.prepare(
+                'SELECT musicbrainz_id FROM media_parents WHERE id = ?'
+            ).get(parent.id));
+            if (freshParentForMb?.musicbrainz_id) {
+                try {
+                    const { syncBandMembers } = await import('$lib/server/musicbrainz-members.js');
+                    const memberResult = await syncBandMembers(parent.id);
+                    results.members = memberResult.members.length;
+                    console.log(`[item-sync] 🎸 ${parent.title}: ${memberResult.members.length} band members synced`);
+                } catch (e) {
+                    console.warn(`[item-sync] Band member sync failed for ${parent.title}:`, e instanceof Error ? e.message : String(e));
+                }
+            }
         }
 
         // Sync people for this item
