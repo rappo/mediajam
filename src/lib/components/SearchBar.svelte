@@ -434,7 +434,7 @@
                             class:search-result-active={selectedIdx === idx}
                             data-search-idx={idx}
                             onclick={() => navigateToResult(entry.item)}
-                            onmouseenter={() => { selectedIdx = idx; }}
+                            onmouseenter={() => { selectedIdx = idx; scrollToSelected(idx); }}
                         >
                             {#if entry.item.poster_url}
                                 <img
