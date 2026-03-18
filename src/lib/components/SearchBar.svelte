@@ -19,73 +19,64 @@
     /** Currently highlighted result index, -1 = nothing selected */
     let selectedIdx = $state(-1);
 
-    // Ctrl+K global shortcut — the only thing that needs addEventListener
     onMount(() => {
         /** @param {KeyboardEvent} e */
-        function handleGlobalKey(e) {
+        function handleKeydown(e) {
+            // Ctrl+K to toggle search
             if (e.ctrlKey && e.key === "k") {
                 e.preventDefault();
                 open = !open;
                 if (open) setTimeout(() => inputEl?.focus(), 50);
+                return;
             }
-        }
-        document.addEventListener("keydown", handleGlobalKey);
-        return () => document.removeEventListener("keydown", handleGlobalKey);
-    });
 
-    /**
-     * Handle keyboard events on the overlay (Svelte-managed, no portal issues)
-     * @param {KeyboardEvent} e
-     */
-    function handleDialogKeydown(e) {
-        if (e.key === "ArrowDown") {
-            e.preventDefault();
-            const count = flatResults().length;
-            if (count > 0) {
-                selectedIdx = Math.min(selectedIdx + 1, count - 1);
-            }
-        } else if (e.key === "ArrowUp") {
-            e.preventDefault();
-            if (selectedIdx > 0) {
-                selectedIdx = selectedIdx - 1;
-            } else {
-                selectedIdx = -1;
-                inputEl?.focus();
-            }
-        } else if (e.key === "Enter") {
-            e.preventDefault();
-            const flat = flatResults();
-            if (flat.length > 0) {
-                const target =
-                    selectedIdx >= 0 && selectedIdx < flat.length
+            // All other shortcuts only apply when search is open
+            const dialog = document.querySelector('.search-dialog');
+            if (!dialog) return;
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                e.stopPropagation();
+                const count = flatResults().length;
+                if (count > 0) {
+                    selectedIdx = Math.min(selectedIdx + 1, count - 1);
+                    scrollToSelected(selectedIdx);
+                }
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                e.stopPropagation();
+                if (selectedIdx > 0) {
+                    selectedIdx = Math.max(selectedIdx - 1, 0);
+                    scrollToSelected(selectedIdx);
+                } else {
+                    selectedIdx = -1;
+                    // Clear all highlights when going back to input
+                    document.querySelectorAll('[data-search-idx]').forEach(el => {
+                        /** @type {HTMLElement} */ (el).style.removeProperty('background');
+                        /** @type {HTMLElement} */ (el).style.removeProperty('outline');
+                        /** @type {HTMLElement} */ (el).style.removeProperty('outline-offset');
+                    });
+                    inputEl?.focus();
+                }
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                const flat = flatResults();
+                if (flat.length > 0) {
+                    const target = selectedIdx >= 0 && selectedIdx < flat.length
                         ? flat[selectedIdx]
                         : flat[0];
-                navigateToResult(target.item);
-            }
-        } else if (e.key === "Escape") {
-            e.preventDefault();
-            close();
-        }
-    }
-
-    /**
-     * Svelte action: scroll element into view when it becomes the active selection.
-     * @param {HTMLElement} node
-     * @param {boolean} isActive
-     */
-    function scrollWhenActive(node, isActive) {
-        if (isActive) {
-            node.scrollIntoView({ block: "nearest", behavior: "smooth" });
-        }
-        return {
-            /** @param {boolean} newActive */
-            update(newActive) {
-                if (newActive) {
-                    node.scrollIntoView({ block: "nearest", behavior: "smooth" });
+                    navigateToResult(target.item);
                 }
-            },
-        };
-    }
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                close();
+            }
+        }
+
+        document.addEventListener('keydown', handleKeydown, true);
+        return () => document.removeEventListener('keydown', handleKeydown, true);
+    });
 
     /**
      * Flatten all result items into a single ordered list for keyboard nav.
@@ -94,21 +85,39 @@
     function flatResults() {
         if (!results?.results) return [];
         const items = /** @type {Array<{item: any, category: string}>} */ ([]);
-        for (const category of [
-            "shows",
-            "movies",
-            "music",
-            "albums",
-            "people",
-            "children",
-            "history",
-        ]) {
-            for (const item of results.results[category] || []) {
+        for (const category of ['shows', 'movies', 'music', 'albums', 'people', 'children', 'history']) {
+            for (const item of (results.results[category] || [])) {
                 items.push({ item, category });
             }
         }
         return items;
     }
+
+    /**
+     * Scroll the selected item into view and apply highlight styles.
+     * We apply styles imperatively here because Svelte's reactive class:
+     * directives may not update on portaled elements when state is changed
+     * from vanilla addEventListener callbacks.
+     * @param {number} idx
+     */
+    function scrollToSelected(idx) {
+        // Clear previous highlights
+        document.querySelectorAll('[data-search-idx]').forEach(el => {
+            /** @type {HTMLElement} */ (el).style.removeProperty('background');
+            /** @type {HTMLElement} */ (el).style.removeProperty('outline');
+            /** @type {HTMLElement} */ (el).style.removeProperty('outline-offset');
+        });
+        // Apply highlight to current
+        const el = /** @type {HTMLElement|null} */ (document.querySelector(`[data-search-idx="${idx}"]`));
+        if (el) {
+            el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            el.style.background = 'oklch(var(--p) / 0.18)';
+            el.style.outline = '2px solid oklch(var(--p) / 0.4)';
+            el.style.outlineOffset = '-2px';
+        }
+    }
+
+
 
     function close() {
         open = false;
@@ -123,18 +132,12 @@
         if (query.length < 2) return;
         externalLoading = true;
         try {
-            const res = await fetch(
-                `/api/search/external?q=${encodeURIComponent(query)}`,
-            );
+            const res = await fetch(`/api/search/external?q=${encodeURIComponent(query)}`);
             if (res.ok) {
                 externalResults = await res.json();
             }
         } catch (/** @type {any} */ err) {
-            addToast({
-                type: "error",
-                message: "External search failed",
-                detail: err?.message || String(err),
-            });
+            addToast({ type: 'error', message: 'External search failed', detail: err?.message || String(err) });
         }
         externalLoading = false;
     }
@@ -143,9 +146,9 @@
     async function navigateToExternalResult(item) {
         close();
         try {
-            const res = await fetch("/api/search/external/stub", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
+            const res = await fetch('/api/search/external/stub', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     type: item.type,
                     tmdb_id: item.tmdb_id || null,
@@ -160,14 +163,10 @@
                 const data = await res.json();
                 goto(data.href);
             } else {
-                addToast({ type: "error", message: "Failed to create entry" });
+                addToast({ type: 'error', message: 'Failed to create entry' });
             }
         } catch (/** @type {any} */ err) {
-            addToast({
-                type: "error",
-                message: "Failed to load result",
-                detail: err?.message || String(err),
-            });
+            addToast({ type: 'error', message: 'Failed to load result', detail: err?.message || String(err) });
         }
     }
 
@@ -218,10 +217,8 @@
         else if (item.type === "person") goto(`/people/${item.id}`);
         else if (item.type === "album") goto(`/music/${item.parent_id}`);
         else if (item.type === "child") {
-            if (item.media_type === "artist")
-                goto(`/music/${item.parent_id}`);
-            else if (item.media_type === "show")
-                goto(`/tv/${item.parent_id}`);
+            if (item.media_type === "artist") goto(`/music/${item.parent_id}`);
+            else if (item.media_type === "show") goto(`/tv/${item.parent_id}`);
             else goto(`/movies/${item.parent_id}`);
         } else if (item.type === "history") {
             if (item.media_type === "show")
@@ -233,6 +230,9 @@
             else goto(`/history`);
         }
     }
+
+
+
 
     /** @type {Record<string, string>} */
     const TYPE_ICONS = {
@@ -280,18 +280,67 @@
                 ? `${item.release_year} · ${item.episode_count || 0} episodes`
                 : `${item.episode_count || 0} episodes`;
         if (item.type === "movie") return item.release_year || "";
-        if (item.type === "artist")
-            return `${item.album_count || 0} albums`;
+        if (item.type === "artist") return `${item.album_count || 0} albums`;
         if (item.type === "album") return item.parent_title || "";
-        if (item.type === "person")
-            return `${item.credit_count || 0} credits`;
+        if (item.type === "person") return `${item.credit_count || 0} credits`;
         if (item.type === "history")
             return item.timestamp
                 ? new Date(item.timestamp).toLocaleDateString()
                 : "";
         return "";
     }
+    /** @param {HTMLElement} node */
+    function portal(node) {
+        const theme = document.documentElement.getAttribute("data-theme");
+        if (theme) node.setAttribute("data-theme", theme);
+        document.body.appendChild(node);
+
+        // Read actual computed colors from a real themed element (the navbar)
+        const themedEl =
+            document.querySelector(".navbar") ||
+            document.querySelector("[data-theme]") ||
+            document.documentElement;
+        const cs = getComputedStyle(themedEl);
+        const bgColor = cs.backgroundColor; // resolved RGB
+
+        // Get primary color from a themed element
+        const tempEl = document.createElement("div");
+        tempEl.className = "text-primary";
+        tempEl.style.display = "none";
+        document.body.appendChild(tempEl);
+        const primaryColor = getComputedStyle(tempEl).color;
+        tempEl.remove();
+
+        const dialog = /** @type {HTMLElement|null} */ (
+            node.querySelector(".search-dialog")
+        );
+        if (dialog) {
+            dialog.style.backgroundColor = bgColor;
+            dialog.style.borderColor = primaryColor
+                .replace(")", " / 0.3)")
+                .replace("rgb(", "rgba(");
+            dialog.style.boxShadow = `0 0 30px 4px ${primaryColor.replace(")", " / 0.15)").replace("rgb(", "rgba(")}, 0 25px 50px -12px rgba(0,0,0,0.5)`;
+        }
+
+        const inputRow = /** @type {HTMLElement|null} */ (
+            node.querySelector(".search-input-row")
+        );
+        if (inputRow) {
+            inputRow.style.borderBottomColor = bgColor
+                .replace(")", " / 0.5)")
+                .replace("rgb(", "rgba(");
+        }
+
+
+        return {
+            destroy() {
+                node.remove();
+            },
+        };
+    }
 </script>
+
+
 
 <!-- Search trigger button -->
 <button
@@ -320,15 +369,15 @@
     <kbd class="kbd kbd-xs hidden lg:inline-flex">Ctrl+K</kbd>
 </button>
 
-<!-- Modal overlay — NO portal, just position:fixed -->
+<!-- Modal overlay - portaled to body to escape navbar stacking context -->
 {#if open}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
         class="search-overlay"
+        use:portal
         onclick={(e) => {
             if (e.target === e.currentTarget) close();
         }}
-        onkeydown={handleDialogKeydown}
     >
         <div class="search-dialog">
             <!-- Search input -->
@@ -383,11 +432,9 @@
                         <button
                             class="search-result-item"
                             class:search-result-active={selectedIdx === idx}
-                            use:scrollWhenActive={selectedIdx === idx}
+                            data-search-idx={idx}
                             onclick={() => navigateToResult(entry.item)}
-                            onmouseenter={() => {
-                                selectedIdx = idx;
-                            }}
+                            onmouseenter={() => { selectedIdx = idx; scrollToSelected(idx); }}
                         >
                             {#if entry.item.poster_url}
                                 <img
@@ -424,8 +471,7 @@
                             No results in library
                         </p>
                         <p style="font-size:0.85rem">
-                            Nothing found for "<strong>{query}</strong>" in your
-                            library
+                            Nothing found for "<strong>{query}</strong>" in your library
                         </p>
                     </div>
                 {:else if !results && query.length < 2}
@@ -440,137 +486,75 @@
                 {#if query.length >= 2}
                     <div class="search-external-divider">
                         <span class="search-external-line"></span>
-                        <span class="search-external-label"
-                            >External Search</span
-                        >
+                        <span class="search-external-label">External Search</span>
                         <span class="search-external-line"></span>
                     </div>
 
                     {#if !externalResults && !externalLoading}
                         <div style="padding: 0.5rem 1rem 0.75rem;">
-                            <button
-                                class="btn btn-sm btn-ghost gap-2 w-full"
-                                onclick={searchExternal}
-                            >
+                            <button class="btn btn-sm btn-ghost gap-2 w-full" onclick={searchExternal}>
                                 🌐 Search TMDb & MusicBrainz
                             </button>
                         </div>
                     {:else if externalLoading}
                         <div style="padding: 1rem; text-align: center;">
-                            <span
-                                class="loading loading-spinner loading-sm"
-                            ></span>
-                            <span
-                                style="font-size: 0.8rem; opacity: 0.5; margin-left: 0.5rem;"
-                                >Searching externally...</span
-                            >
+                            <span class="loading loading-spinner loading-sm"></span>
+                            <span style="font-size: 0.8rem; opacity: 0.5; margin-left: 0.5rem;">Searching externally...</span>
                         </div>
                     {:else if externalResults}
                         {#if externalResults.movies?.length > 0}
-                            <div class="search-category-label">
-                                🎬 Movies (TMDb)
-                            </div>
+                            <div class="search-category-label">🎬 Movies (TMDb)</div>
                             {#each externalResults.movies as item}
-                                <button
-                                    class="search-result-item"
-                                    onclick={() =>
-                                        navigateToExternalResult(item)}
-                                >
+                                <button class="search-result-item" onclick={() => navigateToExternalResult(item)}>
                                     {#if item.poster_url}
-                                        <img
-                                            src={item.poster_url}
-                                            alt=""
-                                            class="search-thumb"
-                                        />
+                                        <img src={item.poster_url} alt="" class="search-thumb" />
                                     {:else}
-                                        <span class="search-thumb-placeholder"
-                                            >🎬</span
-                                        >
+                                        <span class="search-thumb-placeholder">🎬</span>
                                     {/if}
                                     <div class="search-result-text">
-                                        <div class="search-result-title">
-                                            {item.title}
-                                        </div>
-                                        <div class="search-result-sub">
-                                            {item.release_year || ""}{item.overview
-                                                ? ` · ${item.overview}`
-                                                : ""}
-                                        </div>
+                                        <div class="search-result-title">{item.title}</div>
+                                        <div class="search-result-sub">{item.release_year || ''}{item.overview ? ` · ${item.overview}` : ''}</div>
                                     </div>
                                     <span class="search-ext-badge">TMDb</span>
                                 </button>
                             {/each}
                         {/if}
                         {#if externalResults.shows?.length > 0}
-                            <div class="search-category-label">
-                                📺 TV Shows (TMDb)
-                            </div>
+                            <div class="search-category-label">📺 TV Shows (TMDb)</div>
                             {#each externalResults.shows as item}
-                                <button
-                                    class="search-result-item"
-                                    onclick={() =>
-                                        navigateToExternalResult(item)}
-                                >
+                                <button class="search-result-item" onclick={() => navigateToExternalResult(item)}>
                                     {#if item.poster_url}
-                                        <img
-                                            src={item.poster_url}
-                                            alt=""
-                                            class="search-thumb"
-                                        />
+                                        <img src={item.poster_url} alt="" class="search-thumb" />
                                     {:else}
-                                        <span class="search-thumb-placeholder"
-                                            >📺</span
-                                        >
+                                        <span class="search-thumb-placeholder">📺</span>
                                     {/if}
                                     <div class="search-result-text">
-                                        <div class="search-result-title">
-                                            {item.title}
-                                        </div>
-                                        <div class="search-result-sub">
-                                            {item.release_year || ""}{item.overview
-                                                ? ` · ${item.overview}`
-                                                : ""}
-                                        </div>
+                                        <div class="search-result-title">{item.title}</div>
+                                        <div class="search-result-sub">{item.release_year || ''}{item.overview ? ` · ${item.overview}` : ''}</div>
                                     </div>
                                     <span class="search-ext-badge">TMDb</span>
                                 </button>
                             {/each}
                         {/if}
                         {#if externalResults.artists?.length > 0}
-                            <div class="search-category-label">
-                                🎵 Artists (MusicBrainz)
-                            </div>
+                            <div class="search-category-label">🎵 Artists (MusicBrainz)</div>
                             {#each externalResults.artists as item}
-                                <button
-                                    class="search-result-item"
-                                    onclick={() =>
-                                        navigateToExternalResult(item)}
-                                >
-                                    <span class="search-thumb-placeholder"
-                                        >🎵</span
-                                    >
+                                <button class="search-result-item" onclick={() => navigateToExternalResult(item)}>
+                                    <span class="search-thumb-placeholder">🎵</span>
                                     <div class="search-result-text">
-                                        <div class="search-result-title">
-                                            {item.title}
-                                        </div>
+                                        <div class="search-result-title">{item.title}</div>
                                         <div class="search-result-sub">
-                                            {item.disambiguation || ""}
-                                            {item.country
-                                                ? ` · ${item.country}`
-                                                : ""}
+                                            {item.disambiguation || ''}
+                                            {item.country ? ` · ${item.country}` : ''}
                                         </div>
                                     </div>
-                                    <span class="search-ext-badge ext-mb"
-                                        >MB</span
-                                    >
+                                    <span class="search-ext-badge ext-mb">MB</span>
                                 </button>
                             {/each}
                         {/if}
                         {#if externalResults.totalCount === 0}
                             <div class="search-empty" style="padding: 1rem;">
-                                <p style="font-size: 0.85rem;">
-                                    No external results found
-                                </p>
+                                <p style="font-size: 0.85rem;">No external results found</p>
                             </div>
                         {/if}
                     {/if}
@@ -598,28 +582,23 @@
         align-items: flex-start;
         justify-content: center;
         padding-top: 15vh;
-        background: rgba(0, 0, 0, 0.5);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
+        background: rgba(0, 0, 0, 0.4);
+        backdrop-filter: blur(8px);
     }
     .search-dialog {
         width: 100%;
         max-width: 32rem;
         border-radius: 1rem;
-        border: 1px solid oklch(var(--p) / 0.25);
+        border: 1px solid transparent;
         overflow: hidden;
         animation: search-in 0.15s ease-out;
-        background: oklch(var(--b1));
-        box-shadow:
-            0 0 30px 4px oklch(var(--p) / 0.1),
-            0 25px 50px -12px rgba(0, 0, 0, 0.5);
     }
     .search-input-row {
         display: flex;
         align-items: center;
         gap: 0.75rem;
         padding: 0.75rem 1rem;
-        border-bottom: 1px solid oklch(var(--b3));
+        border-bottom: 1px solid transparent;
     }
     .search-icon {
         width: 1.25rem;
@@ -663,11 +642,11 @@
         cursor: pointer;
         transition: background 0.1s;
     }
-    .search-result-item:hover,
-    .search-result-active {
-        background: oklch(var(--p) / 0.15);
+    .search-result-item:hover {
+        background: oklch(var(--p) / 0.12);
     }
     .search-result-active {
+        background: oklch(var(--p) / 0.18) !important;
         outline: 2px solid oklch(var(--p) / 0.4);
         outline-offset: -2px;
     }
