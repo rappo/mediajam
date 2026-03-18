@@ -2,17 +2,24 @@
     import { onMount } from 'svelte';
     import StatCard from '$lib/components/StatCard.svelte';
     import SankeyChart from '$lib/components/SankeyChart.svelte';
-    import Skeleton from '$lib/components/Skeleton.svelte';
 
     let loaded = $state(false);
+    let loadError = $state('');
     /** @type {any} */
     let stats = $state(null);
 
     onMount(async () => {
         try {
             const res = await fetch('/api/pages/stats');
-            if (res.ok) stats = await res.json();
+            if (res.ok) {
+                stats = await res.json();
+            } else {
+                const text = await res.text();
+                loadError = `API error ${res.status}: ${text.slice(0, 200)}`;
+                console.error('[stats]', loadError);
+            }
         } catch (e) {
+            loadError = e instanceof Error ? e.message : 'Network error';
             console.error('[stats] Failed to load:', e);
         }
         loaded = true;
@@ -53,7 +60,9 @@
     </div>
 
     {#if !loaded}
-        <Skeleton type="stat-cards" />
+        <div class="flex items-center justify-center py-16">
+            <span class="loading loading-spinner loading-lg"></span>
+        </div>
     {:else if stats}
         <!-- ── Overview Cards ── -->
         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-10">
@@ -84,6 +93,11 @@
                 {/if}
             </div>
         </section>
+    {:else if loadError}
+        <div class="alert alert-error text-sm">
+            <span>Failed to load stats: {loadError}</span>
+            <button class="btn btn-sm btn-ghost" onclick={() => location.reload()}>Retry</button>
+        </div>
     {:else}
         <div class="card bg-base-200/30 border border-base-300/50">
             <div class="card-body items-center text-center py-16">
