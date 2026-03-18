@@ -40,22 +40,17 @@
                 const count = flatResults().length;
                 if (count > 0) {
                     selectedIdx = Math.min(selectedIdx + 1, count - 1);
-                    scrollToSelected(selectedIdx);
+                    applyHighlight(selectedIdx);
                 }
             } else if (e.key === 'ArrowUp') {
                 e.preventDefault();
                 e.stopPropagation();
                 if (selectedIdx > 0) {
                     selectedIdx = Math.max(selectedIdx - 1, 0);
-                    scrollToSelected(selectedIdx);
+                    applyHighlight(selectedIdx);
                 } else {
                     selectedIdx = -1;
-                    // Clear all highlights when going back to input
-                    document.querySelectorAll('[data-search-idx]').forEach(el => {
-                        /** @type {HTMLElement} */ (el).style.removeProperty('background');
-                        /** @type {HTMLElement} */ (el).style.removeProperty('outline');
-                        /** @type {HTMLElement} */ (el).style.removeProperty('outline-offset');
-                    });
+                    clearHighlight();
                     inputEl?.focus();
                 }
             } else if (e.key === 'Enter') {
@@ -94,27 +89,40 @@
     }
 
     /**
-     * Scroll the selected item into view and apply highlight styles.
-     * We apply styles imperatively here because Svelte's reactive class:
-     * directives may not update on portaled elements when state is changed
-     * from vanilla addEventListener callbacks.
+     * Clear all search result highlights.
+     */
+    function clearHighlight() {
+        document.querySelectorAll('[data-search-active]').forEach(el => {
+            el.removeAttribute('data-search-active');
+        });
+    }
+
+    /**
+     * Apply highlight to the search result at the given index.
+     * Uses a data attribute + JS-injected CSS to survive Svelte's
+     * reactive re-renders on portaled elements.
      * @param {number} idx
      */
-    function scrollToSelected(idx) {
-        // Clear previous highlights
-        document.querySelectorAll('[data-search-idx]').forEach(el => {
-            /** @type {HTMLElement} */ (el).style.removeProperty('background');
-            /** @type {HTMLElement} */ (el).style.removeProperty('outline');
-            /** @type {HTMLElement} */ (el).style.removeProperty('outline-offset');
-        });
-        // Apply highlight to current
-        const el = /** @type {HTMLElement|null} */ (document.querySelector(`[data-search-idx="${idx}"]`));
+    function applyHighlight(idx) {
+        clearHighlight();
+        const el = document.querySelector(`[data-search-idx="${idx}"]`);
         if (el) {
+            el.setAttribute('data-search-active', '');
             el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-            el.style.background = 'oklch(var(--p) / 0.18)';
-            el.style.outline = '2px solid oklch(var(--p) / 0.4)';
-            el.style.outlineOffset = '-2px';
         }
+    }
+
+    // Inject highlight CSS via JS — Svelte strips :global() rules
+    // for selectors it can't trace to component elements (portal issue)
+    if (typeof document !== 'undefined' && !document.getElementById('search-highlight-css')) {
+        const style = document.createElement('style');
+        style.id = 'search-highlight-css';
+        style.textContent = `[data-search-active] {
+            background: oklch(var(--p) / 0.18) !important;
+            outline: 2px solid oklch(var(--p) / 0.4);
+            outline-offset: -2px;
+        }`;
+        document.head.appendChild(style);
     }
 
 
@@ -431,10 +439,9 @@
                         {/if}
                         <button
                             class="search-result-item"
-                            class:search-result-active={selectedIdx === idx}
                             data-search-idx={idx}
                             onclick={() => navigateToResult(entry.item)}
-                            onmouseenter={() => { selectedIdx = idx; scrollToSelected(idx); }}
+                            onmouseenter={() => { selectedIdx = idx; applyHighlight(idx); }}
                         >
                             {#if entry.item.poster_url}
                                 <img
@@ -645,11 +652,7 @@
     .search-result-item:hover {
         background: oklch(var(--p) / 0.12);
     }
-    .search-result-active {
-        background: oklch(var(--p) / 0.18) !important;
-        outline: 2px solid oklch(var(--p) / 0.4);
-        outline-offset: -2px;
-    }
+
     .search-thumb {
         width: 2rem;
         height: 2rem;
