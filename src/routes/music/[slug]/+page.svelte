@@ -400,8 +400,8 @@
 
     /** @param {number} albumId @param {string} albumTitle */
     async function mergeAlbum(albumId, albumTitle) {
-        const siblings = data.albums.filter((/** @type {any} */ a) => a.id !== albumId && a.jellyfin_id);
-        if (siblings.length === 0) { alert('No Jellyfin-linked albums to merge into.'); return; }
+        const siblings = data.albums.filter((/** @type {any} */ a) => a.id !== albumId);
+        if (siblings.length === 0) { alert('No other albums to merge into.'); return; }
         const options = siblings.map((/** @type {any} */ a, /** @type {number} */ i) => `${i + 1}. ${a.title} (${a.release_year || '?'})`).join('\n');
         const choice = prompt(`Merge "${albumTitle}" into which album?\n\n${options}\n\nEnter number:`);
         if (!choice) return;
