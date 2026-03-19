@@ -97,14 +97,15 @@ export async function load({ params, locals, fetch }) {
     // Load tracks from local DB (synced from Jellyfin)
     let tracks = /** @type {any[]} */ (db.prepare(`
         SELECT
-            t.jellyfin_id as Id,
+            MAX(t.jellyfin_id) as Id,
             t.title as Name,
             t.track_number as IndexNumber,
             t.disc_number as ParentIndexNumber,
-            t.runtime_ticks as RunTimeTicks,
-            t.musicbrainz_id
+            MAX(t.runtime_ticks) as RunTimeTicks,
+            MAX(t.musicbrainz_id) as musicbrainz_id
         FROM tracks t
         WHERE t.album_id = ?
+        GROUP BY t.disc_number, t.track_number, t.title
         ORDER BY t.disc_number ASC, t.track_number ASC
     `).all(albumId));
 
