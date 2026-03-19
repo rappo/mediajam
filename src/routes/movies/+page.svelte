@@ -271,10 +271,9 @@
                     <div class="hero-posters">
                         {#each sections.hero.items.slice(0, 6) as item}
                             <a href="/movies/{item.id}" class="poster-card" title={item.title}>
+                                <div class="poster-img poster-placeholder">🎬</div>
                                 {#if item.poster_url}
-                                    <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img" loading="lazy" />
-                                {:else}
-                                    <div class="poster-img poster-placeholder">🎬</div>
+                                    <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img poster-img-abs" loading="lazy" onerror={(e) => { /** @type {HTMLImageElement} */ (e.currentTarget).style.display='none'; }} />
                                 {/if}
                                 <div class="poster-meta">
                                     <span class="poster-name">{item.title}</span>
@@ -298,10 +297,9 @@
                     {#each sections.recommended as item}
                         <a href="/movies/{item.id}" class="poster-card" title={item.title}>
                             <span class="uwb">unwatched</span>
+                            <div class="poster-img poster-placeholder">🎬</div>
                             {#if item.poster_url}
-                                <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img" loading="lazy" />
-                            {:else}
-                                <div class="poster-img poster-placeholder">🎬</div>
+                                <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img poster-img-abs" loading="lazy" onerror={(e) => { /** @type {HTMLImageElement} */ (e.currentTarget).style.display='none'; }} />
                             {/if}
                             <div class="poster-meta">
                                 <span class="poster-name">{item.title}</span>
@@ -333,10 +331,9 @@
                     {#each section.items as item}
                         <a href="/movies/{item.id}" class="poster-card" title={item.title}>
                             <span class="uwb">unwatched</span>
+                            <div class="poster-img poster-placeholder">🎬</div>
                             {#if item.poster_url}
-                                <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img" loading="lazy" />
-                            {:else}
-                                <div class="poster-img poster-placeholder">🎬</div>
+                                <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img poster-img-abs" loading="lazy" onerror={(e) => { /** @type {HTMLImageElement} */ (e.currentTarget).style.display='none'; }} />
                             {/if}
                             <div class="poster-meta">
                                 <span class="poster-name">{item.title}</span>
@@ -368,10 +365,9 @@
                     {#each sections.recentlyWatched as item}
                         <a href="/movies/{item.id}" class="poster-card" title={item.title}>
                             <span class="wb">watched</span>
+                            <div class="poster-img poster-placeholder">🎬</div>
                             {#if item.poster_url}
-                                <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img" loading="lazy" />
-                            {:else}
-                                <div class="poster-img poster-placeholder">🎬</div>
+                                <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img poster-img-abs" loading="lazy" onerror={(e) => { /** @type {HTMLImageElement} */ (e.currentTarget).style.display='none'; }} />
                             {/if}
                             <div class="poster-meta">
                                 <span class="poster-name">{item.title}</span>
@@ -393,10 +389,9 @@
                 <div class="poster-scroll">
                     {#each sections.unwatched as item}
                         <a href="/movies/{item.id}" class="poster-card" title={item.title}>
+                            <div class="poster-img poster-placeholder">🎬</div>
                             {#if item.poster_url}
-                                <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img" loading="lazy" />
-                            {:else}
-                                <div class="poster-img poster-placeholder">🎬</div>
+                                <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img poster-img-abs" loading="lazy" onerror={(e) => { /** @type {HTMLImageElement} */ (e.currentTarget).style.display='none'; }} />
                             {/if}
                             <div class="poster-meta">
                                 <span class="poster-name">{item.title}</span>
@@ -535,6 +530,11 @@
         border-radius: 10px;
         object-fit: cover;
         box-shadow: 0 4px 14px oklch(0 0 0 / 0.35);
+    }
+    .poster-img-abs {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
     }
     .poster-placeholder {
         display: flex;
