@@ -767,6 +767,34 @@
                                         onclick={(e) => { e.preventDefault(); e.stopPropagation(); deleteAlbum(album.id, album.title); }}
                                     >🗑</button>
                                 </div>
+                                <!-- Download badge + overlay for no-file local albums in Lidarr -->
+                                {#if data.artist.lidarr_id && album.musicbrainz_id}
+                                    <div class="absolute top-1.5 left-1.5 z-10">
+                                        {#if lidarrDownloaded.has(album.musicbrainz_id)}
+                                            <span class="badge badge-success badge-sm gap-0.5 shadow-md">✓</span>
+                                        {:else}
+                                            <span class="badge badge-error badge-sm gap-0.5 shadow-md">⬇</span>
+                                        {/if}
+                                    </div>
+                                    <div class="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        {#if lidarrDownloaded.has(album.musicbrainz_id)}
+                                            <span class="badge badge-success gap-1">✓ Queued</span>
+                                        {:else}
+                                            <button
+                                                class="btn btn-sm btn-primary gap-1"
+                                                disabled={lidarrDownloading === album.musicbrainz_id}
+                                                onclick={(e) => { e.preventDefault(); e.stopPropagation(); downloadLidarrAlbum(album); }}
+                                            >
+                                                {#if lidarrDownloading === album.musicbrainz_id}
+                                                    <span class="loading loading-spinner loading-xs"></span>
+                                                {:else}
+                                                    ⬇
+                                                {/if}
+                                                Download
+                                            </button>
+                                        {/if}
+                                    </div>
+                                {/if}
                             {/if}
                         </a>
                     {/if}

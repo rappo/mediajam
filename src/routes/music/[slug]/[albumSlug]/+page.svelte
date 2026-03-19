@@ -1,4 +1,6 @@
 <script>
+    import InteractiveSearchDialog from "$lib/components/InteractiveSearchDialog.svelte";
+
     let { data } = $props();
 
     /** @param {number} mins */
@@ -53,6 +55,37 @@
             console.error('Failed to toggle hidden:', e);
         }
         toggling = false;
+    }
+
+    // ── Album download (auto search via Lidarr) ──
+    let downloading = $state(false);
+    let downloaded = $state(false);
+    let downloadError = $state('');
+
+    async function autoSearchAlbum() {
+        if (!data.album.musicbrainz_id || !data.isInLidarr) return;
+        downloading = true;
+        downloadError = '';
+        try {
+            const res = await fetch('/api/arr/lidarr/search-album', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mediaParentId: data.artist.id,
+                    mbid: data.album.musicbrainz_id,
+                    title: data.album.title,
+                }),
+            });
+            if (!res.ok) {
+                const r = await res.json();
+                throw new Error(r.error || 'Failed');
+            }
+            downloaded = true;
+        } catch (e) {
+            downloadError = e instanceof Error ? e.message : 'Download failed';
+            setTimeout(() => (downloadError = ''), 5000);
+        }
+        downloading = false;
     }
 </script>
 
@@ -153,6 +186,35 @@
                     </a>
                 {/if}
             </div>
+            <!-- Download actions (when no local files and artist is in Lidarr) -->
+            {#if !data.album.jellyfin_id && data.isInLidarr && data.album.musicbrainz_id}
+                <div class="flex flex-wrap items-center gap-2 mt-1">
+                    {#if downloaded}
+                        <span class="badge badge-success gap-1">✓ Search queued in Lidarr</span>
+                    {:else}
+                        <button
+                            class="btn btn-sm btn-primary gap-1"
+                            disabled={downloading}
+                            onclick={autoSearchAlbum}
+                        >
+                            {#if downloading}
+                                <span class="loading loading-spinner loading-xs"></span>
+                            {:else}
+                                ⬇
+                            {/if}
+                            Auto Search
+                        </button>
+                    {/if}
+                    <InteractiveSearchDialog
+                        service="lidarr"
+                        mediaParentId={data.artist.id}
+                        title="{data.album.title}"
+                    />
+                </div>
+                {#if downloadError}
+                    <div class="alert alert-error alert-sm mt-2 text-sm">{downloadError}</div>
+                {/if}
+            {/if}
         </div>
     </div>
 
