@@ -22,9 +22,30 @@ export async function GET({ locals }) {
     try {
         const api = createJellyfinApi(settings.jellyfin_url, identity.access_token);
         const sessionApi = getSessionApi(api);
-        const { data: sessions } = await sessionApi.getSessions();
 
-        const all = (sessions || [])
+        // Add timeout so we don't hang when Jellyfin is unreachable
+        const timeoutMs = 10000;
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+        /** @type {any} */
+        let sessionsResult;
+        try {
+            sessionsResult = await Promise.race([
+                sessionApi.getSessions(),
+                new Promise((_, reject) =>
+                    controller.signal.addEventListener('abort', () =>
+                        reject(new Error('Jellyfin request timed out'))
+                    )
+                ),
+            ]);
+        } finally {
+            clearTimeout(timer);
+        }
+
+        const sessions = sessionsResult?.data || [];
+
+        const all = sessions
             .map((/** @type {any} */ s) => ({
                 id: s.Id,
                 deviceName: s.DeviceName,
@@ -46,7 +67,7 @@ export async function GET({ locals }) {
                 } : null,
             }))
             // Sort: controllable first, then by last activity
-            .sort((a, b) => {
+            .sort((/** @type {any} */ a, /** @type {any} */ b) => {
                 if (a.supportsMediaControl !== b.supportsMediaControl) return b.supportsMediaControl ? 1 : -1;
                 return new Date(b.lastActivityDate || 0).getTime() - new Date(a.lastActivityDate || 0).getTime();
             });
@@ -58,7 +79,9 @@ export async function GET({ locals }) {
         console.error(`[sessions] Error fetching Jellyfin sessions (${settings.jellyfin_url}):`, status || '', detail);
 
         let userMessage = 'Failed to fetch sessions';
-        if (status === 401 || status === 403) {
+        if (e?.message?.includes('timed out')) {
+            userMessage = `Cannot reach Jellyfin server at ${settings.jellyfin_url} (timed out after 10s). Is it running?`;
+        } else if (status === 401 || status === 403) {
             userMessage = 'Jellyfin auth token is invalid or expired. Try reconnecting in System Settings.';
         } else if (e?.code === 'ECONNREFUSED' || e?.code === 'ENOTFOUND') {
             userMessage = `Cannot reach Jellyfin server at ${settings.jellyfin_url}. Is it running?`;
@@ -70,3 +93,4 @@ export async function GET({ locals }) {
         return json({ sessions: [], error: userMessage });
     }
 }
+
