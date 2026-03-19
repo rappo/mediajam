@@ -69,10 +69,10 @@
         <!-- ── Overview Cards ── -->
         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-10">
             <StatCard icon="📚" label="Total Items" value={stats.cards.total} color="primary" />
-            <StatCard icon="🎬" label="Movies" value={stats.cards.movies} sub="{stats.cards.shows} shows · {stats.cards.artists} artists" color="secondary" />
-            <StatCard icon="💿" label="Albums" value={stats.cards.albums} sub="{stats.cards.episodes.toLocaleString()} episodes" color="accent" />
-            <StatCard icon="⏱" label="Watch Time" value={formatHours(stats.cards.watchHours)} color="info" />
-            <StatCard icon="📅" label="This Month" value={stats.cards.thisMonth} sub="items watched" color="warning" />
+            <StatCard icon="🎬" label="Movies" value={stats.cards.movies} sub="{stats.cards.shows} shows" color="secondary" />
+            <StatCard icon="🎵" label="Music" value={stats.cards.artists} sub="{stats.cards.albums} albums" color="accent" />
+            <StatCard icon="⏱" label="Play Time" value={formatHours(stats.cards.watchHours)} color="info" />
+            <StatCard icon="📅" label="This Month" value={stats.cards.thisMonth} sub="items played" color="warning" />
             <StatCard icon="📈" label="Growth" value="+{stats.cards.growthRate}/wk" sub={stats.cards.avgRating ? `avg ${stats.cards.avgRating}★` : ''} color="error" />
         </div>
 

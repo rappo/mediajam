@@ -41,7 +41,6 @@
         const typeNodes = nodes.filter(n => n.column === 1);
         const totalCount = typeNodes.reduce((s, n) => s + n.count, 0) || 1;
 
-        // For each type node, find its status breakdown via links
         return typeNodes.map(typeNode => {
             const statusLinks = links.filter(l => l.source === typeNode.id && l.target.startsWith('status_'));
             const statusNodes = statusLinks.map(l => {
@@ -65,6 +64,24 @@
     });
 
     let hoveredItem = $state(/** @type {string|null} */ (null));
+    let tooltip = $state(/** @type {{label: string, count: number, pct: string, x: number, y: number}|null} */ (null));
+
+    /** @param {MouseEvent} e @param {{label: string, count: number}} status @param {{count: number}} type */
+    function showTooltip(e, status, type) {
+        const target = /** @type {HTMLElement} */ (e.currentTarget);
+        const rect = target.getBoundingClientRect();
+        tooltip = {
+            label: status.label,
+            count: status.count,
+            pct: ((status.count / type.count) * 100).toFixed(1),
+            x: rect.left + rect.width / 2,
+            y: rect.top - 8,
+        };
+    }
+
+    function hideTooltip() {
+        tooltip = null;
+    }
 </script>
 
 <div class="treemap-container">
@@ -98,7 +115,9 @@
                     <div
                         class="treemap-status"
                         style="flex: {status.count}; background: {type.color}"
-                        title="{status.label}: {status.count.toLocaleString()}"
+                        role="graphics-symbol"
+                        onmouseenter={(e) => showTooltip(e, status, type)}
+                        onmouseleave={hideTooltip}
                     >
                         {#if status.count / type.count > 0.08}
                             <span class="treemap-status-label">{status.label}</span>
@@ -107,15 +126,33 @@
                     </div>
                 {/each}
             </div>
+            <!-- Labels below bar for all statuses -->
+            <div class="treemap-legend">
+                {#each type.children as status}
+                    <div class="treemap-legend-item">
+                        <div class="treemap-legend-swatch" style="background: {type.color}; opacity: {0.4 + (status.count / type.count) * 0.6}"></div>
+                        <span class="treemap-legend-text">{status.label}</span>
+                        <span class="treemap-legend-count">{status.count.toLocaleString()}</span>
+                    </div>
+                {/each}
+            </div>
         </div>
     {/each}
 </div>
+
+<!-- Floating tooltip -->
+{#if tooltip}
+    <div class="treemap-tooltip" style="left: {tooltip.x}px; top: {tooltip.y}px;">
+        <div class="treemap-tooltip-label">{tooltip.label}</div>
+        <div class="treemap-tooltip-value">{tooltip.count.toLocaleString()} ({tooltip.pct}%)</div>
+    </div>
+{/if}
 
 <style>
     .treemap-container {
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 16px;
     }
     .treemap-row {
         display: flex;
@@ -186,5 +223,52 @@
         font-weight: 700;
         color: oklch(var(--b1));
         text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    }
+    .treemap-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 12px;
+        margin-top: 4px;
+    }
+    .treemap-legend-item {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+    .treemap-legend-swatch {
+        width: 8px;
+        height: 8px;
+        border-radius: 2px;
+    }
+    .treemap-legend-text {
+        font-size: 10px;
+        color: oklch(var(--bc) / 0.5);
+    }
+    .treemap-legend-count {
+        font-size: 10px;
+        font-weight: 600;
+        color: oklch(var(--bc) / 0.7);
+    }
+    :global(.treemap-tooltip) {
+        position: fixed;
+        transform: translate(-50%, -100%);
+        background: oklch(var(--b2));
+        border: 1px solid oklch(var(--b3));
+        border-radius: 6px;
+        padding: 6px 10px;
+        pointer-events: none;
+        z-index: 50;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        text-align: center;
+        white-space: nowrap;
+    }
+    :global(.treemap-tooltip-label) {
+        font-size: 11px;
+        font-weight: 600;
+        color: oklch(var(--bc));
+    }
+    :global(.treemap-tooltip-value) {
+        font-size: 10px;
+        color: oklch(var(--bc) / 0.6);
     }
 </style>

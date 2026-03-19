@@ -75,6 +75,7 @@
     }
 
     async function searchLidarr() {
+        console.log('[music] searchLidarr called for', data.artist.id, data.artist.title);
         arrLoading = "search";
         arrError = "";
         try {
@@ -87,7 +88,9 @@
                 const r = await res.json();
                 throw new Error(r.error || "Failed");
             }
+            console.log('[music] searchLidarr success');
         } catch (e) {
+            console.error('[music] searchLidarr error:', e);
             arrError = e instanceof Error ? e.message : "Failed";
             setTimeout(() => (arrError = ""), 5000);
         }
@@ -231,6 +234,7 @@
     );
 
     async function loadDiscovery() {
+        console.log('[music] loadDiscovery called for', data.artist.id, data.artist.title);
         discoveryLoading = true;
         discoveryError = "";
         try {
@@ -240,10 +244,16 @@
                 throw new Error(r.error || "Failed");
             }
             const result = await res.json();
+            console.log('[music] discovery result:', result.discography?.length, 'items,', result.inLibrary?.length, 'in library');
             discoveryItems = result.discography || [];
             discoveryInLibrary = result.inLibrary || [];
             discoveryLoaded = true;
+            // Scroll to results after a tick
+            setTimeout(() => {
+                document.querySelector('.discovery-grid, .discovery-filters')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 100);
         } catch (e) {
+            console.error('[music] loadDiscovery error:', e);
             discoveryError =
                 e instanceof Error ? e.message : "Discovery failed";
         }

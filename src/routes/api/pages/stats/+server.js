@@ -102,12 +102,12 @@ export function GET({ locals }) {
 
         // Node definitions
         /** @type {Record<string, string>} */
-        const typeLabels = { movie: 'Movies', show: 'TV Shows', artist: 'Artists' };
+        const typeLabels = { movie: 'Movies', show: 'TV Shows', artist: 'Music' };
         /** @type {Record<string, string>} */
         const statusLabels = {
             owned: 'Owned', wanted: 'Wanted', searching: 'Searching',
             not_tracked: 'Not Tracked', collected: 'Collected',
-            watched_not_owned: 'Watched (Not Owned)', external: 'External',
+            watched_not_owned: 'Not Owned', external: 'External',
             discovered: 'Discovered', watching: 'Watching', watched: 'Watched',
             partially_watched: 'Partially Watched',
         };
