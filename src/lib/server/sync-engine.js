@@ -1479,6 +1479,25 @@ export async function startSync(libraryId = null, force = false) {
             } catch (e) {
                 console.warn('[sync] Section cache invalidation failed:', e instanceof Error ? e.message : e);
             }
+
+            // Warm poster image cache (non-blocking background)
+            try {
+                const { warmCache } = await import('$lib/server/image-cache.js');
+                const posterRows = /** @type {any[]} */ (db.prepare(
+                    `SELECT poster_url FROM media_parents WHERE poster_url IS NOT NULL
+                     UNION ALL
+                     SELECT poster_url FROM media_children WHERE poster_url IS NOT NULL`
+                ).all());
+                const urls = posterRows.map(r => r.poster_url).filter(Boolean);
+                if (urls.length > 0) {
+                    broadcast({ type: 'progress', log: `🖼️ Warming image cache for ${urls.length} posters...`, logType: 'info' });
+                    warmCache(urls, 8).then(() => {
+                        broadcast({ type: 'progress', log: `🖼️ Image cache warm complete`, logType: 'info' });
+                    }).catch(() => { /* non-fatal */ });
+                }
+            } catch (e) {
+                console.warn('[sync] Poster cache warm failed:', e instanceof Error ? e.message : e);
+            }
         }
 
     } catch (e) {

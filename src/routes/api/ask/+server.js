@@ -452,20 +452,105 @@ ${typeInstruction}CRITICAL: Only recommend UNWATCHED items. Never recommend some
             });
         }
 
-        // Fallback: RAG context unavailable
-        logWarn('ask', 'RAG context unavailable — embeddings missing or embed failed');
+        // Fallback: RAG context unavailable — use SQL-based watch history + unwatched items
+        logWarn('ask', 'RAG context unavailable — falling back to SQL-based discovery');
+
+        // Detect media type from question
+        const qLower = question.toLowerCase();
+        let typeFilter = '';
+        let typeLabel = 'media';
+        if (/\b(movie|movies|film|films)\b/.test(qLower)) {
+            typeFilter = "AND mp.media_type = 'movie'";
+            typeLabel = 'movie';
+        } else if (/\b(show|shows|series|tv)\b/.test(qLower)) {
+            typeFilter = "AND mp.media_type = 'show'";
+            typeLabel = 'show';
+        } else if (/\b(album|albums|music|artist|artists|song|songs)\b/.test(qLower)) {
+            typeFilter = "AND mp.media_type = 'artist'";
+            typeLabel = 'music';
+        }
+
+        // Gather recent watch history
+        let recentHistory = '';
+        try {
+            const recent = /** @type {any[]} */ (db.prepare(`
+                SELECT DISTINCT mp.title, mp.media_type, mp.release_year
+                FROM playback_history ph
+                JOIN media_children mc ON ph.media_id = mc.id
+                JOIN media_parents mp ON mc.parent_id = mp.id
+                WHERE ph.user_id = ? AND ph.timestamp > datetime('now', '-14 days')
+                ${typeFilter}
+                ORDER BY ph.timestamp DESC
+                LIMIT 15
+            `).all(locals.user.id));
+            if (recent.length > 0) {
+                recentHistory = 'Recently watched/listened (past 2 weeks):\n' +
+                    recent.map(r => `- ${r.title} (${r.release_year || 'N/A'}) [${r.media_type}]`).join('\n');
+            }
+        } catch { /* ok */ }
+
+        // Gather genre preferences from recent history
+        let genreContext = '';
+        try {
+            const genres = /** @type {any[]} */ (db.prepare(`
+                SELECT mt.tag_value, COUNT(*) as cnt
+                FROM playback_history ph
+                JOIN media_children mc ON ph.media_id = mc.id
+                JOIN media_parents mp ON mc.parent_id = mp.id
+                JOIN media_tags mt ON mt.media_parent_id = mp.id
+                WHERE ph.user_id = ? AND ph.timestamp > datetime('now', '-30 days')
+                AND mt.tag_type = 'genre' ${typeFilter}
+                GROUP BY mt.tag_value ORDER BY cnt DESC LIMIT 8
+            `).all(locals.user.id));
+            if (genres.length > 0) {
+                genreContext = '\nFavorite genres (based on recent activity): ' + genres.map(g => g.tag_value).join(', ');
+            }
+        } catch { /* ok */ }
+
+        // Gather unwatched items for recommendations
+        let unwatchedContext = '';
+        try {
+            const unwatched = /** @type {any[]} */ (db.prepare(`
+                SELECT mp.title, mp.release_year, mp.media_type,
+                       SUBSTR(mp.overview, 1, 150) as overview
+                FROM media_parents mp
+                JOIN media_children mc ON mc.parent_id = mp.id
+                WHERE mc.watch_status != 'watched' AND mc.is_collected = 1
+                ${typeFilter || "AND mp.media_type IN ('movie', 'show')"}
+                AND mp.overview IS NOT NULL AND mp.overview != ''
+                ORDER BY RANDOM() LIMIT 20
+            `).all());
+            if (unwatched.length > 0) {
+                unwatchedContext = '\nUnwatched items in library:\n' +
+                    unwatched.map(u => `- ${u.title} (${u.release_year || 'N/A'}) [${u.media_type}]${u.overview ? ': ' + u.overview + '...' : ''}`).join('\n');
+            }
+        } catch { /* ok */ }
+
+        if (recentHistory || unwatchedContext) {
+            const fallbackPrompt = `${historyContext ? `Conversation so far:\n${historyContext}\n` : ''}User: "${question}"
+
+${recentHistory}${genreContext}${unwatchedContext}
+
+${typeLabel !== 'media' ? `IMPORTANT: The user asked for ${typeLabel}s. Only recommend ${typeLabel}s.\n\n` : ''}Based on the user's recent viewing history and taste profile above, recommend 2-4 UNWATCHED items from their library. For each, give a one-line reason why it matches their taste. Be conversational and brief.`;
+
+            const fallbackResponse = await generate(fallbackPrompt, {
+                temperature: 0.5,
+                num_predict: 300,
+                system: 'You are Mediajam, a media library assistant. Recommend ONLY UNWATCHED items from the user\'s library. Use their recent watch history and genre preferences to make personalized picks. Be specific, concise, and conversational.',
+            });
+
+            return json({
+                question,
+                type: 'discovery',
+                summary: fallbackResponse || 'I had trouble generating recommendations. Try asking about a specific genre or mood!',
+            });
+        }
 
         return json({
             question,
             type: 'discovery',
             error: true,
-            summary: '⚠️ I can\'t provide personalized recommendations right now — there\'s a problem with my embedding system.\n\n' +
-                '**To diagnose:**\n' +
-                '1. Click the ⚙️ button in this chat header to check system status\n' +
-                '2. Verify Ollama is connected and the embedding model is configured\n' +
-                '3. Go to Settings → Server → "Generate Embeddings" and run it\n' +
-                '4. If embeddings show 0%, the vec0 module may not be loaded\n\n' +
-                'In the meantime, try a data question like "what movies did I watch this week?" — those don\'t need embeddings.',
+            summary: '⚠️ I can\'t find enough data to make recommendations right now. Try watching a few things first, or ask me a specific question like \"what unwatched movies do I have?\"',
         });
     }
 
