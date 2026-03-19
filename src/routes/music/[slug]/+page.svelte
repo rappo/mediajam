@@ -695,6 +695,14 @@
                                     {/if}
                                 </p>
                             </div>
+                            <!-- Missing files badge (always visible) -->
+                            <div class="absolute top-1.5 left-1.5 z-10">
+                                {#if lidarrDownloaded.has(album.musicbrainz_id)}
+                                    <span class="badge badge-success badge-sm gap-0.5 shadow-md">✓</span>
+                                {:else}
+                                    <span class="badge badge-error badge-sm gap-0.5 shadow-md">⬇</span>
+                                {/if}
+                            </div>
                             <!-- Download button overlay -->
                             <div class="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity">
                                 {#if lidarrDownloaded.has(album.musicbrainz_id)}
