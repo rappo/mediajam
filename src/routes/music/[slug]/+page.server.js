@@ -209,9 +209,79 @@ export async function load({ params, locals }) {
             : entry.album_poster || null;
     }
 
+    // ── Lidarr album enrichment ──
+    // Fetch albums from Lidarr that aren't in the local DB yet
+    /** @type {any[]} */
+    let lidarrAlbums = [];
+    if (artist.lidarr_id) {
+        try {
+            const { arrFetch } = await import('$lib/server/arr-client.js');
+            const lidarrSettings = /** @type {any} */ (db.prepare(
+                'SELECT lidarr_url, lidarr_api_key FROM app_settings WHERE id = 1'
+            ).get());
+            if (lidarrSettings?.lidarr_url && lidarrSettings?.lidarr_api_key) {
+                const allLidarrAlbums = await arrFetch(
+                    lidarrSettings.lidarr_url,
+                    lidarrSettings.lidarr_api_key,
+                    'lidarr',
+                    `album?artistId=${artist.lidarr_id}`
+                );
+                if (Array.isArray(allLidarrAlbums)) {
+                    // Find local album MusicBrainz IDs and titles for dedup
+                    const localMbids = new Set(albums.map(a => a.musicbrainz_id).filter(Boolean));
+                    const localTitles = new Set(albums.map(a => (a.title || '').toLowerCase().trim()));
+
+                    for (const la of allLidarrAlbums) {
+                        const mbid = la.foreignAlbumId;
+                        const title = la.title || '';
+                        // Skip if already in local DB
+                        if (mbid && localMbids.has(mbid)) continue;
+                        if (localTitles.has(title.toLowerCase().trim())) continue;
+
+                        // Extract cover image
+                        const coverImg = (la.images || []).find((/** @type {any} */ img) =>
+                            img.coverType === 'cover' || img.coverType === 'poster'
+                        );
+                        const posterUrl = coverImg?.remoteUrl || coverImg?.url || null;
+                        const releaseYear = la.releaseDate ? new Date(la.releaseDate).getFullYear() : null;
+
+                        lidarrAlbums.push({
+                            id: `lidarr_${la.id}`,
+                            lidarr_album_id: la.id,
+                            title,
+                            jellyfin_id: null,
+                            release_year: releaseYear,
+                            watch_status: null,
+                            play_count: 0,
+                            runtime_ticks: 0,
+                            poster_url: posterUrl,
+                            is_collected: false,
+                            musicbrainz_id: mbid,
+                            is_hidden: false,
+                            artUrl: posterUrl,
+                            runtimeMinutes: 0,
+                            ratings: [],
+                            lidarr_only: true,
+                            lidarr_monitored: la.monitored || false,
+                            lidarr_has_file: la.statistics?.percentOfTracks > 0 || false,
+                            lidarr_percent: la.statistics?.percentOfTracks || 0,
+                            lidarr_track_count: la.statistics?.totalTrackCount || 0,
+                        });
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('[music page] Failed to fetch Lidarr albums:', e instanceof Error ? e.message : e);
+        }
+    }
+
+    // Merge local and Lidarr-only albums, sorted by year
+    const allAlbums = [...albumsWithRatings.map(a => ({ ...a, lidarr_only: false })), ...lidarrAlbums]
+        .sort((a, b) => (a.release_year || 9999) - (b.release_year || 9999));
+
     return {
         artist: { ...artist, is_favorite: liveFavorite ?? artist.is_favorite, total_plays: totalPlays, imageUrl: artistImageUrl, backdropUrl },
-        albums: albumsWithRatings,
+        albums: allAlbums,
         jellyfinUrl,
         arrUrl: (settings?.lidarr_external_url || settings?.lidarr_url || '').replace(/\/+$/, ''),
         arrService: 'lidarr',

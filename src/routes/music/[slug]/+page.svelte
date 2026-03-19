@@ -322,6 +322,40 @@
         discDownloading = null;
     }
 
+    // ── Lidarr album download from artist page ──
+    let lidarrDownloading = $state(/** @type {string|null} */ (null));
+    let lidarrDownloaded = $state(/** @type {Set<string>} */ (new Set()));
+    let lidarrDownloadError = $state('');
+
+    /** @param {any} album */
+    async function downloadLidarrAlbum(album) {
+        if (!album.musicbrainz_id) return;
+        lidarrDownloading = album.musicbrainz_id;
+        lidarrDownloadError = '';
+        try {
+            const res = await fetch('/api/arr/lidarr/search-album', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mediaParentId: data.artist.id,
+                    mbid: album.musicbrainz_id,
+                    title: album.title,
+                }),
+            });
+            if (!res.ok) {
+                const r = await res.json();
+                throw new Error(r.error || 'Failed');
+            }
+            const next = new Set(lidarrDownloaded);
+            next.add(album.musicbrainz_id);
+            lidarrDownloaded = next;
+        } catch (e) {
+            lidarrDownloadError = e instanceof Error ? e.message : 'Download failed';
+            setTimeout(() => (lidarrDownloadError = ''), 5000);
+        }
+        lidarrDownloading = null;
+    }
+
     // ── Lidarr add state ──
     /** @type {string|null} */
     let addingToArr = $state(null);
@@ -627,52 +661,107 @@
                 </p>
             {/if}
         {:else if viewMode === "grid"}
+            {#if lidarrDownloadError}
+                <div class="alert alert-error text-sm mb-3">{lidarrDownloadError}</div>
+            {/if}
             <div class="album-grid">
                 {#each visibleAlbums as album}
-                    <a
-                        href="/music/{data.artist.id}/{album.id}"
-                        class="album-tile group"
-                        class:album-tile--not-collected={!album.jellyfin_id && !album.is_collected}
-                    >
-                        {#if album.artUrl}
-                            <img
-                                src={album.artUrl}
-                                alt={album.title}
-                                class="album-tile-img"
-                            />
-                        {:else}
-                            <div class="album-tile-placeholder">
-                                <span class="text-4xl opacity-20">💿</span>
+                    {#if album.lidarr_only}
+                        <!-- Lidarr-only album: red dashed border, no local link -->
+                        <div
+                            class="album-tile group album-tile--lidarr-only"
+                        >
+                            {#if album.artUrl}
+                                <img
+                                    src={album.artUrl}
+                                    alt={album.title}
+                                    class="album-tile-img"
+                                />
+                            {:else}
+                                <div class="album-tile-placeholder">
+                                    <span class="text-4xl opacity-20">💿</span>
+                                </div>
+                            {/if}
+                            <div class="album-tile-overlay">
+                                <p class="font-semibold text-sm leading-tight line-clamp-2">
+                                    {album.title}
+                                </p>
+                                <p class="text-xs opacity-70 mt-0.5">
+                                    {album.release_year || ""}
+                                    {#if album.lidarr_monitored}
+                                        · <span class="text-warning">Monitored</span>
+                                    {:else}
+                                        · <span class="text-error/70">Not Monitored</span>
+                                    {/if}
+                                </p>
                             </div>
-                        {/if}
-                        <div class="album-tile-overlay">
-                            <p
-                                class="font-semibold text-sm leading-tight line-clamp-2"
-                            >
-                                {album.title}
-                            </p>
-                            <p class="text-xs opacity-70 mt-0.5">
-                                {album.release_year || ""}
-                                {#if album.play_count > 0}
-                                    · {album.play_count} plays
+                            <!-- Download button overlay -->
+                            <div class="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity">
+                                {#if lidarrDownloaded.has(album.musicbrainz_id)}
+                                    <span class="badge badge-success gap-1">✓ Queued</span>
+                                {:else}
+                                    <button
+                                        class="btn btn-sm btn-primary gap-1"
+                                        disabled={lidarrDownloading === album.musicbrainz_id}
+                                        onclick={() => downloadLidarrAlbum(album)}
+                                    >
+                                        {#if lidarrDownloading === album.musicbrainz_id}
+                                            <span class="loading loading-spinner loading-xs"></span>
+                                        {:else}
+                                            ⬇
+                                        {/if}
+                                        Download
+                                    </button>
                                 {/if}
-                            </p>
-                        </div>
-                        {#if !album.jellyfin_id}
-                            <div class="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button
-                                    class="btn btn-xs btn-circle btn-ghost bg-base-300/80"
-                                    title="Merge into another album"
-                                    onclick={(e) => { e.preventDefault(); e.stopPropagation(); mergeAlbum(album.id, album.title); }}
-                                >🔀</button>
-                                <button
-                                    class="btn btn-xs btn-circle btn-ghost bg-base-300/80"
-                                    title="Delete this album"
-                                    onclick={(e) => { e.preventDefault(); e.stopPropagation(); deleteAlbum(album.id, album.title); }}
-                                >🗑</button>
                             </div>
-                        {/if}
-                    </a>
+                        </div>
+                    {:else}
+                        <!-- Local album tile (existing behavior) -->
+                        <a
+                            href="/music/{data.artist.id}/{album.id}"
+                            class="album-tile group"
+                            class:album-tile--not-collected={!album.jellyfin_id && !album.is_collected}
+                        >
+                            {#if album.artUrl}
+                                <img
+                                    src={album.artUrl}
+                                    alt={album.title}
+                                    class="album-tile-img"
+                                />
+                            {:else}
+                                <div class="album-tile-placeholder">
+                                    <span class="text-4xl opacity-20">💿</span>
+                                </div>
+                            {/if}
+                            <div class="album-tile-overlay">
+                                <p
+                                    class="font-semibold text-sm leading-tight line-clamp-2"
+                                >
+                                    {album.title}
+                                </p>
+                                <p class="text-xs opacity-70 mt-0.5">
+                                    {album.release_year || ""}
+                                    {#if album.play_count > 0}
+                                        · {album.play_count} plays
+                                    {/if}
+                                </p>
+                            </div>
+                            {#if !album.jellyfin_id}
+                                <div class="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button
+                                        class="btn btn-xs btn-circle btn-ghost bg-base-300/80"
+                                        title="Merge into another album"
+                                        onclick={(e) => { e.preventDefault(); e.stopPropagation(); mergeAlbum(album.id, album.title); }}
+                                    >🔀</button>
+                                    <button
+                                        class="btn btn-xs btn-circle btn-ghost bg-base-300/80"
+                                        title="Delete this album"
+                                        onclick={(e) => { e.preventDefault(); e.stopPropagation(); deleteAlbum(album.id, album.title); }}
+                                    >🗑</button>
+                                </div>
+                            {/if}
+                        </a>
+                    {/if}
                 {/each}
             </div>
         {:else}
@@ -1280,6 +1369,15 @@
     .album-tile--not-collected {
         outline: 2px dashed oklch(var(--wa) / 0.5);
         outline-offset: -2px;
+    }
+    .album-tile--lidarr-only {
+        outline: 2px dashed oklch(var(--er) / 0.7);
+        outline-offset: -2px;
+        opacity: 0.75;
+        cursor: default;
+    }
+    .album-tile--lidarr-only:hover {
+        opacity: 1;
     }
     .album-tile:hover {
         transform: scale(1.03);
