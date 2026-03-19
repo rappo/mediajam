@@ -298,6 +298,10 @@
     let remotePlayers = $state([]);
     let remoteRefreshing = $state(false);
     let remoteRefreshError = $state('');
+    let remoteNeedsReauth = $state(false);
+    let reauthPassword = $state('');
+    let reauthLoading = $state(false);
+    let reauthError = $state('');
     let remoteEnabled = $state($page.data.remoteControlEnabled || false);
     /** @type {any[]} */
     let savedPlayers = $state($page.data.userPreferences?.savedPlayers || []);
@@ -308,11 +312,16 @@
     async function fetchRemotePlayers() {
         remoteRefreshing = true;
         remoteRefreshError = '';
+        remoteNeedsReauth = false;
         try {
             const res = await fetch("/api/jellyfin/sessions");
             const d = await res.json();
             if (d.error) {
                 remoteRefreshError = d.error;
+                // Detect auth errors and show reconnect prompt
+                if (d.error.toLowerCase().includes('auth token') || d.error.toLowerCase().includes('invalid or expired')) {
+                    remoteNeedsReauth = true;
+                }
                 remotePlayers = [];
             } else {
                 remotePlayers = d.sessions || [];
@@ -325,6 +334,33 @@
             remotePlayers = [];
         } finally {
             remoteRefreshing = false;
+        }
+    }
+
+    async function reauthJellyfin() {
+        if (!reauthPassword) return;
+        reauthLoading = true;
+        reauthError = '';
+        try {
+            const res = await fetch('/api/auth/jellyfin-reauth', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: reauthPassword }),
+            });
+            const result = await res.json();
+            if (res.ok && result.success) {
+                reauthPassword = '';
+                remoteNeedsReauth = false;
+                remoteRefreshError = '';
+                // Auto-refresh sessions after successful reauth
+                fetchRemotePlayers();
+            } else {
+                reauthError = result.error || 'Re-authentication failed';
+            }
+        } catch {
+            reauthError = 'Could not reach server';
+        } finally {
+            reauthLoading = false;
         }
     }
 
@@ -1094,7 +1130,35 @@
                             </button>
                         </div>
                         {#if remoteRefreshError}
-                            <p class="text-xs text-warning mb-2">{@html remoteRefreshError.replace(/System Settings/g, '<a href="/settings/admin" class="link link-primary font-medium">System Settings</a>')}</p>
+                            <p class="text-xs text-warning mb-2">{remoteRefreshError}</p>
+                        {/if}
+                        {#if remoteNeedsReauth}
+                            <div class="bg-base-300/50 border border-warning/30 rounded-lg p-3 mb-3">
+                                <p class="text-xs text-base-content/70 mb-2">Enter your Jellyfin password to reconnect:</p>
+                                <div class="flex gap-2">
+                                    <input
+                                        type="password"
+                                        class="input input-bordered input-sm flex-1"
+                                        placeholder="Jellyfin password"
+                                        bind:value={reauthPassword}
+                                        onkeydown={(e) => { if (e.key === 'Enter') reauthJellyfin(); }}
+                                    />
+                                    <button
+                                        class="btn btn-primary btn-sm"
+                                        onclick={reauthJellyfin}
+                                        disabled={reauthLoading || !reauthPassword}
+                                    >
+                                        {#if reauthLoading}
+                                            <span class="loading loading-spinner loading-xs"></span>
+                                        {:else}
+                                            Reconnect
+                                        {/if}
+                                    </button>
+                                </div>
+                                {#if reauthError}
+                                    <p class="text-xs text-error mt-1">{reauthError}</p>
+                                {/if}
+                            </div>
                         {/if}
                         {#if displayPlayerList.saved.length === 0 && !remoteRefreshError}
                             <p class="text-xs text-base-content/40">
