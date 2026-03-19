@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import db from '$lib/server/db.js';
 import { generate, embed, isEmbeddingAvailable } from '$lib/server/llm.js';
 import { logInfo, logWarn } from '$lib/server/logger.js';
+import { tmdbFetch, getTmdbKey } from '$lib/server/tmdb.js';
 
 /** Tables that are safe to query */
 const ALLOWED_TABLES = [
@@ -135,6 +136,205 @@ function getLibraryStats() {
         const plays = /** @type {any} */ (db.prepare("SELECT COUNT(*) as c FROM (SELECT DISTINCT media_id, CAST(strftime('%s', timestamp) / 43200 AS INTEGER) as tb FROM playback_history GROUP BY media_id, tb)").get())?.c || 0;
         return `Library: ${movies} movies, ${shows} TV shows, ${artists} music artists, ${plays} play history entries.`;
     } catch {
+        return '';
+    }
+}
+
+/**
+ * Detect what media type the user is asking about.
+ * @param {string} question
+ * @returns {{ filter: string, label: string }}
+ */
+function detectMediaType(question) {
+    const q = question.toLowerCase();
+    if (/\b(movie|movies|film|films)\b/.test(q)) return { filter: "AND mp.media_type = 'movie'", label: 'movie' };
+    if (/\b(show|shows|series|tv)\b/.test(q)) return { filter: "AND mp.media_type = 'show'", label: 'show' };
+    if (/\b(album|albums|music|artist|artists|song|songs|listen)\b/.test(q)) return { filter: "AND mp.media_type = 'artist'", label: 'music' };
+    return { filter: '', label: '' };
+}
+
+/**
+ * Build a taste profile from the user's watch/listen history.
+ * Always available — no RAG dependency.
+ * @param {number} userId
+ * @param {string} [mediaTypeFilter]
+ * @returns {string}
+ */
+function buildTasteProfile(userId, mediaTypeFilter = '') {
+    const parts = [];
+
+    // Recent watch history (last 2 weeks)
+    try {
+        const recent = /** @type {any[]} */ (db.prepare(`
+            SELECT DISTINCT mp.title, mp.media_type, mp.release_year,
+                   MAX(ph.timestamp) as last_watched
+            FROM playback_history ph
+            JOIN media_children mc ON ph.media_id = mc.id
+            JOIN media_parents mp ON mc.parent_id = mp.id
+            WHERE ph.user_id = ? AND ph.timestamp > datetime('now', '-14 days')
+            ${mediaTypeFilter}
+            GROUP BY mp.id
+            ORDER BY last_watched DESC
+            LIMIT 15
+        `).all(userId));
+        if (recent.length > 0) {
+            parts.push('RECENTLY WATCHED/LISTENED (past 2 weeks):\n' +
+                recent.map(r => `- ${r.title} (${r.release_year || '?'}) [${r.media_type}]`).join('\n'));
+        }
+    } catch { /* ok */ }
+
+    // Top genres from last 60 days
+    try {
+        const genres = /** @type {any[]} */ (db.prepare(`
+            SELECT mt.tag_value, COUNT(DISTINCT mp.id) as cnt
+            FROM playback_history ph
+            JOIN media_children mc ON ph.media_id = mc.id
+            JOIN media_parents mp ON mc.parent_id = mp.id
+            JOIN media_tags mt ON mt.media_parent_id = mp.id
+            WHERE ph.user_id = ? AND ph.timestamp > datetime('now', '-60 days')
+            AND mt.tag_type = 'genre' ${mediaTypeFilter}
+            GROUP BY mt.tag_value ORDER BY cnt DESC LIMIT 10
+        `).all(userId));
+        if (genres.length > 0) {
+            parts.push('FAVORITE GENRES (based on recent activity): ' +
+                genres.map(g => `${g.tag_value} (${g.cnt})`).join(', '));
+        }
+    } catch { /* ok */ }
+
+    // Favorite directors and actors (from all-time play history)
+    try {
+        const people = /** @type {any[]} */ (db.prepare(`
+            SELECT p.name, pc.role_type, COUNT(DISTINCT mp.id) as cnt
+            FROM playback_history ph
+            JOIN media_children mc ON ph.media_id = mc.id
+            JOIN media_parents mp ON mc.parent_id = mp.id
+            JOIN person_credits pc ON pc.media_parent_id = mp.id
+            JOIN persons p ON pc.person_id = p.id
+            WHERE ph.user_id = ? AND pc.role_type IN ('director', 'actor')
+            ${mediaTypeFilter}
+            GROUP BY p.id, pc.role_type
+            ORDER BY cnt DESC
+            LIMIT 12
+        `).all(userId));
+        const dirs = people.filter(p => p.role_type === 'director').slice(0, 5);
+        const acts = people.filter(p => p.role_type === 'actor').slice(0, 5);
+        if (dirs.length > 0) parts.push('FAVORITE DIRECTORS: ' + dirs.map(d => `${d.name} (${d.cnt} titles)`).join(', '));
+        if (acts.length > 0) parts.push('FAVORITE ACTORS: ' + acts.map(a => `${a.name} (${a.cnt} titles)`).join(', '));
+    } catch { /* ok */ }
+
+    // Favorited items
+    try {
+        const favs = /** @type {any[]} */ (db.prepare(`
+            SELECT mp.title, mp.media_type, mp.release_year
+            FROM favorites f
+            JOIN media_parents mp ON f.media_parent_id = mp.id
+            WHERE f.user_id = ? ${mediaTypeFilter}
+            ORDER BY f.created_at DESC LIMIT 8
+        `).all(userId));
+        if (favs.length > 0) {
+            parts.push('FAVORITED: ' + favs.map(f => `${f.title} (${f.release_year || '?'})`).join(', '));
+        }
+    } catch { /* ok */ }
+
+    return parts.length > 0
+        ? '=== USER TASTE PROFILE ===\n' + parts.join('\n\n') + '\n=== END PROFILE ==='
+        : '';
+}
+
+/**
+ * Get "neglected gems" — unwatched in-library items sorted by rating.
+ * @param {string} [mediaTypeFilter]
+ * @returns {string}
+ */
+function getNeglectedMedia(mediaTypeFilter = '') {
+    try {
+        const neglected = /** @type {any[]} */ (db.prepare(`
+            SELECT mp.id, mp.title, mp.release_year, mp.media_type,
+                   mc.community_rating,
+                   SUBSTR(mp.overview, 1, 120) as overview
+            FROM media_parents mp
+            JOIN media_children mc ON mc.parent_id = mp.id
+            WHERE mc.watch_status != 'watched' AND mc.is_collected = 1
+            ${mediaTypeFilter || "AND mp.media_type IN ('movie', 'show')"}
+            AND mp.overview IS NOT NULL AND mp.overview != ''
+            AND mc.community_rating IS NOT NULL
+            ORDER BY mc.community_rating DESC, mp.release_year DESC
+            LIMIT 15
+        `).all());
+        if (neglected.length === 0) return '';
+        return 'UNWATCHED IN YOUR LIBRARY (hidden gems):\n' +
+            neglected.map(n => {
+                const rating = n.community_rating ? ` ⭐${n.community_rating.toFixed(1)}` : '';
+                return `- ${n.title} (${n.release_year || '?'}) [${n.media_type}]${rating}: ${n.overview || 'No description'}...`;
+            }).join('\n');
+    } catch {
+        return '';
+    }
+}
+
+/**
+ * Get external recommendations from TMDB based on recently watched items.
+ * @param {number} userId
+ * @param {string} mediaTypeLabel - 'movie', 'show', or ''
+ * @returns {Promise<string>}
+ */
+async function getExternalRecommendations(userId, mediaTypeLabel) {
+    if (!getTmdbKey()) return '';
+    const tmdbType = mediaTypeLabel === 'show' ? 'tv' : 'movie';
+    const actualType = mediaTypeLabel === 'music' ? '' : tmdbType;
+    if (!actualType) return '';
+
+    try {
+        const recentWithTmdb = /** @type {any[]} */ (db.prepare(`
+            SELECT DISTINCT mp.tmdb_id, mp.title
+            FROM playback_history ph
+            JOIN media_children mc ON ph.media_id = mc.id
+            JOIN media_parents mp ON mc.parent_id = mp.id
+            WHERE ph.user_id = ? AND mp.tmdb_id IS NOT NULL
+            AND mp.media_type = ?
+            AND ph.timestamp > datetime('now', '-30 days')
+            ORDER BY ph.timestamp DESC
+            LIMIT 3
+        `).all(userId, actualType === 'tv' ? 'show' : 'movie'));
+
+        if (recentWithTmdb.length === 0) return '';
+
+        /** @type {Map<string, any>} */
+        const seen = new Map();
+        const checkLibrary = db.prepare('SELECT id FROM media_parents WHERE tmdb_id = ? LIMIT 1');
+
+        for (const item of recentWithTmdb.slice(0, 2)) {
+            try {
+                const res = await tmdbFetch(`/${actualType}/${item.tmdb_id}/recommendations`, { page: '1' });
+                if (!res.ok) continue;
+                const data = await res.json();
+                for (const rec of (data.results || []).slice(0, 8)) {
+                    const tmdbId = String(rec.id);
+                    if (seen.has(tmdbId)) continue;
+                    const existing = /** @type {any} */ (checkLibrary.get(tmdbId));
+                    if (existing) continue;
+                    const title = rec.title || rec.name;
+                    if (!title) continue;
+                    seen.set(tmdbId, {
+                        title,
+                        year: (rec.release_date || rec.first_air_date || '').split('-')[0] || '?',
+                        overview: (rec.overview || '').slice(0, 120),
+                        rating: rec.vote_average || 0,
+                        basedOn: item.title,
+                    });
+                }
+            } catch { /* skip this item */ }
+        }
+
+        if (seen.size === 0) return '';
+        const recs = [...seen.values()]
+            .sort((a, b) => b.rating - a.rating)
+            .slice(0, 10);
+
+        return 'NOT IN YOUR LIBRARY — EXTERNAL RECOMMENDATIONS (from TMDB):\n' +
+            recs.map(r => `- ${r.title} (${r.year}) ⭐${r.rating.toFixed(1)} (because you watched ${r.basedOn}): ${r.overview}...`).join('\n');
+    } catch (e) {
+        logWarn('ask', `TMDB recs failed: ${e instanceof Error ? e.message : e}`);
         return '';
     }
 }
@@ -389,8 +589,17 @@ Message: ${question}`;
     });
 
     const classWord = classification?.trim().toLowerCase().replace(/[^a-z]/g, '') || 'chat';
-    const isDataQuery = classWord.startsWith('data');
-    const isDiscovery = classWord.startsWith('discover');
+    let isDataQuery = classWord.startsWith('data');
+    let isDiscovery = classWord.startsWith('discover');
+
+    // Safety net: catch obvious discovery/recommendation questions the LLM might miss
+    if (!isDataQuery && !isDiscovery) {
+        const discoveryOverride = /\b(recommend|suggest|what should i (watch|see|listen)|good (movie|show|film|series)|tonight|mood for|feel like watch|something like|similar to|based on (my|what)|hidden gem|overlooked|neglected|missing out|check out)\b/i.test(question);
+        if (discoveryOverride) {
+            isDiscovery = true;
+            logInfo('ask', `Classification override: "${question}" → forced discovery (was chat)`);
+        }
+    }
 
     logInfo('ask', `Question: "${question}" → classified as ${isDataQuery ? 'data' : isDiscovery ? 'discovery' : 'chat'}`);
 
@@ -413,144 +622,81 @@ Message: ${question}`;
         });
     }
 
-    // Step 2b: Discovery — RAG-powered recommendations and exploration
+    // Step 2b: Discovery — multi-layered recommendations
     if (isDiscovery) {
-        const ragContext = await retrieveContext(question, locals.user?.id);
+        const userId = locals.user?.id;
+        const { filter: mediaTypeFilter, label: mediaTypeLabel } = detectMediaType(question);
 
+        // === Layer 1: Always-on taste profile (SQL, no RAG needed) ===
+        const tasteProfile = userId ? buildTasteProfile(userId, mediaTypeFilter) : '';
+        logInfo('ask', `Discovery: taste profile ${tasteProfile ? `built (${tasteProfile.length} chars)` : 'empty'}`);
+
+        // === Layer 2: Neglected library gems ===
+        const neglectedGems = getNeglectedMedia(mediaTypeFilter);
+        logInfo('ask', `Discovery: neglected gems ${neglectedGems ? 'found' : 'empty'}`);
+
+        // === Layer 3: RAG enrichment (additive, not required) ===
+        let ragSection = '';
+        /** @type {any[]} */
+        let ragSources = [];
+        const ragContext = await retrieveContext(question, userId);
         if (ragContext) {
-            logInfo('ask', `RAG context: ${ragContext.sources.length} sources retrieved`);
+            ragSection = '\nSEMANTICALLY SIMILAR (from your library):\n' + ragContext.context;
+            ragSources = ragContext.sources;
+            logInfo('ask', `Discovery: RAG found ${ragSources.length} sources`);
+        }
 
-            const typeInstruction = ragContext.mediaTypeLabel
-                ? `IMPORTANT: The user specifically asked for ${ragContext.mediaTypeLabel}s. Only recommend ${ragContext.mediaTypeLabel}s from the list — do NOT suggest shows, series, or other types unless they specifically asked for them.\n\n`
+        // === Layer 4: External TMDB recommendations ===
+        let externalRecs = '';
+        // Only fetch external recs if the question seems to want them
+        const wantsExternal = /\b(new|out there|discover|haven.t seen|outside|missing out|check out|should.*(try|see|watch)|not in.*library)\b/i.test(question);
+        if (wantsExternal && userId && mediaTypeLabel !== 'music') {
+            externalRecs = await getExternalRecommendations(userId, mediaTypeLabel);
+            logInfo('ask', `Discovery: TMDB external recs ${externalRecs ? 'found' : 'empty'}`);
+        }
+
+        // === Build the combined prompt ===
+        const contextSections = [tasteProfile, neglectedGems, ragSection, externalRecs]
+            .filter(Boolean)
+            .join('\n\n');
+
+        if (contextSections.length > 0) {
+            const typeInstruction = mediaTypeLabel
+                ? `IMPORTANT: The user asked about ${mediaTypeLabel}s. Focus on ${mediaTypeLabel}s.\n`
                 : '';
+
+            const hasExternal = externalRecs.length > 0;
+            const recInstruction = hasExternal
+                ? 'Recommend 2-3 UNWATCHED items from their library AND 1-2 external titles they don\'t own yet. Clearly separate "From your library" and "You might also like" sections.'
+                : 'Recommend 3-5 UNWATCHED items from their library. For each, give a one-line reason why it matches their taste.';
 
             const discoveryPrompt = `${historyContext ? `Conversation so far:\n${historyContext}\n` : ''}User: "${question}"
 
-${ragContext.context}
+${contextSections}
 
-${typeInstruction}CRITICAL: Only recommend UNWATCHED items. Never recommend something the user has already watched — if it says "watched" or has a play count, skip it. Recommend 2-4 specific UNWATCHED titles from the list above. For each, give a one-line reason why it matches. Be conversational and brief — no more than 4-5 sentences total.`;
+${typeInstruction}${recInstruction}
+Be conversational, specific, and brief. Reference their recent watches or favorite genres to explain why each pick fits.`;
 
-            let discoveryResponse = await generate(discoveryPrompt, {
-                temperature: 0.4,
-                num_predict: 250,
-                system: 'You are Mediajam, a media library assistant. You recommend ONLY UNWATCHED items from the user\'s actual library (provided in context). NEVER recommend something they already watched. Be specific and concise — no filler, no questions back. Just give the picks with brief reasons. Pay close attention to the type of media the user is asking for (movies vs shows vs music).',
+            const discoveryResponse = await generate(discoveryPrompt, {
+                temperature: 0.5,
+                num_predict: 500,
+                system: `You are Mediajam, a knowledgeable media library assistant. The user's complete taste profile and library data is provided above — USE IT. NEVER say "I don't know what you've been watching" or ask the user for information that's already in the context. Make specific, personalized recommendations based on the data provided. Be concise but warm. No bullet-point walls — use short paragraphs or a small list with brief reasons.`,
             });
-
-            // If generation failed (LLM timeout), fall back to a chat-style response with history context
-            if (!discoveryResponse && historyContext) {
-                discoveryResponse = await generate(
-                    `${historyContext}\nUser: ${question}\n\nRespond conversationally to the user's follow-up about the previous recommendation discussion. Be brief.`,
-                    { temperature: 0.5, num_predict: 200, system: 'You are Mediajam, a friendly media library assistant. Answer follow-up questions by referencing the conversation context. Be concise and conversational.' }
-                );
-            }
 
             return json({
                 question,
                 type: 'discovery',
                 summary: discoveryResponse || 'I had trouble generating a response. Could you try rephrasing or asking a more specific question?',
-                sources: ragContext.sources.slice(0, 8),
+                sources: ragSources.slice(0, 8),
             });
         }
 
-        // Fallback: RAG context unavailable — use SQL-based watch history + unwatched items
-        logWarn('ask', 'RAG context unavailable — falling back to SQL-based discovery');
-
-        // Detect media type from question
-        const qLower = question.toLowerCase();
-        let typeFilter = '';
-        let typeLabel = 'media';
-        if (/\b(movie|movies|film|films)\b/.test(qLower)) {
-            typeFilter = "AND mp.media_type = 'movie'";
-            typeLabel = 'movie';
-        } else if (/\b(show|shows|series|tv)\b/.test(qLower)) {
-            typeFilter = "AND mp.media_type = 'show'";
-            typeLabel = 'show';
-        } else if (/\b(album|albums|music|artist|artists|song|songs)\b/.test(qLower)) {
-            typeFilter = "AND mp.media_type = 'artist'";
-            typeLabel = 'music';
-        }
-
-        // Gather recent watch history
-        let recentHistory = '';
-        try {
-            const recent = /** @type {any[]} */ (db.prepare(`
-                SELECT DISTINCT mp.title, mp.media_type, mp.release_year
-                FROM playback_history ph
-                JOIN media_children mc ON ph.media_id = mc.id
-                JOIN media_parents mp ON mc.parent_id = mp.id
-                WHERE ph.user_id = ? AND ph.timestamp > datetime('now', '-14 days')
-                ${typeFilter}
-                ORDER BY ph.timestamp DESC
-                LIMIT 15
-            `).all(locals.user.id));
-            if (recent.length > 0) {
-                recentHistory = 'Recently watched/listened (past 2 weeks):\n' +
-                    recent.map(r => `- ${r.title} (${r.release_year || 'N/A'}) [${r.media_type}]`).join('\n');
-            }
-        } catch { /* ok */ }
-
-        // Gather genre preferences from recent history
-        let genreContext = '';
-        try {
-            const genres = /** @type {any[]} */ (db.prepare(`
-                SELECT mt.tag_value, COUNT(*) as cnt
-                FROM playback_history ph
-                JOIN media_children mc ON ph.media_id = mc.id
-                JOIN media_parents mp ON mc.parent_id = mp.id
-                JOIN media_tags mt ON mt.media_parent_id = mp.id
-                WHERE ph.user_id = ? AND ph.timestamp > datetime('now', '-30 days')
-                AND mt.tag_type = 'genre' ${typeFilter}
-                GROUP BY mt.tag_value ORDER BY cnt DESC LIMIT 8
-            `).all(locals.user.id));
-            if (genres.length > 0) {
-                genreContext = '\nFavorite genres (based on recent activity): ' + genres.map(g => g.tag_value).join(', ');
-            }
-        } catch { /* ok */ }
-
-        // Gather unwatched items for recommendations
-        let unwatchedContext = '';
-        try {
-            const unwatched = /** @type {any[]} */ (db.prepare(`
-                SELECT mp.title, mp.release_year, mp.media_type,
-                       SUBSTR(mp.overview, 1, 150) as overview
-                FROM media_parents mp
-                JOIN media_children mc ON mc.parent_id = mp.id
-                WHERE mc.watch_status != 'watched' AND mc.is_collected = 1
-                ${typeFilter || "AND mp.media_type IN ('movie', 'show')"}
-                AND mp.overview IS NOT NULL AND mp.overview != ''
-                ORDER BY RANDOM() LIMIT 20
-            `).all());
-            if (unwatched.length > 0) {
-                unwatchedContext = '\nUnwatched items in library:\n' +
-                    unwatched.map(u => `- ${u.title} (${u.release_year || 'N/A'}) [${u.media_type}]${u.overview ? ': ' + u.overview + '...' : ''}`).join('\n');
-            }
-        } catch { /* ok */ }
-
-        if (recentHistory || unwatchedContext) {
-            const fallbackPrompt = `${historyContext ? `Conversation so far:\n${historyContext}\n` : ''}User: "${question}"
-
-${recentHistory}${genreContext}${unwatchedContext}
-
-${typeLabel !== 'media' ? `IMPORTANT: The user asked for ${typeLabel}s. Only recommend ${typeLabel}s.\n\n` : ''}Based on the user's recent viewing history and taste profile above, recommend 2-4 UNWATCHED items from their library. For each, give a one-line reason why it matches their taste. Be conversational and brief.`;
-
-            const fallbackResponse = await generate(fallbackPrompt, {
-                temperature: 0.5,
-                num_predict: 300,
-                system: 'You are Mediajam, a media library assistant. Recommend ONLY UNWATCHED items from the user\'s library. Use their recent watch history and genre preferences to make personalized picks. Be specific, concise, and conversational.',
-            });
-
-            return json({
-                question,
-                type: 'discovery',
-                summary: fallbackResponse || 'I had trouble generating recommendations. Try asking about a specific genre or mood!',
-            });
-        }
-
+        // Absolute fallback: no context available at all
         return json({
             question,
             type: 'discovery',
             error: true,
-            summary: '⚠️ I can\'t find enough data to make recommendations right now. Try watching a few things first, or ask me a specific question like \"what unwatched movies do I have?\"',
+            summary: '⚠️ I don\'t have enough data to make recommendations yet. Try watching a few things first, or ask me a specific question like "what unwatched movies do I have?"',
         });
     }
 
