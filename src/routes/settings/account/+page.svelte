@@ -1094,7 +1094,7 @@
                             </button>
                         </div>
                         {#if remoteRefreshError}
-                            <p class="text-xs text-warning mb-2">{remoteRefreshError}</p>
+                            <p class="text-xs text-warning mb-2">{@html remoteRefreshError.replace(/System Settings/g, '<a href="/settings/admin" class="link link-primary font-medium">System Settings</a>')}</p>
                         {/if}
                         {#if displayPlayerList.saved.length === 0 && !remoteRefreshError}
                             <p class="text-xs text-base-content/40">

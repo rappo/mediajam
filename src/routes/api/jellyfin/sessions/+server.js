@@ -15,12 +15,15 @@ export async function GET({ locals }) {
         "SELECT access_token FROM user_identities WHERE user_id = ? AND provider = 'jellyfin'"
     ).get(locals.user.id));
 
-    if (!settings?.jellyfin_url || !identity?.access_token) {
-        return json({ sessions: [], error: 'Jellyfin not configured' });
+    // Use user's token first, fall back to admin token from app_settings
+    const accessToken = identity?.access_token || settings?.jellyfin_access_token;
+
+    if (!settings?.jellyfin_url || !accessToken) {
+        return json({ sessions: [], error: 'Jellyfin not configured. Set it up in System Settings.' });
     }
 
     try {
-        const api = createJellyfinApi(settings.jellyfin_url, identity.access_token);
+        const api = createJellyfinApi(settings.jellyfin_url, accessToken);
         const sessionApi = getSessionApi(api);
 
         // Add timeout so we don't hang when Jellyfin is unreachable
