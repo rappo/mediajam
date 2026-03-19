@@ -2,11 +2,14 @@
     import { onMount } from 'svelte';
     import StatCard from '$lib/components/StatCard.svelte';
     import SankeyChart from '$lib/components/SankeyChart.svelte';
+    import TreemapChart from '$lib/components/TreemapChart.svelte';
+    import StackedBarChart from '$lib/components/StackedBarChart.svelte';
 
     let loaded = $state(false);
     let loadError = $state('');
     /** @type {any} */
     let stats = $state(null);
+    let viewMode = $state('sankey');
 
     onMount(async () => {
         try {
@@ -53,7 +56,6 @@
 </svelte:head>
 
 <div class="max-w-5xl mx-auto p-6 py-10">
-    <!-- Header -->
     <div class="mb-8">
         <h1 class="text-3xl font-bold mb-1">Stats</h1>
         <p class="text-base-content/60">Library composition at a glance</p>
@@ -74,17 +76,36 @@
             <StatCard icon="📈" label="Growth" value="+{stats.cards.growthRate}/wk" sub={stats.cards.avgRating ? `avg ${stats.cards.avgRating}★` : ''} color="error" />
         </div>
 
-        <!-- ── Sankey Diagram ── -->
+        <!-- ── Library Composition ── -->
         <section>
-            <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
-                <span>📊</span> Library Composition
-            </h2>
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="text-lg font-semibold flex items-center gap-2">
+                    <span>📊</span> Library Composition
+                </h2>
+                <div class="join">
+                    <button class="join-item btn btn-xs" class:btn-active={viewMode === 'sankey'} onclick={() => viewMode = 'sankey'}>Flow</button>
+                    <button class="join-item btn btn-xs" class:btn-active={viewMode === 'treemap'} onclick={() => viewMode = 'treemap'}>Treemap</button>
+                    <button class="join-item btn btn-xs" class:btn-active={viewMode === 'bars'} onclick={() => viewMode = 'bars'}>Bars</button>
+                </div>
+            </div>
             <div class="card bg-base-200/30 border border-base-300/30 p-4">
                 {#if stats.sankey.nodes.length > 0}
-                    <SankeyChart
-                        nodes={stats.sankey.nodes}
-                        links={stats.sankey.links}
-                    />
+                    {#if viewMode === 'sankey'}
+                        <SankeyChart
+                            nodes={stats.sankey.nodes}
+                            links={stats.sankey.links}
+                        />
+                    {:else if viewMode === 'treemap'}
+                        <TreemapChart
+                            nodes={stats.sankey.nodes}
+                            links={stats.sankey.links}
+                        />
+                    {:else}
+                        <StackedBarChart
+                            nodes={stats.sankey.nodes}
+                            links={stats.sankey.links}
+                        />
+                    {/if}
                 {:else}
                     <div class="flex flex-col items-center justify-center py-16 text-base-content/40">
                         <span class="text-4xl mb-4">📊</span>

@@ -1,7 +1,7 @@
 <script>
     /**
-     * Sankey / Alluvial diagram — pure SVG, no D3 dependency.
-     * Fixed 4-column layout: Total → Media Type → Collection Status → Source
+     * Sankey / Alluvial diagram — pure SVG, theme-aware colors.
+     * Uses CSS custom properties from DaisyUI for theme compatibility.
      *
      * @type {{
      *   nodes: Array<{id: string, label: string, column: number, count: number}>,
@@ -12,41 +12,74 @@
      */
     let { nodes = [], links = [], width = 900, height = 500 } = $props();
 
+    import { browser } from '$app/environment';
+
     const PADDING = { top: 40, right: 20, bottom: 20, left: 20 };
     const NODE_WIDTH = 18;
     const NODE_GAP = 8;
     const COLUMNS = 4;
 
-    // Color palette for media types (flows inherit source color)
-    const TYPE_COLORS = {
-        'type_movie': 'oklch(0.65 0.18 250)',    // Blue
-        'type_show': 'oklch(0.65 0.18 150)',      // Green
-        'type_artist': 'oklch(0.65 0.18 300)',    // Purple
-    };
+    // Resolve theme colors from CSS custom properties
+    // Fallback to oklch values for SSR
+    const themeColors = $derived.by(() => {
+        if (!browser) return {
+            primary: 'oklch(0.65 0.18 250)',
+            secondary: 'oklch(0.65 0.18 150)',
+            accent: 'oklch(0.65 0.18 300)',
+            success: 'oklch(0.65 0.15 150)',
+            warning: 'oklch(0.65 0.15 60)',
+            error: 'oklch(0.65 0.15 30)',
+            neutral: 'oklch(0.5 0.05 250)',
+            info: 'oklch(0.65 0.15 220)',
+        };
+        const cs = getComputedStyle(document.documentElement);
+        /** @param {string} v */
+        const get = (v) => {
+            const val = cs.getPropertyValue(v).trim();
+            return val ? `oklch(${val})` : '';
+        };
+        return {
+            primary: get('--p') || 'oklch(0.65 0.18 250)',
+            secondary: get('--s') || 'oklch(0.65 0.18 150)',
+            accent: get('--a') || 'oklch(0.65 0.18 300)',
+            success: get('--su') || 'oklch(0.65 0.15 150)',
+            warning: get('--wa') || 'oklch(0.65 0.15 60)',
+            error: get('--er') || 'oklch(0.65 0.15 30)',
+            neutral: get('--n') || 'oklch(0.5 0.05 250)',
+            info: get('--in') || 'oklch(0.65 0.15 220)',
+        };
+    });
 
-    const STATUS_COLORS = {
-        'status_owned': 'oklch(0.65 0.15 150)',
-        'status_collected': 'oklch(0.65 0.15 150)',
-        'status_wanted': 'oklch(0.65 0.15 60)',
-        'status_searching': 'oklch(0.65 0.15 30)',
-        'status_not_tracked': 'oklch(0.5 0.05 250)',
-    };
-
-    const SOURCE_COLORS = {
-        'source_jellyfin': 'oklch(0.65 0.15 280)',
-        'source_radarr': 'oklch(0.65 0.15 40)',
-        'source_sonarr': 'oklch(0.65 0.15 150)',
-        'source_lidarr': 'oklch(0.65 0.15 300)',
-        'source_other': 'oklch(0.5 0.05 250)',
-    };
+    /** @type {Record<string, string>} */
+    const colorMap = $derived({
+        'total': themeColors.primary,
+        'type_movie': themeColors.primary,
+        'type_show': themeColors.success,
+        'type_artist': themeColors.accent,
+        'status_owned': themeColors.success,
+        'status_collected': themeColors.success,
+        'status_wanted': themeColors.warning,
+        'status_searching': themeColors.error,
+        'status_not_tracked': themeColors.neutral,
+        'status_watched_not_owned': themeColors.info,
+        'status_external': themeColors.neutral,
+        'status_discovered': themeColors.secondary,
+        'status_watching': themeColors.info,
+        'status_watched': themeColors.success,
+        'status_partially_watched': themeColors.warning,
+        'source_jellyfin': themeColors.primary,
+        'source_radarr': themeColors.error,
+        'source_sonarr': themeColors.success,
+        'source_lidarr': themeColors.accent,
+        'source_other': themeColors.neutral,
+    });
 
     /**
      * @param {string} id
      * @returns {string}
      */
     function nodeColor(id) {
-        if (id === 'total') return 'oklch(0.7 0.15 250)';
-        return TYPE_COLORS[id] || STATUS_COLORS[id] || SOURCE_COLORS[id] || 'oklch(0.6 0.1 250)';
+        return colorMap[id] || themeColors.neutral;
     }
 
     // Layout computation
@@ -88,13 +121,11 @@
         }
 
         // Build link paths with vertical stacking
-        // Track consumed height on source (right side) and target (left side)
         /** @type {Map<string, number>} */
         const sourceOffset = new Map();
         /** @type {Map<string, number>} */
         const targetOffset = new Map();
 
-        // Sort links by value descending for visual stability
         const sortedLinks = [...links].sort((a, b) => b.value - a.value);
 
         /** @type {Array<{path: string, value: number, sourceId: string, targetId: string, color: string, label: string}>} */
@@ -122,7 +153,6 @@
             sourceOffset.set(link.source, sOff + bandH_s);
             targetOffset.set(link.target, tOff + bandH_t);
 
-            // Bezier curve from source right edge to target left edge
             const sx = sn.x + NODE_WIDTH;
             const tx = tn.x;
             const cx = (sx + tx) / 2;
@@ -133,19 +163,14 @@
                 C ${cx} ${ty2}, ${cx} ${sy2}, ${sx} ${sy2}
                 Z`;
 
-            // Color flows by their media type origin
+            // Color flows by media type origin
             let color = nodeColor(link.source);
-            // For status→source links, trace back to the type
             if (link.source.startsWith('status_')) {
-                // Find which type feeds into this status most
                 const feedingType = sortedLinks
                     .filter(l => l.target === link.source && l.source.startsWith('type_'))
                     .sort((a, b) => b.value - a.value)[0];
                 if (feedingType) color = nodeColor(feedingType.source);
             }
-
-            const sLabel = sn.label;
-            const tLabel = tn.label;
 
             linkPaths.push({
                 path,
@@ -153,11 +178,10 @@
                 sourceId: link.source,
                 targetId: link.target,
                 color,
-                label: `${sLabel} → ${tLabel}: ${link.value.toLocaleString()}`
+                label: `${sn.label} → ${tn.label}: ${link.value.toLocaleString()}`
             });
         }
 
-        // Column headers
         const headers = ['Total Library', 'Media Type', 'Status', 'Source'];
         /** @type {Array<{x: number, label: string}>} */
         const headerPositions = headers.map((label, i) => ({
@@ -172,13 +196,13 @@
     let hoveredNode = $state(/** @type {string|null} */ (null));
 
     /**
-     * @param {string} linkLabel
+     * @param {{sourceId: string, targetId: string}} link
      */
-    function isLinkHighlighted(linkLabel) {
+    function isLinkHighlighted(link) {
         if (!hoveredNode && !hoveredLink) return true;
-        if (hoveredLink === linkLabel) return true;
+        if (hoveredLink === `${link.sourceId}-${link.targetId}`) return true;
         if (hoveredNode) {
-            return linkLabel.includes(hoveredNode);
+            return link.sourceId === hoveredNode || link.targetId === hoveredNode;
         }
         return false;
     }
@@ -202,15 +226,16 @@
             >{header.label}</text>
         {/each}
 
-        <!-- Links (flow bands) -->
+        <!-- Links -->
         <g class="sankey-links">
             {#each layout.linkPaths as link}
                 <path
                     d={link.path}
                     fill={link.color}
-                    fill-opacity={isLinkHighlighted(link.label) ? 0.35 : 0.08}
+                    fill-opacity={isLinkHighlighted(link) ? 0.35 : 0.06}
                     class="sankey-link"
-                    onmouseenter={() => hoveredLink = link.label}
+                    role="graphics-datalink"
+                    onmouseenter={() => hoveredLink = `${link.sourceId}-${link.targetId}`}
                     onmouseleave={() => hoveredLink = null}
                 >
                     <title>{link.label}</title>
@@ -218,7 +243,7 @@
             {/each}
         </g>
 
-        <!-- Nodes (vertical bars) -->
+        <!-- Nodes -->
         <g class="sankey-nodes">
             {#each [...layout.nodePositions.values()] as node}
                 <rect
@@ -230,13 +255,13 @@
                     fill={nodeColor(node.id)}
                     class="sankey-node"
                     class:sankey-node-dimmed={hoveredNode !== null && hoveredNode !== node.id}
+                    role="graphics-symbol"
                     onmouseenter={() => hoveredNode = node.id}
                     onmouseleave={() => hoveredNode = null}
                 >
                     <title>{node.label}: {node.count.toLocaleString()}</title>
                 </rect>
 
-                <!-- Label -->
                 {@const isLeft = node.x < width / 2}
                 <text
                     x={isLeft ? node.x + NODE_WIDTH + 6 : node.x - 6}
@@ -284,11 +309,11 @@
         opacity: 0.3;
     }
     .sankey-link {
-        transition: fill-opacity 0.2s;
+        transition: fill-opacity 0.25s;
         cursor: default;
     }
     .sankey-link:hover {
-        fill-opacity: 0.5 !important;
+        fill-opacity: 0.55 !important;
     }
     .sankey-label {
         font-family: Inter, system-ui, sans-serif;

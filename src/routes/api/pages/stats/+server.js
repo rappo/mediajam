@@ -104,7 +104,13 @@ export function GET({ locals }) {
         /** @type {Record<string, string>} */
         const typeLabels = { movie: 'Movies', show: 'TV Shows', artist: 'Artists' };
         /** @type {Record<string, string>} */
-        const statusLabels = { owned: 'Owned', wanted: 'Wanted', searching: 'Searching', not_tracked: 'Not Tracked', collected: 'Collected' };
+        const statusLabels = {
+            owned: 'Owned', wanted: 'Wanted', searching: 'Searching',
+            not_tracked: 'Not Tracked', collected: 'Collected',
+            watched_not_owned: 'Watched (Not Owned)', external: 'External',
+            discovered: 'Discovered', watching: 'Watching', watched: 'Watched',
+            partially_watched: 'Partially Watched',
+        };
         /** @type {Record<string, string>} */
         const sourceLabels = { jellyfin: 'Jellyfin', radarr: 'Radarr', sonarr: 'Sonarr', lidarr: 'Lidarr', other: 'Other' };
 
