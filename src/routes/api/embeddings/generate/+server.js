@@ -3,6 +3,24 @@ import db, { sqliteVecLoaded } from '$lib/server/db.js';
 import { embed, isEmbeddingAvailable } from '$lib/server/llm.js';
 import crypto from 'crypto';
 
+/** Max chars for embedding input (~500 tokens for nomic-embed-text). */
+const EMBED_CHAR_LIMIT = 2000;
+/** Max chars for title embeddings (short strings). */
+const TITLE_CHAR_LIMIT = 500;
+
+/**
+ * Truncate text at a sentence boundary.
+ * @param {string} text
+ * @param {number} max
+ * @returns {string}
+ */
+function truncateForEmbed(text, max) {
+    if (!text || text.length <= max) return text;
+    const t = text.slice(0, max);
+    const last = Math.max(t.lastIndexOf('. '), t.lastIndexOf('! '), t.lastIndexOf('? '));
+    return last > max * 0.5 ? t.slice(0, last + 1) : t;
+}
+
 /** Compute a content hash for a given text
  * @param {string} text
  */
@@ -81,7 +99,7 @@ export async function POST({ locals }) {
                 let failCount = 0;
                 let lastError = '';
                 for (const parent of needsEmbedding) {
-                    const text = `${parent.title}. ${parent.overview}`;
+                    const text = truncateForEmbed(`${parent.title}. ${parent.overview}`, EMBED_CHAR_LIMIT);
                     const embedding = await embed(text);
                     if (embedding) {
                         try {
@@ -147,7 +165,7 @@ export async function POST({ locals }) {
 
                 done = 0;
                 for (const child of children) {
-                    const text = `${child.parent_title} - ${child.title}`;
+                    const text = truncateForEmbed(`${child.parent_title} - ${child.title}`, TITLE_CHAR_LIMIT);
                     const embedding = await embed(text);
                     if (embedding) {
                         try {

@@ -4,6 +4,53 @@ import { generate, embed, isEmbeddingAvailable } from '$lib/server/llm.js';
 import { logInfo, logWarn } from '$lib/server/logger.js';
 import { tmdbFetch, getTmdbKey } from '$lib/server/tmdb.js';
 
+/** Max chars for embedding input (~500 tokens). Beyond this, quality degrades. */
+const EMBED_CHAR_LIMIT = 2000;
+/** Max total chars for discovery prompt context (~1500 tokens). */
+const CONTEXT_CHAR_BUDGET = 6000;
+
+/**
+ * Truncate text to a character limit, breaking at the last sentence boundary.
+ * @param {string} text
+ * @param {number} maxChars
+ * @returns {string}
+ */
+function truncateText(text, maxChars) {
+    if (!text || text.length <= maxChars) return text;
+    const trimmed = text.slice(0, maxChars);
+    const lastPeriod = Math.max(trimmed.lastIndexOf('. '), trimmed.lastIndexOf('! '), trimmed.lastIndexOf('? '));
+    if (lastPeriod > maxChars * 0.5) return trimmed.slice(0, lastPeriod + 1);
+    const lastSpace = trimmed.lastIndexOf(' ');
+    return lastSpace > maxChars * 0.5 ? trimmed.slice(0, lastSpace) + '...' : trimmed + '...';
+}
+
+/**
+ * Fit multiple context sections into a character budget, prioritizing earlier sections.
+ * @param {string[]} sections - ordered by priority (highest first)
+ * @param {number} budget - total character budget
+ * @returns {string}
+ */
+function budgetContextSections(sections, budget) {
+    const filtered = sections.filter(Boolean);
+    if (filtered.length === 0) return '';
+
+    const result = [];
+    let remaining = budget;
+
+    for (const section of filtered) {
+        if (remaining <= 0) break;
+        if (section.length <= remaining) {
+            result.push(section);
+            remaining -= section.length;
+        } else {
+            result.push(truncateText(section, remaining));
+            remaining = 0;
+        }
+    }
+
+    return result.join('\n\n');
+}
+
 /** Tables that are safe to query */
 const ALLOWED_TABLES = [
     'media_parents', 'media_children', 'playback_history', 'tracks',
@@ -655,10 +702,11 @@ Message: ${question}`;
             logInfo('ask', `Discovery: TMDB external recs ${externalRecs ? 'found' : 'empty'}`);
         }
 
-        // === Build the combined prompt ===
-        const contextSections = [tasteProfile, neglectedGems, ragSection, externalRecs]
-            .filter(Boolean)
-            .join('\n\n');
+        // === Build the combined prompt (with budget) ===
+        const contextSections = budgetContextSections(
+            [tasteProfile, neglectedGems, ragSection, externalRecs],
+            CONTEXT_CHAR_BUDGET
+        );
 
         if (contextSections.length > 0) {
             const typeInstruction = mediaTypeLabel
