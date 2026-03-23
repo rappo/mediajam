@@ -270,6 +270,21 @@
         omdbApiKey: "",
         discogsToken: "",
         fanartApiKey: "",
+        // *arr settings
+        radarrUrl: data.settings.radarrUrl || "",
+        radarrApiKey: "",
+        radarrExternalUrl: data.settings.radarrExternalUrl || "",
+        sonarrUrl: data.settings.sonarrUrl || "",
+        sonarrApiKey: "",
+        sonarrExternalUrl: data.settings.sonarrExternalUrl || "",
+        lidarrUrl: data.settings.lidarrUrl || "",
+        lidarrApiKey: "",
+        lidarrExternalUrl: data.settings.lidarrExternalUrl || "",
+        // Download defaults (updated after async fetch)
+        arrDefaultQualityProfileId: { radarr: 0, sonarr: 0, lidarr: 0 },
+        arrDefaultRootFolder: { radarr: '', sonarr: '', lidarr: '' },
+        arrDefaultMonitor: { radarr: 'movieOnly', sonarr: 'all', lidarr: 'all' },
+        arrSkipDialog: { radarr: false, sonarr: false, lidarr: false },
     });
 
     let saving = $state(false);
@@ -298,7 +313,20 @@
             llmEmbedModel !== initialValues.llmEmbedModel ||
             omdbApiKey !== initialValues.omdbApiKey ||
             discogsToken !== initialValues.discogsToken ||
-            fanartApiKey !== initialValues.fanartApiKey,
+            fanartApiKey !== initialValues.fanartApiKey ||
+            radarrUrl !== initialValues.radarrUrl ||
+            radarrApiKey !== initialValues.radarrApiKey ||
+            radarrExternalUrl !== initialValues.radarrExternalUrl ||
+            sonarrUrl !== initialValues.sonarrUrl ||
+            sonarrApiKey !== initialValues.sonarrApiKey ||
+            sonarrExternalUrl !== initialValues.sonarrExternalUrl ||
+            lidarrUrl !== initialValues.lidarrUrl ||
+            lidarrApiKey !== initialValues.lidarrApiKey ||
+            lidarrExternalUrl !== initialValues.lidarrExternalUrl ||
+            JSON.stringify(arrDefaultQualityProfileId) !== JSON.stringify(initialValues.arrDefaultQualityProfileId) ||
+            JSON.stringify(arrDefaultRootFolder) !== JSON.stringify(initialValues.arrDefaultRootFolder) ||
+            JSON.stringify(arrDefaultMonitor) !== JSON.stringify(initialValues.arrDefaultMonitor) ||
+            JSON.stringify(arrSkipDialog) !== JSON.stringify(initialValues.arrSkipDialog),
     );
 
     // ─── Undo Toast ──────────────────────────────────────────────────────────────
@@ -421,6 +449,19 @@
             omdbApiKey,
             discogsToken,
             fanartApiKey,
+            radarrUrl,
+            radarrApiKey,
+            radarrExternalUrl,
+            sonarrUrl,
+            sonarrApiKey,
+            sonarrExternalUrl,
+            lidarrUrl,
+            lidarrApiKey,
+            lidarrExternalUrl,
+            arrDefaultQualityProfileId: { ...arrDefaultQualityProfileId },
+            arrDefaultRootFolder: { ...arrDefaultRootFolder },
+            arrDefaultMonitor: { ...arrDefaultMonitor },
+            arrSkipDialog: { ...arrSkipDialog },
         };
     }
 
@@ -447,6 +488,19 @@
         omdbApiKey = snapshot.omdbApiKey;
         discogsToken = snapshot.discogsToken;
         fanartApiKey = snapshot.fanartApiKey;
+        radarrUrl = snapshot.radarrUrl;
+        radarrApiKey = snapshot.radarrApiKey;
+        radarrExternalUrl = snapshot.radarrExternalUrl;
+        sonarrUrl = snapshot.sonarrUrl;
+        sonarrApiKey = snapshot.sonarrApiKey;
+        sonarrExternalUrl = snapshot.sonarrExternalUrl;
+        lidarrUrl = snapshot.lidarrUrl;
+        lidarrApiKey = snapshot.lidarrApiKey;
+        lidarrExternalUrl = snapshot.lidarrExternalUrl;
+        if (snapshot.arrDefaultQualityProfileId) arrDefaultQualityProfileId = { ...snapshot.arrDefaultQualityProfileId };
+        if (snapshot.arrDefaultRootFolder) arrDefaultRootFolder = { ...snapshot.arrDefaultRootFolder };
+        if (snapshot.arrDefaultMonitor) arrDefaultMonitor = { ...snapshot.arrDefaultMonitor };
+        if (snapshot.arrSkipDialog) arrSkipDialog = { ...snapshot.arrSkipDialog };
     }
 
     // ─── Validation ──────────────────────────────────────────────────────────────
@@ -1945,6 +1999,11 @@
                     arrDefaultRootFolder[svc] = d.defaultRootFolder || (d.rootFolders?.[0]?.path || '');
                     arrDefaultMonitor[svc] = d.defaultMonitor || (svc === 'radarr' ? 'movieOnly' : 'all');
                     arrSkipDialog[svc] = !!d.skipDialog;
+                    // Update initial values so dirty detection baseline is correct
+                    initialValues.arrDefaultQualityProfileId[svc] = arrDefaultQualityProfileId[svc];
+                    initialValues.arrDefaultRootFolder[svc] = arrDefaultRootFolder[svc];
+                    initialValues.arrDefaultMonitor[svc] = arrDefaultMonitor[svc];
+                    initialValues.arrSkipDialog[svc] = arrSkipDialog[svc];
                 }).catch(() => {});
             }
         }
