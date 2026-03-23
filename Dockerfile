@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 COPY --from=builder /app/build ./build
+COPY --from=builder /app/docs ./docs
 COPY --from=builder /app/package*.json ./
 RUN npm ci --omit=dev && \
     apt-get purge -y python3 make g++ && \
