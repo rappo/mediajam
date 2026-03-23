@@ -1,0 +1,1899 @@
+openapi: 3.0.3
+info:
+  title: Mediajam API
+  description: Media library management and playback tracking API. Integrates with Jellyfin, TMDB, MusicBrainz, *arr services, Trakt, Last.fm, and more.
+  version: 0.0.1
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:7331
+    description: Default local development
+
+security:
+  - sessionCookie: []
+  - bearerApiKey: []
+
+tags:
+  - name: Authentication
+    description: Login, logout, and password management
+  - name: Search
+    description: Global search across all media types
+  - name: Media
+    description: Media item management (movies, shows, artists)
+  - name: Favorites & Watchlist
+    description: Favorite and watchlist management
+  - name: Playback History
+    description: Playback history timeline
+  - name: Activity
+    description: Activity feed and notifications
+  - name: Ratings
+    description: External ratings from IMDb, Rotten Tomatoes, etc.
+  - name: Stats
+    description: Playback statistics
+  - name: Users
+    description: Public user endpoints (unauthenticated)
+  - name: Ask
+    description: Natural language queries via Ollama
+  - name: Settings
+    description: Application configuration
+  - name: Image Proxy
+    description: Image proxying and caching
+  - name: Sync
+    description: Jellyfin library sync and backfill
+  - name: Enrichment
+    description: Metadata enrichment from external sources
+  - name: AI / Ollama
+    description: Ollama connectivity, embeddings, and tagging
+  - name: Arr Integration
+    description: Radarr, Sonarr, and Lidarr integration
+  - name: Spokes
+    description: Trakt and Last.fm integration
+  - name: Discovery
+    description: Discover and add new media
+  - name: Ingest
+    description: Jellyfin webhook and now-playing SSE
+  - name: API Keys
+    description: API key management
+  - name: Backup & Restore
+    description: Database backup, import, and factory reset
+  - name: Tracks
+    description: Music album tracks
+  - name: Debug
+    description: Debug and diagnostic endpoints
+  - name: User Preferences
+    description: Per-user preference management
+  - name: Auto Sync
+    description: Automatic sync scheduling
+  - name: Jellyfin Remote
+    description: Remote control of Jellyfin players
+  - name: Album Matching
+    description: Album matching against external databases
+  - name: Conflicts
+    description: Data conflict resolution
+
+paths:
+  # ── Authentication ──────────────────────────────────────────────
+  /api/auth/login:
+    post:
+      tags: [Authentication]
+      summary: Log in
+      description: Authenticate and receive an `mjsession` cookie. Supports local password and Jellyfin-delegated auth.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string, example: admin }
+                password: { type: string, example: yourpassword }
+      responses:
+        '200':
+          description: Login successful
+          headers:
+            Set-Cookie:
+              schema: { type: string, example: 'mjsession=abc123; Path=/; HttpOnly' }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  user:
+                    $ref: '#/components/schemas/SessionUser'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/auth/logout:
+    post:
+      tags: [Authentication]
+      summary: Log out
+      description: Clear the session cookie.
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /api/auth/reset-password:
+    post:
+      tags: [Authentication]
+      summary: Reset a user's password (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, newPassword]
+              properties:
+                userId: { type: integer }
+                newPassword: { type: string }
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # ── Search ──────────────────────────────────────────────────────
+  /api/search:
+    get:
+      tags: [Search]
+      summary: Global search
+      description: Search across movies, shows, artists, albums, people, episodes, and playback history. Includes semantic search when embeddings are available.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 2 }
+          description: Search query (min 2 chars)
+      responses:
+        '200':
+          description: Search results grouped by type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResults'
+
+  # ── Media Management ────────────────────────────────────────────
+  /api/media/{id}:
+    patch:
+      tags: [Media]
+      summary: Correct an external ID or image URL
+      description: |
+        Update a field on a media item. When correcting an external ID (tmdb_id, imdb_id, musicbrainz_id),
+        if another record already has that ID, the two records are automatically merged.
+      parameters:
+        - $ref: '#/components/parameters/MediaId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [field, value]
+              properties:
+                field:
+                  type: string
+                  enum: [musicbrainz_id, tmdb_id, imdb_id, backdrop_url, poster_url]
+                value:
+                  oneOf:
+                    - type: string
+                    - type: 'null'
+      responses:
+        '200':
+          description: Update applied (possibly merged)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  merged: { type: boolean }
+                  mergedId: { type: integer }
+    delete:
+      tags: [Media]
+      summary: Delete a media item
+      description: Remove a media item and all related data. Returns an undo token valid for 30 seconds.
+      parameters:
+        - $ref: '#/components/parameters/MediaId'
+      responses:
+        '200':
+          description: Deleted with undo token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  title: { type: string }
+                  undoToken: { type: string }
+                  route: { type: string }
+    post:
+      tags: [Media]
+      summary: Undo delete
+      description: Restore a previously deleted media item using the undo token.
+      parameters:
+        - $ref: '#/components/parameters/MediaId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [undoToken]
+              properties:
+                undoToken: { type: string }
+      responses:
+        '200':
+          description: Restored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  id: { type: integer }
+                  title: { type: string }
+                  route: { type: string }
+
+  /api/media/child/{id}:
+    patch:
+      tags: [Media]
+      summary: Update a child item
+      description: Update an episode, album, or track. Supports watch_status, is_collected, and musicbrainz_id fields.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [field, value]
+              properties:
+                field:
+                  type: string
+                  enum: [watch_status, is_collected, musicbrainz_id]
+                value: {}
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+    delete:
+      tags: [Media]
+      summary: Delete a child item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: undo
+          in: query
+          schema: { type: boolean }
+          description: Set to true to restore (with undoToken in body)
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  # ── Favorites & Watchlist ───────────────────────────────────────
+  /api/favorite:
+    post:
+      tags: [Favorites & Watchlist]
+      summary: Toggle favorite
+      description: Toggle favorite status on a media item or person. Bidirectional sync with Jellyfin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, id, isFavorite]
+              properties:
+                type: { type: string, enum: [media, person] }
+                id: { type: integer }
+                isFavorite: { type: boolean }
+      responses:
+        '200':
+          description: Favorite toggled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  type: { type: string }
+                  id: { type: integer }
+                  isFavorite: { type: boolean }
+
+  /api/watchlist:
+    post:
+      tags: [Favorites & Watchlist]
+      summary: Toggle watchlist
+      description: Toggle a media item on/off the user's watchlist.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mediaParentId]
+              properties:
+                mediaParentId: { type: integer }
+      responses:
+        '200':
+          description: Watchlist toggled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  inWatchlist: { type: boolean }
+
+  # ── Playback History ────────────────────────────────────────────
+  /api/history:
+    get:
+      tags: [Playback History]
+      summary: Get playback history
+      description: Paginated playback history timeline for the authenticated user.
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 200 }
+        - name: type
+          in: query
+          schema: { type: string, enum: [show, movie, artist] }
+      responses:
+        '200':
+          description: Paginated history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoryResponse'
+
+  /api/playback-history/{id}:
+    delete:
+      tags: [Playback History]
+      summary: Delete a playback history entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  # ── Activity Feed ───────────────────────────────────────────────
+  /api/activity:
+    get:
+      tags: [Activity]
+      summary: Get activity log
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+        - name: unreadOnly
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Activity entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  activities:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Activity'
+                  unreadCount: { type: integer }
+    put:
+      tags: [Activity]
+      summary: Mark activities as read
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  oneOf:
+                    - type: integer
+                    - type: string
+                      enum: ['all']
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+    delete:
+      tags: [Activity]
+      summary: Clear read activity entries
+      responses:
+        '200':
+          description: Cleared
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  deleted: { type: integer }
+                  activities: { type: array, items: { $ref: '#/components/schemas/Activity' } }
+                  unreadCount: { type: integer }
+
+  # ── Ratings ─────────────────────────────────────────────────────
+  /api/ratings:
+    get:
+      tags: [Ratings]
+      summary: Get cached external ratings
+      parameters:
+        - name: mediaParentId
+          in: query
+          schema: { type: integer }
+        - name: mediaChildId
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          description: External ratings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ratings:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Rating'
+    post:
+      tags: [Ratings]
+      summary: Fetch fresh external ratings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mediaParentId: { type: integer }
+                mediaChildId: { type: integer }
+                refresh: { type: boolean }
+      responses:
+        '200':
+          description: Ratings fetched
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ratings:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Rating'
+
+  # ── Stats ───────────────────────────────────────────────────────
+  /api/stats:
+    get:
+      tags: [Stats]
+      summary: Get playback stats for an item
+      parameters:
+        - name: type
+          in: query
+          required: true
+          schema: { type: string, enum: [track, album, artist, movie, show] }
+        - name: id
+          in: query
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Playback stats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type: { type: string }
+                  id: { type: integer }
+                  play_count: { type: integer }
+                  last_played: { type: string, format: date-time }
+                  first_played: { type: string, format: date-time }
+
+  # ── User Endpoints (Public) ────────────────────────────────────
+  /api/users/{userId}/stats:
+    get:
+      tags: [Users]
+      summary: User collection and playback stats
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: User stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserStats'
+
+  /api/users/{userId}/history:
+    get:
+      tags: [Users]
+      summary: User playback history
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 200 }
+        - name: type
+          in: query
+          schema: { type: string, enum: [show, movie, artist] }
+      responses:
+        '200':
+          description: Paginated history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoryResponse'
+
+  /api/users/{userId}/favorites:
+    get:
+      tags: [Users]
+      summary: Most-played items ranked by play count
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - name: type
+          in: query
+          schema: { type: string, enum: [show, movie, artist] }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+      responses:
+        '200':
+          description: Top played items
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userId: { type: integer }
+                  favorites:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FavoriteItem'
+
+  /api/users/{userId}/now-playing:
+    get:
+      tags: [Users]
+      summary: Active playback sessions
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+      responses:
+        '200':
+          description: Now playing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NowPlaying'
+
+  # ── Natural Language Queries ────────────────────────────────────
+  /api/ask:
+    post:
+      tags: [Ask]
+      summary: Ask a natural language question
+      description: Chat with your media library using natural language. Uses Ollama LLM for text-to-SQL and conversational responses.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question]
+              properties:
+                question: { type: string, example: 'What movies did I watch this week?' }
+      responses:
+        '200':
+          description: Query result (data or chat)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AskResponse'
+        '503':
+          description: Ollama not configured
+
+  # ── Settings ────────────────────────────────────────────────────
+  /api/settings:
+    get:
+      tags: [Settings]
+      summary: Get app settings
+      description: Returns current settings. API keys are masked.
+      responses:
+        '200':
+          description: Current settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'
+    put:
+      tags: [Settings]
+      summary: Update app settings
+      description: Only provided fields are updated.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettingsUpdate'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /api/settings/validate:
+    post:
+      tags: [Settings]
+      summary: Test Jellyfin connectivity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url: { type: string, format: uri }
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /api/settings/validate-pr-db:
+    post:
+      tags: [Settings]
+      summary: Validate playback reporting DB path
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties:
+                path: { type: string }
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  # ── Image Proxy ─────────────────────────────────────────────────
+  /api/image:
+    get:
+      tags: [Image Proxy]
+      summary: Proxy and cache an external image
+      description: Avoids CORS/ORB issues. 24h Cache-Control. Allowed sources include TMDB, TVDB, CoverArtArchive, Discogs, Fanart, Jellyfin, and localhost.
+      security: []
+      parameters:
+        - name: url
+          in: query
+          required: true
+          schema: { type: string, format: uri }
+          description: URL-encoded image URL to proxy
+      responses:
+        '200':
+          description: Image bytes
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+
+  /api/icons/{service}:
+    get:
+      tags: [Image Proxy]
+      summary: Get a service icon
+      security: []
+      parameters:
+        - name: service
+          in: path
+          required: true
+          schema: { type: string, enum: [tmdb, tvdb, musicbrainz, discogs, fanart] }
+      responses:
+        '200':
+          description: SVG icon (30-day cache)
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+
+  # ── Sync & Backfill ─────────────────────────────────────────────
+  /api/sync:
+    post:
+      tags: [Sync]
+      summary: Start Jellyfin library sync
+      description: Returns an SSE stream of progress events.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                libraryId: { type: string }
+                libraryName: { type: string }
+      responses:
+        '200':
+          $ref: '#/components/responses/SSEStream'
+    get:
+      tags: [Sync]
+      summary: Monitor active sync operations (SSE)
+      responses:
+        '200':
+          $ref: '#/components/responses/SSEStream'
+
+  /api/sync/status:
+    get:
+      tags: [Sync]
+      summary: Get sync status for all libraries
+      responses:
+        '200':
+          description: Sync status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  syncing: { type: boolean }
+                  libraries:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        name: { type: string }
+                        status: { type: string }
+                        progress: { type: integer }
+
+  /api/sync/item:
+    post:
+      tags: [Sync]
+      summary: Sync a single Jellyfin item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [jellyfinId]
+              properties:
+                jellyfinId: { type: string }
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /api/sync/people-ids:
+    post:
+      tags: [Sync]
+      summary: Sync TMDB person IDs
+      responses:
+        '200':
+          $ref: '#/components/responses/SSEStream'
+
+  /api/sync/reconcile:
+    post:
+      tags: [Sync]
+      summary: Run reconciliation
+      responses:
+        '200':
+          $ref: '#/components/responses/SSEStream'
+
+  /api/backfill:
+    post:
+      tags: [Sync]
+      summary: TMDB enrichment backfill
+      description: Enrich all media parents with overview, poster, and release year from TMDB.
+      responses:
+        '200':
+          $ref: '#/components/responses/SSEStream'
+
+  /api/backfill/backdrops:
+    post:
+      tags: [Sync]
+      summary: Enrich backdrops from Fanart.tv and TMDB
+      responses:
+        '200':
+          $ref: '#/components/responses/SSEStream'
+
+  /api/backfill/history:
+    post:
+      tags: [Sync]
+      summary: Import playback history from Jellyfin PR plugin
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                daysBack: { type: integer, example: 365 }
+      responses:
+        '200':
+          $ref: '#/components/responses/SSEStream'
+
+  /api/backfill/jellyfin:
+    post:
+      tags: [Sync]
+      summary: Backfill Jellyfin metadata
+      responses:
+        '200':
+          $ref: '#/components/responses/SSEStream'
+
+  /api/backfill/rebuild:
+    post:
+      tags: [Sync]
+      summary: Full library rebuild
+      responses:
+        '200':
+          $ref: '#/components/responses/SSEStream'
+
+  /api/backfill/wikipedia:
+    post:
+      tags: [Sync]
+      summary: Enrich with Wikipedia summaries
+      responses:
+        '200':
+          $ref: '#/components/responses/SSEStream'
+
+  # ── Enrichment ──────────────────────────────────────────────────
+  /api/people/sync:
+    post:
+      tags: [Enrichment]
+      summary: Sync all people data from TMDB
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                batchSize: { type: integer, default: 50 }
+      responses:
+        '200':
+          $ref: '#/components/responses/SSEStream'
+
+  /api/people/{id}/sync:
+    post:
+      tags: [Enrichment]
+      summary: Sync a single person from TMDB
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /api/people/{id}/bio:
+    get:
+      tags: [Enrichment]
+      summary: Get person biography
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Person bio and metadata
+
+  /api/musicbrainz/enrich:
+    post:
+      tags: [Enrichment]
+      summary: Enrich music from MusicBrainz
+      responses:
+        '200':
+          $ref: '#/components/responses/SSEStream'
+
+  /api/reconcile/enrich:
+    post:
+      tags: [Enrichment]
+      summary: Enrich existing media from external APIs
+      responses:
+        '200':
+          $ref: '#/components/responses/SSEStream'
+
+  /api/reconcile/run:
+    post:
+      tags: [Enrichment]
+      summary: Run reconciliation engine
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mediaType: { type: string, enum: [movie, show, artist] }
+                dryRun: { type: boolean }
+      responses:
+        '200':
+          $ref: '#/components/responses/SSEStream'
+
+  /api/reconcile/run/report:
+    get:
+      tags: [Enrichment]
+      summary: Get latest reconciliation report
+      responses:
+        '200':
+          description: Reconciliation report
+
+  /api/reconcile/unmatched:
+    get:
+      tags: [Enrichment]
+      summary: List unmatched media items
+      parameters:
+        - name: type
+          in: query
+          schema: { type: string, enum: [movie, show, artist] }
+        - name: page
+          in: query
+          schema: { type: integer }
+        - name: limit
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Unmatched items
+
+  /api/reconcile/unmatched/children:
+    get:
+      tags: [Enrichment]
+      summary: List unmatched child items
+      responses:
+        '200':
+          description: Unmatched children
+
+  # ── AI / Ollama ─────────────────────────────────────────────────
+  /api/ollama/health:
+    get:
+      tags: [AI / Ollama]
+      summary: Check Ollama connectivity
+      parameters:
+        - name: url
+          in: query
+          schema: { type: string, format: uri }
+      responses:
+        '200':
+          description: Ollama status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  models:
+                    type: array
+                    items: { type: string }
+                  modelCount: { type: integer }
+
+  /api/ollama/scan:
+    get:
+      tags: [AI / Ollama]
+      summary: Scan network for Ollama instances
+      responses:
+        '200':
+          description: Discovered instances
+
+  /api/embeddings/generate:
+    post:
+      tags: [AI / Ollama]
+      summary: Generate embeddings (SSE)
+      responses:
+        '200':
+          $ref: '#/components/responses/SSEStream'
+    get:
+      tags: [AI / Ollama]
+      summary: Get embedding statistics
+      responses:
+        '200':
+          description: Embedding stats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalParentsWithOverview: { type: integer }
+                  overviewEmbeddings: { type: integer }
+                  totalChildren: { type: integer }
+                  titleEmbeddings: { type: integer }
+
+  /api/tags/generate:
+    post:
+      tags: [AI / Ollama]
+      summary: Generate AI tags (SSE)
+      responses:
+        '200':
+          $ref: '#/components/responses/SSEStream'
+    get:
+      tags: [AI / Ollama]
+      summary: Get tagging statistics
+      responses:
+        '200':
+          description: Tagging stats
+
+  # ── *arr Integration ────────────────────────────────────────────
+  /api/arr/test:
+    post:
+      tags: [Arr Integration]
+      summary: Test *arr service connection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [service, url, apiKey]
+              properties:
+                service: { type: string, enum: [radarr, sonarr, lidarr] }
+                url: { type: string, format: uri }
+                apiKey: { type: string }
+      responses:
+        '200':
+          description: Connection test result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  name: { type: string }
+                  version: { type: string }
+
+  /api/arr/scan:
+    get:
+      tags: [Arr Integration]
+      summary: Scan network for *arr services
+      responses:
+        '200':
+          description: Discovered services
+
+  /api/arr/profiles:
+    get:
+      tags: [Arr Integration]
+      summary: Get quality profiles from all *arr services
+      responses:
+        '200':
+          description: Quality profiles
+
+  /api/arr/sync:
+    post:
+      tags: [Arr Integration]
+      summary: Sync metadata from *arr services
+      parameters:
+        - name: service
+          in: query
+          schema: { type: string, enum: [radarr, sonarr, lidarr] }
+          description: Sync specific service (all if omitted)
+      responses:
+        '200':
+          $ref: '#/components/responses/SSEStream'
+
+  /api/arr/{service}/search:
+    post:
+      tags: [Arr Integration]
+      summary: Search in a *arr service
+      parameters:
+        - $ref: '#/components/parameters/ArrService'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query: { type: string }
+      responses:
+        '200':
+          description: Search results
+
+  /api/arr/{service}/add:
+    post:
+      tags: [Arr Integration]
+      summary: Add item to *arr for monitoring
+      parameters:
+        - $ref: '#/components/parameters/ArrService'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mediaParentId, qualityProfileId, rootFolderPath]
+              properties:
+                mediaParentId: { type: integer }
+                qualityProfileId: { type: integer }
+                rootFolderPath: { type: string }
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /api/arr/{service}/monitor:
+    put:
+      tags: [Arr Integration]
+      summary: Toggle *arr monitoring
+      parameters:
+        - $ref: '#/components/parameters/ArrService'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mediaParentId, monitored]
+              properties:
+                mediaParentId: { type: integer }
+                monitored: { type: boolean }
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /api/arr/{service}/releases:
+    get:
+      tags: [Arr Integration]
+      summary: Get available releases
+      parameters:
+        - $ref: '#/components/parameters/ArrService'
+        - name: mediaParentId
+          in: query
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Available releases
+    post:
+      tags: [Arr Integration]
+      summary: Trigger manual download
+      parameters:
+        - $ref: '#/components/parameters/ArrService'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /api/arr/{service}/file-info:
+    get:
+      tags: [Arr Integration]
+      summary: Get file info for *arr item
+      parameters:
+        - $ref: '#/components/parameters/ArrService'
+        - name: mediaParentId
+          in: query
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: File quality, size, and path info
+
+  # ── Spokes (Trakt & Last.fm) ────────────────────────────────────
+  /api/spokes/trakt:
+    get:
+      tags: [Spokes]
+      summary: Initiate Trakt OAuth
+      parameters:
+        - name: start
+          in: query
+          schema: { type: integer, enum: [1] }
+          description: Set to 1 to start OAuth
+        - name: disconnect
+          in: query
+          schema: { type: integer, enum: [1] }
+          description: Set to 1 to disconnect
+      responses:
+        '302':
+          description: Redirect to Trakt authorization
+
+  /api/spokes/trakt/callback:
+    get:
+      tags: [Spokes]
+      summary: Trakt OAuth callback
+      responses:
+        '302':
+          description: Redirect after token exchange
+
+  /api/spokes/trakt/scrobble:
+    post:
+      tags: [Spokes]
+      summary: Sync watch history with Trakt (SSE)
+      responses:
+        '200':
+          $ref: '#/components/responses/SSEStream'
+
+  /api/spokes/lastfm:
+    get:
+      tags: [Spokes]
+      summary: Initiate Last.fm OAuth
+      responses:
+        '302':
+          description: Redirect to Last.fm authorization
+
+  /api/spokes/lastfm/callback:
+    get:
+      tags: [Spokes]
+      summary: Last.fm OAuth callback
+      responses:
+        '302':
+          description: Redirect after token exchange
+
+  /api/spokes/lastfm/scrobble:
+    post:
+      tags: [Spokes]
+      summary: Sync scrobbles from Last.fm (SSE)
+      responses:
+        '200':
+          $ref: '#/components/responses/SSEStream'
+
+  # ── Discovery ───────────────────────────────────────────────────
+  /api/discover/person/{id}:
+    get:
+      tags: [Discovery]
+      summary: Discover a person by TMDB ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          description: TMDB person ID
+      responses:
+        '200':
+          description: Full biography, filmography, and images
+
+  /api/discover/artist/{id}:
+    get:
+      tags: [Discovery]
+      summary: Discover an artist by local ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Full discography and Fanart.tv images
+
+  /api/discover/add:
+    post:
+      tags: [Discovery]
+      summary: Add discovered movie/show from TMDB
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tmdbId, mediaType]
+              properties:
+                tmdbId: { type: integer }
+                mediaType: { type: string, enum: [movie, show] }
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /api/discover/add-album:
+    post:
+      tags: [Discovery]
+      summary: Add a discovered album to an artist
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /api/discover/test-tmdb:
+    get:
+      tags: [Discovery]
+      summary: Test TMDB API key
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  # ── Ingest (Webhooks) ──────────────────────────────────────────
+  /api/ingest:
+    post:
+      tags: [Ingest]
+      summary: Receive Jellyfin webhook
+      description: Configure Jellyfin Webhook Plugin to point here.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Jellyfin webhook JSON payload
+      responses:
+        '200':
+          description: Webhook processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  event: { type: string }
+                  itemTitle: { type: string }
+    get:
+      tags: [Ingest]
+      summary: Now-playing SSE stream
+      description: Real-time playback updates from Jellyfin.
+      responses:
+        '200':
+          $ref: '#/components/responses/SSEStream'
+
+  # ── API Keys ────────────────────────────────────────────────────
+  /api/api-keys:
+    get:
+      tags: [API Keys]
+      summary: List API keys
+      description: Admin sees all keys, users see their own.
+      responses:
+        '200':
+          description: API key list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  keys:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ApiKey'
+    post:
+      tags: [API Keys]
+      summary: Create API key (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, example: Home Assistant Widget }
+                permissions:
+                  type: array
+                  items:
+                    type: string
+                    enum: ['read:media', 'write:media', 'read:sync', 'write:sync', admin]
+                expiresAt: { type: string, format: date-time }
+      responses:
+        '201':
+          description: Key created (full key shown only once)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  name: { type: string }
+                  key: { type: string, description: Only returned at creation }
+                  keyPrefix: { type: string }
+                  permissions: { type: array, items: { type: string } }
+                  expiresAt: { type: string, format: date-time, nullable: true }
+
+  /api/api-keys/{id}:
+    delete:
+      tags: [API Keys]
+      summary: Revoke an API key
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  # ── Backup & Restore ───────────────────────────────────────────
+  /api/backup:
+    get:
+      tags: [Backup & Restore]
+      summary: Export full database backup
+      parameters:
+        - name: includeImages
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: JSON file download
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /api/backup/import:
+    post:
+      tags: [Backup & Restore]
+      summary: Import backup
+      parameters:
+        - name: includeImages
+          in: query
+          schema: { type: boolean, default: false }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /api/factory-reset:
+    post:
+      tags: [Backup & Restore]
+      summary: Factory reset (destructive)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirm]
+              properties:
+                confirm: { type: string, enum: [RESET] }
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  # ── Tracks ──────────────────────────────────────────────────────
+  /api/tracks/{albumId}:
+    get:
+      tags: [Tracks]
+      summary: Get tracks for a music album
+      parameters:
+        - name: albumId
+          in: path
+          required: true
+          schema: { type: string }
+          description: Jellyfin album ID
+      responses:
+        '200':
+          description: Album tracks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Track'
+
+  # ── Debug ───────────────────────────────────────────────────────
+  /api/debug/movie/{id}:
+    get:
+      tags: [Debug]
+      summary: Raw debug data for a movie
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Raw DB fields, children, and credits
+
+  /api/debug/trakt-check/{tmdbId}:
+    get:
+      tags: [Debug]
+      summary: Check TMDB ID in Trakt history
+      parameters:
+        - name: tmdbId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Trakt check result
+
+  /api/debug/unmatched/{artistId}:
+    get:
+      tags: [Debug]
+      summary: Debug unmatched albums for artist
+      parameters:
+        - name: artistId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Unmatched album debug info
+
+  # ── User Preferences ───────────────────────────────────────────
+  /api/user/preferences:
+    get:
+      tags: [User Preferences]
+      summary: Get current user's preferences
+      responses:
+        '200':
+          description: User preferences
+    put:
+      tags: [User Preferences]
+      summary: Update user preferences
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  # ── Auto Sync ───────────────────────────────────────────────────
+  /api/auto-sync:
+    post:
+      tags: [Auto Sync]
+      summary: Configure automatic sync scheduling
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled: { type: boolean }
+                intervalHours: { type: integer, example: 6 }
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  # ── Jellyfin Remote ─────────────────────────────────────────────
+  /api/jellyfin/remote:
+    post:
+      tags: [Jellyfin Remote]
+      summary: Send remote command to Jellyfin
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /api/jellyfin/sessions:
+    get:
+      tags: [Jellyfin Remote]
+      summary: Get active Jellyfin sessions
+      responses:
+        '200':
+          description: Active sessions
+
+  # ── Album Matching ──────────────────────────────────────────────
+  /api/albums/match:
+    get:
+      tags: [Album Matching]
+      summary: Search for album matches
+      responses:
+        '200':
+          description: Potential matches
+    post:
+      tags: [Album Matching]
+      summary: Apply an album match
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /api/albums/match/artist-albums:
+    get:
+      tags: [Album Matching]
+      summary: Get artist albums from external databases
+      responses:
+        '200':
+          description: External album listings
+
+  # ── Conflicts ───────────────────────────────────────────────────
+  /api/conflicts:
+    get:
+      tags: [Conflicts]
+      summary: List data conflicts
+      responses:
+        '200':
+          description: Conflicts needing resolution
+    post:
+      tags: [Conflicts]
+      summary: Resolve a conflict
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+# ══════════════════════════════════════════════════════════════════
+# Components
+# ══════════════════════════════════════════════════════════════════
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: mjsession
+    bearerApiKey:
+      type: http
+      scheme: bearer
+      description: 'API key prefixed with `mj_`. Create via POST /api/api-keys.'
+
+  parameters:
+    MediaId:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer }
+      description: media_parents.id
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema: { type: integer }
+    ArrService:
+      name: service
+      in: path
+      required: true
+      schema: { type: string, enum: [radarr, sonarr, lidarr] }
+
+  responses:
+    Success:
+      description: Operation successful
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success: { type: boolean, example: true }
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Admin privileges required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    SSEStream:
+      description: Server-Sent Events stream
+      content:
+        text/event-stream:
+          schema:
+            type: string
+            description: 'SSE events: `data: {"type":"progress",...}` and `data: {"type":"complete",...}`'
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+
+    SessionUser:
+      type: object
+      properties:
+        id: { type: integer }
+        username: { type: string }
+        isAdmin: { type: boolean }
+
+    SearchResults:
+      type: object
+      properties:
+        query: { type: string }
+        results:
+          type: object
+          properties:
+            shows: { type: array, items: { $ref: '#/components/schemas/SearchItem' } }
+            movies: { type: array, items: { $ref: '#/components/schemas/SearchItem' } }
+            music: { type: array, items: { $ref: '#/components/schemas/SearchItem' } }
+            albums: { type: array, items: { $ref: '#/components/schemas/SearchItem' } }
+            people: { type: array, items: { $ref: '#/components/schemas/SearchItem' } }
+            children: { type: array, items: { $ref: '#/components/schemas/SearchItem' } }
+            history: { type: array, items: { $ref: '#/components/schemas/SearchItem' } }
+            semantic: { type: array, items: { $ref: '#/components/schemas/SearchItem' } }
+        totalCount: { type: integer }
+
+    SearchItem:
+      type: object
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        poster_url: { type: string, nullable: true }
+        release_year: { type: integer, nullable: true }
+        type: { type: string }
+        item_title: { type: string }
+        parent_title: { type: string }
+        parent_id: { type: integer }
+        episode_count: { type: integer }
+        album_count: { type: integer }
+        credit_count: { type: integer }
+
+    HistoryEntry:
+      type: object
+      properties:
+        id: { type: integer }
+        timestamp: { type: string, format: date-time }
+        duration_consumed_seconds: { type: integer }
+        completion_pct: { type: number }
+        source: { type: string }
+        item_title: { type: string }
+        season_number: { type: integer, nullable: true }
+        item_number: { type: integer, nullable: true }
+        parent_title: { type: string }
+        media_type: { type: string, enum: [movie, show, artist] }
+        poster_url: { type: string, nullable: true }
+        username: { type: string }
+
+    HistoryResponse:
+      type: object
+      properties:
+        entries: { type: array, items: { $ref: '#/components/schemas/HistoryEntry' } }
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+        totalPages: { type: integer }
+
+    Activity:
+      type: object
+      properties:
+        id: { type: integer }
+        type: { type: string }
+        message: { type: string }
+        timestamp: { type: string, format: date-time }
+        read: { type: boolean }
+
+    Rating:
+      type: object
+      properties:
+        source: { type: string }
+        rating_type: { type: string, enum: [audience, critic] }
+        value: { type: number }
+        vote_count: { type: integer, nullable: true }
+        raw_value: { type: string }
+
+    UserStats:
+      type: object
+      properties:
+        userId: { type: integer }
+        collection:
+          type: object
+          properties:
+            shows: { type: integer }
+            movies: { type: integer }
+            artists: { type: integer }
+            collectedItems: { type: integer }
+            totalRuntimeHours: { type: number }
+        playback:
+          type: object
+          properties:
+            totalPlays: { type: integer }
+            uniqueItemsPlayed: { type: integer }
+            totalPlayedHours: { type: number }
+            firstPlay: { type: string, format: date-time }
+            lastPlay: { type: string, format: date-time }
+        topItems:
+          type: array
+          items:
+            type: object
+            properties:
+              parent_title: { type: string }
+              item_title: { type: string }
+              media_type: { type: string }
+              play_count: { type: integer }
+
+    FavoriteItem:
+      type: object
+      properties:
+        parent_id: { type: integer }
+        parent_title: { type: string }
+        media_type: { type: string }
+        poster_url: { type: string, nullable: true }
+        play_count: { type: integer }
+        total_seconds: { type: integer }
+        last_played: { type: string, format: date-time }
+
+    NowPlaying:
+      type: object
+      properties:
+        userId: { type: integer }
+        playing: { type: boolean }
+        sessions:
+          type: array
+          items:
+            type: object
+            properties:
+              session_id: { type: integer }
+              title: { type: string }
+              media_type: { type: string }
+              progress_ticks: { type: integer }
+              runtime_ticks: { type: integer }
+              started_at: { type: string, format: date-time }
+              is_paused: { type: boolean }
+              progress_pct: { type: number }
+
+    AskResponse:
+      type: object
+      properties:
+        question: { type: string }
+        type: { type: string, enum: [data, chat] }
+        sql: { type: string, description: Only present for data queries }
+        results: { type: array, items: { type: object } }
+        count: { type: integer }
+        summary: { type: string }
+
+    Settings:
+      type: object
+      properties:
+        jellyfinUrl: { type: string }
+        theme: { type: string }
+        includeSpecials: { type: boolean }
+        setupComplete: { type: boolean }
+        tvdbApiKey: { type: string, description: Masked as •••••••• }
+        tmdbApiKey: { type: string, description: Masked as •••••••• }
+        omdbApiKey: { type: string, description: Masked as •••••••• }
+        discogsToken: { type: string, description: Masked as •••••••• }
+        fanartApiKey: { type: string, description: Masked as •••••••• }
+        radarrUrl: { type: string }
+        radarrApiKey: { type: string, description: Masked as •••••••• }
+        sonarrUrl: { type: string }
+        lidarrUrl: { type: string }
+        lidarrApiKey: { type: string, description: Masked as •••••••• }
+        heartBorderMovies: { type: boolean }
+
+    SettingsUpdate:
+      type: object
+      description: Only provided fields are updated.
+      properties:
+        jellyfin_url: { type: string }
+        theme: { type: string }
+        tvdb_api_key: { type: string }
+        tmdb_api_key: { type: string }
+        musicbrainz_api_key: { type: string }
+        include_specials: { type: boolean }
+        trakt_client_id: { type: string }
+        trakt_client_secret: { type: string }
+        lastfm_api_key: { type: string }
+        lastfm_shared_secret: { type: string }
+        jellyfin_pr_db_path: { type: string }
+        jellyfin_sync_check: { type: string }
+        ollama_url: { type: string }
+        ollama_embed_model: { type: string }
+        ollama_chat_model: { type: string }
+        radarr_url: { type: string }
+        radarr_api_key: { type: string }
+        radarr_external_url: { type: string }
+        sonarr_url: { type: string }
+        sonarr_api_key: { type: string }
+        sonarr_external_url: { type: string }
+        lidarr_url: { type: string }
+        lidarr_api_key: { type: string }
+        lidarr_external_url: { type: string }
+        omdb_api_key: { type: string }
+        discogs_token: { type: string }
+        fanart_api_key: { type: string }
+        heart_border_movies: { type: boolean }
+        heart_border_shows: { type: boolean }
+        heart_border_music: { type: boolean }
+        heart_border_people: { type: boolean }
+
+    ApiKey:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        key_prefix: { type: string }
+        permissions: { type: array, items: { type: string } }
+        last_used_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time, nullable: true }
+
+    Track:
+      type: object
+      properties:
+        Id: { type: string, description: Jellyfin ID }
+        Name: { type: string }
+        IndexNumber: { type: integer }
+        ParentIndexNumber: { type: integer }
+        RunTimeTicks: { type: integer, description: '100-nanosecond intervals (÷10000000 for seconds)' }
+        musicbrainz_id: { type: string, nullable: true }
