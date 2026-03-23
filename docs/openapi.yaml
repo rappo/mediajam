@@ -71,6 +71,18 @@ tags:
     description: Album matching against external databases
   - name: Conflicts
     description: Data conflict resolution
+  - name: Connections
+    description: Six Degrees of Separation — shortest path between people
+  - name: Calendar
+    description: Upcoming and recently released media
+  - name: Pipeline
+    description: Automated sync pipeline
+  - name: Setup
+    description: Initial application setup wizard
+  - name: LLM Integration
+    description: Gemini and OpenAI LLM connectivity
+  - name: Page Data
+    description: Server-side page data endpoints
 
 paths:
   # ── Authentication ──────────────────────────────────────────────
@@ -1207,14 +1219,6 @@ paths:
         '302':
           description: Redirect after token exchange
 
-  /api/spokes/trakt/scrobble:
-    post:
-      tags: [Spokes]
-      summary: Sync watch history with Trakt (SSE)
-      responses:
-        '200':
-          $ref: '#/components/responses/SSEStream'
-
   /api/spokes/lastfm:
     get:
       tags: [Spokes]
@@ -1230,14 +1234,6 @@ paths:
       responses:
         '302':
           description: Redirect after token exchange
-
-  /api/spokes/lastfm/scrobble:
-    post:
-      tags: [Spokes]
-      summary: Sync scrobbles from Last.fm (SSE)
-      responses:
-        '200':
-          $ref: '#/components/responses/SSEStream'
 
   # ── Discovery ───────────────────────────────────────────────────
   /api/discover/person/{id}:
@@ -1602,6 +1598,566 @@ paths:
       responses:
         '200':
           $ref: '#/components/responses/Success'
+
+  # ── Connections (Six Degrees) ────────────────────────────────────
+  /api/connections:
+    get:
+      tags: [Connections]
+      summary: Find shortest path between two people, or search people
+      description: |
+        Two modes:
+        - **Search**: `?search=name` returns matching people for autocomplete.
+        - **Path**: `?from=personId&to=personId` returns the shortest connection chain via shared media.
+      parameters:
+        - name: search
+          in: query
+          schema: { type: string }
+          description: Person name search query (autocomplete mode)
+        - name: from
+          in: query
+          schema: { type: integer }
+          description: Starting person ID (path mode)
+        - name: to
+          in: query
+          schema: { type: integer }
+          description: Target person ID (path mode)
+      responses:
+        '200':
+          description: Search results or connection path
+
+  # ── Calendar ────────────────────────────────────────────────────
+  /api/calendar:
+    get:
+      tags: [Calendar]
+      summary: Get upcoming and recently released movies/shows
+      responses:
+        '200':
+          description: Calendar events
+
+  /api/calendar/music:
+    get:
+      tags: [Calendar]
+      summary: Get upcoming and recently released music
+      responses:
+        '200':
+          description: Music calendar events
+
+  # ── Arr Defaults ────────────────────────────────────────────────
+  /api/arr/{service}/defaults:
+    get:
+      tags: [Arr Integration]
+      summary: Get download defaults for a service
+      parameters:
+        - $ref: '#/components/parameters/ArrService'
+      responses:
+        '200':
+          description: Default quality profile, root folder, and monitor level
+    put:
+      tags: [Arr Integration]
+      summary: Save download defaults for a service
+      parameters:
+        - $ref: '#/components/parameters/ArrService'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                qualityProfileId: { type: integer }
+                rootFolder: { type: string }
+                monitor: { type: string }
+                skipDialog: { type: boolean }
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /api/arr/lidarr/search-album:
+    post:
+      tags: [Arr Integration]
+      summary: Search for an album in Lidarr
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                query: { type: string }
+      responses:
+        '200':
+          description: Album search results
+
+  # ── Pipeline ────────────────────────────────────────────────────
+  /api/pipeline:
+    post:
+      tags: [Pipeline]
+      summary: Run the automated sync pipeline
+      responses:
+        '200':
+          $ref: '#/components/responses/SSEStream'
+
+  /api/pipeline/history:
+    get:
+      tags: [Pipeline]
+      summary: Get pipeline run history
+      responses:
+        '200':
+          description: Past pipeline runs
+
+  /api/pipeline/history/{id}:
+    get:
+      tags: [Pipeline]
+      summary: Get a specific pipeline run
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Pipeline run details
+
+  # ── Setup Wizard ────────────────────────────────────────────────
+  /api/setup/auth:
+    post:
+      tags: [Setup]
+      summary: Create initial admin user during setup
+      security: []
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /api/setup/libraries:
+    get:
+      tags: [Setup]
+      summary: Get available Jellyfin libraries during setup
+      security: []
+      responses:
+        '200':
+          description: Available libraries
+
+  /api/setup/discover:
+    post:
+      tags: [Setup]
+      summary: Auto-discover Jellyfin on the network during setup
+      security: []
+      responses:
+        '200':
+          description: Discovered Jellyfin instances
+
+  # ── Auth Extras ─────────────────────────────────────────────────
+  /api/auth/jellyfin-reauth:
+    post:
+      tags: [Authentication]
+      summary: Re-authenticate with Jellyfin
+      description: Used when the stored Jellyfin token has expired or is invalid.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string }
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  # ── External Search ─────────────────────────────────────────────
+  /api/search/external:
+    get:
+      tags: [Search]
+      summary: Search TMDB for external media
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string }
+        - name: type
+          in: query
+          schema: { type: string, enum: [movie, tv] }
+      responses:
+        '200':
+          description: TMDB search results
+
+  /api/search/external/stub:
+    post:
+      tags: [Search]
+      summary: Create a stub media item from external search result
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tmdb_id, media_type, title]
+              properties:
+                tmdb_id: { type: integer }
+                media_type: { type: string }
+                title: { type: string }
+                release_year: { type: integer }
+                poster_url: { type: string }
+                overview: { type: string }
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  # ── Media Extras ────────────────────────────────────────────────
+  /api/media/{id}/dashboard-hide:
+    post:
+      tags: [Media]
+      summary: Toggle dashboard visibility for a media item
+      parameters:
+        - $ref: '#/components/parameters/MediaId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /api/media/merge-parents:
+    post:
+      tags: [Media]
+      summary: Manually merge two media_parents records
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [keepId, mergeId]
+              properties:
+                keepId: { type: integer }
+                mergeId: { type: integer }
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /api/movies/{id}/runtime:
+    get:
+      tags: [Media]
+      summary: Get movie runtime from TMDB
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Runtime in minutes
+
+  /api/music/{id}/sync-members:
+    post:
+      tags: [Enrichment]
+      summary: Sync band members for an artist
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /api/albums/{id}/hide:
+    post:
+      tags: [Media]
+      summary: Toggle album visibility
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  # ── Sync Extras ─────────────────────────────────────────────────
+  /api/sync/ratings:
+    post:
+      tags: [Sync]
+      summary: Batch refresh external ratings
+      responses:
+        '200':
+          $ref: '#/components/responses/SSEStream'
+
+  # ── Discovery Extras ────────────────────────────────────────────
+  /api/discover/movie/{id}:
+    get:
+      tags: [Discovery]
+      summary: Discover a movie by local ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Movie details from TMDB
+
+  /api/discover/show/{id}:
+    get:
+      tags: [Discovery]
+      summary: Discover a show by local ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Show details from TMDB
+
+  # ── Avatar ──────────────────────────────────────────────────────
+  /api/avatar:
+    post:
+      tags: [User Preferences]
+      summary: Upload user avatar
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                avatar:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /api/avatar/uploads/{filename}:
+    get:
+      tags: [User Preferences]
+      summary: Serve an uploaded avatar image
+      security: []
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Avatar image
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+
+  # ── Backups (file-based) ────────────────────────────────────────
+  /api/backups:
+    get:
+      tags: [Backup & Restore]
+      summary: List available backup files
+      responses:
+        '200':
+          description: Backup file list
+    post:
+      tags: [Backup & Restore]
+      summary: Create a new backup
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /api/backups/{filename}:
+    delete:
+      tags: [Backup & Restore]
+      summary: Delete a backup file
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /api/backups/download/{filename}:
+    get:
+      tags: [Backup & Restore]
+      summary: Download a backup file
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: JSON backup file download
+
+  /api/backups/restore:
+    post:
+      tags: [Backup & Restore]
+      summary: Restore from a backup file
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  /api/backups/settings:
+    get:
+      tags: [Backup & Restore]
+      summary: Get backup schedule settings
+      responses:
+        '200':
+          description: Backup settings
+    put:
+      tags: [Backup & Restore]
+      summary: Update backup schedule settings
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+
+  # ── LLM Integration ─────────────────────────────────────────────
+  /api/llm/gemini/auth:
+    get:
+      tags: [LLM Integration]
+      summary: Initiate Gemini OAuth flow
+      responses:
+        '302':
+          description: Redirect to Google authorization
+
+  /api/llm/gemini/callback:
+    get:
+      tags: [LLM Integration]
+      summary: Gemini OAuth callback
+      responses:
+        '302':
+          description: Redirect after token exchange
+
+  /api/llm/openai/auth:
+    get:
+      tags: [LLM Integration]
+      summary: Initiate OpenAI OAuth flow
+      responses:
+        '302':
+          description: Redirect to OpenAI authorization
+
+  /api/llm/openai/callback:
+    get:
+      tags: [LLM Integration]
+      summary: OpenAI OAuth callback
+      responses:
+        '302':
+          description: Redirect after token exchange
+
+  /api/llm/openai/codex-token:
+    get:
+      tags: [LLM Integration]
+      summary: Get Codex token status
+      responses:
+        '200':
+          description: Token status
+
+  # ── Ask Extras ──────────────────────────────────────────────────
+  /api/ask/status:
+    get:
+      tags: [Ask]
+      summary: Check if Ask endpoint is available
+      responses:
+        '200':
+          description: LLM availability status
+
+  # ── Audit ───────────────────────────────────────────────────────
+  /api/audit:
+    get:
+      tags: [Debug]
+      summary: List available audit files
+      responses:
+        '200':
+          description: Audit file list
+    post:
+      tags: [Debug]
+      summary: Run a data audit
+      responses:
+        '200':
+          $ref: '#/components/responses/SSEStream'
+
+  /api/audit/compare:
+    get:
+      tags: [Debug]
+      summary: Compare two audit snapshots
+      responses:
+        '200':
+          description: Audit comparison results
+
+  /api/audit/{filename}:
+    get:
+      tags: [Debug]
+      summary: Get a specific audit file
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Audit file contents
+
+  # ── Page Data ───────────────────────────────────────────────────
+  /api/pages/movies:
+    get:
+      tags: [Page Data]
+      summary: Movies page server data
+      responses:
+        '200':
+          description: Movies with filtering and sorting
+
+  /api/pages/tv:
+    get:
+      tags: [Page Data]
+      summary: TV shows page server data
+      responses:
+        '200':
+          description: TV shows with filtering and sorting
+
+  /api/pages/music:
+    get:
+      tags: [Page Data]
+      summary: Music page server data
+      responses:
+        '200':
+          description: Artists and albums with filtering
+
+  /api/pages/stats:
+    get:
+      tags: [Page Data]
+      summary: Stats page server data
+      responses:
+        '200':
+          description: Dashboard statistics
+
+  /api/pages/history:
+    get:
+      tags: [Page Data]
+      summary: History page server data
+      responses:
+        '200':
+          description: Playback history with pagination
+
+  # ── API Docs ────────────────────────────────────────────────────
+  /api/docs:
+    get:
+      tags: [Settings]
+      summary: Swagger UI for API documentation
+      security: []
+      responses:
+        '200':
+          description: HTML page with Swagger UI
+
+  /api/docs/openapi.yaml:
+    get:
+      tags: [Settings]
+      summary: OpenAPI specification file
+      security: []
+      responses:
+        '200':
+          description: YAML OpenAPI spec
+          content:
+            text/yaml:
+              schema:
+                type: string
 
 # ══════════════════════════════════════════════════════════════════
 # Components
