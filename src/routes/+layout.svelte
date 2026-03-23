@@ -15,7 +15,9 @@
 
 	// Scroll to top on every navigation
 	afterNavigate(() => {
-		window.scrollTo({ top: 0 });
+		window.scrollTo({ top: 0, behavior: 'instant' });
+		document.documentElement.scrollTop = 0;
+		document.body.scrollTop = 0;
 	});
 
 	// Dynamic favicon: check nested page data for poster/photo URLs
