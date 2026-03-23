@@ -473,6 +473,13 @@ const newAppCols = [
     ['nightly_pipeline_days', "TEXT"],
     // Homepage smart sections
     ['homepage_preferences', "TEXT DEFAULT '{}'"],
+    // *arr download defaults: monitor level + skip dialog
+    ['radarr_default_monitor', "TEXT DEFAULT 'movieOnly'"],
+    ['sonarr_default_monitor', "TEXT DEFAULT 'all'"],
+    ['lidarr_default_monitor', "TEXT DEFAULT 'all'"],
+    ['radarr_skip_add_dialog', 'INTEGER DEFAULT 0'],
+    ['sonarr_skip_add_dialog', 'INTEGER DEFAULT 0'],
+    ['lidarr_skip_add_dialog', 'INTEGER DEFAULT 0'],
 ];
 for (const [col, type] of newAppCols) {
     if (!existingCols.has(col)) {

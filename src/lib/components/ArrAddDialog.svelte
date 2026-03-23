@@ -1,9 +1,8 @@
 <script>
     /**
      * Dialog for selecting quality profile and monitor level before adding media to *arr.
-     * Fetches profiles from /api/arr/profiles, shows dropdowns, then adds.
-     * Uses a portal to render the modal at document.body level so it escapes
-     * any parent container (e.g. gear dropdown menus).
+     * Fetches profiles from /api/arr/[service]/defaults, checks skip-dialog preference,
+     * and either auto-adds or shows dropdowns.
      *
      * @component
      * @example
@@ -73,25 +72,30 @@
     }
 
     async function openDialog() {
-        open = true;
         loading = true;
         error = "";
         selectedMonitor = options[0]?.value || "all";
         try {
-            const res = await fetch("/api/arr/profiles");
+            const res = await fetch(`/api/arr/${service}/defaults`);
             if (!res.ok) throw new Error("Failed to fetch profiles");
             const data = await res.json();
-            const svc = data[service];
-            if (!svc) throw new Error(`${serviceLabel} not configured`);
-            profiles = svc.profiles || [];
-            rootFolders = svc.rootFolders || [];
-            if (profiles.length > 0) selectedProfileId = profiles[0].id;
-            if (rootFolders.length > 0)
-                selectedRootFolder = rootFolders[0].path;
+            profiles = data.profiles || [];
+            rootFolders = data.rootFolders || [];
+            selectedProfileId = data.defaultQualityProfileId || profiles[0]?.id || 0;
+            selectedRootFolder = data.defaultRootFolder || rootFolders[0]?.path || "";
+            selectedMonitor = data.defaultMonitor || options[0]?.value || "all";
+
+            // If skip dialog is enabled, go straight to adding
+            if (data.skipDialog && selectedProfileId) {
+                loading = false;
+                await addToArr();
+                return;
+            }
         } catch (e) {
             error = e instanceof Error ? e.message : "Failed";
         }
         loading = false;
+        open = true;
     }
 
     async function addToArr() {
@@ -114,6 +118,10 @@
             onComplete?.();
         } catch (e) {
             error = e instanceof Error ? e.message : "Failed";
+            // If we were in skip-dialog mode and it failed, show the dialog
+            if (!open) {
+                open = true;
+            }
         }
         adding = false;
     }
@@ -127,9 +135,9 @@
 <button
     class="btn btn-xs btn-primary gap-1"
     onclick={openDialog}
-    disabled={adding}
+    disabled={adding || loading}
 >
-    {#if adding}
+    {#if adding || loading}
         <span class="loading loading-spinner loading-xs"></span>
     {:else}
         ✨
@@ -232,6 +240,10 @@
                             Add & Search
                         </button>
                     </div>
+
+                    <p class="text-[10px] text-base-content/40 mt-2">
+                        💡 Set defaults in Settings → Media Management to skip this dialog
+                    </p>
                 {/if}
             </div>
             <div class="modal-backdrop" onclick={close}></div>

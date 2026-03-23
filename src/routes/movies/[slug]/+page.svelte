@@ -600,37 +600,37 @@
             <div class="flex flex-wrap items-center gap-2 mt-3 px-1">
                 {#if getRating('omdb_imdb')}
                     {@const r = getRating('omdb_imdb')}
-                    <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#F5C518]/10 border border-[#F5C518]/20">
+                    <a href={data.movie.imdb_id ? `https://www.imdb.com/title/${data.movie.imdb_id}/` : `https://www.imdb.com/find?q=${encodeURIComponent(data.movie.title)}`} target="_blank" rel="noopener" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#F5C518]/10 border border-[#F5C518]/20 hover:bg-[#F5C518]/20 transition-colors cursor-pointer no-underline">
                         <ServiceIcon service="imdb" size="w-4 h-4" class="text-[#F5C518]" />
                         <span class="font-bold text-sm">{r.raw_value}</span>
                         {#if r.vote_count}
                             <span class="text-xs text-base-content/40">{(r.vote_count / 1000).toFixed(0)}k</span>
                         {/if}
-                    </div>
+                    </a>
                 {/if}
                 {#if getRating('omdb_rt')}
                     {@const r = getRating('omdb_rt')}
-                    <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FA320A]/10 border border-[#FA320A]/20">
+                    <a href="https://www.rottentomatoes.com/search?search={encodeURIComponent(data.movie.title)}" target="_blank" rel="noopener" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FA320A]/10 border border-[#FA320A]/20 hover:bg-[#FA320A]/20 transition-colors cursor-pointer no-underline">
                         <span class="text-lg leading-none">🍅</span>
                         <span class="font-bold text-sm">{r.raw_value}</span>
-                    </div>
+                    </a>
                 {/if}
                 {#if getRating('omdb_metacritic')}
                     {@const r = getRating('omdb_metacritic')}
-                    <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border {r.value >= 61 ? 'bg-success/10 border-success/20' : r.value >= 40 ? 'bg-warning/10 border-warning/20' : 'bg-error/10 border-error/20'}">
+                    <a href="https://www.metacritic.com/search/{encodeURIComponent(data.movie.title)}/" target="_blank" rel="noopener" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border {r.value >= 61 ? 'bg-success/10 border-success/20 hover:bg-success/20' : r.value >= 40 ? 'bg-warning/10 border-warning/20 hover:bg-warning/20' : 'bg-error/10 border-error/20 hover:bg-error/20'} transition-colors cursor-pointer no-underline">
                         <span class="font-bold text-xs">MC</span>
                         <span class="font-bold text-sm">{r.raw_value}</span>
-                    </div>
+                    </a>
                 {/if}
                 {#if getRating('tmdb')}
                     {@const r = getRating('tmdb')}
-                    <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#01B4E4]/10 border border-[#01B4E4]/20">
+                    <a href={data.movie.tmdb_id ? `https://www.themoviedb.org/movie/${data.movie.tmdb_id}` : '#'} target="_blank" rel="noopener" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#01B4E4]/10 border border-[#01B4E4]/20 hover:bg-[#01B4E4]/20 transition-colors cursor-pointer no-underline">
                         <ServiceIcon service="tmdb" size="w-3.5 h-3.5" class="text-[#01B4E4]" />
                         <span class="font-bold text-sm">{r.raw_value}</span>
                         {#if r.vote_count}
                             <span class="text-xs text-base-content/40">{(r.vote_count / 1000).toFixed(0)}k</span>
                         {/if}
-                    </div>
+                    </a>
                 {/if}
                 {#if data.movie.jellyfin_user_rating}
                     <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-warning/10 border border-warning/20">

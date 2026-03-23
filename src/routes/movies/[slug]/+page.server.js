@@ -70,7 +70,7 @@ export async function load({ params, locals }) {
     if (!movie) throw error(404, 'Movie not found');
 
     // ── Auto-enrich external stubs from TMDB ────────────────────────────────
-    if (!movie.jellyfin_id && movie.tmdb_id && getTmdbKey() && !movie.overview) {
+    if (!movie.jellyfin_id && movie.tmdb_id && getTmdbKey() && (!movie.overview || !movie.imdb_id)) {
         try {
             const detailRes = await tmdbFetch(`/movie/${movie.tmdb_id}`);
             if (detailRes.ok) {

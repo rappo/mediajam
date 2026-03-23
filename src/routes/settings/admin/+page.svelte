@@ -2997,6 +2997,133 @@
                     </div>
                 {/each}
             </div>
+
+            <!-- Download Defaults -->
+            <div class="divider text-xs text-base-content/40 mt-6">Download Defaults</div>
+            <p class="text-sm text-base-content/60 mb-3">
+                Set default quality profile, root folder, and monitor level for each service.
+                Enable "Do not ask" to skip the confirmation dialog when adding media.
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {#each ARR_SERVICES as svc}
+                    {@const svcKey = svc.service}
+                    {@const hasUrl = svcKey === 'radarr' ? radarrUrl : svcKey === 'sonarr' ? sonarrUrl : lidarrUrl}
+                    {@const hasKey = svcKey === 'radarr' ? (radarrApiKey || data.settings.radarrApiKey) : svcKey === 'sonarr' ? (sonarrApiKey || data.settings.sonarrApiKey) : (lidarrApiKey || data.settings.lidarrApiKey)}
+                    <div class="card bg-base-300/50 border border-base-300 p-4 space-y-3 {!hasUrl ? 'opacity-40 pointer-events-none' : ''}">
+                        <div class="flex items-center gap-2">
+                            <ServiceIcon service={svc.service} size="w-4 h-4" />
+                            <span class="font-semibold text-sm">{svc.label}</span>
+                        </div>
+
+                        {#if hasUrl && hasKey}
+                            {#await fetch(`/api/arr/${svcKey}/defaults`).then(r => r.json())}
+                                <div class="flex justify-center py-4"><span class="loading loading-spinner loading-xs"></span></div>
+                            {:then defaults}
+                                <label class="form-control">
+                                    <span class="label-text text-xs">Quality Profile</span>
+                                    <select
+                                        class="select select-xs select-bordered w-full"
+                                        value={defaults.defaultQualityProfileId}
+                                        onchange={(e) => {
+                                            fetch('/api/settings', {
+                                                method: 'PUT',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ [`${svcKey}_quality_profile_id`]: parseInt(e.target.value) })
+                                            });
+                                        }}
+                                    >
+                                        {#each (defaults.profiles || []) as p}
+                                            <option value={p.id}>{p.name}</option>
+                                        {/each}
+                                    </select>
+                                </label>
+
+                                {#if (defaults.rootFolders || []).length > 1}
+                                    <label class="form-control">
+                                        <span class="label-text text-xs">Root Folder</span>
+                                        <select
+                                            class="select select-xs select-bordered w-full"
+                                            value={defaults.defaultRootFolder}
+                                            onchange={(e) => {
+                                                fetch('/api/settings', {
+                                                    method: 'PUT',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({ [`${svcKey}_root_folder`]: e.target.value })
+                                                });
+                                            }}
+                                        >
+                                            {#each (defaults.rootFolders || []) as rf}
+                                                <option value={rf.path}>{rf.path}</option>
+                                            {/each}
+                                        </select>
+                                    </label>
+                                {/if}
+
+                                <label class="form-control">
+                                    <span class="label-text text-xs">Monitor</span>
+                                    <select
+                                        class="select select-xs select-bordered w-full"
+                                        value={defaults.defaultMonitor}
+                                        onchange={(e) => {
+                                            fetch('/api/settings', {
+                                                method: 'PUT',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ [`${svcKey}_default_monitor`]: e.target.value })
+                                            });
+                                        }}
+                                    >
+                                        {#if svcKey === 'radarr'}
+                                            <option value="movieOnly">Movie Only</option>
+                                            <option value="movieAndCollection">Movie & Collection</option>
+                                            <option value="none">None</option>
+                                        {:else if svcKey === 'sonarr'}
+                                            <option value="all">All Episodes</option>
+                                            <option value="future">Future Episodes</option>
+                                            <option value="missing">Missing Episodes</option>
+                                            <option value="existing">Existing Episodes</option>
+                                            <option value="firstSeason">First Season</option>
+                                            <option value="lastSeason">Last Season</option>
+                                            <option value="pilot">Pilot Only</option>
+                                            <option value="none">None</option>
+                                        {:else}
+                                            <option value="all">All Albums</option>
+                                            <option value="future">Future Albums</option>
+                                            <option value="missing">Missing Albums</option>
+                                            <option value="existing">Existing Albums</option>
+                                            <option value="first">First Album</option>
+                                            <option value="latest">Latest Album</option>
+                                            <option value="none">None</option>
+                                        {/if}
+                                    </select>
+                                </label>
+
+                                <div class="form-control">
+                                    <label class="label cursor-pointer justify-start gap-2 py-1">
+                                        <input
+                                            type="checkbox"
+                                            class="toggle toggle-sm toggle-primary"
+                                            checked={defaults.skipDialog}
+                                            onchange={(e) => {
+                                                fetch('/api/settings', {
+                                                    method: 'PUT',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({ [`${svcKey}_skip_add_dialog`]: e.target.checked ? 1 : 0 })
+                                                });
+                                            }}
+                                        />
+                                        <span class="label-text text-xs">Do not ask</span>
+                                    </label>
+                                    <span class="text-[10px] text-base-content/40 -mt-1">Skip quality/monitor dialog when adding</span>
+                                </div>
+                            {:catch}
+                                <p class="text-xs text-base-content/40">Connect {svc.label} first</p>
+                            {/await}
+                        {:else}
+                            <p class="text-xs text-base-content/40">Configure URL & API key above</p>
+                        {/if}
+                    </div>
+                {/each}
+            </div>
         </div>
     </div>
 
