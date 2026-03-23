@@ -610,14 +610,14 @@
                 {/if}
                 {#if getRating('omdb_rt')}
                     {@const r = getRating('omdb_rt')}
-                    <a href="https://www.rottentomatoes.com/search?search={encodeURIComponent(data.movie.title)}" target="_blank" rel="noopener" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FA320A]/10 border border-[#FA320A]/20 hover:bg-[#FA320A]/20 transition-colors cursor-pointer no-underline">
+                    <a href="https://www.rottentomatoes.com/m/{data.movie.title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')}" target="_blank" rel="noopener" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FA320A]/10 border border-[#FA320A]/20 hover:bg-[#FA320A]/20 transition-colors cursor-pointer no-underline">
                         <span class="text-lg leading-none">🍅</span>
                         <span class="font-bold text-sm">{r.raw_value}</span>
                     </a>
                 {/if}
                 {#if getRating('omdb_metacritic')}
                     {@const r = getRating('omdb_metacritic')}
-                    <a href="https://www.metacritic.com/search/{encodeURIComponent(data.movie.title)}/" target="_blank" rel="noopener" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border {r.value >= 61 ? 'bg-success/10 border-success/20 hover:bg-success/20' : r.value >= 40 ? 'bg-warning/10 border-warning/20 hover:bg-warning/20' : 'bg-error/10 border-error/20 hover:bg-error/20'} transition-colors cursor-pointer no-underline">
+                    <a href="https://www.metacritic.com/movie/{data.movie.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}/" target="_blank" rel="noopener" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border {r.value >= 61 ? 'bg-success/10 border-success/20 hover:bg-success/20' : r.value >= 40 ? 'bg-warning/10 border-warning/20 hover:bg-warning/20' : 'bg-error/10 border-error/20 hover:bg-error/20'} transition-colors cursor-pointer no-underline">
                         <span class="font-bold text-xs">MC</span>
                         <span class="font-bold text-sm">{r.raw_value}</span>
                     </a>
