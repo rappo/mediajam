@@ -140,9 +140,9 @@
     {#if adding || loading}
         <span class="loading loading-spinner loading-xs"></span>
     {:else}
-        ✨
+        ↓
     {/if}
-    Add to {serviceLabel}
+    Download Now <span class="text-[10px] opacity-60">(add to {serviceLabel})</span>
 </button>
 
 {#if open}

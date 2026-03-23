@@ -126,7 +126,7 @@
         searching: {
             icon: '🔍',
             label: 'Searching',
-            description: 'Monitored and searching for a download.',
+            description: '', // dynamically set with title below
             color: 'border-info/30 bg-info/5',
             textColor: 'text-info',
             showActions: true,
@@ -210,7 +210,9 @@
                 <div class="banner-text">
                     <span class="banner-label {config.textColor}">{config.label}</span>
                     <span class="banner-desc">
-                        {#if status === 'partial_missing' && missingCount}
+                        {#if status === 'searching'}
+                            Searching for {title}.
+                        {:else if status === 'partial_missing' && missingCount}
                             {missingCount} episode{missingCount === 1 ? ' is' : 's are'} missing from your library.
                         {:else}
                             {config.description}
@@ -248,13 +250,13 @@
                                 {:else}
                                     ⚡
                                 {/if}
-                                Auto
+                                Re-Search
                             </button>
                             <button
                                 class="btn btn-sm btn-ghost gap-1"
                                 onclick={handleManualSearch}
                             >
-                                🔎 Manual
+                                🔎 Manual Search
                             </button>
                         </div>
                         <InteractiveSearchDialog
