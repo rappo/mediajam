@@ -145,6 +145,7 @@
         <div class="modal modal-open" style="z-index: 1000;">
             <div class="modal-box max-w-md" onclick={(e) => e.stopPropagation()}>
                 <h3 class="font-bold text-lg">Add to {serviceLabel}</h3>
+                <p class="text-xs text-base-content/50 mt-1">Will automatically search for downloads after adding</p>
 
                 {#if loading}
                     <div class="flex justify-center py-6">
@@ -228,7 +229,7 @@
                                 <span class="loading loading-spinner loading-xs"
                                 ></span>
                             {/if}
-                            Add to {serviceLabel}
+                            Add & Search
                         </button>
                     </div>
                 {/if}

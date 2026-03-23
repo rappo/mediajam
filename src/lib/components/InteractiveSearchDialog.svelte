@@ -173,10 +173,10 @@
 <button
     class="btn btn-xs btn-ghost gap-1"
     onclick={show}
-    title="Search indexers for available releases"
+    title="Re-search indexers for available downloads"
 >
     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-    Download Search
+    Search Downloads
 </button>
 
 <!-- Native <dialog> renders in the top-layer, immune to parent overflow:hidden -->
@@ -189,13 +189,13 @@
         <!-- Header -->
         <div class="dialog-header">
             <div>
-                <h2 class="dialog-title">Interactive Search</h2>
+                <h2 class="dialog-title">Search Indexers</h2>
                 <p class="dialog-subtitle">{title}</p>
             </div>
             <div class="dialog-header-actions">
                 {#if !loading}
                     <button class="btn btn-sm btn-ghost gap-1" onclick={search}>
-                        🔄 Retry
+                        🔄 Re-Search
                     </button>
                 {/if}
                 <button class="btn btn-sm btn-ghost btn-circle" onclick={close}>✕</button>
@@ -215,7 +215,7 @@
                     <span class="text-4xl">⚠️</span>
                     <p class="text-sm text-error max-w-md text-center whitespace-pre-line">{error}</p>
                     <button class="btn btn-sm btn-primary gap-1" onclick={search}>
-                        🔄 Retry Search
+                        🔄 Re-Search Indexers
                     </button>
                 </div>
             {:else if releases.length === 0}
