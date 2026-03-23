@@ -332,6 +332,22 @@
 					</svg>
 					Stats
 				</a>
+				<a href="/connections" role="tab" class="tab tab-sm font-medium {currentPath === '/connections' ? 'tab-active' : ''}">
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						class="h-4 w-4 mr-1.5"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
+						<circle cx="5" cy="6" r="3" /><circle cx="19" cy="6" r="3" /><circle cx="12" cy="18" r="3" />
+						<path d="M7.5 8 12 15.5 16.5 8" />
+					</svg>
+					6°
+				</a>
 			</div>
 			</div>
 
