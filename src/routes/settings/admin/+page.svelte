@@ -569,6 +569,23 @@
             if (fanartApiKey && fanartApiKey !== "••••••••")
                 payload.fanart_api_key = fanartApiKey;
 
+            // *arr settings
+            for (const svc of ['radarr', 'sonarr', 'lidarr']) {
+                const svcUrl = svc === 'radarr' ? radarrUrl : svc === 'sonarr' ? sonarrUrl : lidarrUrl;
+                const svcKey = svc === 'radarr' ? radarrApiKey : svc === 'sonarr' ? sonarrApiKey : lidarrApiKey;
+                const svcExtUrl = svc === 'radarr' ? radarrExternalUrl : svc === 'sonarr' ? sonarrExternalUrl : lidarrExternalUrl;
+                if (svcUrl) payload[`${svc}_url`] = svcUrl;
+                if (svcKey) payload[`${svc}_api_key`] = svcKey;
+                payload[`${svc}_external_url`] = svcExtUrl || '';
+            }
+            // Download defaults
+            for (const svc of ['radarr', 'sonarr', 'lidarr']) {
+                if (arrDefaultQualityProfileId[svc]) payload[`${svc}_quality_profile_id`] = arrDefaultQualityProfileId[svc];
+                if (arrDefaultRootFolder[svc]) payload[`${svc}_root_folder`] = arrDefaultRootFolder[svc];
+                if (arrDefaultMonitor[svc]) payload[`${svc}_default_monitor`] = arrDefaultMonitor[svc];
+                payload[`${svc}_skip_add_dialog`] = arrSkipDialog[svc] ? 1 : 0;
+            }
+
 
             const res = await fetch("/api/settings", {
                 method: "PUT",
@@ -1898,42 +1915,40 @@
         }
     }
 
-    /**
-     * @param {string} service
-     */
-    async function saveArrSettings(service) {
-        const url =
-            service === "radarr"
-                ? radarrUrl
-                : service === "sonarr"
-                  ? sonarrUrl
-                  : lidarrUrl;
-        const key =
-            service === "radarr"
-                ? radarrApiKey
-                : service === "sonarr"
-                  ? sonarrApiKey
-                  : lidarrApiKey;
-        const extUrl =
-            service === "radarr"
-                ? radarrExternalUrl
-                : service === "sonarr"
-                  ? sonarrExternalUrl
-                  : lidarrExternalUrl;
-        /** @type {Record<string, string>} */
-        const body = { [`${service}_url`]: url, [`${service}_external_url`]: extUrl };
-        if (key) body[`${service}_api_key`] = key;
-        try {
-            await fetch("/api/settings", {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(body),
-            });
-            arrTestInfo[service] = "Settings saved ✓";
-        } catch {
-            arrTestInfo[service] = "Save failed";
+    // Download defaults state (populated on mount by $effect below)
+    /** @type {Record<string, any>} */
+    let arrDefaultQualityProfileId = $state({ radarr: 0, sonarr: 0, lidarr: 0 });
+    /** @type {Record<string, string>} */
+    let arrDefaultRootFolder = $state({ radarr: '', sonarr: '', lidarr: '' });
+    /** @type {Record<string, string>} */
+    let arrDefaultMonitor = $state({ radarr: 'movieOnly', sonarr: 'all', lidarr: 'all' });
+    /** @type {Record<string, boolean>} */
+    let arrSkipDialog = $state({ radarr: false, sonarr: false, lidarr: false });
+    /** @type {Record<string, any[]>} */
+    let arrProfiles = $state({ radarr: [], sonarr: [], lidarr: [] });
+    /** @type {Record<string, any[]>} */
+    let arrRootFolders = $state({ radarr: [], sonarr: [], lidarr: [] });
+    /** @type {Record<string, boolean>} */
+    let arrDefaultsLoaded = $state({ radarr: false, sonarr: false, lidarr: false });
+
+    // Fetch download defaults for each configured service on mount
+    $effect(() => {
+        for (const svc of ['radarr', 'sonarr', 'lidarr']) {
+            const svcUrl = svc === 'radarr' ? radarrUrl : svc === 'sonarr' ? sonarrUrl : lidarrUrl;
+            const hasKey = svc === 'radarr' ? (radarrApiKey || data.settings.radarrApiKey) : svc === 'sonarr' ? (sonarrApiKey || data.settings.sonarrApiKey) : (lidarrApiKey || data.settings.lidarrApiKey);
+            if (svcUrl && hasKey && !arrDefaultsLoaded[svc]) {
+                arrDefaultsLoaded[svc] = true;
+                fetch(`/api/arr/${svc}/defaults`).then(r => r.json()).then(d => {
+                    arrProfiles[svc] = d.profiles || [];
+                    arrRootFolders[svc] = d.rootFolders || [];
+                    arrDefaultQualityProfileId[svc] = d.defaultQualityProfileId || (d.profiles?.[0]?.id || 0);
+                    arrDefaultRootFolder[svc] = d.defaultRootFolder || (d.rootFolders?.[0]?.path || '');
+                    arrDefaultMonitor[svc] = d.defaultMonitor || (svc === 'radarr' ? 'movieOnly' : 'all');
+                    arrSkipDialog[svc] = !!d.skipDialog;
+                }).catch(() => {});
+            }
         }
-    }
+    });
 
     async function loadEmbeddingStats() {
         try {
@@ -2977,15 +2992,6 @@
                                     🔌 Test
                                 {/if}
                             </button>
-                            <button
-                                class="btn btn-xs btn-outline flex-1"
-                                disabled={!url ||
-                                    (!apiKey &&
-                                        !data.settings[`${svc.service}ApiKey`])}
-                                onclick={() => saveArrSettings(svc.service)}
-                            >
-                                💾 Save
-                            </button>
                         </div>
 
                         <!-- Status info -->
@@ -3015,44 +3021,27 @@
                             <span class="font-semibold text-sm">{svc.label}</span>
                         </div>
 
-                        {#if hasUrl && hasKey}
-                            {#await fetch(`/api/arr/${svcKey}/defaults`).then(r => r.json())}
-                                <div class="flex justify-center py-4"><span class="loading loading-spinner loading-xs"></span></div>
-                            {:then defaults}
+                        {#if hasUrl && hasKey && arrProfiles[svcKey]?.length > 0}
                                 <label class="form-control">
                                     <span class="label-text text-xs">Quality Profile</span>
                                     <select
                                         class="select select-xs select-bordered w-full"
-                                        value={defaults.defaultQualityProfileId}
-                                        onchange={(e) => {
-                                            fetch('/api/settings', {
-                                                method: 'PUT',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({ [`${svcKey}_quality_profile_id`]: parseInt(e.target.value) })
-                                            });
-                                        }}
+                                        bind:value={arrDefaultQualityProfileId[svcKey]}
                                     >
-                                        {#each (defaults.profiles || []) as p}
+                                        {#each arrProfiles[svcKey] as p}
                                             <option value={p.id}>{p.name}</option>
                                         {/each}
                                     </select>
                                 </label>
 
-                                {#if (defaults.rootFolders || []).length > 1}
+                                {#if arrRootFolders[svcKey]?.length > 1}
                                     <label class="form-control">
                                         <span class="label-text text-xs">Root Folder</span>
                                         <select
                                             class="select select-xs select-bordered w-full"
-                                            value={defaults.defaultRootFolder}
-                                            onchange={(e) => {
-                                                fetch('/api/settings', {
-                                                    method: 'PUT',
-                                                    headers: { 'Content-Type': 'application/json' },
-                                                    body: JSON.stringify({ [`${svcKey}_root_folder`]: e.target.value })
-                                                });
-                                            }}
+                                            bind:value={arrDefaultRootFolder[svcKey]}
                                         >
-                                            {#each (defaults.rootFolders || []) as rf}
+                                            {#each arrRootFolders[svcKey] as rf}
                                                 <option value={rf.path}>{rf.path}</option>
                                             {/each}
                                         </select>
@@ -3063,14 +3052,7 @@
                                     <span class="label-text text-xs">Monitor</span>
                                     <select
                                         class="select select-xs select-bordered w-full"
-                                        value={defaults.defaultMonitor}
-                                        onchange={(e) => {
-                                            fetch('/api/settings', {
-                                                method: 'PUT',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({ [`${svcKey}_default_monitor`]: e.target.value })
-                                            });
-                                        }}
+                                        bind:value={arrDefaultMonitor[svcKey]}
                                     >
                                         {#if svcKey === 'radarr'}
                                             <option value="movieOnly">Movie Only</option>
@@ -3102,22 +3084,14 @@
                                         <input
                                             type="checkbox"
                                             class="toggle toggle-sm toggle-primary"
-                                            checked={defaults.skipDialog}
-                                            onchange={(e) => {
-                                                fetch('/api/settings', {
-                                                    method: 'PUT',
-                                                    headers: { 'Content-Type': 'application/json' },
-                                                    body: JSON.stringify({ [`${svcKey}_skip_add_dialog`]: e.target.checked ? 1 : 0 })
-                                                });
-                                            }}
+                                            bind:checked={arrSkipDialog[svcKey]}
                                         />
                                         <span class="label-text text-xs">Do not ask</span>
                                     </label>
                                     <span class="text-[10px] text-base-content/40 -mt-1">Skip quality/monitor dialog when adding</span>
                                 </div>
-                            {:catch}
-                                <p class="text-xs text-base-content/40">Connect {svc.label} first</p>
-                            {/await}
+                        {:else if hasUrl && hasKey}
+                            <div class="flex justify-center py-4"><span class="loading loading-spinner loading-xs"></span></div>
                         {:else}
                             <p class="text-xs text-base-content/40">Configure URL & API key above</p>
                         {/if}
