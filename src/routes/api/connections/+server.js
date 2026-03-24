@@ -1,11 +1,13 @@
 import { json } from '@sveltejs/kit';
-import { findShortestPath, searchPeople } from '$lib/server/connections.js';
+import { findShortestPath, findMultiplePaths, searchPeople } from '$lib/server/connections.js';
 
 /** @type {import('./$types').RequestHandler} */
 export function GET({ url }) {
     const from = url.searchParams.get('from');
     const to = url.searchParams.get('to');
     const search = url.searchParams.get('search');
+    const excludeParam = url.searchParams.get('exclude');
+    const countParam = url.searchParams.get('count');
 
     // Person search mode (for autocomplete)
     if (search) {
@@ -25,6 +27,24 @@ export function GET({ url }) {
         return json({ error: 'Invalid person IDs' }, { status: 400 });
     }
 
-    const result = findShortestPath(fromId, toId);
+    // Parse excluded media IDs
+    /** @type {Set<number>|undefined} */
+    let excludeMedia;
+    if (excludeParam) {
+        excludeMedia = new Set(
+            excludeParam.split(',').map(Number).filter(n => !isNaN(n))
+        );
+    }
+
+    // Multiple paths mode
+    const count = Math.min(parseInt(countParam || '1') || 1, 10);
+
+    if (count > 1) {
+        const paths = findMultiplePaths(fromId, toId, count, excludeMedia);
+        return json({ paths });
+    }
+
+    // Single path mode
+    const result = findShortestPath(fromId, toId, excludeMedia);
     return json(result);
 }

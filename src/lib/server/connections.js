@@ -57,9 +57,10 @@ const MAX_DEGREES = 6;
  * 
  * @param {number} fromPersonId 
  * @param {number} toPersonId 
+ * @param {Set<number>} [excludeMedia] - media IDs to skip (for alternate routes)
  * @returns {PathResult}
  */
-export function findShortestPath(fromPersonId, toPersonId) {
+export function findShortestPath(fromPersonId, toPersonId, excludeMedia) {
     // Same person = degree 0
     if (fromPersonId === toPersonId) {
         const person = getPersonDetails.get(fromPersonId);
@@ -69,10 +70,8 @@ export function findShortestPath(fromPersonId, toPersonId) {
         };
     }
 
-    // BFS: each "level" = one degree (person → media → person)
-    // Track: which person was visited, and how we got there (parent person + connecting media)
     /** @type {Map<number, { parentPersonId: number, mediaId: number }>} */
-    const visited = new Map(); // personId → { parentPersonId, mediaId }
+    const visited = new Map();
     visited.set(fromPersonId, { parentPersonId: -1, mediaId: -1 });
 
     /** @type {number[]} */
@@ -83,13 +82,14 @@ export function findShortestPath(fromPersonId, toPersonId) {
         const nextFrontier = [];
 
         for (const personId of frontier) {
-            // Get all media this person appears in
             const mediaIds = /** @type {{ media_parent_id: number }[]} */ (
                 getMediaForPerson.all(personId)
             ).map(r => r.media_parent_id);
 
             for (const mediaId of mediaIds) {
-                // Get all other people in this media
+                // Skip excluded media
+                if (excludeMedia && excludeMedia.has(mediaId)) continue;
+
                 const coStarIds = /** @type {{ person_id: number }[]} */ (
                     getPersonsForMedia.all(mediaId)
                 ).map(r => r.person_id);
@@ -100,7 +100,6 @@ export function findShortestPath(fromPersonId, toPersonId) {
                     visited.set(coStarId, { parentPersonId: personId, mediaId });
 
                     if (coStarId === toPersonId) {
-                        // Found! Reconstruct the path
                         return reconstructPath(fromPersonId, toPersonId, visited);
                     }
 
@@ -109,23 +108,55 @@ export function findShortestPath(fromPersonId, toPersonId) {
             }
         }
 
-        if (nextFrontier.length === 0) break; // No more nodes to explore
+        if (nextFrontier.length === 0) break;
         frontier = nextFrontier;
     }
 
-    // No connection found within MAX_DEGREES
     return { degrees: -1, path: [] };
 }
 
 /**
+ * Find multiple unique paths between two people.
+ * Each subsequent path excludes media used in all previous paths.
+ * 
+ * @param {number} fromPersonId 
+ * @param {number} toPersonId 
+ * @param {number} count - how many paths to find
+ * @param {Set<number>} [initialExcludes] - media IDs to always skip
+ * @returns {PathResult[]}
+ */
+export function findMultiplePaths(fromPersonId, toPersonId, count = 3, initialExcludes) {
+    /** @type {PathResult[]} */
+    const paths = [];
+    /** @type {Set<number>} */
+    const usedMedia = new Set(initialExcludes || []);
+
+    for (let i = 0; i < count; i++) {
+        const result = findShortestPath(fromPersonId, toPersonId, usedMedia.size > 0 ? usedMedia : undefined);
+        if (result.degrees < 0) break; // No more paths
+
+        paths.push(result);
+
+        // Collect media IDs from this path to exclude next time
+        for (const node of result.path) {
+            if (node.media) {
+                usedMedia.add(node.media.id);
+            }
+        }
+    }
+
+    return paths;
+}
+
+/**
  * Reconstruct the path from BFS parent chain.
+ * Now includes person names in the role objects for clearer attribution.
  * @param {number} fromId 
  * @param {number} toId 
  * @param {Map<number, { parentPersonId: number, mediaId: number }>} visited 
  * @returns {PathResult}
  */
 function reconstructPath(fromId, toId, visited) {
-    // Walk backwards from destination to source
     /** @type {Array<{ personId: number, mediaId: number }>} */
     const chain = [];
     let current = toId;
@@ -137,36 +168,35 @@ function reconstructPath(fromId, toId, visited) {
         current = edge.parentPersonId;
     }
 
-    // Build the rich path with details
     /** @type {Array<{ person: any, media: any, role: any }>} */
     const path = [];
 
     // Start person
+    const startPerson = getPersonDetails.get(fromId);
     path.push({
-        person: getPersonDetails.get(fromId),
+        person: startPerson,
         media: null,
         role: null
     });
 
     for (const { personId, mediaId } of chain) {
         const media = getMediaDetails.get(mediaId);
-        // Role of the PREVIOUS person in this media
-        const prevPersonId = path[path.length - 1].person.id;
-        const prevRole = getCreditRole.get(prevPersonId, mediaId);
-        // Role of the current person in this media
+        const prevPerson = path[path.length - 1].person;
+        const prevRole = getCreditRole.get(prevPerson.id, mediaId);
+        const nextPerson = getPersonDetails.get(personId);
         const currentRole = getCreditRole.get(personId, mediaId);
 
         path.push({
             person: null,
             media,
             role: {
-                from: prevRole || null,
-                to: currentRole || null
+                from: prevRole ? { ...prevRole, person_name: prevPerson.name } : null,
+                to: currentRole ? { ...currentRole, person_name: nextPerson.name } : null
             }
         });
 
         path.push({
-            person: getPersonDetails.get(personId),
+            person: nextPerson,
             media: null,
             role: null
         });

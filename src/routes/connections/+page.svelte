@@ -18,7 +18,14 @@
     let searching = $state(false);
     /** @type {any} */
     let result = $state(null);
+    /** @type {any[]|null} */
+    let multiResults = $state(null);
     let error = $state('');
+
+    // Exclusions — media IDs blocked by clicking X
+    /** @type {Set<number>} */
+    let excludedMedia = $state(new Set());
+    let pathCount = $state(1);
 
     // Debounced search
     let timerA = /** @type {any} */ (null);
@@ -46,6 +53,7 @@
         }, 250);
     }
 
+    /** @param {any} person */
     function selectA(person) {
         personA = person;
         searchA = person.name;
@@ -53,6 +61,7 @@
         resultsA = [];
     }
 
+    /** @param {any} person */
     function selectB(person) {
         personB = person;
         searchB = person.name;
@@ -65,6 +74,8 @@
         searchA = '';
         resultsA = [];
         result = null;
+        multiResults = null;
+        excludedMedia = new Set();
     }
 
     function clearB() {
@@ -72,6 +83,8 @@
         searchB = '';
         resultsB = [];
         result = null;
+        multiResults = null;
+        excludedMedia = new Set();
     }
 
     async function findConnection() {
@@ -79,14 +92,28 @@
         searching = true;
         error = '';
         result = null;
+        multiResults = null;
         try {
-            const res = await fetch(`/api/connections?from=${personA.id}&to=${personB.id}`);
+            let url = `/api/connections?from=${personA.id}&to=${personB.id}`;
+            if (excludedMedia.size > 0) {
+                url += `&exclude=${[...excludedMedia].join(',')}`;
+            }
+            if (pathCount > 1) {
+                url += `&count=${pathCount}`;
+            }
+            const res = await fetch(url);
             if (!res.ok) {
                 const data = await res.json();
                 throw new Error(data.error || 'Search failed');
             }
-            result = await res.json();
-        } catch (e) {
+            const data = await res.json();
+            if (data.paths) {
+                multiResults = data.paths;
+                result = data.paths.length > 0 ? data.paths[0] : { degrees: -1, path: [] };
+            } else {
+                result = data;
+            }
+        } catch (/** @type {any} */ e) {
             error = e instanceof Error ? e.message : 'Search failed';
         }
         searching = false;
@@ -100,19 +127,34 @@
         personB = tmpPerson;
         searchB = tmpSearch;
         result = null;
+        multiResults = null;
+        excludedMedia = new Set();
+    }
+
+    /** Block a media node and re-search for an alternative route */
+    function blockMedia(/** @type {number} */ mediaId) {
+        excludedMedia = new Set([...excludedMedia, mediaId]);
+        findConnection();
+    }
+
+    /** Clear all exclusions and re-search */
+    function clearExclusions() {
+        excludedMedia = new Set();
+        findConnection();
     }
 
     /** Get display URL for person page */
-    function personUrl(person) {
+    function personUrl(/** @type {any} */ person) {
         return `/people/${person.slug || person.id}`;
     }
 
     /** Get display URL for media page */
-    function mediaUrl(media) {
-        const type = media.media_type === 'movie' ? 'movies' : media.media_type === 'show' ? 'tv' : 'music';
-        return `/${type}/${media.slug || media.id}`;
+    function mediaUrl(/** @type {any} */ media) {
+        const typeMap = /** @type {Record<string, string>} */ ({ movie: 'movies', show: 'tv' });
+        return `/${typeMap[media.media_type] || 'music'}/${media.slug || media.id}`;
     }
 
+    /** @param {string} type */
     function mediaIcon(type) {
         if (type === 'movie') return '🎬';
         if (type === 'show') return '📺';
@@ -120,6 +162,7 @@
     }
 
     // Close dropdowns on outside click
+    /** @param {MouseEvent} e */
     function handleClickOutside(e) {
         const target = /** @type {HTMLElement} */ (e.target);
         if (!target.closest('.search-box-a')) showDropdownA = false;
@@ -133,7 +176,7 @@
 
 <svelte:window onclick={handleClickOutside} />
 
-<div class="max-w-4xl mx-auto space-y-8">
+<div class="max-w-5xl mx-auto space-y-8 p-4">
     <!-- Header -->
     <div class="text-center space-y-2">
         <h1 class="text-3xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
@@ -191,7 +234,7 @@
             {/if}
         </div>
 
-        <!-- Swap + Connect -->
+        <!-- Swap -->
         <div class="flex items-center gap-2">
             <button class="btn btn-ghost btn-sm btn-circle" onclick={swap} title="Swap">
                 ⇄
@@ -244,8 +287,8 @@
         </div>
     </div>
 
-    <!-- Find Button -->
-    <div class="text-center">
+    <!-- Controls Row: Find button + Path Count -->
+    <div class="flex items-center justify-center gap-4 flex-wrap">
         <button
             class="btn btn-primary gap-2 px-8"
             disabled={!personA || !personB || searching}
@@ -258,6 +301,22 @@
                 🔗 Find Connection
             {/if}
         </button>
+
+        <div class="flex items-center gap-2">
+            <label class="text-sm text-base-content/60" for="path-count">Paths:</label>
+            <select id="path-count" class="select select-bordered select-sm w-20" bind:value={pathCount}>
+                <option value={1}>1</option>
+                <option value={3}>3</option>
+                <option value={5}>5</option>
+                <option value={10}>10</option>
+            </select>
+        </div>
+
+        {#if excludedMedia.size > 0}
+            <button class="btn btn-outline btn-warning btn-sm gap-1" onclick={clearExclusions}>
+                🚫 Clear {excludedMedia.size} block{excludedMedia.size > 1 ? 's' : ''}
+            </button>
+        {/if}
     </div>
 
     <!-- Error -->
@@ -266,7 +325,19 @@
     {/if}
 
     <!-- Results -->
-    {#if result}
+    {#if multiResults && multiResults.length > 0}
+        <!-- Multiple Paths -->
+        {#each multiResults as pathResult, pi}
+            <div class="path-section">
+                <div class="flex items-center justify-center gap-2 mb-2">
+                    <div class="badge badge-primary gap-1 px-4 py-3">
+                        Path {pi + 1} — {pathResult.degrees} {pathResult.degrees === 1 ? 'degree' : 'degrees'}
+                    </div>
+                </div>
+                {@render pathVisualization(pathResult)}
+            </div>
+        {/each}
+    {:else if result}
         {#if result.degrees === 0}
             <div class="text-center py-8">
                 <div class="text-5xl mb-3">🪞</div>
@@ -276,81 +347,101 @@
             <div class="text-center py-8">
                 <div class="text-5xl mb-3">🌌</div>
                 <p class="text-lg font-medium">No connection found</p>
-                <p class="text-sm text-base-content/50 mt-1">These two people are more than 6 degrees apart — or have no shared media in your library.</p>
+                <p class="text-sm text-base-content/50 mt-1">
+                    {#if excludedMedia.size > 0}
+                        No alternate route available with {excludedMedia.size} blocked connection{excludedMedia.size > 1 ? 's' : ''}.
+                        <button class="link link-primary" onclick={clearExclusions}>Clear blocks and retry</button>
+                    {:else}
+                        These two people are more than 6 degrees apart — or have no shared media in your library.
+                    {/if}
+                </p>
             </div>
         {:else}
-            <!-- Degree badge -->
+            <!-- Single result (no multi) -->
             <div class="text-center">
                 <div class="badge badge-lg badge-primary gap-1 text-lg px-6 py-4">
                     {result.degrees} {result.degrees === 1 ? 'degree' : 'degrees'} of separation
                 </div>
             </div>
-
-            <!-- Path visualization -->
-            <div class="connection-path">
-                {#each result.path as node, i}
-                    {#if node.person}
-                        <!-- Person node -->
-                        <a href={personUrl(node.person)} class="person-node group">
-                            <div class="person-avatar {i === 0 ? 'ring-primary' : i === result.path.length - 1 ? 'ring-secondary' : 'ring-base-300'}">
-                                {#if node.person.photo_url}
-                                    <img src={imgUrl(node.person.photo_url, 120)} alt={node.person.name} class="w-full h-full object-cover" />
-                                {:else}
-                                    <div class="w-full h-full flex items-center justify-center text-2xl bg-base-300">👤</div>
-                                {/if}
-                            </div>
-                            <span class="person-name group-hover:text-primary transition-colors">{node.person.name}</span>
-                        </a>
-                    {:else if node.media}
-                        <!-- Media connector -->
-                        <div class="media-connector">
-                            <div class="connector-line"></div>
-                            <a href={mediaUrl(node.media)} class="media-node group">
-                                {#if node.media.poster_url}
-                                    <img src={imgUrl(node.media.poster_url, 100)} alt={node.media.title} class="media-poster" />
-                                {:else}
-                                    <div class="media-poster bg-base-300 flex items-center justify-center text-xl">
-                                        {mediaIcon(node.media.media_type)}
-                                    </div>
-                                {/if}
-                                <div class="media-info">
-                                    <span class="media-title group-hover:text-primary transition-colors">{node.media.title}</span>
-                                    <div class="media-meta">
-                                        <span>{mediaIcon(node.media.media_type)}</span>
-                                        {#if node.media.release_year}
-                                            <span>{node.media.release_year}</span>
-                                        {/if}
-                                    </div>
-                                    {#if node.role}
-                                        <div class="media-roles">
-                                            {#if node.role.from}
-                                                <span class="role-badge">
-                                                    {node.role.from.role_type}
-                                                    {#if node.role.from.character_name}
-                                                        <span class="role-character">as {node.role.from.character_name}</span>
-                                                    {/if}
-                                                </span>
-                                            {/if}
-                                            {#if node.role.to}
-                                                <span class="role-badge">
-                                                    {node.role.to.role_type}
-                                                    {#if node.role.to.character_name}
-                                                        <span class="role-character">as {node.role.to.character_name}</span>
-                                                    {/if}
-                                                </span>
-                                            {/if}
-                                        </div>
-                                    {/if}
-                                </div>
-                            </a>
-                            <div class="connector-line"></div>
-                        </div>
-                    {/if}
-                {/each}
-            </div>
+            {@render pathVisualization(result)}
         {/if}
     {/if}
 </div>
+
+{#snippet pathVisualization(pathResult)}
+    <div class="connection-path">
+        {#each pathResult.path as node, i}
+            {#if node.person}
+                <!-- Person node -->
+                <a href={personUrl(node.person)} class="person-node group">
+                    <div class="person-avatar {i === 0 ? 'avatar-start' : i === pathResult.path.length - 1 ? 'avatar-end' : ''}">
+                        {#if node.person.photo_url}
+                            <img src={imgUrl(node.person.photo_url, 120)} alt={node.person.name} class="w-full h-full object-cover" />
+                        {:else}
+                            <div class="w-full h-full flex items-center justify-center text-2xl bg-base-300">👤</div>
+                        {/if}
+                    </div>
+                    <span class="person-name group-hover:text-primary transition-colors">{node.person.name}</span>
+                </a>
+            {:else if node.media}
+                <!-- Media connector with X button to block -->
+                <div class="media-connector">
+                    <div class="connector-line"></div>
+                    <div class="media-node-wrapper">
+                        <button
+                            class="block-btn"
+                            title="Block this connection and find alternate route"
+                            onclick={() => blockMedia(node.media.id)}
+                        >✕</button>
+                        <a href={mediaUrl(node.media)} class="media-node group">
+                            {#if node.media.poster_url}
+                                <img src={imgUrl(node.media.poster_url, 100)} alt={node.media.title} class="media-poster" />
+                            {:else}
+                                <div class="media-poster bg-base-300 flex items-center justify-center text-xl">
+                                    {mediaIcon(node.media.media_type)}
+                                </div>
+                            {/if}
+                            <div class="media-info">
+                                <span class="media-title group-hover:text-primary transition-colors">{node.media.title}</span>
+                                <div class="media-meta">
+                                    <span>{mediaIcon(node.media.media_type)}</span>
+                                    {#if node.media.release_year}
+                                        <span>{node.media.release_year}</span>
+                                    {/if}
+                                </div>
+                                {#if node.role}
+                                    <div class="media-roles">
+                                        {#if node.role.from}
+                                            <span class="role-badge role-from">
+                                                <span class="role-person-name">{node.role.from.person_name}</span>
+                                                <span class="role-details">
+                                                    {node.role.from.role_type}{#if node.role.from.character_name}
+                                                        <span class="role-character"> as {node.role.from.character_name}</span>
+                                                    {/if}
+                                                </span>
+                                            </span>
+                                        {/if}
+                                        {#if node.role.to}
+                                            <span class="role-badge role-to">
+                                                <span class="role-person-name">{node.role.to.person_name}</span>
+                                                <span class="role-details">
+                                                    {node.role.to.role_type}{#if node.role.to.character_name}
+                                                        <span class="role-character"> as {node.role.to.character_name}</span>
+                                                    {/if}
+                                                </span>
+                                            </span>
+                                        {/if}
+                                    </div>
+                                {/if}
+                            </div>
+                        </a>
+                    </div>
+                    <div class="connector-line"></div>
+                </div>
+            {/if}
+        {/each}
+    </div>
+{/snippet}
 
 <style>
     .connection-path {
@@ -379,11 +470,11 @@
         box-shadow: 0 0 0 3px oklch(var(--b3));
     }
 
-    .person-node:first-child .person-avatar {
+    .person-avatar.avatar-start {
         box-shadow: 0 0 0 3px oklch(var(--p));
     }
 
-    .person-node:last-child .person-avatar {
+    .person-avatar.avatar-end {
         box-shadow: 0 0 0 3px oklch(var(--s));
     }
 
@@ -410,6 +501,38 @@
         background: linear-gradient(to bottom, oklch(var(--p) / 0.3), oklch(var(--s) / 0.3));
     }
 
+    .media-node-wrapper {
+        position: relative;
+    }
+
+    .block-btn {
+        position: absolute;
+        top: -6px;
+        right: -6px;
+        z-index: 10;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: oklch(var(--er));
+        color: oklch(var(--erc));
+        border: 2px solid oklch(var(--b1));
+        font-size: 0.625rem;
+        font-weight: 700;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.15s, transform 0.15s;
+        transform: scale(0.8);
+        line-height: 1;
+    }
+
+    .media-node-wrapper:hover .block-btn {
+        opacity: 1;
+        transform: scale(1);
+    }
+
     .media-node {
         display: flex;
         align-items: center;
@@ -420,7 +543,7 @@
         border: 1px solid oklch(var(--b3));
         text-decoration: none;
         color: inherit;
-        max-width: 320px;
+        max-width: 350px;
         transition: border-color 0.2s;
     }
 
@@ -464,23 +587,50 @@
 
     .media-roles {
         display: flex;
-        flex-wrap: wrap;
+        flex-direction: column;
         gap: 0.25rem;
-        margin-top: 0.125rem;
+        margin-top: 0.25rem;
     }
 
     .role-badge {
+        display: flex;
+        flex-direction: column;
         font-size: 0.625rem;
-        padding: 0.125rem 0.375rem;
+        padding: 0.2rem 0.375rem;
         border-radius: 0.25rem;
-        background: oklch(var(--p) / 0.1);
-        color: oklch(var(--p));
         text-transform: capitalize;
+        line-height: 1.3;
+    }
+
+    .role-from {
+        background: oklch(var(--p) / 0.12);
+    }
+
+    .role-to {
+        background: oklch(var(--s) / 0.12);
+    }
+
+    .role-person-name {
+        font-weight: 700;
+        font-size: 0.6875rem;
+        color: oklch(var(--bc) / 0.85);
+    }
+
+    .role-details {
+        color: oklch(var(--bc) / 0.55);
     }
 
     .role-character {
         font-style: italic;
-        color: oklch(var(--bc) / 0.5);
+    }
+
+    .path-section {
+        padding-top: 0.5rem;
+        border-top: 1px solid oklch(var(--b3));
+    }
+
+    .path-section:first-of-type {
+        border-top: none;
     }
 
     /* Responsive: horizontal on larger screens */
@@ -505,7 +655,7 @@
         .media-node {
             flex-direction: column;
             text-align: center;
-            max-width: 140px;
+            max-width: 160px;
             padding: 0.5rem;
         }
 
@@ -519,7 +669,7 @@
         }
 
         .media-roles {
-            justify-content: center;
+            align-items: stretch;
         }
 
         .person-avatar {
