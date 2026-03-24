@@ -26,6 +26,7 @@
     /** @type {Set<number>} */
     let excludedMedia = $state(new Set());
     let pathCount = $state(1);
+    let watchedOnly = $state(false);
 
     // Debounced search
     let timerA = /** @type {any} */ (null);
@@ -100,6 +101,9 @@
             }
             if (pathCount > 1) {
                 url += `&count=${pathCount}`;
+            }
+            if (watchedOnly) {
+                url += `&watchedOnly=1`;
             }
             const res = await fetch(url);
             if (!res.ok) {
@@ -311,6 +315,11 @@
                 <option value={10}>10</option>
             </select>
         </div>
+
+        <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" class="checkbox checkbox-sm checkbox-primary" bind:checked={watchedOnly} />
+            <span class="text-sm text-base-content/60">Watched only</span>
+        </label>
 
         {#if excludedMedia.size > 0}
             <button class="btn btn-outline btn-warning btn-sm gap-1" onclick={clearExclusions}>
@@ -675,9 +684,8 @@
             align-items: center;
         }
 
-        .media-roles {
-            align-items: stretch;
-        }
+
+
 
         .person-avatar {
             width: 96px;

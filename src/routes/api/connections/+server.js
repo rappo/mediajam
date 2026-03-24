@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { findShortestPath, findMultiplePaths, searchPeople } from '$lib/server/connections.js';
+import { findShortestPath, findMultiplePaths, searchPeople, getWatchedMediaIds } from '$lib/server/connections.js';
 
 /** @type {import('./$types').RequestHandler} */
 export function GET({ url }) {
@@ -8,6 +8,7 @@ export function GET({ url }) {
     const search = url.searchParams.get('search');
     const excludeParam = url.searchParams.get('exclude');
     const countParam = url.searchParams.get('count');
+    const watchedOnly = url.searchParams.get('watchedOnly') === '1';
 
     // Person search mode (for autocomplete)
     if (search) {
@@ -36,15 +37,19 @@ export function GET({ url }) {
         );
     }
 
+    // Build watched media whitelist if requested
+    /** @type {Set<number>|undefined} */
+    const watchedMedia = watchedOnly ? getWatchedMediaIds() : undefined;
+
     // Multiple paths mode
     const count = Math.min(parseInt(countParam || '1') || 1, 10);
 
     if (count > 1) {
-        const paths = findMultiplePaths(fromId, toId, count, excludeMedia);
+        const paths = findMultiplePaths(fromId, toId, count, excludeMedia, watchedMedia);
         return json({ paths });
     }
 
     // Single path mode
-    const result = findShortestPath(fromId, toId, excludeMedia);
+    const result = findShortestPath(fromId, toId, excludeMedia, watchedMedia);
     return json(result);
 }

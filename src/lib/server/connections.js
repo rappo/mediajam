@@ -56,6 +56,24 @@ const getCreditRole = db.prepare(`
 
 const MAX_DEGREES = 6;
 
+/** Get all parent media IDs that have at least one play in history */
+const getWatchedParentIds = db.prepare(`
+    SELECT DISTINCT mc.parent_id
+    FROM media_children mc
+    JOIN playback_history ph ON ph.media_id = mc.id
+`);
+
+/**
+ * Build a Set of watched parent media IDs.
+ * @returns {Set<number>}
+ */
+export function getWatchedMediaIds() {
+    return new Set(
+        /** @type {{ parent_id: number }[]} */ (getWatchedParentIds.all())
+            .map(r => r.parent_id)
+    );
+}
+
 /**
  * @typedef {{ personId: number, mediaId: number }} Edge
  * @typedef {{ degrees: number, path: Array<{ person: any, media: any, role: any }> }} PathResult
@@ -68,9 +86,10 @@ const MAX_DEGREES = 6;
  * @param {number} fromPersonId 
  * @param {number} toPersonId 
  * @param {Set<number>} [excludeMedia] - media IDs to skip (for alternate routes)
+ * @param {Set<number>} [watchedMedia] - if set, only traverse these media IDs
  * @returns {PathResult}
  */
-export function findShortestPath(fromPersonId, toPersonId, excludeMedia) {
+export function findShortestPath(fromPersonId, toPersonId, excludeMedia, watchedMedia) {
     // Same person = degree 0
     if (fromPersonId === toPersonId) {
         const person = getPersonDetails.get(fromPersonId);
@@ -103,6 +122,8 @@ export function findShortestPath(fromPersonId, toPersonId, excludeMedia) {
             for (const mediaId of mediaIds) {
                 // Skip excluded media
                 if (excludeMedia && excludeMedia.has(mediaId)) continue;
+                // Skip non-watched media if filter is active
+                if (watchedMedia && !watchedMedia.has(mediaId)) continue;
 
                 const coStarIds = shuffle(/** @type {{ person_id: number }[]} */ (
                     getPersonsForMedia.all(mediaId)
@@ -137,16 +158,17 @@ export function findShortestPath(fromPersonId, toPersonId, excludeMedia) {
  * @param {number} toPersonId 
  * @param {number} count - how many paths to find
  * @param {Set<number>} [initialExcludes] - media IDs to always skip
+ * @param {Set<number>} [watchedMedia] - if set, only traverse these media IDs
  * @returns {PathResult[]}
  */
-export function findMultiplePaths(fromPersonId, toPersonId, count = 3, initialExcludes) {
+export function findMultiplePaths(fromPersonId, toPersonId, count = 3, initialExcludes, watchedMedia) {
     /** @type {PathResult[]} */
     const paths = [];
     /** @type {Set<number>} */
     const usedMedia = new Set(initialExcludes || []);
 
     for (let i = 0; i < count; i++) {
-        const result = findShortestPath(fromPersonId, toPersonId, usedMedia.size > 0 ? usedMedia : undefined);
+        const result = findShortestPath(fromPersonId, toPersonId, usedMedia.size > 0 ? usedMedia : undefined, watchedMedia);
         if (result.degrees < 0) break; // No more paths
 
         paths.push(result);
