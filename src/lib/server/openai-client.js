@@ -101,7 +101,7 @@ export function hasCodexAuth() {
  */
 export async function getConfig() {
     const settings = /** @type {any} */ (db.prepare(
-        'SELECT llm_provider, llm_api_key, llm_api_url, llm_chat_model, llm_embed_model, openai_api_key, kimi_api_key FROM app_settings WHERE id = 1'
+        'SELECT llm_provider, llm_api_key, llm_api_url, llm_chat_model, llm_embed_model, openai_api_key, kimi_api_key, litellm_api_key FROM app_settings WHERE id = 1'
     ).get());
 
     const provider = settings?.llm_provider || 'openai';
@@ -116,7 +116,7 @@ export async function getConfig() {
 
     // Fall back to per-provider key, then shared key
     if (!apiKey) {
-        const providerKey = provider === 'kimi' ? settings?.kimi_api_key : settings?.openai_api_key;
+        const providerKey = provider === 'kimi' ? settings?.kimi_api_key : provider === 'litellm' ? settings?.litellm_api_key : settings?.openai_api_key;
         apiKey = providerKey || settings?.llm_api_key;
     }
 
@@ -124,8 +124,9 @@ export async function getConfig() {
 
     /** @type {Record<string, { url: string, model: string, embedModel: string }>} */
     const defaults = {
-        openai: { url: 'https://api.openai.com', model: 'gpt-5.4', embedModel: 'text-embedding-3-small' },
-        kimi:   { url: 'https://api.moonshot.ai', model: 'kimi-k2-0711-preview', embedModel: '' },
+        openai:  { url: 'https://api.openai.com', model: 'gpt-5.4', embedModel: 'text-embedding-3-small' },
+        kimi:    { url: 'https://api.moonshot.ai', model: 'kimi-k2-0711-preview', embedModel: '' },
+        litellm: { url: settings?.llm_api_url || 'http://localhost:4000', model: '', embedModel: '' },
     };
     const d = defaults[provider] || defaults.openai;
 

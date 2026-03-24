@@ -52,6 +52,7 @@ export async function generate(prompt, options = {}) {
     switch (provider) {
         case 'openai':
         case 'kimi':
+        case 'litellm':
             return openaiClient.generate(prompt, options);
         case 'gemini':
             return geminiClient.generate(prompt, options);
@@ -75,6 +76,7 @@ export async function embed(text, model) {
     switch (provider) {
         case 'openai':
         case 'kimi':
+        case 'litellm':
             return openaiClient.embed(text, model);
         case 'gemini':
             return geminiClient.embed(text, model);
@@ -114,6 +116,7 @@ export async function healthCheck() {
     switch (provider) {
         case 'openai':
         case 'kimi':
+        case 'litellm':
             result = await openaiClient.healthCheck();
             break;
         case 'gemini':
@@ -146,12 +149,12 @@ export function isEmbeddingAvailable() {
     // For cloud providers, check per-provider key or shared key or OAuth
     try {
         const settings = /** @type {any} */ (db.prepare(
-            'SELECT llm_api_key, llm_embed_model, openai_api_key, gemini_api_key, claude_api_key, kimi_api_key, codex_access_token FROM app_settings WHERE id = 1'
+            'SELECT llm_api_key, llm_embed_model, openai_api_key, gemini_api_key, claude_api_key, kimi_api_key, litellm_api_key, codex_access_token FROM app_settings WHERE id = 1'
         ).get());
         if (!settings?.llm_embed_model) return false;
 
         // Check if any API key or Codex token is available
-        const hasKey = settings.openai_api_key || settings.gemini_api_key || settings.claude_api_key || settings.kimi_api_key || settings.llm_api_key || settings.codex_access_token;
+        const hasKey = settings.openai_api_key || settings.gemini_api_key || settings.claude_api_key || settings.kimi_api_key || settings.litellm_api_key || settings.llm_api_key || settings.codex_access_token;
         if (!hasKey) {
             // Check for OAuth token
             const identity = /** @type {any} */ (db.prepare(
@@ -180,6 +183,7 @@ export function getProviderLabels() {
         gemini: 'Google Gemini',
         claude: 'Claude',
         kimi: 'Kimi (Moonshot)',
+        litellm: 'LiteLLM (proxy)',
     };
     const chat = getChatProvider();
     const embd = getEmbedProvider();
@@ -195,7 +199,7 @@ export function getProviderLabels() {
  */
 export async function getActiveConfig() {
     const provider = getChatProvider();
-    if (provider === 'openai' || provider === 'kimi') {
+    if (provider === 'openai' || provider === 'kimi' || provider === 'litellm') {
         const cfg = await openaiClient.getConfig();
         return cfg ? { provider: cfg.provider, chatModel: cfg.chatModel, authSource: cfg.authSource || 'api-key' } : null;
     }

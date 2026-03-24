@@ -103,6 +103,12 @@
     let llmChatModel = $state(data.settings.llmChatModel || '');
     let llmEmbedProvider = $state(data.settings.llmEmbedProvider || 'ollama');
     let llmEmbedModel = $state(data.settings.llmEmbedModel || '');
+    // LiteLLM-specific
+    /** @type {string} */
+    let litellmTestStatus = $state('idle');
+    /** @type {string[]} */
+    let litellmModels = $state([]);
+    let litellmTestError = $state('');
 
 
     // *arr Integration
@@ -604,6 +610,7 @@
                     gemini: 'gemini_api_key',
                     claude: 'claude_api_key',
                     kimi: 'kimi_api_key',
+                    litellm: 'litellm_api_key',
                 });
                 const keyCol = providerKeyMap[llmProvider];
                 if (keyCol) {
@@ -3196,9 +3203,10 @@
                     <div class="label pb-1">
                         <span class="label-text text-xs font-medium">Chat Provider</span>
                     </div>
-                    <div class="grid grid-cols-5 gap-1.5">
+                    <div class="grid grid-cols-6 gap-1.5">
                         {#each [
                             { value: 'ollama', icon: 'ollama', label: 'Ollama', sub: 'local' },
+                            { value: 'litellm', icon: 'litellm', label: 'LiteLLM', sub: 'proxy' },
                             { value: 'openai', icon: 'openai', label: 'OpenAI', sub: '' },
                             { value: 'gemini', icon: 'gemini', label: 'Gemini', sub: '' },
                             { value: 'claude', icon: 'claude', label: 'Claude', sub: '' },
@@ -3223,7 +3231,7 @@
                 </label>
 
                 <!-- Cloud Provider Config (OpenAI / Gemini / Claude / Kimi) -->
-                {#if llmProvider !== 'ollama'}
+                {#if llmProvider !== 'ollama' && llmProvider !== 'litellm'}
                     <div class="p-3 rounded-lg border border-base-300 bg-base-200/30 space-y-3">
                         <!-- API Key -->
                         <label class="form-control w-full">
@@ -3385,6 +3393,130 @@ cat ~/.codex/auth.json</pre>
                                 <span class="text-xs">Claude has no embedding API — embeddings will use the embedding provider above (default: Ollama)</span>
                             </div>
                         {/if}
+                    </div>
+                {/if}
+
+                <!-- LiteLLM Config -->
+                {#if llmProvider === 'litellm'}
+                    <div class="p-3 rounded-lg border border-base-300 bg-base-200/30 space-y-3">
+                        <p class="text-[10px] text-base-content/50">
+                            Connect to a self-hosted <a href="https://www.litellm.ai/" target="_blank" class="link">LiteLLM</a> proxy.
+                            LiteLLM unifies 100+ LLM providers behind one OpenAI-compatible API.
+                        </p>
+                        <!-- URL -->
+                        <label class="form-control w-full">
+                            <div class="label pb-1">
+                                <span class="label-text text-xs font-medium">LiteLLM URL</span>
+                            </div>
+                            <div class="flex gap-2">
+                                <input
+                                    type="url"
+                                    bind:value={llmApiUrl}
+                                    placeholder="http://192.168.1.50:4000"
+                                    class="input input-bordered input-sm flex-1 font-mono"
+                                />
+                                <button
+                                    type="button"
+                                    class="btn btn-sm btn-outline gap-1"
+                                    disabled={!llmApiUrl || litellmTestStatus === 'checking'}
+                                    onclick={async () => {
+                                        litellmTestStatus = 'checking';
+                                        litellmTestError = '';
+                                        litellmModels = [];
+                                        try {
+                                            const url = llmApiUrl.replace(/\/+$/, '');
+                                            const headers = llmApiKey ? { 'Authorization': `Bearer ${llmApiKey}` } : {};
+                                            const res = await fetch(`/api/settings/proxy-fetch`, {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ url: `${url}/v1/models`, headers })
+                                            });
+                                            const data = await res.json();
+                                            if (data.error) throw new Error(data.error);
+                                            const models = (data.data || []).map(m => m.id).sort();
+                                            litellmModels = models;
+                                            litellmTestStatus = models.length > 0 ? 'ok' : 'empty';
+                                        } catch (e) {
+                                            litellmTestStatus = 'error';
+                                            litellmTestError = e instanceof Error ? e.message : 'Connection failed';
+                                        }
+                                    }}
+                                >
+                                    {#if litellmTestStatus === 'checking'}
+                                        <span class="loading loading-spinner loading-xs"></span>
+                                    {:else if litellmTestStatus === 'ok'}
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-success" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
+                                    {:else if litellmTestStatus === 'error'}
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-error" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+                                    {/if}
+                                    Test
+                                </button>
+                            </div>
+                            {#if litellmTestStatus === 'error'}
+                                <p class="text-xs text-error mt-1">{litellmTestError}</p>
+                            {/if}
+                            {#if litellmTestStatus === 'ok'}
+                                <p class="text-xs text-success mt-1">✓ Connected — {litellmModels.length} models available</p>
+                            {/if}
+                        </label>
+
+                        <!-- API Key -->
+                        <label class="form-control w-full">
+                            <div class="label pb-1">
+                                <span class="label-text text-xs font-medium">Master Key <span class="text-base-content/40">(optional)</span></span>
+                            </div>
+                            <input
+                                type="password"
+                                bind:value={llmApiKey}
+                                placeholder="sk-..."
+                                class="input input-bordered input-sm font-mono"
+                            />
+                        </label>
+
+                        <!-- Chat Model (dropdown if scanned, text input fallback) -->
+                        <label class="form-control w-full">
+                            <div class="label pb-1">
+                                <span class="label-text text-xs font-medium">Chat Model</span>
+                            </div>
+                            {#if litellmModels.length > 0}
+                                <select
+                                    bind:value={llmChatModel}
+                                    class="select select-bordered select-sm font-mono"
+                                >
+                                    <option value="">Select a model...</option>
+                                    {#each litellmModels as model}
+                                        <option value={model}>{model}</option>
+                                    {/each}
+                                </select>
+                            {:else}
+                                <input
+                                    type="text"
+                                    bind:value={llmChatModel}
+                                    placeholder="gpt-4o, claude-sonnet-4, gemini-2.5-pro..."
+                                    class="input input-bordered input-sm font-mono"
+                                />
+                                <p class="text-[10px] text-base-content/40 mt-1">Click Test to scan available models</p>
+                            {/if}
+                        </label>
+
+                        <!-- Embed Provider -->
+                        <label class="form-control w-full">
+                            <div class="label pb-1">
+                                <span class="label-text text-xs font-medium">Embedding Provider</span>
+                            </div>
+                            <select
+                                bind:value={llmEmbedProvider}
+                                class="select select-bordered select-sm"
+                            >
+                                <option value="ollama">Ollama (local) — keep existing embeddings</option>
+                                <option value="litellm">LiteLLM (via proxy)</option>
+                            </select>
+                            {#if llmEmbedProvider !== 'ollama'}
+                                <p class="text-[10px] text-warning mt-1">
+                                    ⚠️ Switching embed providers requires re-embedding all items
+                                </p>
+                            {/if}
+                        </label>
                     </div>
                 {/if}
 

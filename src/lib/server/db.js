@@ -456,6 +456,7 @@ const newAppCols = [
     ['gemini_api_key', 'TEXT'],
     ['claude_api_key', 'TEXT'],
     ['kimi_api_key', 'TEXT'],
+    ['litellm_api_key', 'TEXT'],
     // OAuth client IDs for LLM providers
     ['openai_client_id', 'TEXT'],
     ['openai_client_secret', 'TEXT'],

@@ -31,6 +31,7 @@ const ICONS = /** @type {Record<string, string>} */ ({
     gemini: 'google-gemini',
     claude: 'claude',
     kimi: 'kimi',
+    litellm: 'litellm',
 });
 
 let initialized = false;
@@ -43,6 +44,7 @@ const FALLBACK_SVGS = /** @type {Record<string, string>} */ ({
     fanart: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="8" fill="#17a2b8"/><text x="32" y="28" font-family="Arial,sans-serif" font-weight="bold" font-size="12" text-anchor="middle" fill="white">fan</text><text x="32" y="44" font-family="Arial,sans-serif" font-weight="bold" font-size="12" text-anchor="middle" fill="white">art.tv</text></svg>`,
     claude: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#D97757"/><path d="M38.2 17.5L32 44.5l-3.6-13.8L18 32l10.4-1.3L32 17l3.6 13.7L46 32l-10.4 1.3z" fill="#FEF7EE" stroke="#FEF7EE" stroke-width="1" stroke-linejoin="round"/></svg>`,
     kimi: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#1a1a2e"/><circle cx="32" cy="30" r="14" fill="none" stroke="#60a5fa" stroke-width="2.5"/><path d="M26 28c0-3.3 2.7-6 6-6s6 2.7 6 6" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round"/><circle cx="28" cy="30" r="2" fill="#60a5fa"/><circle cx="36" cy="30" r="2" fill="#60a5fa"/><path d="M28 36c1.5 2 3 3 4 3s2.5-1 4-3" fill="none" stroke="#60a5fa" stroke-width="1.5" stroke-linecap="round"/><text x="32" y="56" font-family="Arial,sans-serif" font-weight="bold" font-size="8" text-anchor="middle" fill="#60a5fa">KIMI</text></svg>`,
+    litellm: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#1a1a2e"/><path d="M18 20h4v24h-4z" fill="#38bdf8"/><path d="M18 44h12v4H18z" fill="#38bdf8"/><circle cx="42" cy="32" r="10" fill="none" stroke="#a78bfa" stroke-width="3"/><path d="M38 32l3 3 6-6" fill="none" stroke="#a78bfa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
 });
 
 /**
