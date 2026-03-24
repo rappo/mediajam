@@ -6,6 +6,15 @@
  */
 import db from '$lib/server/db.js';
 
+/** Fisher-Yates shuffle (in-place) @param {any[]} arr @returns {any[]} */
+function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+
 // ── Prepared statements ────────────────────────────────────────────────────────
 
 /** Get all media IDs a person appears in */
@@ -54,6 +63,7 @@ const MAX_DEGREES = 6;
 
 /**
  * Find the shortest path between two people via shared media credits.
+ * Randomizes exploration order so each search discovers a different valid path.
  * 
  * @param {number} fromPersonId 
  * @param {number} toPersonId 
@@ -81,18 +91,22 @@ export function findShortestPath(fromPersonId, toPersonId, excludeMedia) {
         /** @type {number[]} */
         const nextFrontier = [];
 
+        // Shuffle frontier for randomized exploration
+        shuffle(frontier);
+
         for (const personId of frontier) {
-            const mediaIds = /** @type {{ media_parent_id: number }[]} */ (
+            // Get all media this person appears in — shuffled
+            const mediaIds = shuffle(/** @type {{ media_parent_id: number }[]} */ (
                 getMediaForPerson.all(personId)
-            ).map(r => r.media_parent_id);
+            ).map(r => r.media_parent_id));
 
             for (const mediaId of mediaIds) {
                 // Skip excluded media
                 if (excludeMedia && excludeMedia.has(mediaId)) continue;
 
-                const coStarIds = /** @type {{ person_id: number }[]} */ (
+                const coStarIds = shuffle(/** @type {{ person_id: number }[]} */ (
                     getPersonsForMedia.all(mediaId)
-                ).map(r => r.person_id);
+                ).map(r => r.person_id));
 
                 for (const coStarId of coStarIds) {
                     if (visited.has(coStarId)) continue;

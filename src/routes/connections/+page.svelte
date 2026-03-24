@@ -637,9 +637,9 @@
     @media (min-width: 768px) {
         .connection-path {
             flex-direction: row;
+            flex-wrap: wrap;
             justify-content: center;
             gap: 0;
-            overflow-x: auto;
             padding: 2rem 1rem;
         }
 
