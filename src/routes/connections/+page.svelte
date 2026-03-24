@@ -372,19 +372,37 @@
     <div class="connection-path">
         {#each pathResult.path as node, i}
             {#if node.person}
-                <!-- Person node -->
-                <a href={personUrl(node.person)} class="person-node group">
-                    <div class="person-avatar {i === 0 ? 'avatar-start' : i === pathResult.path.length - 1 ? 'avatar-end' : ''}">
-                        {#if node.person.photo_url}
-                            <img src={imgUrl(node.person.photo_url, 120)} alt={node.person.name} class="w-full h-full object-cover" />
-                        {:else}
-                            <div class="w-full h-full flex items-center justify-center text-2xl bg-base-300">👤</div>
+                <!-- Person node with role arrows -->
+                <div class="person-node-wrap">
+                    <a href={personUrl(node.person)} class="person-node group">
+                        <div class="person-avatar {i === 0 ? 'avatar-start' : i === pathResult.path.length - 1 ? 'avatar-end' : ''}">
+                            {#if node.person.photo_url}
+                                <img src={imgUrl(node.person.photo_url, 120)} alt={node.person.name} class="w-full h-full object-cover" />
+                            {:else}
+                                <div class="w-full h-full flex items-center justify-center text-2xl bg-base-300">👤</div>
+                            {/if}
+                        </div>
+                        <span class="person-name group-hover:text-primary transition-colors">{node.person.name}</span>
+                    </a>
+                    <div class="role-arrows">
+                        {#if i > 0 && pathResult.path[i - 1]?.role?.to}
+                            {@const r = pathResult.path[i - 1].role.to}
+                            <span class="role-arrow role-left">
+                                <span class="arrow">←</span>
+                                <span class="role-text">{r.role_type}{#if r.character_name} <em>as {r.character_name}</em>{/if}</span>
+                            </span>
+                        {/if}
+                        {#if i < pathResult.path.length - 1 && pathResult.path[i + 1]?.role?.from}
+                            {@const r = pathResult.path[i + 1].role.from}
+                            <span class="role-arrow role-right">
+                                <span class="role-text">{r.role_type}{#if r.character_name} <em>as {r.character_name}</em>{/if}</span>
+                                <span class="arrow">→</span>
+                            </span>
                         {/if}
                     </div>
-                    <span class="person-name group-hover:text-primary transition-colors">{node.person.name}</span>
-                </a>
+                </div>
             {:else if node.media}
-                <!-- Media connector with X button to block -->
+                <!-- Media connector -->
                 <div class="media-connector">
                     <div class="connector-line"></div>
                     <div class="media-node-wrapper">
@@ -409,30 +427,6 @@
                                         <span>{node.media.release_year}</span>
                                     {/if}
                                 </div>
-                                {#if node.role}
-                                    <div class="media-roles">
-                                        {#if node.role.from}
-                                            <span class="role-badge role-from">
-                                                <span class="role-person-name">{node.role.from.person_name}</span>
-                                                <span class="role-details">
-                                                    {node.role.from.role_type}{#if node.role.from.character_name}
-                                                        <span class="role-character"> as {node.role.from.character_name}</span>
-                                                    {/if}
-                                                </span>
-                                            </span>
-                                        {/if}
-                                        {#if node.role.to}
-                                            <span class="role-badge role-to">
-                                                <span class="role-person-name">{node.role.to.person_name}</span>
-                                                <span class="role-details">
-                                                    {node.role.to.role_type}{#if node.role.to.character_name}
-                                                        <span class="role-character"> as {node.role.to.character_name}</span>
-                                                    {/if}
-                                                </span>
-                                            </span>
-                                        {/if}
-                                    </div>
-                                {/if}
                             </div>
                         </a>
                     </div>
@@ -452,6 +446,13 @@
         padding: 1rem 0;
     }
 
+    .person-node-wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        z-index: 1;
+    }
+
     .person-node {
         display: flex;
         flex-direction: column;
@@ -459,7 +460,6 @@
         gap: 0.5rem;
         text-decoration: none;
         color: inherit;
-        z-index: 1;
     }
 
     .person-avatar {
@@ -482,10 +482,56 @@
         font-size: 0.875rem;
         font-weight: 600;
         text-align: center;
-        max-width: 120px;
+        max-width: 130px;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }
+
+    .role-arrows {
+        display: flex;
+        flex-direction: column;
+        gap: 0.125rem;
+        margin-top: 0.25rem;
+        align-items: center;
+    }
+
+    .role-arrow {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        font-size: 0.625rem;
+        padding: 0.125rem 0.5rem;
+        border-radius: 999px;
+        text-transform: capitalize;
+        white-space: nowrap;
+        max-width: 160px;
+    }
+
+    .role-arrow .role-text {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .role-left {
+        background: oklch(var(--p) / 0.12);
+        color: oklch(var(--p));
+    }
+
+    .role-right {
+        background: oklch(var(--s) / 0.12);
+        color: oklch(var(--s));
+    }
+
+    .arrow {
+        font-weight: 700;
+        flex-shrink: 0;
+    }
+
+    .role-arrow em {
+        font-style: italic;
+        opacity: 0.7;
     }
 
     .media-connector {
@@ -583,45 +629,6 @@
         gap: 0.375rem;
         font-size: 0.6875rem;
         color: oklch(var(--bc) / 0.4);
-    }
-
-    .media-roles {
-        display: flex;
-        flex-direction: column;
-        gap: 0.25rem;
-        margin-top: 0.25rem;
-    }
-
-    .role-badge {
-        display: flex;
-        flex-direction: column;
-        font-size: 0.625rem;
-        padding: 0.2rem 0.375rem;
-        border-radius: 0.25rem;
-        text-transform: capitalize;
-        line-height: 1.3;
-    }
-
-    .role-from {
-        background: oklch(var(--p) / 0.12);
-    }
-
-    .role-to {
-        background: oklch(var(--s) / 0.12);
-    }
-
-    .role-person-name {
-        font-weight: 700;
-        font-size: 0.6875rem;
-        color: oklch(var(--bc) / 0.85);
-    }
-
-    .role-details {
-        color: oklch(var(--bc) / 0.55);
-    }
-
-    .role-character {
-        font-style: italic;
     }
 
     .path-section {
