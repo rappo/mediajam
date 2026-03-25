@@ -392,18 +392,18 @@
         z-index: 10;
         min-width: 10rem;
         padding: 0.5rem;
-        background: oklch(var(--b2) / 0.85);
+        background: oklch(var(--b2));
         backdrop-filter: blur(24px) saturate(1.5);
         -webkit-backdrop-filter: blur(24px) saturate(1.5);
         border: 1px solid oklch(var(--bc) / 0.15);
         border-radius: 0.5rem;
-        box-shadow: 0 8px 24px -4px rgba(0,0,0,0.5);
+        box-shadow: 0 8px 24px -4px rgba(0,0,0,0.25);
     }
     .gear-dropdown-label {
         font-size: 0.6rem;
         text-transform: uppercase;
         letter-spacing: 0.08em;
-        color: oklch(var(--bc) / 0.35);
+        color: oklch(var(--bc) / 0.5);
         font-weight: 600;
         padding: 0.25rem 0.5rem;
     }
@@ -417,7 +417,7 @@
     :global(.gear-dropdown-items .btn) {
         background: transparent !important;
         border: none !important;
-        color: oklch(var(--bc) / 0.8) !important;
+        color: oklch(var(--bc) / 0.85) !important;
         font-size: 0.8rem !important;
         font-weight: 500 !important;
         padding: 0.375rem 0.5rem !important;
@@ -429,7 +429,7 @@
         transition: background 0.1s !important;
     }
     :global(.gear-dropdown-items .btn:hover) {
-        background: oklch(var(--bc) / 0.08) !important;
+        background: oklch(var(--bc) / 0.1) !important;
         color: oklch(var(--bc)) !important;
     }
     :global(.gear-dropdown-items .btn-success) {
