@@ -6,6 +6,7 @@ import {
     getBehindOnShows,
     getUpcomingEpisodes,
     getRecentlyWatchedShows,
+    getNextUp,
 } from '$lib/server/homepage-engine.js';
 import { json } from '@sveltejs/kit';
 import { getPrecomputed, setPrecomputed } from '$lib/server/section-cache.js';
@@ -139,7 +140,7 @@ export function GET({ locals, url }) {
     }
 
     // Cache miss — compute live, save for next time
-    let airingThisWeek = [], newUnwatched = [], behindOn = [], comingUp = [], recentlyWatched = [];
+    let airingThisWeek = [], newUnwatched = [], behindOn = [], comingUp = [], recentlyWatched = [], nextUp = [];
     try { airingThisWeek = getAiringThisWeek(prefs, userId); } catch (e) {
         console.error('[tv] airingThisWeek error:', e instanceof Error ? e.message : e);
     }
@@ -155,9 +156,12 @@ export function GET({ locals, url }) {
     try { recentlyWatched = getRecentlyWatchedShows(userId, prefs.maxItemsPerSection); } catch (e) {
         console.error('[tv] recentlyWatched error:', e instanceof Error ? e.message : e);
     }
+    try { nextUp = getNextUp(userId); } catch (e) {
+        console.error('[tv] nextUp error:', e instanceof Error ? e.message : e);
+    }
 
     const result = {
-        sections: { airingThisWeek, newUnwatched, behindOn, comingUp, recentlyWatched }
+        sections: { airingThisWeek, newUnwatched, behindOn, comingUp, recentlyWatched, nextUp }
     };
 
     try { setPrecomputed(cacheKey, result); } catch { /* non-fatal */ }

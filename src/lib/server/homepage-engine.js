@@ -778,6 +778,56 @@ export function getRecentlyWatchedShows(userId, limit = 20) {
     `).all(userId, limit));
 }
 
+/**
+ * Next Up — for each in-progress show, find the specific next episode to watch.
+ * Resolves the first unwatched episode after the user's last-watched position
+ * (by season/episode order), sorted by most recently watched show first.
+ * @param {number} userId
+ * @param {number} limit
+ */
+export function getNextUp(userId, limit = 20) {
+    return /** @type {any[]} */ (db.prepare(`
+        WITH watch_frontier AS (
+            -- For each show, find the latest watched episode by season/episode order
+            SELECT mc.parent_id,
+                   MAX(mc.season_number * 10000 + mc.item_number) as max_pos,
+                   MAX(ph.timestamp) as last_watched
+            FROM playback_history ph
+            JOIN media_children mc ON ph.media_id = mc.id
+            JOIN media_parents mp ON mc.parent_id = mp.id
+            WHERE ph.user_id = ?
+              AND mp.media_type = 'show'
+              AND mp.is_dashboard_hidden = 0
+              AND mc.is_special = 0
+            GROUP BY mc.parent_id
+        ),
+        next_episode AS (
+            -- For each show, find the first unwatched episode after the frontier
+            SELECT wf.parent_id,
+                   wf.last_watched,
+                   MIN(mc.season_number * 10000 + mc.item_number) as next_pos
+            FROM watch_frontier wf
+            JOIN media_children mc ON mc.parent_id = wf.parent_id
+            WHERE mc.watch_status != 'watched'
+              AND mc.is_special = 0
+              AND (mc.season_number * 10000 + mc.item_number) > wf.max_pos
+            GROUP BY wf.parent_id
+        )
+        SELECT mp.id as show_id, mp.title as show_title, mp.poster_url,
+               mc.id as episode_id, mc.title as episode_title,
+               mc.season_number, mc.item_number, mc.premiere_date,
+               mc.is_collected,
+               ne.last_watched
+        FROM next_episode ne
+        JOIN media_parents mp ON ne.parent_id = mp.id
+        JOIN media_children mc ON mc.parent_id = ne.parent_id
+             AND (mc.season_number * 10000 + mc.item_number) = ne.next_pos
+        WHERE mp.poster_url IS NOT NULL
+        ORDER BY ne.last_watched DESC
+        LIMIT ?
+    `).all(userId, limit));
+}
+
 // ── Music ───────────────────────────────────────────────────────────────────
 
 /**

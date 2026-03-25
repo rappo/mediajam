@@ -17,7 +17,7 @@
 
     // Smart sections — loaded on mount
     let sectionsLoaded = $state(false);
-    let sections = $state(/** @type {any} */ ({ airingThisWeek: [], newUnwatched: [], behindOn: [], comingUp: [], recentlyWatched: [] }));
+    let sections = $state(/** @type {any} */ ({ airingThisWeek: [], newUnwatched: [], behindOn: [], comingUp: [], recentlyWatched: [], nextUp: [] }));
 
     // Library data — loaded lazily on toggle
     let libraryLoaded = $state(false);
@@ -343,6 +343,44 @@
                             </a>
                         {/each}
                     </div>
+                </div>
+            </section>
+        {/if}
+
+        <!-- ▌NEXT UP (episode-level continue watching) ──────────── -->
+        {#if sections.nextUp.length > 0}
+            <section class="smart-section">
+                <h2 class="section-title">▶ Next Up</h2>
+                <div class="poster-scroll">
+                    {#each sections.nextUp.filter((/** @type {any} */ e) => !hiddenShows.has(e.show_id)) as ep}
+                        <a href="/tv/{ep.show_id}" class="poster-card group" title="{ep.show_title} {epCode(ep)} — {ep.episode_title}">
+                            <div class="poster-wrap">
+                                {#if ep.poster_url}
+                                    <img src={imgUrl(ep.poster_url)} alt={ep.show_title} class="poster-img" loading="lazy" />
+                                {:else}
+                                    <div class="poster-img poster-placeholder">📺</div>
+                                {/if}
+                                <div class="next-up-badge">{epCode(ep)}</div>
+                                <button
+                                    class="ignore-btn"
+                                    title="Hide from dashboard"
+                                    onclick={(e) => { e.preventDefault(); e.stopPropagation(); ignoreShow(ep.show_id, ep.show_title); }}
+                                >✕</button>
+                            </div>
+                            <div class="poster-meta">
+                                <span class="poster-name">{ep.show_title}</span>
+                                <span class="poster-ep">{ep.episode_title || 'TBA'}</span>
+                                <span class="poster-year">{timeAgo(ep.last_watched)}</span>
+                            </div>
+                            {#if ep.is_collected}
+                                <span class="dl-pill downloaded">✓ Ready</span>
+                            {:else if ep.premiere_date && new Date(ep.premiere_date) > new Date()}
+                                <span class="dl-pill" style="background: oklch(var(--in) / 0.12); color: oklch(var(--in));">Upcoming</span>
+                            {:else}
+                                <span class="dl-pill available">Not downloaded</span>
+                            {/if}
+                        </a>
+                    {/each}
                 </div>
             </section>
         {/if}
@@ -757,5 +795,23 @@
     .ignore-btn:hover {
         background: oklch(var(--er) / 0.8);
         color: oklch(var(--erc));
+    }
+
+    /* Next Up episode badge */
+    .next-up-badge {
+        position: absolute;
+        bottom: 6px;
+        left: 6px;
+        z-index: 3;
+        font-size: 0.55rem;
+        font-weight: 700;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        letter-spacing: 0.04em;
+        padding: 2px 8px;
+        border-radius: 6px;
+        background: oklch(var(--b1) / 0.85);
+        color: oklch(var(--bc));
+        backdrop-filter: blur(6px);
+        border: 1px solid oklch(var(--bc) / 0.1);
     }
 </style>
