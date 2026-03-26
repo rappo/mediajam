@@ -1193,6 +1193,37 @@ paths:
         '200':
           description: File quality, size, and path info
 
+  /api/arr/sonarr/episode-search:
+    post:
+      tags: [Arr Integration]
+      summary: Trigger Sonarr episode-level search
+      description: Resolves the Sonarr episode ID and sends an EpisodeSearch command.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mediaParentId, seasonNumber, episodeNumber]
+              properties:
+                mediaParentId: { type: integer, description: Local media_parents ID }
+                seasonNumber: { type: integer }
+                episodeNumber: { type: integer }
+      responses:
+        '200':
+          description: Search command sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  sonarrEpisodeId: { type: integer }
+        '400':
+          description: Missing params or Sonarr not configured
+        '404':
+          description: Episode not found in Sonarr
+
   # ── Spokes (Trakt & Last.fm) ────────────────────────────────────
   /api/spokes/trakt:
     get:
