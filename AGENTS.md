@@ -95,3 +95,12 @@ All sync operations must implement:
 - Issue tracker: `http://192.168.1.50:3210/rappo/mediajam`
 - API token stored in `.agents/forgejo.env` (gitignored).
 - Create Forgejo issues for non-trivial TODOs instead of leaving code comments.
+
+---
+
+## 10. Debug API Key
+
+- Production API key and base URL are stored in `.agents/debug.env` (gitignored).
+- Use `Authorization: Bearer <API_KEY>` header (NOT `x-api-key`).
+- Useful for testing endpoints directly: `curl -H "Authorization: Bearer $API_KEY" $BASE_URL/api/sync/status`
+- The key has full permissions and does not expire.

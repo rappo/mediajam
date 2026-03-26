@@ -396,8 +396,11 @@ export async function POST({ request, locals }) {
         console.log(`[item-sync] ✅ ${parent.title}: ${childCount} children synced`, results);
         return json({ success: true, childCount, ...results });
     } catch (e) {
-        console.error(`[item-sync] Error syncing ${parent.title}:`, e instanceof Error ? e.message : String(e));
-        return json({ error: 'Sync failed', details: e instanceof Error ? e.message : String(e) }, { status: 500 });
+        const msg = e instanceof Error ? e.message : String(e);
+        const stack = e instanceof Error ? e.stack : '';
+        console.error(`[item-sync] Error syncing ${parent.title}:`, msg);
+        if (stack) console.error(`[item-sync] Stack:`, stack);
+        return json({ error: 'Sync failed', details: msg }, { status: 500 });
     }
 }
 
