@@ -37,11 +37,19 @@ export function reconcileExternalMedia() {
         'DELETE FROM media_children WHERE id = ?'
     );
 
+    const deleteOrphanHistory = db.prepare(
+        'DELETE FROM playback_history WHERE media_id = ?'
+    );
+
     db.transaction(() => {
         for (const dup of duplicates) {
             // Move all playback_history refs from orphan to jellyfin entry
             const result = migrateHistory.run(dup.jellyfin_child_id, dup.orphan_id);
             merged += result.changes;
+
+            // Delete any remaining history that couldn't be migrated
+            // (e.g. duplicate external_event_id prevents the UPDATE)
+            deleteOrphanHistory.run(dup.orphan_id);
 
             // Delete the orphan media_children entry
             deleteChild.run(dup.orphan_id);

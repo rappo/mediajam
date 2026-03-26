@@ -370,8 +370,12 @@ export async function POST({ request, locals }) {
         }
 
         // Reconcile any orphaned external media_children
-        const reconciled = reconcileExternalMedia();
-        if (reconciled.merged > 0) results.reconciled = reconciled;
+        try {
+            const reconciled = reconcileExternalMedia();
+            if (reconciled.merged > 0) results.reconciled = reconciled;
+        } catch (reconcileErr) {
+            console.warn(`[item-sync] ⚠ Reconcile failed (non-fatal):`, reconcileErr instanceof Error ? reconcileErr.message : String(reconcileErr));
+        }
 
         // Fetch Wikipedia data if not already fetched
         const freshParent = /** @type {any} */ (db.prepare(
