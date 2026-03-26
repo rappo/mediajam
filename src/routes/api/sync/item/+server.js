@@ -44,9 +44,11 @@ export async function POST({ request, locals }) {
 
     if (!parent) return json({ error: 'Item not found in database' }, { status: 404 });
 
+    let stage = 'init';
     try {
         console.log(`[item-sync] Starting sync for ${parent.title} (${jellyfinId})...`);
         // Fetch fresh item data from Jellyfin
+        stage = 'fetch-jellyfin';
         const res = await itemsApi.getItems({
             ids: [jellyfinId],
             fields: ['ProviderIds', 'Overview', 'People'],
@@ -60,6 +62,7 @@ export async function POST({ request, locals }) {
         const providerIds = item.ProviderIds || {};
 
         // Update the parent record — handle UNIQUE constraint conflicts on external IDs
+        stage = 'update-parent';
         const updateParentSql = `
             UPDATE media_parents SET
                 title = ?, tvdb_id = ?, tmdb_id = ?, imdb_id = ?,
@@ -104,9 +107,31 @@ export async function POST({ request, locals }) {
                             // External-only row — merge: migrate children, delete it
                             db.prepare('UPDATE media_children SET parent_id = ? WHERE parent_id = ?')
                                 .run(parent.id, conflicting.id);
+                            // Migrate playback_history to avoid FK violation on delete
+                            const keepChild = /** @type {any} */ (db.prepare(
+                                'SELECT id FROM media_children WHERE parent_id = ? LIMIT 1'
+                            ).get(parent.id));
+                            if (keepChild) {
+                                const staleChildren = /** @type {any[]} */ (db.prepare(
+                                    'SELECT id FROM media_children WHERE parent_id = ?'
+                                ).all(conflicting.id));
+                                for (const sc of staleChildren) {
+                                    db.prepare('UPDATE playback_history SET media_id = ? WHERE media_id = ?')
+                                        .run(keepChild.id, sc.id);
+                                }
+                            }
                             // Delete source person_credits (target will re-sync its own)
                             db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?')
                                 .run(conflicting.id);
+                            // Delete any remaining children and history
+                            const remainingChildren = /** @type {any[]} */ (db.prepare(
+                                'SELECT id FROM media_children WHERE parent_id = ?'
+                            ).all(conflicting.id));
+                            for (const rc of remainingChildren) {
+                                db.prepare('DELETE FROM playback_history WHERE media_id = ?').run(rc.id);
+                            }
+                            db.prepare('DELETE FROM media_children WHERE parent_id = ?').run(conflicting.id);
+                            db.prepare('DELETE FROM watchlist WHERE media_parent_id = ?').run(conflicting.id);
                             db.prepare('DELETE FROM media_parents WHERE id = ?').run(conflicting.id);
                             console.log(`[item-sync] 🔀 Auto-merged external ${field} duplicate (id=${conflicting.id})`);
                         } else if (conflicting) {
@@ -167,6 +192,7 @@ export async function POST({ request, locals }) {
         }
 
         if (parent.media_type === 'show') {
+            stage = 'fetch-episodes';
             const tvApi = getTvShowsApi(api);
             const epRes = await tvApi.getEpisodes({
                 seriesId: jellyfinId,
@@ -179,6 +205,7 @@ export async function POST({ request, locals }) {
 
             const episodes = epRes.data.Items || [];
 
+            stage = 'upsert-episodes';
             db.transaction(() => {
                 for (const ep of episodes) {
                     const isOnDisk = ep.LocationType !== 'Virtual';
@@ -211,6 +238,7 @@ export async function POST({ request, locals }) {
             results.episodes = childCount;
 
         } else if (parent.media_type === 'movie') {
+            stage = 'upsert-movie';
             upsertChild(
                 parent.id, item.Id + '_child',
                 item.Name, null, 1, 0, 1,
@@ -242,6 +270,7 @@ export async function POST({ request, locals }) {
             `).run(parent.id, parent.id, parent.id);
 
         } else if (parent.media_type === 'artist') {
+            stage = 'upsert-albums';
             const albumRes = await itemsApi.getItems({
                 artistIds: [jellyfinId],
                 includeItemTypes: ['MusicAlbum'],
@@ -293,6 +322,7 @@ export async function POST({ request, locals }) {
         }
 
         // Sync people for this item
+        stage = 'sync-people';
         if (item.People && item.People.length > 0) {
             const typeMap = {
                 'Actor': 'actor', 'Director': 'director', 'Writer': 'writer',
@@ -370,6 +400,7 @@ export async function POST({ request, locals }) {
         }
 
         // Reconcile any orphaned external media_children
+        stage = 'reconcile';
         try {
             const reconciled = reconcileExternalMedia();
             if (reconciled.merged > 0) results.reconciled = reconciled;
@@ -378,6 +409,7 @@ export async function POST({ request, locals }) {
         }
 
         // Fetch Wikipedia data if not already fetched
+        stage = 'wikipedia';
         const freshParent = /** @type {any} */ (db.prepare(
             'SELECT id, media_type, tmdb_id, musicbrainz_id, wikipedia_fetched_at FROM media_parents WHERE id = ?'
         ).get(parent.id));
@@ -404,7 +436,7 @@ export async function POST({ request, locals }) {
         const stack = e instanceof Error ? e.stack : '';
         console.error(`[item-sync] Error syncing ${parent.title}:`, msg);
         if (stack) console.error(`[item-sync] Stack:`, stack);
-        return json({ error: 'Sync failed', details: msg }, { status: 500 });
+        return json({ error: 'Sync failed', details: msg, stage }, { status: 500 });
     }
 }
 
