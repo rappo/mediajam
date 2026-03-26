@@ -11,21 +11,24 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
+# Install production-only deps (native modules compile here with build tools)
+RUN rm -rf node_modules && \
+    npm ci --omit=dev && \
+    rm -rf /root/.npm /tmp/*
+
 # ── Stage 2: Production ──────────────────────────────────────────────────────
 FROM node:20-slim
 
+# Only runtime deps — no build tools, no purge needed
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 make g++ unzip sqlite3 && \
+    unzip sqlite3 && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY --from=builder /app/build ./build
 COPY --from=builder /app/docs ./docs
 COPY --from=builder /app/package*.json ./
-RUN npm ci --omit=dev && \
-    apt-get purge -y python3 make g++ && \
-    apt-get autoremove -y && \
-    rm -rf /var/lib/apt/lists/* /root/.npm /tmp/*
+COPY --from=builder /app/node_modules ./node_modules
 
 RUN mkdir -p /app/data /app/cache
 
