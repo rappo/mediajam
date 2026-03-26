@@ -81,26 +81,29 @@
     }
 </script>
 
-<!-- Navigation header -->
-<div class="cal-nav">
-    <button class="nav-btn" onclick={() => onNavigate?.(weekOffset - 3)} title="Previous 3 weeks">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-        Prev
-    </button>
-    {#if weekOffset !== 0}
-        <button class="nav-btn nav-today" onclick={() => onNavigate?.(0)}>Today</button>
-    {/if}
-    <button class="nav-btn" onclick={() => onNavigate?.(weekOffset + 3)} title="Next 3 weeks">
-        Next
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-    </button>
-</div>
-
 <div class="cal-weeks">
-    {#each weeks as week}
+    {#each weeks as week, wi}
         {@const weekHasItems = week.some(d => d.episodes?.length > 0)}
         <div class="cal-week">
-            <div class="week-label">{weekLabel(week)}</div>
+            <!-- Week header with label + nav -->
+            <div class="week-header">
+                <div class="week-label">{weekLabel(week)}</div>
+                {#if wi === 0}
+                    <div class="cal-nav">
+                        <button class="nav-btn" onclick={() => onNavigate?.(weekOffset - 3)} title="Previous 3 weeks">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                            Prev
+                        </button>
+                        {#if weekOffset !== 0}
+                            <button class="nav-btn nav-today" onclick={() => onNavigate?.(0)}>Today</button>
+                        {/if}
+                        <button class="nav-btn" onclick={() => onNavigate?.(weekOffset + 3)} title="Next 3 weeks">
+                            Next
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                        </button>
+                    </div>
+                {/if}
+            </div>
             {#if weekHasItems}
             <div class="cal-grid">
                 {#each week as day}
@@ -159,13 +162,20 @@
 </div>
 
 <style>
+    /* ── Week header (label + nav on same row) ── */
+    .week-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+    }
+
     /* ── Navigation ── */
     .cal-nav {
         display: flex;
         align-items: center;
-        justify-content: flex-end;
         gap: 6px;
-        margin-bottom: 14px;
+        flex-shrink: 0;
     }
     .nav-btn {
         display: flex;
@@ -227,6 +237,7 @@
     .cal-col {
         display: flex;
         flex-direction: column;
+        min-width: 0; /* allow columns to shrink equally */
         min-height: 80px;
     }
 
@@ -349,9 +360,11 @@
     .card-show {
         font-size: 0.6rem;
         font-weight: 700;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
         overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        word-break: break-word;
     }
     .card-ep {
         font-size: 0.5rem;
@@ -362,9 +375,11 @@
     .card-title {
         font-size: 0.48rem;
         color: oklch(var(--bc) / 0.35);
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
         overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        word-break: break-word;
     }
 
     /* ── Status-based card backgrounds ── */
