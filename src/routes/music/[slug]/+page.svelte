@@ -508,15 +508,16 @@
                     class:btn-error={syncStatus === 'failed'}
                     disabled={syncing}
                     onclick={fullSync}
+                    title={syncStatus === 'failed' ? syncError : ''}
                 >
                     {#if syncing}
                         <span class="loading loading-spinner loading-xs"></span> Syncing…
                     {:else if syncStatus === 'success'}
                         ✅ Synced
                     {:else if syncStatus === 'failed'}
-                        ❌ Failed
+                        ❌ {syncError || 'Failed'}
                     {:else}
-                        🔄 Full Sync
+                        🔄 {data.artist.jellyfin_id ? 'Update from Jellyfin' : 'Update from MusicBrainz'}
                     {/if}
                 </button>
                 {#if data.artist.lidarr_id}
