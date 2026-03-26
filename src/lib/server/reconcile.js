@@ -234,6 +234,10 @@ export function deduplicateChildren() {
                 ).run(keepId, staleId);
                 historyMoved += result.changes;
 
+                // Delete any remaining history that couldn't be migrated
+                // (e.g. duplicate external_event_id prevents the UPDATE)
+                db.prepare('DELETE FROM playback_history WHERE media_id = ?').run(staleId);
+
                 // Delete stale child
                 db.prepare('DELETE FROM media_children WHERE id = ?').run(staleId);
                 deduped++;

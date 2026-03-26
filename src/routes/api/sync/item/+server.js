@@ -1,7 +1,8 @@
 import db from '$lib/server/db.js';
 import { getJellyfinApis, getItemsApi, getTvShowsApi } from '$lib/server/jellyfin.js';
-import { reconcileExternalMedia } from '$lib/server/reconcile.js';
+import { reconcileExternalMedia, deduplicateChildren } from '$lib/server/reconcile.js';
 import { fetchWikipediaForMediaParent } from '$lib/server/wikipedia-backfill.js';
+import { invalidatePrecomputed } from '$lib/server/section-cache.js';
 import { json } from '@sveltejs/kit';
 
 /**
@@ -407,6 +408,23 @@ export async function POST({ request, locals }) {
         } catch (reconcileErr) {
             console.warn(`[item-sync] ⚠ Reconcile failed (non-fatal):`, reconcileErr instanceof Error ? reconcileErr.message : String(reconcileErr));
         }
+
+        // Deduplicate children (virtual → real episode replacements create dupes)
+        stage = 'deduplicate';
+        try {
+            const deduped = deduplicateChildren();
+            if (deduped.deduped > 0) {
+                results.deduped = deduped;
+                console.log(`[item-sync] 🧹 Deduped ${deduped.deduped} children, moved ${deduped.historyMoved} history`);
+            }
+        } catch (dedupErr) {
+            console.warn(`[item-sync] ⚠ Dedup failed (non-fatal):`, dedupErr instanceof Error ? dedupErr.message : String(dedupErr));
+        }
+
+        // Invalidate dashboard cache so fresh data is served immediately
+        try {
+            invalidatePrecomputed();
+        } catch { /* non-fatal */ }
 
         // Fetch Wikipedia data if not already fetched
         stage = 'wikipedia';
