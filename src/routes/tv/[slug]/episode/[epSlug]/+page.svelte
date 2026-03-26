@@ -3,7 +3,9 @@
     let { data } = $props();
     import { imgUrl } from "$lib/utils.js";
     import MediaDetailHeader from "$lib/components/MediaDetailHeader.svelte";
+    import CollectionStatusBanner from "$lib/components/CollectionStatusBanner.svelte";
     import InteractiveSearchDialog from "$lib/components/InteractiveSearchDialog.svelte";
+    import { invalidateAll } from '$app/navigation';
 
     const ep = data.episode;
     const show = data.show;
@@ -98,6 +100,25 @@
             {/if}
         {/snippet}
     </MediaDetailHeader>
+
+    <!-- Collection Status Banner for missing episodes -->
+    {#if !ep.is_collected && show.sonarr_id}
+        <CollectionStatusBanner
+            mediaParentId={show.id}
+            mediaType="show"
+            title="{show.title} {epCode}"
+            collectionStatus={ep.is_collected ? 'collected' : 'wanted'}
+            arrHasFile={ep.is_collected}
+            arrId={show.sonarr_id}
+            arrMonitored={show.arr_monitored || true}
+            releaseYear={show.release_year}
+            premiereDate={ep.premiere_date}
+            service="sonarr"
+            jellyfinId={ep.jellyfin_id}
+            tmdbId={show.tmdb_id}
+            onStatusChange={() => invalidateAll()}
+        />
+    {/if}
 
     <!-- Episode Navigation (Prev/Next) -->
     <div class="flex items-center justify-between">

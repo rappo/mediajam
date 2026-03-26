@@ -1,7 +1,7 @@
 import db from '$lib/server/db.js';
 import { error, redirect } from '@sveltejs/kit';
 import { resolveBackdrop } from '$lib/server/backdrop.js';
-import { slugify, ensureUniqueSlug } from '$lib/server/slugify.js';
+import { slugify, ensureUniqueSlug, episodeSlug } from '$lib/server/slugify.js';
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ params, locals }) {
@@ -30,14 +30,20 @@ export async function load({ params, locals }) {
         if (!row) throw error(404, 'Episode not found');
         const showRow = /** @type {any} */ (db.prepare('SELECT slug FROM media_parents WHERE id = ?').get(showId));
         const showSlug = showRow?.slug || showId;
-        if (row.slug) throw redirect(301, `/tv/${showSlug}/episode/${row.slug}`);
         const ep = /** @type {any} */ (db.prepare('SELECT title, season_number, item_number FROM media_children WHERE id = ?').get(row.id));
-        const base = slugify(ep.title || `s${ep.season_number}e${ep.item_number}`);
-        const slug = ensureUniqueSlug(db, 'media_children', base, row.id);
+        const slug = episodeSlug(ep.season_number, ep.item_number, ep.title);
         db.prepare('UPDATE media_children SET slug = ? WHERE id = ?').run(slug, row.id);
         throw redirect(301, `/tv/${showSlug}/episode/${slug}`);
     } else {
-        const row = /** @type {any} */ (db.prepare('SELECT id FROM media_children WHERE slug = ? AND parent_id = ?').get(epParam, showId));
+        // Try exact slug match first
+        let row = /** @type {any} */ (db.prepare('SELECT id FROM media_children WHERE slug = ? AND parent_id = ?').get(epParam, showId));
+        if (!row) {
+            // Try matching on s##e## prefix (the canonical part)
+            const prefixMatch = epParam.match(/^(s\d{2}e\d{2})/);
+            if (prefixMatch) {
+                row = /** @type {any} */ (db.prepare("SELECT id FROM media_children WHERE slug LIKE ? AND parent_id = ?").get(prefixMatch[1] + '%', showId));
+            }
+        }
         if (!row) throw error(404, 'Episode not found');
         episodeId = row.id;
     }

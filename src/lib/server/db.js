@@ -1373,6 +1373,39 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash)');
     }
 }
 
+// -- One-time: migrate episode slugs to s##e## format --
+import { episodeSlug } from './slugify.js';
+{
+    // Check if migration is needed: look for any episode slug that doesn't start with 's##e##'
+    const needsMigration = /** @type {any} */ (db.prepare(`
+        SELECT mc.id FROM media_children mc
+        JOIN media_parents mp ON mc.parent_id = mp.id
+        WHERE mp.media_type = 'show' AND mc.slug IS NOT NULL
+          AND mc.slug NOT LIKE 's__e__%'
+        LIMIT 1
+    `).get());
+
+    if (needsMigration) {
+        const episodes = /** @type {any[]} */ (db.prepare(`
+            SELECT mc.id, mc.title, mc.season_number, mc.item_number
+            FROM media_children mc
+            JOIN media_parents mp ON mc.parent_id = mp.id
+            WHERE mp.media_type = 'show'
+        `).all());
+
+        const updateSlug = db.prepare('UPDATE media_children SET slug = ? WHERE id = ?');
+        let count = 0;
+        db.transaction(() => {
+            for (const ep of episodes) {
+                const slug = episodeSlug(ep.season_number, ep.item_number, ep.title);
+                updateSlug.run(slug, ep.id);
+                count++;
+            }
+        })();
+        console.log(`[db] Migrated ${count} episode slugs to s##e## format`);
+    }
+}
+
 // Initialize logger from DB settings
 import { initLogging } from './logger.js';
 initLogging(db);

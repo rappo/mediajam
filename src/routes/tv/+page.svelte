@@ -138,6 +138,41 @@
         return `S${String(ep.season_number).padStart(2, '0')}E${String(ep.item_number).padStart(2, '0')}`;
     }
 
+    /** @type {Set<number>} */
+    let downloadingEps = $state(new Set());
+    /** @type {Set<number>} */
+    let downloadedEps = $state(new Set());
+
+    /** @param {any} ep */
+    async function downloadEpisode(ep) {
+        const next = new Set(downloadingEps);
+        next.add(ep.episode_id);
+        downloadingEps = next;
+        try {
+            const res = await fetch('/api/arr/sonarr/episode-search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mediaParentId: ep.show_id,
+                    seasonNumber: ep.season_number,
+                    episodeNumber: ep.item_number,
+                }),
+            });
+            if (!res.ok) {
+                const r = await res.json();
+                throw new Error(r.error || 'Search failed');
+            }
+            const done = new Set(downloadedEps);
+            done.add(ep.episode_id);
+            downloadedEps = done;
+        } catch (e) {
+            console.error('[tv] Episode search failed:', e);
+        }
+        const rm = new Set(downloadingEps);
+        rm.delete(ep.episode_id);
+        downloadingEps = rm;
+    }
+
     // Chart options — reactive since data loads async
     let watchPieOptions = $derived({
         title: { text: "Episode Watch Status" },
@@ -376,6 +411,21 @@
                                 <span class="dl-pill downloaded">✓ Ready</span>
                             {:else if ep.premiere_date && new Date(ep.premiere_date) > new Date()}
                                 <span class="dl-pill" style="background: oklch(var(--in) / 0.12); color: oklch(var(--in));">Upcoming</span>
+                            {:else if ep.sonarr_id}
+                                <button
+                                    class="dl-pill dl-pill-btn {downloadedEps.has(ep.episode_id) ? 'downloaded' : 'available'}"
+                                    onclick={(e) => { e.preventDefault(); e.stopPropagation(); downloadEpisode(ep); }}
+                                    disabled={downloadingEps.has(ep.episode_id)}
+                                    title="Search Sonarr for {epCode(ep)}"
+                                >
+                                    {#if downloadingEps.has(ep.episode_id)}
+                                        <span class="loading loading-spinner" style="width: 10px; height: 10px;"></span>
+                                    {:else if downloadedEps.has(ep.episode_id)}
+                                        ✓ Searching
+                                    {:else}
+                                        ↓ Get Episode
+                                    {/if}
+                                </button>
                             {:else}
                                 <span class="dl-pill available">Not downloaded</span>
                             {/if}
@@ -813,5 +863,21 @@
         color: oklch(var(--bc));
         backdrop-filter: blur(6px);
         border: 1px solid oklch(var(--bc) / 0.1);
+    }
+
+    /* Clickable download pill */
+    .dl-pill-btn {
+        cursor: pointer;
+        border: none;
+        font-size: inherit;
+        font-family: inherit;
+        transition: filter 0.15s;
+    }
+    .dl-pill-btn:hover:not(:disabled) {
+        filter: brightness(1.2);
+    }
+    .dl-pill-btn:disabled {
+        opacity: 0.6;
+        cursor: wait;
     }
 </style>

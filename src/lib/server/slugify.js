@@ -42,3 +42,22 @@ export function ensureUniqueSlug(db, table, baseSlug, excludeId = null) {
         slug = `${baseSlug}-${suffix++}`;
     }
 }
+
+/**
+ * Generate a stable episode slug: s01e05 or s01e05-episode-title.
+ * The s##e## prefix is the canonical identifier; the title suffix is cosmetic.
+ * @param {number} seasonNumber
+ * @param {number} itemNumber
+ * @param {string} [title] - Optional episode title to append
+ * @returns {string}
+ */
+export function episodeSlug(seasonNumber, itemNumber, title = '') {
+    const prefix = `s${String(seasonNumber).padStart(2, '0')}e${String(itemNumber).padStart(2, '0')}`;
+    if (!title || title.toLowerCase() === 'tba' || title.toLowerCase() === 'episode' || !title.trim()) {
+        return prefix;
+    }
+    const titlePart = slugify(title);
+    if (!titlePart || titlePart === 'untitled') return prefix;
+    return `${prefix}-${titlePart}`;
+}
+

@@ -814,6 +814,7 @@ export function getNextUp(userId, limit = 20) {
             GROUP BY wf.parent_id
         )
         SELECT mp.id as show_id, mp.title as show_title, mp.poster_url,
+               mp.sonarr_id,
                mc.id as episode_id, mc.title as episode_title,
                mc.season_number, mc.item_number, mc.premiere_date,
                mc.is_collected,

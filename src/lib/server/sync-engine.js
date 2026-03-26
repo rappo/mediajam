@@ -2,7 +2,7 @@ import db from '$lib/server/db.js';
 import { getJellyfinApis, getItemsApi, getSystemApi, getTvShowsApi } from '$lib/server/jellyfin.js';
 import { logError, logInfo, logWarn } from '$lib/server/logger.js';
 import { logActivity } from '$lib/server/activity-log.js';
-import { slugify, ensureUniqueSlug } from '$lib/server/slugify.js';
+import { slugify, ensureUniqueSlug, episodeSlug } from '$lib/server/slugify.js';
 
 /** @type {Set<(data: any) => void>} */
 const listeners = new Set();
@@ -451,15 +451,22 @@ export async function startSync(libraryId = null, force = false) {
 
     /**
      * Ensure a media_children row has a slug; generate and save one if missing.
+     * For TV episodes, uses s01e05-title format. For music albums, uses title-based slugs.
      * @param {number} childId
      * @param {string} title
      */
     function ensureChildSlug(childId, title) {
-        const row = /** @type {any} */ (db.prepare('SELECT slug, parent_id FROM media_children WHERE id = ?').get(childId));
+        const row = /** @type {any} */ (db.prepare('SELECT slug, parent_id, season_number, item_number FROM media_children WHERE id = ?').get(childId));
         if (row?.slug) return;
-        const base = slugify(title || 'untitled');
-        // Children slugs are scoped per parent — use global unique check for now
-        const slug = ensureUniqueSlug(db, 'media_children', base, childId);
+        // Check if this is a TV show episode
+        const parent = /** @type {any} */ (db.prepare('SELECT media_type FROM media_parents WHERE id = ?').get(row?.parent_id));
+        let slug;
+        if (parent?.media_type === 'show' && row?.season_number != null && row?.item_number != null) {
+            slug = episodeSlug(row.season_number, row.item_number, title);
+        } else {
+            const base = slugify(title || 'untitled');
+            slug = ensureUniqueSlug(db, 'media_children', base, childId);
+        }
         db.prepare('UPDATE media_children SET slug = ? WHERE id = ?').run(slug, childId);
     }
 
