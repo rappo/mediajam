@@ -115,6 +115,19 @@ export async function PUT({ request }) {
             openai_client_secret: 'openai_client_secret',
             gemini_client_id: 'gemini_client_id',
             gemini_client_secret: 'gemini_client_secret',
+            // *arr download defaults
+            radarr_quality_profile_id: 'radarr_quality_profile_id',
+            radarr_root_folder: 'radarr_root_folder',
+            radarr_default_monitor: 'radarr_default_monitor',
+            radarr_skip_add_dialog: 'radarr_skip_add_dialog',
+            sonarr_quality_profile_id: 'sonarr_quality_profile_id',
+            sonarr_root_folder: 'sonarr_root_folder',
+            sonarr_default_monitor: 'sonarr_default_monitor',
+            sonarr_skip_add_dialog: 'sonarr_skip_add_dialog',
+            lidarr_quality_profile_id: 'lidarr_quality_profile_id',
+            lidarr_root_folder: 'lidarr_root_folder',
+            lidarr_default_monitor: 'lidarr_default_monitor',
+            lidarr_skip_add_dialog: 'lidarr_skip_add_dialog',
         };
 
         for (const [key, column] of Object.entries(allowedFields)) {

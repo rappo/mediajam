@@ -2463,6 +2463,18 @@ components:
         heart_border_shows: { type: boolean }
         heart_border_music: { type: boolean }
         heart_border_people: { type: boolean }
+        radarr_quality_profile_id: { type: integer }
+        radarr_root_folder: { type: string }
+        radarr_default_monitor: { type: string }
+        radarr_skip_add_dialog: { type: integer, enum: [0, 1] }
+        sonarr_quality_profile_id: { type: integer }
+        sonarr_root_folder: { type: string }
+        sonarr_default_monitor: { type: string }
+        sonarr_skip_add_dialog: { type: integer, enum: [0, 1] }
+        lidarr_quality_profile_id: { type: integer }
+        lidarr_root_folder: { type: string }
+        lidarr_default_monitor: { type: string }
+        lidarr_skip_add_dialog: { type: integer, enum: [0, 1] }
 
     ApiKey:
       type: object
