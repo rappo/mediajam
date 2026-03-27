@@ -6,13 +6,29 @@ on:
 
 jobs:
   build-and-deploy:
-    # Pre-baked runner with node, docker, and docker compose already installed.
-    # Build once with: docker build -f Dockerfile.ci -t 192.168.1.50:3210/rappo/ci-runner:latest .
-    # Then push: docker push 192.168.1.50:3210/rappo/ci-runner:latest
-    runs-on: docker:192.168.1.50:3210/rappo/ci-runner:latest
+    # NOTE: To switch to the pre-baked ci-runner image (eliminating ~8min of apt setup):
+    # 1. Run the "Build CI Runner Image" workflow once via workflow_dispatch
+    # 2. On the Unraid server, edit the runner config.yaml labels to use:
+    #    docker:docker://192.168.1.50:3210/rappo/ci-runner:latest
+    # 3. Restart the Forgejo runner service
+    # Until then, the runner uses the default node:20-bullseye image.
+    runs-on: docker
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Install Docker CLI + Compose
+        run: |
+          if command -v apk &> /dev/null; then
+            apk add --no-cache docker-cli docker-cli-compose
+          elif command -v apt-get &> /dev/null; then
+            apt-get update && apt-get install -y --no-install-recommends docker.io curl
+            # Install docker compose v2 plugin manually (not in bullseye repos)
+            mkdir -p /usr/local/lib/docker/cli-plugins
+            curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64" \
+              -o /usr/local/lib/docker/cli-plugins/docker-compose
+            chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+          fi
 
       - name: Login to Forgejo Registry
         run: echo "${{ secrets.REGISTRY_TOKEN }}" | docker login 192.168.1.50:3210 -u ${{ github.repository_owner }} --password-stdin
