@@ -6,23 +6,13 @@ on:
 
 jobs:
   build-and-deploy:
-    runs-on: docker
+    # Pre-baked runner with node, docker, and docker compose already installed.
+    # Build once with: docker build -f Dockerfile.ci -t 192.168.1.50:3210/rappo/ci-runner:latest .
+    # Then push: docker push 192.168.1.50:3210/rappo/ci-runner:latest
+    runs-on: docker:192.168.1.50:3210/rappo/ci-runner:latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Install Docker CLI + Compose
-        run: |
-          if command -v apk &> /dev/null; then
-            apk add --no-cache docker-cli docker-cli-compose
-          elif command -v apt-get &> /dev/null; then
-            apt-get update && apt-get install -y --no-install-recommends docker.io curl
-            # Install docker compose v2 plugin manually (not in bullseye repos)
-            mkdir -p /usr/local/lib/docker/cli-plugins
-            curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64" \
-              -o /usr/local/lib/docker/cli-plugins/docker-compose
-            chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
-          fi
 
       - name: Login to Forgejo Registry
         run: echo "${{ secrets.REGISTRY_TOKEN }}" | docker login 192.168.1.50:3210 -u ${{ github.repository_owner }} --password-stdin
@@ -30,7 +20,13 @@ jobs:
       - name: Build and Push
         run: |
           IMAGE="192.168.1.50:3210/${{ github.repository }}"
-          docker build -t "${IMAGE}:latest" -t "${IMAGE}:${{ github.sha }}" .
+          # Pull the previous image for layer caching (ignore failure on first run)
+          docker pull "${IMAGE}:latest" || true
+          docker build \
+            --cache-from "${IMAGE}:latest" \
+            -t "${IMAGE}:latest" \
+            -t "${IMAGE}:${{ github.sha }}" \
+            .
           docker push "${IMAGE}:latest"
           docker push "${IMAGE}:${{ github.sha }}"
 

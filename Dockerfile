@@ -1,6 +1,9 @@
 # ── Stage 1: Build ────────────────────────────────────────────────────────────
 FROM node:20-slim AS builder
 
+# Cache build metadata for --cache-from support
+ARG BUILDKIT_INLINE_CACHE=1
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 make g++ && \
     rm -rf /var/lib/apt/lists/*
@@ -19,6 +22,8 @@ RUN rm -rf node_modules && \
 # ── Stage 2: Production ──────────────────────────────────────────────────────
 FROM node:20-slim
 
+ARG BUILDKIT_INLINE_CACHE=1
+
 # Only runtime deps — no build tools, no purge needed
 RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip sqlite3 && \
@@ -26,7 +31,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 COPY --from=builder /app/build ./build
-COPY --from=builder /app/docs ./docs
+
+# Only copy the OpenAPI spec — avoid copying large planning .md files
+COPY --from=builder /app/docs/openapi.yaml ./docs/openapi.yaml
+
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
 
