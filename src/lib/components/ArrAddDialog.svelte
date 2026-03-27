@@ -191,15 +191,11 @@
 >
     {#if adding || loading}
         <span class="loading loading-spinner loading-xs"></span>
-    {:else if done}
-        ✅ Added
-    {:else}
-        ↓
-    {/if}
-    {#if done}
-        {buttonLabel || `Added to ${serviceLabel}`}
-    {:else}
         {buttonLabel || `Download`}
+    {:else if done}
+        ✅ {buttonLabel ? `Added` : `Added to ${serviceLabel}`}
+    {:else}
+        ↓ {buttonLabel || `Download`}
     {/if}
 </button>
 
