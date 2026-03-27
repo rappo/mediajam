@@ -1,4 +1,5 @@
 <script>
+    import { imgUrl } from "$lib/utils.js";
     import ServiceIcon from "$lib/components/ServiceIcon.svelte";
 
     /** @type {{ entry: any, jellyfinUrl?: string, albumGroups?: Array<{albumTitle: string, albumArtUrl: string|null, albumId: number|null, tracks: any[]}> | null }} */
@@ -271,7 +272,7 @@
         <div class="flex items-center gap-3 mb-2">
             {#if artistPoster}
                 <img
-                    src={artistPoster}
+                    src={imgUrl(artistPoster, 80)}
                     alt=""
                     class="w-10 h-10 rounded-lg object-cover shadow-sm shrink-0"
                 />
@@ -301,7 +302,7 @@
                         <div class="flex items-center gap-2.5 px-2.5 py-1.5">
                             {#if albumGroup.albumArtUrl && albumGroups.length > 1}
                                 <img
-                                    src={albumGroup.albumArtUrl}
+                                    src={imgUrl(albumGroup.albumArtUrl, 80)}
                                     alt=""
                                     class="w-9 h-9 rounded object-cover shadow-sm shrink-0"
                                 />
@@ -346,7 +347,7 @@
         <div class="flex-shrink-0">
             {#if posterUrl}
                 <img
-                    src={posterUrl}
+                    src={imgUrl(posterUrl, isVideoMedia ? 200 : 80)}
                     alt=""
                     class="{isVideoMedia
                         ? 'w-16 h-24'

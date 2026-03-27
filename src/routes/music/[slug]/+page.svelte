@@ -1,4 +1,5 @@
 <script>
+    import { imgUrl } from "$lib/utils.js";
     import { invalidateAll, goto } from "$app/navigation";
     import ExternalLinks from "$lib/components/ExternalLinks.svelte";
     import ArrAddDialog from "$lib/components/ArrAddDialog.svelte";
@@ -674,7 +675,7 @@
                         >
                             {#if album.artUrl}
                                 <img
-                                    src={album.artUrl}
+                                    src={imgUrl(album.artUrl)}
                                     alt={album.title}
                                     class="album-tile-img"
                                 />
@@ -733,7 +734,7 @@
                         >
                             {#if album.artUrl}
                                 <img
-                                    src={album.artUrl}
+                                    src={imgUrl(album.artUrl)}
                                     alt={album.title}
                                     class="album-tile-img"
                                 />
@@ -814,7 +815,7 @@
                         >
                             {#if album.artUrl}
                                 <img
-                                    src={album.artUrl}
+                                    src={imgUrl(album.artUrl)}
                                     alt={album.title}
                                     class="w-16 h-16 rounded-lg shadow-md shrink-0 object-cover"
                                 />
@@ -954,7 +955,7 @@
                     >
                         <div class="history-art">
                             {#if entry.album_art}
-                                <img src={entry.album_art} alt="" loading="lazy" />
+                                <img src={imgUrl(entry.album_art)} alt="" loading="lazy" />
                             {:else}
                                 <div class="history-art-fallback">🎵</div>
                             {/if}
@@ -1013,7 +1014,7 @@
                             >
                                 {#if person.photo_url}
                                     <img
-                                        src={person.photo_url}
+                                        src={imgUrl(person.photo_url)}
                                         alt={person.name}
                                         class="w-20 h-20 rounded-full object-cover border-2 border-base-300 group-hover:border-primary transition-colors"
                                     />
@@ -1057,7 +1058,7 @@
                             >
                                 {#if person.photo_url}
                                     <img
-                                        src={person.photo_url}
+                                        src={imgUrl(person.photo_url)}
                                         alt={person.name}
                                         class="w-6 h-6 rounded-full object-cover"
                                     />
@@ -1185,7 +1186,7 @@
                                 </div>
                             {:else}
                                 <img
-                                    src={item.cover_url}
+                                    src={imgUrl(item.cover_url)}
                                     alt={item.title}
                                     class="discovery-tile-img"
                                     onerror={(e) => { e.target.style.display = 'none'; e.target.nextElementSibling.style.display = 'flex'; }}
@@ -1232,7 +1233,7 @@
                                 class="discovery-tile group opacity-60 ring-2 ring-success/30"
                             >
                                 <img
-                                    src={item.cover_url}
+                                    src={imgUrl(item.cover_url)}
                                     alt={item.title}
                                     class="discovery-tile-img"
                                     onerror={(e) => { e.target.style.display = 'none'; e.target.nextElementSibling.style.display = 'flex'; }}
@@ -1318,7 +1319,7 @@
             <h3 class="font-bold text-lg">Download via Lidarr</h3>
             <div class="flex items-center gap-4 mt-4">
                 <img
-                    src={discDownloadItem.cover_url}
+                    src={imgUrl(discDownloadItem.cover_url)}
                     alt={discDownloadItem.title}
                     class="w-20 h-20 rounded-lg object-cover shadow"
                     onerror={(e) => { e.target.style.display = 'none'; }}

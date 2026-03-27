@@ -6,6 +6,7 @@
      * @component
      */
     import { invalidateAll } from "$app/navigation";
+    import { imgUrl } from "$lib/utils.js";
 
     let open = $state(false);
     let loading = $state(false);
@@ -141,7 +142,7 @@
                                         >
                                             {#if poster}
                                                 <img
-                                                    src={poster}
+                                                    src={imgUrl(poster)}
                                                     alt=""
                                                     class="w-12 h-12 rounded object-cover shrink-0"
                                                 />

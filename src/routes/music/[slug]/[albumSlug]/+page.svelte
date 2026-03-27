@@ -1,4 +1,5 @@
 <script>
+    import { imgUrl } from "$lib/utils.js";
     import InteractiveSearchDialog from "$lib/components/InteractiveSearchDialog.svelte";
 
     let { data } = $props();
@@ -109,7 +110,7 @@
     <div class="flex gap-6 items-start">
         {#if data.album.artUrl}
             <img
-                src={data.album.artUrl}
+                src={imgUrl(data.album.artUrl)}
                 alt={data.album.title}
                 class="w-44 h-44 rounded-xl shadow-lg shrink-0 object-cover"
             />
@@ -440,7 +441,7 @@
                     >
                         {#if sibling.artUrl}
                             <img
-                                src={sibling.artUrl}
+                                src={imgUrl(sibling.artUrl)}
                                 alt={sibling.title}
                                 class="w-full aspect-square object-cover"
                             />
