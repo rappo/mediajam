@@ -4,18 +4,36 @@
      * Fetches profiles from /api/arr/[service]/defaults, checks skip-dialog preference,
      * and either auto-adds or shows dropdowns.
      *
+     * Supports two modes:
+     * 1. Normal mode: provide `service` + `mediaParentId` (media already in DB)
+     * 2. Discovery mode: provide `discoveryItem` (creates a stub first, then adds to *arr)
+     *
      * @component
      * @example
      * <ArrAddDialog service="radarr" mediaParentId={42} onComplete={() => invalidateAll()} />
+     * <ArrAddDialog discoveryItem={{ tmdb_id: 123, media_type: 'movie', title: 'Some Movie' }} onComplete={() => {}} />
      */
 
-    /** @type {{ service: string, mediaParentId: number, onComplete?: () => void }} */
-    let { service, mediaParentId, onComplete } = $props();
+    /**
+     * @type {{
+     *   service?: string,
+     *   mediaParentId?: number,
+     *   discoveryItem?: { tmdb_id: string|number, media_type: string, title: string, release_year?: string|number, poster_url?: string, overview?: string },
+     *   onComplete?: () => void,
+     *   buttonClass?: string,
+     *   buttonLabel?: string,
+     * }}
+     */
+    let { service: serviceProp, mediaParentId, discoveryItem, onComplete, buttonClass, buttonLabel } = $props();
+
+    // In discovery mode, derive the service from the media_type
+    const service = $derived(serviceProp || (discoveryItem?.media_type === 'movie' ? 'radarr' : discoveryItem?.media_type === 'show' ? 'sonarr' : 'radarr'));
 
     let open = $state(false);
     let loading = $state(false);
     let adding = $state(false);
     let error = $state("");
+    let done = $state(false);
     /** @type {any[]} */
     let profiles = $state([]);
     /** @type {any[]} */
@@ -24,12 +42,12 @@
     let selectedRootFolder = $state("");
     let selectedMonitor = $state("");
 
-    const serviceLabel =
+    const serviceLabel = $derived(
         service === "radarr"
             ? "Radarr"
             : service === "sonarr"
               ? "Sonarr"
-              : "Lidarr";
+              : "Lidarr");
 
     /** @type {Record<string, { value: string, label: string }[]>} */
     const monitorOptions = {
@@ -59,7 +77,7 @@
         ],
     };
 
-    const options = monitorOptions[service] || monitorOptions.radarr;
+    const options = $derived(monitorOptions[service] || monitorOptions.radarr);
 
     /** Svelte action: portal – moves the node to document.body */
     function portal(node) {
@@ -71,10 +89,39 @@
         };
     }
 
+    /**
+     * In discovery mode, create a media_parents stub first and return the mediaParentId.
+     * @returns {Promise<number>}
+     */
+    async function ensureMediaParentId() {
+        if (mediaParentId) return mediaParentId;
+        if (!discoveryItem) throw new Error('No media to add');
+
+        const createRes = await fetch("/api/discover/add", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                tmdb_id: discoveryItem.tmdb_id,
+                media_type: discoveryItem.media_type,
+                title: discoveryItem.title,
+                release_year: discoveryItem.release_year
+                    ? parseInt(String(discoveryItem.release_year))
+                    : null,
+                poster_url: discoveryItem.poster_url,
+                overview: discoveryItem.overview,
+            }),
+        });
+        if (!createRes.ok) {
+            const r = await createRes.json();
+            throw new Error(r.error || "Failed to create media entry");
+        }
+        const { mediaParentId: newId } = await createRes.json();
+        return newId;
+    }
+
     async function openDialog() {
         loading = true;
         error = "";
-        selectedMonitor = options[0]?.value || "all";
         try {
             const res = await fetch(`/api/arr/${service}/defaults`);
             if (!res.ok) throw new Error("Failed to fetch profiles");
@@ -83,7 +130,8 @@
             rootFolders = data.rootFolders || [];
             selectedProfileId = data.defaultQualityProfileId || profiles[0]?.id || 0;
             selectedRootFolder = data.defaultRootFolder || rootFolders[0]?.path || "";
-            selectedMonitor = data.defaultMonitor || options[0]?.value || "all";
+            const opts = monitorOptions[service] || monitorOptions.radarr;
+            selectedMonitor = data.defaultMonitor || opts[0]?.value || "all";
 
             // If skip dialog is enabled, go straight to adding
             if (data.skipDialog && selectedProfileId) {
@@ -102,11 +150,14 @@
         adding = true;
         error = "";
         try {
+            // In discovery mode, create the stub first
+            const mpId = await ensureMediaParentId();
+
             const res = await fetch(`/api/arr/${service}/add`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    mediaParentId,
+                    mediaParentId: mpId,
                     qualityProfileId: selectedProfileId,
                     rootFolderPath: selectedRootFolder,
                     monitorLevel: selectedMonitor,
@@ -115,6 +166,7 @@
             const result = await res.json();
             if (!res.ok) throw new Error(result.error || "Failed");
             open = false;
+            done = true;
             onComplete?.();
         } catch (e) {
             error = e instanceof Error ? e.message : "Failed";
@@ -133,16 +185,22 @@
 </script>
 
 <button
-    class="btn btn-xs btn-primary gap-1"
+    class={buttonClass || "btn btn-xs btn-primary gap-1"}
     onclick={openDialog}
-    disabled={adding || loading}
+    disabled={adding || loading || done}
 >
     {#if adding || loading}
         <span class="loading loading-spinner loading-xs"></span>
+    {:else if done}
+        ✅ Added
     {:else}
         ↓
     {/if}
-    Download Now <span class="text-[10px] opacity-60">(add to {serviceLabel})</span>
+    {#if done}
+        {buttonLabel || `Added to ${serviceLabel}`}
+    {:else}
+        {buttonLabel || `Download Now`} <span class="text-[10px] opacity-60">(add to {serviceLabel})</span>
+    {/if}
 </button>
 
 {#if open}
@@ -153,6 +211,9 @@
         <div class="modal modal-open" style="z-index: 1000;">
             <div class="modal-box max-w-md" onclick={(e) => e.stopPropagation()}>
                 <h3 class="font-bold text-lg">Add to {serviceLabel}</h3>
+                {#if discoveryItem}
+                    <p class="text-sm text-base-content/60 mt-1">{discoveryItem.title}</p>
+                {/if}
                 <p class="text-xs text-base-content/50 mt-1">Will automatically search for downloads after adding</p>
 
                 {#if loading}

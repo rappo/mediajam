@@ -1,4 +1,5 @@
 <script>
+    import ArrAddDialog from "$lib/components/ArrAddDialog.svelte";
     import ExternalLinks from "$lib/components/ExternalLinks.svelte";
     import FavoriteButton from "$lib/components/FavoriteButton.svelte";
     import HeartBorder from "$lib/components/HeartBorder.svelte";
@@ -217,7 +218,6 @@
     let discoverySearch = $state('');
     let discoveryRoleFilter = $state('all');
     let discoverySort = $state('rating');
-    let addingToArr = $state(/** @type {string|null} */ (null));
     let navigatingItem = $state(/** @type {string|null} */ (null));
 
     /** Create a stub and open the item page in a new tab */
@@ -248,20 +248,7 @@
             navigatingItem = null;
         }
     }
-    let addedToArr = $state(/** @type {Set<string>} */ (new Set()));
     let addArrError = $state("");
-
-    // Quality profile dialog state
-    let showProfileDialog = $state(false);
-    /** @type {any} */
-    let pendingItem = $state(null);
-    /** @type {any[]} */
-    let availableProfiles = $state([]);
-    /** @type {any[]} */
-    let availableRootFolders = $state([]);
-    let selectedProfileId = $state(/** @type {number|null} */ (null));
-    let selectedRootFolder = $state(/** @type {string|null} */ (null));
-    let profilesLoading = $state(false);
 
     // Compute available departments from discovery items
     let availableDepartments = $derived(
@@ -334,87 +321,7 @@
         discoveryLoading = false;
     }
 
-    /** @param {any} item */
-    async function addToArr(item) {
-        const service = item.media_type === "movie" ? "radarr" : "sonarr";
 
-        // Fetch profiles first
-        profilesLoading = true;
-        pendingItem = item;
-        try {
-            const res = await fetch("/api/arr/profiles");
-            if (!res.ok) throw new Error("Failed to fetch profiles");
-            const options = await res.json();
-            const serviceOptions = options[service];
-            if (!serviceOptions) throw new Error(`${service} not configured`);
-            availableProfiles = serviceOptions.profiles || [];
-            availableRootFolders = serviceOptions.rootFolders || [];
-            selectedProfileId = availableProfiles[0]?.id || null;
-            selectedRootFolder = availableRootFolders[0]?.path || null;
-            showProfileDialog = true;
-        } catch (e) {
-            addArrError = e instanceof Error ? e.message : "Failed";
-            setTimeout(() => (addArrError = ""), 5000);
-            pendingItem = null;
-        }
-        profilesLoading = false;
-    }
-
-    async function confirmAddToArr() {
-        if (!pendingItem || !selectedProfileId) return;
-        const item = pendingItem;
-        showProfileDialog = false;
-        addingToArr = item.tmdb_id;
-        addArrError = "";
-        try {
-            // Step 1: Create a media_parents stub
-            const createRes = await fetch("/api/discover/add", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    tmdb_id: item.tmdb_id,
-                    media_type: item.media_type,
-                    title: item.title,
-                    release_year: item.release_year
-                        ? parseInt(item.release_year)
-                        : null,
-                    poster_url: item.poster_url,
-                    overview: item.overview,
-                }),
-            });
-            if (!createRes.ok) {
-                const r = await createRes.json();
-                throw new Error(r.error || "Failed to create media entry");
-            }
-            const { mediaParentId } = await createRes.json();
-
-            // Step 2: Add to arr with selected profile
-            const service = item.media_type === "movie" ? "radarr" : "sonarr";
-            const arrRes = await fetch(`/api/arr/${service}/add`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    mediaParentId,
-                    qualityProfileId: selectedProfileId,
-                    rootFolderPath: selectedRootFolder,
-                }),
-            });
-            if (!arrRes.ok) {
-                const r = await arrRes.json();
-                throw new Error(r.error || "Failed to add to " + service);
-            }
-
-            const next = new Set(addedToArr);
-            next.add(item.tmdb_id);
-            addedToArr = next;
-            invalidateAll();
-        } catch (e) {
-            addArrError = e instanceof Error ? e.message : "Failed";
-            setTimeout(() => (addArrError = ""), 5000);
-        }
-        addingToArr = null;
-        pendingItem = null;
-    }
 
     // ── Person Sync ──
     let personSyncing = $state(false);
@@ -1414,22 +1321,19 @@
                                         ✅ In Library
                                     </a>
                                 {:else}
-                                    <button
-                                        class="btn btn-xs btn-primary gap-1 mt-1"
-                                        disabled={addingToArr === item.tmdb_id}
-                                        onclick={() => addToArr(item)}
-                                    >
-                                        {#if addingToArr === item.tmdb_id}
-                                            <span
-                                                class="loading loading-spinner loading-xs"
-                                            ></span>
-                                        {:else if addedToArr.has(item.tmdb_id)}
-                                            ✅ Added
-                                        {:else}
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                            Download
-                                        {/if}
-                                    </button>
+                                    <ArrAddDialog
+                                        discoveryItem={{
+                                            tmdb_id: item.tmdb_id,
+                                            media_type: item.media_type,
+                                            title: item.title,
+                                            release_year: item.release_year,
+                                            poster_url: item.poster_url,
+                                            overview: item.overview,
+                                        }}
+                                        buttonClass="btn btn-xs btn-primary gap-1 mt-1"
+                                        buttonLabel="Download"
+                                        onComplete={() => invalidateAll()}
+                                    />
                                 {/if}
                             </div>
                         </div>
@@ -1452,75 +1356,7 @@
     {/if}
 </div>
 
-<!-- Quality Profile Dialog -->
-{#if showProfileDialog && pendingItem}
-    <div class="modal modal-open">
-        <div class="modal-box">
-            <h3 class="font-bold text-lg">
-                Add to {pendingItem.media_type === "movie"
-                    ? "Radarr"
-                    : "Sonarr"}
-            </h3>
-            <p class="text-sm text-base-content/60 mt-1">{pendingItem.title}</p>
 
-            <div class="form-control mt-4">
-                <label class="label" for="quality-profile">
-                    <span class="label-text">Quality Profile</span>
-                </label>
-                <select
-                    id="quality-profile"
-                    class="select select-bordered"
-                    bind:value={selectedProfileId}
-                >
-                    {#each availableProfiles as profile}
-                        <option value={profile.id}>{profile.name}</option>
-                    {/each}
-                </select>
-            </div>
-
-            {#if availableRootFolders.length > 1}
-                <div class="form-control mt-3">
-                    <label class="label" for="root-folder">
-                        <span class="label-text">Root Folder</span>
-                    </label>
-                    <select
-                        id="root-folder"
-                        class="select select-bordered"
-                        bind:value={selectedRootFolder}
-                    >
-                        {#each availableRootFolders as folder}
-                            <option value={folder.path}>{folder.path}</option>
-                        {/each}
-                    </select>
-                </div>
-            {/if}
-
-            <div class="modal-action">
-                <button
-                    class="btn btn-ghost"
-                    onclick={() => {
-                        showProfileDialog = false;
-                        pendingItem = null;
-                    }}>Cancel</button
-                >
-                <button
-                    class="btn btn-primary"
-                    disabled={!selectedProfileId}
-                    onclick={confirmAddToArr}
-                >
-                    ➕ Add
-                </button>
-            </div>
-        </div>
-        <div
-            class="modal-backdrop"
-            onclick={() => {
-                showProfileDialog = false;
-                pendingItem = null;
-            }}
-        ></div>
-    </div>
-{/if}
 
 <!-- Border Info Dialog -->
 {#if showBorderInfo}
