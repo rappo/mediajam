@@ -199,7 +199,7 @@
     {#if done}
         {buttonLabel || `Added to ${serviceLabel}`}
     {:else}
-        {buttonLabel || `Download Now`} <span class="text-[10px] opacity-60">(add to {serviceLabel})</span>
+        {buttonLabel || `Download`}
     {/if}
 </button>
 
