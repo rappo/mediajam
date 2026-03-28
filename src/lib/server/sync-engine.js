@@ -357,7 +357,8 @@ export async function startSync(libraryId = null, force = false) {
 			collected_children = CASE WHEN (SELECT COUNT(*) FROM media_children WHERE parent_id = media_parents.id AND is_special = 0) > 0
 				THEN (SELECT COUNT(*) FROM media_children WHERE parent_id = media_parents.id AND is_collected = 1 AND is_special = 0)
 				ELSE @collectedChildren END,
-			date_last_modified = @dateLastModified, jellyfin_child_count = @jellyfinChildCount, unplayed_count = @unplayedCount, is_favorite = @isFavorite
+			date_last_modified = @dateLastModified, jellyfin_child_count = @jellyfinChildCount, unplayed_count = @unplayedCount, is_favorite = @isFavorite,
+			collection_status = CASE WHEN collection_status = 'external' THEN 'collected' ELSE collection_status END
 	`);
 
     const upsertChild = db.prepare(`

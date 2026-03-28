@@ -49,7 +49,9 @@
 
     // ── Status derivation ──────────────────────────────────────
     function deriveStatus() {
-        const inLibrary = jellyfinId && collectionStatus === 'collected';
+        // jellyfinId alone is sufficient proof the item is in the library,
+        // even if collection_status was never updated from 'external'
+        const inLibrary = !!jellyfinId || collectionStatus === 'collected';
         const hasFile = !!arrHasFile;
 
         // For shows: treat as "has files" if we have collected episodes in the library,
