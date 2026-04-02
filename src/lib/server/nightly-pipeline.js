@@ -434,7 +434,7 @@ const PHASES = [
     {
         id: 'ratings-refresh',
         label: 'Ratings Refresh',
-        schedule: 'weekly',
+        schedule: 'nightly',
         async run(log) {
             const needsRating = /** @type {any} */ (db.prepare(
                 "SELECT COUNT(*) as c FROM media_parents WHERE tmdb_id IS NOT NULL AND tmdb_id != '' AND id NOT IN (SELECT media_parent_id FROM external_ratings)"
