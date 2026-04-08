@@ -468,12 +468,15 @@
     }
     .meta-year { font-weight: 600; color: oklch(var(--bc) / 0.7); }
 
-    /* Watched badge — no blur, solid background for crisp text over backdrops */
+    /* Watched badge — solid opaque background for visibility over any backdrop */
     :global(.watch-badge) {
         backdrop-filter: none !important;
         -webkit-backdrop-filter: none !important;
-        background-color: oklch(var(--su)) !important;
-        color: oklch(var(--suc)) !important;
+        background-color: #16a34a !important;
+        color: #fff !important;
+        border-color: #16a34a !important;
+        text-shadow: none !important;
+        opacity: 1 !important;
     }
 
     /* Overview inside hero with faded background */

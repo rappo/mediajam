@@ -594,10 +594,9 @@
         letter-spacing: 0.05em;
         padding: 2px 7px;
         border-radius: 6px;
-        background: oklch(var(--er) / 0.85);
-        color: oklch(var(--erc));
-        backdrop-filter: blur(4px);
-        text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+        background: #dc2626;
+        color: #fff;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.4);
         border: 1px solid rgba(0,0,0,0.15);
     }
 
@@ -613,10 +612,9 @@
         letter-spacing: 0.05em;
         padding: 2px 7px;
         border-radius: 6px;
-        background: oklch(0.65 0.2 145 / 0.85);
+        background: #16a34a;
         color: #fff;
-        backdrop-filter: blur(4px);
-        text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+        text-shadow: 0 1px 2px rgba(0,0,0,0.4);
         border: 1px solid rgba(0,0,0,0.15);
     }
 
