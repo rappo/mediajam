@@ -59,6 +59,8 @@ tags:
     description: Database backup, import, and factory reset
   - name: Tracks
     description: Music album tracks
+  - name: Recommendations
+    description: Personalized media recommendations
   - name: Debug
     description: Debug and diagnostic endpoints
   - name: User Preferences
@@ -600,6 +602,71 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NowPlaying'
+
+  /api/users/{userId}/recommendations/next-by-director:
+    get:
+      tags: [Recommendations]
+      summary: Unwatched movies by a director, actor, or other credited person
+      description: |
+        Returns unwatched, owned movies credited to a given person, sorted by Rotten Tomatoes score.
+        If no person is specified, auto-detects from the user's last watched movie.
+        Supports filtering by role type (director, actor, writer, producer, composer).
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - name: person
+          in: query
+          description: Fuzzy name search (e.g. "kurosawa", "tom hanks")
+          schema: { type: string }
+        - name: personId
+          in: query
+          description: Exact person ID for direct lookup
+          schema: { type: integer }
+        - name: role
+          in: query
+          description: Filter by credit role type
+          schema: { type: string, enum: [director, actor, writer, producer, composer, any], default: director }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 5, maximum: 25 }
+      responses:
+        '200':
+          description: Recommendation results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  person:
+                    type: object
+                    nullable: true
+                    properties:
+                      id: { type: integer }
+                      name: { type: string }
+                      role: { type: string }
+                  lastWatched:
+                    type: object
+                    nullable: true
+                    properties:
+                      title: { type: string }
+                      release_year: { type: integer }
+                      watchedAt: { type: string, format: date-time }
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        title: { type: string }
+                        release_year: { type: integer }
+                        rt_score: { type: number, nullable: true }
+                        rt_raw: { type: string, nullable: true }
+                        poster_url: { type: string }
+                        slug: { type: string }
+                        href: { type: string }
+                        role: { type: string }
+                        reason: { type: string }
+                  totalUnwatched: { type: integer }
+        '401':
+          description: Unauthorized
 
   # ── Natural Language Queries ────────────────────────────────────
   /api/ask:
