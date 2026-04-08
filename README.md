@@ -1,4 +1,4 @@
-# 🎬 Mediajam
+# Mediajam
 
 Self-hosted media telemetry hub for [Jellyfin](https://jellyfin.org/). Track your TV shows, movies, and music with rich dashboards, real-time playback monitoring, and historical imports from Trakt & Last.fm.
 
@@ -10,54 +10,54 @@ Self-hosted media telemetry hub for [Jellyfin](https://jellyfin.org/). Track you
 ## Features
 
 ### Playback Tracking
-- ⏱ **History Timeline** — Full playback history with date grouping, text search, date range filtering, and a year scrub bar
-- 🔴 **Now Playing** — Real-time glassmorphic card showing active sessions via SSE
-- 🔗 **Trakt & Last.fm Integration** — OAuth flows for linking accounts and importing watch/listen history
-- 📊 **Three-Tiered Backfill Engine** — Import from cloud services, Jellyfin Playback Reporting DB, or binary watched state
-- 🔄 **Webhook Ingestion** — Receives Jellyfin webhook events with 2-second debounce and smart scrobble thresholds
-- 🎯 **Cross-Source Deduplication** — `external_event_id` ensures events are never imported twice
+- **History Timeline** — Full playback history with date grouping, text search, date range filtering, and a year scrub bar
+- **Now Playing** — Real-time glassmorphic card showing active sessions via SSE
+- **Trakt & Last.fm Integration** — OAuth flows for linking accounts and importing watch/listen history
+- **Three-Tiered Backfill Engine** — Import from cloud services, Jellyfin Playback Reporting DB, or binary watched state
+- **Webhook Ingestion** — Receives Jellyfin webhook events with 2-second debounce and smart scrobble thresholds
+- **Cross-Source Deduplication** — `external_event_id` ensures events are never imported twice
 
 ### Collection Dashboards
-- 📺 **TV Shows** — Episode watch status, show completion rates, poster carousels, collection gaps
-- 🎬 **Movies** — Watch status breakdown, movies by decade/year, most rewatched films, poster carousels
-- 🎵 **Music** — Artist & album counts, play counts, collection completeness, poster carousels
-- 📦 **Collection Tracking** — See what % of each show/artist you have vs. what's available
+- **TV Shows** — Episode watch status, show completion rates, poster carousels, collection gaps
+- **Movies** — Watch status breakdown, movies by decade/year, most rewatched films, poster carousels
+- **Music** — Artist & album counts, play counts, collection completeness, poster carousels
+- **Collection Tracking** — See what % of each show/artist you have vs. what's available
 
 ### People & Credits
-- 👤 **Person Database** — Cast & crew synced from Jellyfin with external IDs (TMDB, IMDb)
-- 🎭 **Credit Browsing** — Browse by actor/director/writer, see filmography across your library
-- 🔍 **Person Detail Pages** — Photo, biography, filmography with poster grids
+- **Person Database** — Cast & crew synced from Jellyfin with external IDs (TMDB, IMDb)
+- **Credit Browsing** — Browse by actor/director/writer, see filmography across your library
+- **Person Detail Pages** — Photo, biography, filmography with poster grids
 
 ### Smart Features
-- 🧠 **LLM Reconciliation** — Ollama-powered matching for orphaned/external media (Last.fm artists, etc.)
-- 💬 **Ask Mediajam** — Natural language chat with your library using Ollama, OpenAI, or Gemini (floating/dockable widget)
-- 🏷 **Auto-Tagging** — LLM-generated genre, mood, and theme tags for your library
-- 🎨 **MusicBrainz Enrichment** — Album art, release dates, band members, and metadata backfill
-- 🔗 **TMDb Stub Enrichment** — Enrich media stubs without Jellyfin IDs via TMDb credits and metadata
-- ⭐ **External Ratings** — TMDB, IMDb, and Rotten Tomatoes ratings integration
-- 🔎 **Global Search** — Unified search across all media types with poster previews and semantic search
+- **LLM Reconciliation** — Ollama-powered matching for orphaned/external media (Last.fm artists, etc.)
+- **Ask Mediajam** — Natural language chat with your library using Ollama, OpenAI, or Gemini (floating/dockable widget)
+- **Auto-Tagging** — LLM-generated genre, mood, and theme tags for your library
+- **MusicBrainz Enrichment** — Album art, release dates, band members, and metadata backfill
+- **TMDb Stub Enrichment** — Enrich media stubs without Jellyfin IDs via TMDb credits and metadata
+- **External Ratings** — TMDB, IMDb, and Rotten Tomatoes ratings integration
+- **Global Search** — Unified search across all media types with poster previews and semantic search
 
 ### *arr Integration (Radarr · Sonarr · Lidarr)
-- 📡 **Network Discovery** — Auto-scan your network for *arr instances
-- ✅ **Collection Status** — See monitored/downloaded status alongside watch history
-- ➕ **Add to *arr** — Request missing media directly from Mediajam with customizable quality profiles, root folders, and monitor levels
-- 🔍 **Interactive Search** — Search *arr indexers from within the app with sortable release tables, quality badges, and one-click downloads
-- 📺 **Episode-Level Search** — Trigger Sonarr searches for individual episodes from the episode detail page
+- **Network Discovery** — Auto-scan your network for *arr instances
+- **Collection Status** — See monitored/downloaded status alongside watch history
+- **Add to *arr** — Request missing media directly from Mediajam with customizable quality profiles, root folders, and monitor levels
+- **Interactive Search** — Search *arr indexers from within the app with sortable release tables, quality badges, and one-click downloads
+- **Episode-Level Search** — Trigger Sonarr searches for individual episodes from the episode detail page
 
 ### Infrastructure
-- 🧙 **Onboarding Wizard** — Auto-discover Jellyfin, select libraries, configure API keys
-- 🎨 **30+ Themes** — All daisyUI themes with live preview
-- 🔄 **Real-time Sync** — SSE-powered progress with per-library tracking, pause/resume
-- 💾 **Backup & Restore** — Full JSON export/import, file-based backups with scheduling, boot backups with pruning
-- 📊 **Activity Log** — Searchable history of all system events
-- 🖼 **Image Caching** — Local proxy cache for Jellyfin images with stale-while-revalidate
-- 🌐 **Per-User Public API** — Unauthenticated endpoints for external widgets
-- ⏰ **Auto-Sync Scheduler** — Configurable automatic sync intervals
-- 🔗 **Slug-Based Routing** — Clean, SEO-friendly URLs for all media, people, and episode pages
-- 🔄 **Nightly Pipeline** — Automated enrichment pipeline with configurable phases and scheduling
-- 📋 **Data Auditing** — Snapshot and compare library state over time
-- 🔀 **Conflict Resolution** — Detect and resolve data conflicts from multiple sync sources
-- 🤝 **Six Degrees** — Find shortest connection paths between people in your library
+- **Onboarding Wizard** — Auto-discover Jellyfin, select libraries, configure API keys
+- **30+ Themes** — All daisyUI themes with live preview
+- **Real-time Sync** — SSE-powered progress with per-library tracking, pause/resume
+- **Backup & Restore** — Full JSON export/import, file-based backups with scheduling, boot backups with pruning
+- **Activity Log** — Searchable history of all system events
+- **Image Caching** — Local proxy cache for Jellyfin images with stale-while-revalidate
+- **Per-User Public API** — Unauthenticated endpoints for external widgets
+- **Auto-Sync Scheduler** — Configurable automatic sync intervals
+- **Slug-Based Routing** — Clean, SEO-friendly URLs for all media, people, and episode pages
+- **Nightly Pipeline** — Automated enrichment pipeline with configurable phases and scheduling
+- **Data Auditing** — Snapshot and compare library state over time
+- **Conflict Resolution** — Detect and resolve data conflicts from multiple sync sources
+- **Six Degrees** — Find shortest connection paths between people in your library
 
 ## Tech Stack
 
