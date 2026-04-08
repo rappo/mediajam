@@ -159,13 +159,14 @@ export async function load({ params, locals }) {
         }
     }
 
-    // Playback history for this movie
+    // Playback history for this movie (query ALL children of this parent,
+    // not just the one from the LEFT JOIN — handles dedup merges and re-imports)
     const rawHistory = /** @type {any[]} */ (db.prepare(`
         SELECT ph.id, ph.timestamp, ph.source, ph.duration_consumed_seconds, ph.completion_pct
         FROM playback_history ph
-        WHERE ph.media_id = ? AND ph.user_id = ?
+        WHERE ph.media_id IN (SELECT id FROM media_children WHERE parent_id = ?) AND ph.user_id = ?
         ORDER BY ph.timestamp IS NULL, ph.timestamp DESC
-    `).all(movie.child_id || 0, userId));
+    `).all(movieId, userId));
 
     // Dedup: merge plays of the same item within a 12-hour window from different sources
     const DEDUP_WINDOW_MS = 12 * 60 * 60 * 1000;
