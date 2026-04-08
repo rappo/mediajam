@@ -86,7 +86,14 @@
 
 		isProbing = false;
 
-		if (probeResults.length === 0) {
+		// Auto-advance when exactly one server found
+		const found = probeResults.filter((r) => r.success);
+		if (found.length === 1) {
+			validateAndContinue(found[0].url);
+			return;
+		}
+
+		if (probeResults.length === 0 || found.length === 0) {
 			manualEntry = true;
 		}
 	}
