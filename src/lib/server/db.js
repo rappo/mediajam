@@ -466,7 +466,7 @@ const newAppCols = [
     ['codex_access_token', 'TEXT'],
     ['codex_refresh_token', 'TEXT'],
     // Nightly/weekly pipeline scheduler
-    ['pipeline_enabled', 'INTEGER DEFAULT 0'],
+    ['pipeline_enabled', 'INTEGER DEFAULT 1'],
     ['nightly_pipeline_time', "TEXT DEFAULT '02:00'"],
     ['weekly_pipeline_day', "TEXT DEFAULT 'sunday'"],
     ['weekly_pipeline_time', "TEXT DEFAULT '03:00'"],
