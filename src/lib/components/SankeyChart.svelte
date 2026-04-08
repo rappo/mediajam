@@ -1,0 +1,334 @@
+<script>
+    /**
+     * Sankey / Alluvial diagram — pure SVG, theme-aware colors.
+     * Uses CSS custom properties from DaisyUI for theme compatibility.
+     *
+     * @type {{
+     *   nodes: Array<{id: string, label: string, column: number, count: number}>,
+     *   links: Array<{source: string, target: string, value: number}>,
+     *   width?: number,
+     *   height?: number
+     * }}
+     */
+    let { nodes = [], links = [], width = 900, height = 500 } = $props();
+
+    import { browser } from '$app/environment';
+
+    const PADDING = { top: 40, right: 20, bottom: 20, left: 20 };
+    const NODE_WIDTH = 18;
+    const NODE_GAP = 8;
+    const COLUMNS = 4;
+
+    // Resolve theme colors from CSS custom properties
+    // Fallback to oklch values for SSR
+    const themeColors = $derived.by(() => {
+        if (!browser) return {
+            primary: 'oklch(0.65 0.18 250)',
+            secondary: 'oklch(0.65 0.18 150)',
+            accent: 'oklch(0.65 0.18 300)',
+            success: 'oklch(0.65 0.15 150)',
+            warning: 'oklch(0.65 0.15 60)',
+            error: 'oklch(0.65 0.15 30)',
+            neutral: 'oklch(0.5 0.05 250)',
+            info: 'oklch(0.65 0.15 220)',
+        };
+        const cs = getComputedStyle(document.documentElement);
+        /** @param {string} v */
+        const get = (v) => {
+            const val = cs.getPropertyValue(v).trim();
+            return val ? `oklch(${val})` : '';
+        };
+        return {
+            primary: get('--p') || 'oklch(0.65 0.18 250)',
+            secondary: get('--s') || 'oklch(0.65 0.18 150)',
+            accent: get('--a') || 'oklch(0.65 0.18 300)',
+            success: get('--su') || 'oklch(0.65 0.15 150)',
+            warning: get('--wa') || 'oklch(0.65 0.15 60)',
+            error: get('--er') || 'oklch(0.65 0.15 30)',
+            neutral: get('--n') || 'oklch(0.5 0.05 250)',
+            info: get('--in') || 'oklch(0.65 0.15 220)',
+        };
+    });
+
+    /** @type {Record<string, string>} */
+    const colorMap = $derived({
+        'total': themeColors.primary,
+        'type_movie': themeColors.primary,
+        'type_show': themeColors.success,
+        'type_artist': themeColors.accent,
+        'status_owned': themeColors.success,
+        'status_collected': themeColors.success,
+        'status_wanted': themeColors.warning,
+        'status_searching': themeColors.error,
+        'status_not_tracked': themeColors.neutral,
+        'status_watched_not_owned': themeColors.info,
+        'status_external': themeColors.neutral,
+        'status_discovered': themeColors.secondary,
+        'status_watching': themeColors.info,
+        'status_watched': themeColors.success,
+        'status_partially_watched': themeColors.warning,
+        'source_jellyfin': themeColors.primary,
+        'source_radarr': themeColors.error,
+        'source_sonarr': themeColors.success,
+        'source_lidarr': themeColors.accent,
+        'source_other': themeColors.neutral,
+    });
+
+    /**
+     * @param {string} id
+     * @returns {string}
+     */
+    function nodeColor(id) {
+        return colorMap[id] || themeColors.neutral;
+    }
+
+    // Layout computation
+    const layout = $derived.by(() => {
+        const innerW = width - PADDING.left - PADDING.right;
+        const innerH = height - PADDING.top - PADDING.bottom;
+        const colSpacing = innerW / (COLUMNS - 1);
+
+        // Group nodes by column
+        /** @type {Map<number, typeof nodes>} */
+        const columns = new Map();
+        for (const n of nodes) {
+            const col = columns.get(n.column) || [];
+            col.push(n);
+            columns.set(n.column, col);
+        }
+
+        // Sort each column by count descending for visual stability
+        for (const col of columns.values()) {
+            col.sort((a, b) => b.count - a.count);
+        }
+
+        // Position nodes within each column
+        /** @type {Map<string, {x: number, y: number, h: number, label: string, count: number, id: string}>} */
+        const nodePositions = new Map();
+
+        for (const [colIdx, colNodes] of columns) {
+            const totalCount = colNodes.reduce((s, n) => s + n.count, 0);
+            const totalGap = (colNodes.length - 1) * NODE_GAP;
+            const availableH = innerH - totalGap;
+            const x = PADDING.left + colIdx * colSpacing - NODE_WIDTH / 2;
+
+            let y = PADDING.top;
+            for (const n of colNodes) {
+                const h = Math.max(4, (n.count / totalCount) * availableH);
+                nodePositions.set(n.id, { x, y, h, label: n.label, count: n.count, id: n.id });
+                y += h + NODE_GAP;
+            }
+        }
+
+        // Build link paths with vertical stacking
+        /** @type {Map<string, number>} */
+        const sourceOffset = new Map();
+        /** @type {Map<string, number>} */
+        const targetOffset = new Map();
+
+        const sortedLinks = [...links].sort((a, b) => b.value - a.value);
+
+        /** @type {Array<{path: string, value: number, sourceId: string, targetId: string, color: string, label: string}>} */
+        const linkPaths = [];
+
+        for (const link of sortedLinks) {
+            const sn = nodePositions.get(link.source);
+            const tn = nodePositions.get(link.target);
+            if (!sn || !tn) continue;
+
+            const sTotal = nodes.find(n => n.id === link.source)?.count || 1;
+            const tTotal = nodes.find(n => n.id === link.target)?.count || 1;
+
+            const bandH_s = (link.value / sTotal) * sn.h;
+            const bandH_t = (link.value / tTotal) * tn.h;
+
+            const sOff = sourceOffset.get(link.source) || 0;
+            const tOff = targetOffset.get(link.target) || 0;
+
+            const sy1 = sn.y + sOff;
+            const sy2 = sy1 + bandH_s;
+            const ty1 = tn.y + tOff;
+            const ty2 = ty1 + bandH_t;
+
+            sourceOffset.set(link.source, sOff + bandH_s);
+            targetOffset.set(link.target, tOff + bandH_t);
+
+            const sx = sn.x + NODE_WIDTH;
+            const tx = tn.x;
+            const cx = (sx + tx) / 2;
+
+            const path = `M ${sx} ${sy1}
+                C ${cx} ${sy1}, ${cx} ${ty1}, ${tx} ${ty1}
+                L ${tx} ${ty2}
+                C ${cx} ${ty2}, ${cx} ${sy2}, ${sx} ${sy2}
+                Z`;
+
+            // Color flows by media type origin
+            let color = nodeColor(link.source);
+            if (link.source.startsWith('status_')) {
+                const feedingType = sortedLinks
+                    .filter(l => l.target === link.source && l.source.startsWith('type_'))
+                    .sort((a, b) => b.value - a.value)[0];
+                if (feedingType) color = nodeColor(feedingType.source);
+            }
+
+            linkPaths.push({
+                path,
+                value: link.value,
+                sourceId: link.source,
+                targetId: link.target,
+                color,
+                label: `${sn.label} → ${tn.label}: ${link.value.toLocaleString()}`
+            });
+        }
+
+        const headers = ['Total Library', 'Media Type', 'Status', 'Source'];
+        /** @type {Array<{x: number, label: string}>} */
+        const headerPositions = headers.map((label, i) => ({
+            x: PADDING.left + i * colSpacing,
+            label,
+        }));
+
+        return { nodePositions, linkPaths, headerPositions };
+    });
+
+    let hoveredLink = $state(/** @type {string|null} */ (null));
+    let hoveredNode = $state(/** @type {string|null} */ (null));
+
+    /**
+     * @param {{sourceId: string, targetId: string}} link
+     */
+    function isLinkHighlighted(link) {
+        if (!hoveredNode && !hoveredLink) return true;
+        if (hoveredLink === `${link.sourceId}-${link.targetId}`) return true;
+        if (hoveredNode) {
+            return link.sourceId === hoveredNode || link.targetId === hoveredNode;
+        }
+        return false;
+    }
+</script>
+
+<div class="sankey-container">
+    <svg
+        viewBox="0 0 {width} {height}"
+        preserveAspectRatio="xMidYMid meet"
+        class="sankey-svg"
+        role="img"
+        aria-label="Library composition Sankey diagram"
+    >
+        <!-- Column headers -->
+        {#each layout.headerPositions as header}
+            <text
+                x={header.x}
+                y={PADDING.top - 16}
+                text-anchor="middle"
+                class="sankey-header"
+            >{header.label}</text>
+        {/each}
+
+        <!-- Links -->
+        <g class="sankey-links">
+            {#each layout.linkPaths as link}
+                <path
+                    d={link.path}
+                    fill={link.color}
+                    fill-opacity={isLinkHighlighted(link) ? 0.35 : 0.06}
+                    class="sankey-link"
+                    role="graphics-datalink"
+                    onmouseenter={() => hoveredLink = `${link.sourceId}-${link.targetId}`}
+                    onmouseleave={() => hoveredLink = null}
+                >
+                    <title>{link.label}</title>
+                </path>
+            {/each}
+        </g>
+
+        <!-- Nodes -->
+        <g class="sankey-nodes">
+            {#each [...layout.nodePositions.values()] as node}
+                <rect
+                    x={node.x}
+                    y={node.y}
+                    width={NODE_WIDTH}
+                    height={node.h}
+                    rx="3"
+                    fill={nodeColor(node.id)}
+                    class="sankey-node"
+                    class:sankey-node-dimmed={hoveredNode !== null && hoveredNode !== node.id}
+                    role="graphics-symbol"
+                    onmouseenter={() => hoveredNode = node.id}
+                    onmouseleave={() => hoveredNode = null}
+                >
+                    <title>{node.label}: {node.count.toLocaleString()}</title>
+                </rect>
+
+                {@const isLeft = node.x < width / 2}
+                <text
+                    x={isLeft ? node.x + NODE_WIDTH + 6 : node.x - 6}
+                    y={node.y + node.h / 2}
+                    text-anchor={isLeft ? 'start' : 'end'}
+                    dominant-baseline="central"
+                    class="sankey-label"
+                    class:sankey-label-dimmed={hoveredNode !== null && hoveredNode !== node.id}
+                >
+                    {node.label}
+                    <tspan class="sankey-count"> ({node.count.toLocaleString()})</tspan>
+                </text>
+            {/each}
+        </g>
+    </svg>
+</div>
+
+<style>
+    .sankey-container {
+        width: 100%;
+        overflow-x: auto;
+    }
+    .sankey-svg {
+        width: 100%;
+        height: auto;
+        min-height: 400px;
+        max-height: 600px;
+    }
+    .sankey-header {
+        font-family: Inter, system-ui, sans-serif;
+        font-size: 12px;
+        font-weight: 600;
+        fill: oklch(var(--bc) / 0.5);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .sankey-node {
+        transition: opacity 0.2s;
+        cursor: default;
+    }
+    .sankey-node:hover {
+        filter: brightness(1.2);
+    }
+    .sankey-node-dimmed {
+        opacity: 0.3;
+    }
+    .sankey-link {
+        transition: fill-opacity 0.25s;
+        cursor: default;
+    }
+    .sankey-link:hover {
+        fill-opacity: 0.55 !important;
+    }
+    .sankey-label {
+        font-family: Inter, system-ui, sans-serif;
+        font-size: 11px;
+        font-weight: 500;
+        fill: oklch(var(--bc) / 0.8);
+        transition: opacity 0.2s;
+        pointer-events: none;
+    }
+    .sankey-label-dimmed {
+        opacity: 0.3;
+    }
+    .sankey-count {
+        font-weight: 400;
+        fill: oklch(var(--bc) / 0.4);
+        font-size: 10px;
+    }
+</style>

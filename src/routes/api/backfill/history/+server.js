@@ -1,0 +1,113 @@
+import { json } from '@sveltejs/kit';
+import {
+    backfillTrakt, backfillLastfm, backfillJellyfinPR, backfillLegacy,
+    reprocessLastfm,
+    addBackfillListener, isBackfillRunning, stopBackfill,
+    getBackfillStatus
+} from '$lib/server/backfill-engine.js';
+import db from '$lib/server/db.js';
+
+/**
+ * POST /api/backfill/history — Trigger a backfill tier.
+ * Body: { tier: 'trakt' | 'lastfm' | 'jellyfin' | 'legacy', config?: { dbPath?: string } }
+ * @type {import('./$types').RequestHandler}
+ */
+export async function POST({ request, locals }) {
+    const { tier, config } = await request.json();
+
+    if (isBackfillRunning()) {
+        return json({ success: false, error: 'A backfill is already running.' }, { status: 409 });
+    }
+
+    // Use authenticated user from session
+    const user = locals.user;
+    if (!user) {
+        return json({ success: false, error: 'Not authenticated.' }, { status: 401 });
+    }
+
+    const userId = user.id;
+
+    // Start backfill in the background (don't await)
+    switch (tier) {
+        case 'trakt':
+            backfillTrakt(userId);
+            return json({ success: true, message: 'Trakt backfill started.' });
+        case 'lastfm':
+            backfillLastfm(userId);
+            return json({ success: true, message: 'Last.fm backfill started.' });
+        case 'reprocess-lastfm':
+            reprocessLastfm(userId);
+            return json({ success: true, message: 'Last.fm re-processing started (no API calls).' });
+        case 'jellyfin': {
+            const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_pr_db_path FROM app_settings WHERE id = 1').get());
+            const dbPath = config?.dbPath || settings?.jellyfin_pr_db_path;
+            if (!dbPath) {
+                return json({ success: false, error: 'No Jellyfin Playback Reporting DB path configured.' }, { status: 400 });
+            }
+            backfillJellyfinPR(userId, dbPath);
+            return json({ success: true, message: 'Jellyfin PR backfill started.' });
+        }
+        case 'legacy':
+            backfillLegacy(userId);
+            return json({ success: true, message: 'Legacy backfill started.' });
+        case 'stop':
+            stopBackfill();
+            return json({ success: true, message: 'Backfill stopped.' });
+        default:
+            return json({ success: false, error: `Unknown tier: ${tier}` }, { status: 400 });
+    }
+}
+
+/**
+ * GET /api/backfill/history — SSE stream for backfill progress.
+ * @type {import('./$types').RequestHandler}
+ */
+export async function GET() {
+    const stream = new ReadableStream({
+        start(controller) {
+            const encoder = new TextEncoder();
+
+            const send = (data) => {
+                try {
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+                } catch {
+                    // Stream closed
+                }
+            };
+
+            send({ type: 'connected', isRunning: isBackfillRunning() });
+
+            // Send snapshot if backfill is active
+            const status = getBackfillStatus();
+            if (status.running) {
+                send({
+                    type: 'snapshot',
+                    running: true,
+                    tier: status.currentTier,
+                    logs: status.logs,
+                    lastProgress: status.lastProgress
+                });
+            }
+
+            const removeListener = addBackfillListener(send);
+
+            const keepAlive = setInterval(() => {
+                try {
+                    controller.enqueue(encoder.encode(`: keepalive\n\n`));
+                } catch {
+                    clearInterval(keepAlive);
+                }
+            }, 15000);
+        },
+        cancel() { }
+    });
+
+    return new Response(stream, {
+        headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache, no-transform',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no'
+        }
+    });
+}

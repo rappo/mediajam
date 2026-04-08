@@ -1,0 +1,41 @@
+node_modules
+
+# Output
+.output
+.vercel
+.netlify
+.wrangler
+/.svelte-kit
+/build
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.*
+!.env.example
+!.env.test
+
+# Vite
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Mediajam
+mediajam.sqlite
+mediajam.sqlite-wal
+mediajam.sqlite-shm
+mediajam.db
+*.db
+uploads/
+logs/
+cache/
+*.log
+tmp-backup/
+*.sqlite.bak.*
+backups/
+
+# Agent internal files (secrets, debug notes)
+.agents/*.env
+.agents/EMBEDDING_DEBUG.md

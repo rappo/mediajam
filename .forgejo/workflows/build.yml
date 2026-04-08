@@ -1,0 +1,56 @@
+name: Build, Push, and Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-deploy:
+    # NOTE: To switch to the pre-baked ci-runner image (eliminating ~8min of apt setup):
+    # 1. Run the "Build CI Runner Image" workflow once via workflow_dispatch
+    # 2. On the Unraid server, edit the runner config.yaml labels to use:
+    #    docker:docker://192.168.1.50:3210/rappo/ci-runner:latest
+    # 3. Restart the Forgejo runner service
+    # Until then, the runner uses the default node:20-bullseye image.
+    runs-on: docker
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Docker CLI + Compose
+        run: |
+          if command -v apk &> /dev/null; then
+            apk add --no-cache docker-cli docker-cli-compose
+          elif command -v apt-get &> /dev/null; then
+            apt-get update && apt-get install -y --no-install-recommends docker.io curl
+            # Install docker compose v2 plugin manually (not in bullseye repos)
+            mkdir -p /usr/local/lib/docker/cli-plugins
+            curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64" \
+              -o /usr/local/lib/docker/cli-plugins/docker-compose
+            chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+          fi
+
+      - name: Login to Forgejo Registry
+        run: echo "${{ secrets.REGISTRY_TOKEN }}" | docker login 192.168.1.50:3210 -u ${{ github.repository_owner }} --password-stdin
+
+      - name: Build and Push
+        run: |
+          IMAGE="192.168.1.50:3210/${{ github.repository }}"
+          # Pull the previous image for layer caching (ignore failure on first run)
+          docker pull "${IMAGE}:latest" || true
+          docker build \
+            --cache-from "${IMAGE}:latest" \
+            -t "${IMAGE}:latest" \
+            -t "${IMAGE}:${{ github.sha }}" \
+            .
+          docker push "${IMAGE}:latest"
+          docker push "${IMAGE}:${{ github.sha }}"
+
+      - name: Deploy
+        run: |
+          docker compose -f docker-compose.yml -p mediajam pull
+          # Remove any pre-existing container not managed by this compose project
+          docker stop mediajam 2>/dev/null || true
+          docker rm mediajam 2>/dev/null || true
+          docker compose -f docker-compose.yml -p mediajam up -d --force-recreate
+          echo "✅ Deployed $(docker inspect --format='{{.Image}}' mediajam | cut -c1-12)"

@@ -1,0 +1,27 @@
+# ── CI Runner Image ────────────────────────────────────────────────────────────
+# Pre-baked runner image for Forgejo Actions.
+# Build once and push to your container registry:
+#   docker build -f Dockerfile.ci -t your-registry/ci-runner:latest .
+#   docker push your-registry/ci-runner:latest
+#
+# This eliminates ~8 minutes of cold setup per build by pre-installing:
+#   - docker.io CLI
+#   - docker compose v2 plugin
+# ────────────────────────────────────────────────────────────────────────────────
+FROM node:20-bullseye
+
+# Install Docker CLI + Compose plugin
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        docker.io \
+        curl \
+        ca-certificates \
+    && mkdir -p /usr/local/lib/docker/cli-plugins \
+    && COMPOSE_VERSION=$(curl -fsSL "https://api.github.com/repos/docker/compose/releases/latest" | grep '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/') \
+    && curl -fsSL "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-x86_64" \
+        -o /usr/local/lib/docker/cli-plugins/docker-compose \
+    && chmod +x /usr/local/lib/docker/cli-plugins/docker-compose \
+    && docker compose version \
+    && rm -rf /var/lib/apt/lists/*
+
+# Verify versions
+RUN docker --version && node --version && npm --version

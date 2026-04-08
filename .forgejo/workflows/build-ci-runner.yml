@@ -1,0 +1,30 @@
+name: Build CI Runner Image
+
+on:
+  workflow_dispatch:  # Run manually once to bootstrap
+
+jobs:
+  build-ci-runner:
+    runs-on: docker
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Docker CLI
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends docker.io curl
+          mkdir -p /usr/local/lib/docker/cli-plugins
+          COMPOSE_VERSION=$(curl -fsSL "https://api.github.com/repos/docker/compose/releases/latest" | grep '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
+          curl -fsSL "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-x86_64" \
+            -o /usr/local/lib/docker/cli-plugins/docker-compose
+          chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+      - name: Login to Forgejo Registry
+        run: echo "${{ secrets.REGISTRY_TOKEN }}" | docker login 192.168.1.50:3210 -u ${{ github.repository_owner }} --password-stdin
+
+      - name: Build and Push CI Runner Image
+        run: |
+          docker build -f Dockerfile.ci -t 192.168.1.50:3210/rappo/ci-runner:latest .
+          docker push 192.168.1.50:3210/rappo/ci-runner:latest
+          echo "✅ CI runner image built and pushed"
+          docker run --rm 192.168.1.50:3210/rappo/ci-runner:latest bash -c "docker --version && node --version && docker compose version"

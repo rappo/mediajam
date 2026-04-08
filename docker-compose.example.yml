@@ -1,0 +1,29 @@
+# Mediajam Docker Compose — Example
+# Copy this file to docker-compose.yml and edit to match your environment.
+#
+# Quick start:
+#   cp docker-compose.example.yml docker-compose.yml
+#   # Edit ORIGIN, volume paths, and optionally set your container registry
+#   docker compose up -d
+
+services:
+  mediajam:
+    build: .
+    # image: your-registry/mediajam:latest  # uncomment for pre-built images
+    container_name: mediajam
+    ports:
+      - 7331:7331
+    volumes:
+      # Persistent storage for Mediajam's SQLite database
+      - ./data:/app/data
+      # Image cache (disposable, can be rebuilt)
+      - ./cache:/app/cache
+      # Optional: Mount Jellyfin's Playback Reporting DB (read-only)
+      # - /path/to/jellyfin/data/playback_reporting.db:/app/jellyfin/playback_reporting.db:ro
+    environment:
+      - PORT=7331
+      - HOST=0.0.0.0
+      - ORIGIN=http://localhost:7331  # Change to your server's URL
+      - BODY_SIZE_LIMIT=Infinity
+      - TZ=America/New_York
+    restart: unless-stopped
