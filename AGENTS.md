@@ -92,7 +92,7 @@ All sync operations must implement:
 
 ## 9. Forgejo Integration
 
-- Issue tracker: `http://192.168.1.50:3210/rappo/mediajam`
+- Issue tracker URL and credentials are stored in `.agents/forgejo.env` (gitignored).
 - API token stored in `.agents/forgejo.env` (gitignored).
 - Create Forgejo issues for non-trivial TODOs instead of leaving code comments.
 

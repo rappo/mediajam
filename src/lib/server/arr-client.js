@@ -12,7 +12,7 @@ const SERVICE_CONFIG = {
 
 /**
  * Make an authenticated request to an *arr API.
- * @param {string} baseUrl — e.g. "http://192.168.1.50:7878"
+ * @param {string} baseUrl — e.g. "http://localhost:7878"
  * @param {string} apiKey
  * @param {string} service — radarr | sonarr | lidarr
  * @param {string} path — e.g. "system/status"

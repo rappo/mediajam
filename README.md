@@ -75,7 +75,7 @@ Self-hosted media telemetry hub for [Jellyfin](https://jellyfin.org/). Track you
 ## Quick Start
 
 ```bash
-git clone http://192.168.1.50:3210/rappo/mediajam.git
+git clone https://github.com/your-username/mediajam.git
 cd mediajam
 npm install
 npm run dev

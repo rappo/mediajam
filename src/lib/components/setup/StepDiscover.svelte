@@ -65,7 +65,6 @@
 
 	const DEFAULT_PROBES = [
 		"http://localhost:8096",
-		"http://192.168.1.50:8096",
 	];
 
 	async function probeServers() {

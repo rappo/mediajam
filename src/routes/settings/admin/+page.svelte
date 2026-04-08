@@ -3028,7 +3028,7 @@
                             <input
                                 type="text"
                                 class="input input-xs input-bordered w-full font-mono"
-                                placeholder="http://192.168.1.50:{svc.defaultPort}"
+                                placeholder="http://your-server:{svc.defaultPort}"
                                 value={svc.service === 'radarr' ? radarrExternalUrl : svc.service === 'sonarr' ? sonarrExternalUrl : lidarrExternalUrl}
                                 oninput={(e) => {
                                     if (svc.service === 'radarr') radarrExternalUrl = e.target.value;
@@ -3412,7 +3412,7 @@ cat ~/.codex/auth.json</pre>
                                 <input
                                     type="url"
                                     bind:value={llmApiUrl}
-                                    placeholder="http://192.168.1.50:4000"
+                                    placeholder="http://localhost:4000"
                                     class="input input-bordered input-sm flex-1 font-mono"
                                 />
                                 <button

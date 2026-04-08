@@ -26,6 +26,8 @@ vite.config.ts.timestamp-*
 mediajam.sqlite
 mediajam.sqlite-wal
 mediajam.sqlite-shm
+mediajam.db
+*.db
 uploads/
 logs/
 cache/
@@ -33,3 +35,7 @@ cache/
 tmp-backup/
 *.sqlite.bak.*
 backups/
+
+# Agent internal files (secrets, debug notes)
+.agents/*.env
+.agents/EMBEDDING_DEBUG.md

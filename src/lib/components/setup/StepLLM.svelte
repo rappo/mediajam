@@ -203,7 +203,7 @@
                 <input
                     id="ollama-url"
                     type="url"
-                    placeholder="http://192.168.1.50:11434"
+                    placeholder="http://localhost:11434"
                     class="input input-bordered input-sm join-item flex-1"
                     bind:value={ollamaUrl}
                 />

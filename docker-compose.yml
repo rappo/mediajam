@@ -1,33 +1,23 @@
 # Mediajam Docker Compose
-# Pull from Forgejo container registry (built by CI)
-# Or use `docker compose build` for local builds
+# Use `docker compose build` for local builds, or pull from your container registry
 services:
   mediajam:
-    image: 192.168.1.50:3210/rappo/mediajam:latest
-    # build: .  # uncomment for local builds
+    build: .
+    # image: your-registry/mediajam:latest  # uncomment for pre-built images
     container_name: mediajam
     ports:
       - 7331:7331
     volumes:
       # Persistent storage for Mediajam's SQLite database
-      - /mnt/cache/appdata/mediajam:/app/data
+      - ./data:/app/data
       # Image cache (disposable, can be rebuilt)
-      - /mnt/cache/appdata/mediajam/cache:/app/cache
+      - ./cache:/app/cache
       # Optional: Mount Jellyfin's Playback Reporting DB (read-only)
-      - /mnt/user/appdata/jellyfin/data/data/playback_reporting.db:/app/jellyfin/playback_reporting.db:ro
+      # - /path/to/jellyfin/data/playback_reporting.db:/app/jellyfin/playback_reporting.db:ro
     environment:
       - PORT=7331
       - HOST=0.0.0.0
-      - ORIGIN=http://192.168.1.50:7331
+      - ORIGIN=http://localhost:7331  # Change to your server's URL
       - BODY_SIZE_LIMIT=Infinity
       - TZ=America/New_York
     restart: unless-stopped
-    networks:
-      - media-network
-      - infra-bridge
-networks:
-  media-network:
-    name: media-network
-    external: true
-  infra-bridge:
-    external: true

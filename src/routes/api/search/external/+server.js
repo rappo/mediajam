@@ -3,7 +3,7 @@ import { tmdbFetch, getTmdbKey } from '$lib/server/tmdb.js';
 
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w92';
 const MB_BASE = 'https://musicbrainz.org/ws/2';
-const MB_UA = 'Mediajam/1.0 (https://github.com/rappo/mediajam)';
+const MB_UA = 'Mediajam/1.0 (https://github.com/mediajam/mediajam)';
 
 /**
  * GET /api/search/external?q=...&type=all|movie|tv|music

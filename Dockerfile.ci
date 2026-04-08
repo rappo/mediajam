@@ -1,8 +1,8 @@
 # ── CI Runner Image ────────────────────────────────────────────────────────────
 # Pre-baked runner image for Forgejo Actions.
-# Build once and push to the local registry:
-#   docker build -f Dockerfile.ci -t 192.168.1.50:3210/rappo/ci-runner:latest .
-#   docker push 192.168.1.50:3210/rappo/ci-runner:latest
+# Build once and push to your container registry:
+#   docker build -f Dockerfile.ci -t your-registry/ci-runner:latest .
+#   docker push your-registry/ci-runner:latest
 #
 # This eliminates ~8 minutes of cold setup per build by pre-installing:
 #   - docker.io CLI
