@@ -30,26 +30,34 @@ Self-hosted media telemetry hub for [Jellyfin](https://jellyfin.org/). Track you
 
 ### Smart Features
 - 🧠 **LLM Reconciliation** — Ollama-powered matching for orphaned/external media (Last.fm artists, etc.)
+- 💬 **Ask Mediajam** — Natural language chat with your library using Ollama, OpenAI, or Gemini (floating/dockable widget)
 - 🏷 **Auto-Tagging** — LLM-generated genre, mood, and theme tags for your library
-- 🎨 **MusicBrainz Enrichment** — Album art, release dates, and metadata backfill
-- ⭐ **External Ratings** — TMDB ratings integration
-- 🔎 **Global Search** — Unified search across all media types with poster previews
+- 🎨 **MusicBrainz Enrichment** — Album art, release dates, band members, and metadata backfill
+- 🔗 **TMDb Stub Enrichment** — Enrich media stubs without Jellyfin IDs via TMDb credits and metadata
+- ⭐ **External Ratings** — TMDB, IMDb, and Rotten Tomatoes ratings integration
+- 🔎 **Global Search** — Unified search across all media types with poster previews and semantic search
 
 ### *arr Integration (Radarr · Sonarr · Lidarr)
 - 📡 **Network Discovery** — Auto-scan your network for *arr instances
 - ✅ **Collection Status** — See monitored/downloaded status alongside watch history
-- ➕ **Add to *arr** — Request missing media directly from Mediajam
-- 🔍 **Interactive Search** — Search *arr indexers from within the app
+- ➕ **Add to *arr** — Request missing media directly from Mediajam with customizable quality profiles, root folders, and monitor levels
+- 🔍 **Interactive Search** — Search *arr indexers from within the app with sortable release tables, quality badges, and one-click downloads
+- 📺 **Episode-Level Search** — Trigger Sonarr searches for individual episodes from the episode detail page
 
 ### Infrastructure
 - 🧙 **Onboarding Wizard** — Auto-discover Jellyfin, select libraries, configure API keys
 - 🎨 **30+ Themes** — All daisyUI themes with live preview
 - 🔄 **Real-time Sync** — SSE-powered progress with per-library tracking, pause/resume
-- 💾 **Backup & Restore** — Full JSON export/import of all data
+- 💾 **Backup & Restore** — Full JSON export/import, file-based backups with scheduling, boot backups with pruning
 - 📊 **Activity Log** — Searchable history of all system events
 - 🖼 **Image Caching** — Local proxy cache for Jellyfin images with stale-while-revalidate
 - 🌐 **Per-User Public API** — Unauthenticated endpoints for external widgets
 - ⏰ **Auto-Sync Scheduler** — Configurable automatic sync intervals
+- 🔗 **Slug-Based Routing** — Clean, SEO-friendly URLs for all media, people, and episode pages
+- 🔄 **Nightly Pipeline** — Automated enrichment pipeline with configurable phases and scheduling
+- 📋 **Data Auditing** — Snapshot and compare library state over time
+- 🔀 **Conflict Resolution** — Detect and resolve data conflicts from multiple sync sources
+- 🤝 **Six Degrees** — Find shortest connection paths between people in your library
 
 ## Tech Stack
 
@@ -61,7 +69,7 @@ Self-hosted media telemetry hub for [Jellyfin](https://jellyfin.org/). Track you
 | Styling | [Tailwind CSS v4](https://tailwindcss.com/) + [daisyUI v5](https://daisyui.com/) |
 | Charts | [CanvasJS](https://canvasjs.com/) |
 | APIs | Jellyfin SDK, Trakt OAuth, Last.fm, TMDB, MusicBrainz, Radarr/Sonarr/Lidarr |
-| LLM | [Ollama](https://ollama.com/) (optional, for reconciliation & tagging) |
+| LLM | [Ollama](https://ollama.com/), OpenAI, or Gemini (optional, for reconciliation, tagging & chat) |
 | Runtime | Node.js 20 |
 
 ## Quick Start
@@ -118,59 +126,86 @@ services:
 src/
 ├── lib/
 │   ├── components/
-│   │   ├── Chart.svelte              # CanvasJS chart wrapper
-│   │   ├── DataTable.svelte          # Sortable/searchable table
-│   │   ├── StatCard.svelte           # Glassmorphic stat card
-│   │   ├── NowPlaying.svelte         # Live now-playing card (SSE)
-│   │   ├── NowPlayingBar.svelte      # Persistent bottom bar
-│   │   ├── TimelineEntry.svelte      # Playback history entry
-│   │   ├── YearScrubber.svelte       # History timeline year scrub bar
-│   │   ├── SearchBar.svelte          # Global unified search
-│   │   ├── PosterRow.svelte          # Horizontal poster carousel
-│   │   ├── LogConsole.svelte         # SSE log output viewer
-│   │   ├── SyncFooter.svelte         # Persistent sync status bar
-│   │   ├── ReconciliationPanel.svelte # LLM reconciliation UI
-│   │   ├── ArrAddDialog.svelte       # Add-to-*arr dialog
-│   │   └── setup/                    # Onboarding wizard steps
+│   │   ├── Chart.svelte                # CanvasJS chart wrapper
+│   │   ├── DataTable.svelte            # Sortable/searchable table
+│   │   ├── StatCard.svelte             # Glassmorphic stat card
+│   │   ├── NowPlaying.svelte           # Live now-playing card (SSE)
+│   │   ├── NowPlayingBar.svelte        # Persistent bottom bar
+│   │   ├── TimelineEntry.svelte        # Playback history entry
+│   │   ├── YearScrubber.svelte         # History timeline year scrub bar
+│   │   ├── CalendarStrip.svelte        # 3-week episode/album calendar
+│   │   ├── SearchBar.svelte            # Global unified search
+│   │   ├── PosterRow.svelte            # Horizontal poster carousel
+│   │   ├── LogConsole.svelte           # SSE log output viewer
+│   │   ├── SyncFooter.svelte           # Persistent sync status bar
+│   │   ├── ChatWidget.svelte           # LLM-powered "Ask Mediajam" chat
+│   │   ├── ReconciliationPanel.svelte  # LLM reconciliation UI
+│   │   ├── ArrAddDialog.svelte         # Add-to-*arr dialog with profiles
+│   │   ├── InteractiveSearchDialog.svelte  # *arr indexer search & download
+│   │   ├── CollectionStatusBanner.svelte    # *arr collection status
+│   │   ├── ConflictDialog.svelte       # Data conflict resolver
+│   │   └── setup/                      # Onboarding wizard steps
 │   └── server/
-│       ├── db.js                     # SQLite schema & connection
-│       ├── sync-engine.js            # Jellyfin collection sync
-│       ├── ingest-engine.js          # Webhook ingestion & scrobble logic
-│       ├── backfill-engine.js        # Three-tiered history import
-│       ├── people-sync-engine.js     # Cast & crew sync
-│       ├── musicbrainz-engine.js     # MusicBrainz album enrichment
-│       ├── ratings-engine.js         # External ratings (TMDB)
-│       ├── arr-client.js             # *arr API client
-│       ├── arr-sync.js               # *arr sync engine
-│       ├── llm-reconciler.js         # Ollama LLM reconciliation
-│       ├── album-matcher.js          # Album fuzzy matching pipeline
-│       ├── image-cache.js            # Local image proxy cache
-│       ├── session.js                # Session management
-│       ├── logger.js                 # Structured logging
-│       └── jellyfin.js               # Jellyfin SDK wrapper
+│       ├── db.js                       # SQLite schema & connection
+│       ├── sync-engine.js              # Jellyfin collection sync
+│       ├── ingest-engine.js            # Webhook ingestion & scrobble logic
+│       ├── backfill-engine.js          # Three-tiered history import
+│       ├── homepage-engine.js          # Smart dashboard recommendations
+│       ├── nightly-pipeline.js         # Automated nightly enrichment
+│       ├── reconcile.js                # Deduplication & merge engine
+│       ├── slugify.js                  # URL slug generation
+│       ├── people-sync-engine.js       # Cast & crew sync
+│       ├── musicbrainz-engine.js       # MusicBrainz album enrichment
+│       ├── musicbrainz-members.js      # Band member sync
+│       ├── wikipedia-backfill.js       # Wikipedia summary enrichment
+│       ├── ratings-engine.js           # External ratings (TMDB, IMDb, RT)
+│       ├── arr-client.js               # *arr API client
+│       ├── arr-sync.js                 # *arr sync engine
+│       ├── llm-reconciler.js           # LLM reconciliation (multi-provider)
+│       ├── album-matcher.js            # Album fuzzy matching pipeline
+│       ├── image-cache.js              # Local image proxy cache
+│       ├── section-cache.js            # Precomputed dashboard cache
+│       ├── session.js                  # Session management
+│       ├── logger.js                   # Structured logging
+│       └── jellyfin.js                 # Jellyfin SDK wrapper
 ├── routes/
-│   ├── history/                      # Playback history timeline
-│   ├── tv/                           # TV Shows dashboard + detail
-│   ├── movies/                       # Movies dashboard + detail
-│   ├── music/                        # Music dashboard + detail
-│   ├── people/                       # Person directory + detail
-│   ├── settings/                     # Settings & admin panel
-│   ├── welcome/                      # Post-setup welcome page
+│   ├── history/                        # Playback history timeline
+│   ├── tv/                             # TV Shows dashboard + detail
+│   │   └── [slug]/episode/[epSlug]/    # Episode detail pages
+│   ├── movies/                         # Movies dashboard + detail
+│   ├── music/                          # Music dashboard + detail
+│   │   └── [slug]/[albumSlug]/         # Album detail pages
+│   ├── people/                         # Person directory + detail
+│   ├── settings/                       # Settings & admin panel
+│   ├── welcome/                        # Post-setup welcome page
 │   └── api/
-│       ├── sync/                     # Collection sync + SSE
-│       ├── ingest/                   # Webhook ingestion + Now Playing SSE
-│       ├── history/                  # Paginated playback timeline
-│       ├── backfill/                 # Backfill triggers + progress
-│       ├── spokes/trakt/             # Trakt OAuth + history sync
-│       ├── spokes/lastfm/            # Last.fm auth + scrobble sync
-│       ├── arr/                      # *arr integration endpoints
-│       ├── users/[userId]/           # Per-user public API
-│       ├── backup/                   # Export & import
-│       └── settings/                 # Settings CRUD
-└── app.css                           # Global styles & Tailwind config
+│       ├── sync/                       # Collection sync + SSE
+│       ├── ingest/                     # Webhook ingestion + Now Playing SSE
+│       ├── history/                    # Paginated playback timeline
+│       ├── backfill/                   # Backfill triggers + progress
+│       ├── spokes/trakt/               # Trakt OAuth + history sync
+│       ├── spokes/lastfm/              # Last.fm auth + scrobble sync
+│       ├── arr/                        # *arr integration endpoints
+│       │   └── sonarr/episode-search/  # Episode-level Sonarr search
+│       ├── llm/                        # Gemini & OpenAI OAuth
+│       ├── ask/                        # Natural language queries
+│       ├── pipeline/                   # Automated sync pipeline
+│       ├── calendar/                   # Upcoming media calendar
+│       ├── connections/                # Six Degrees of Separation
+│       ├── conflicts/                  # Data conflict resolution
+│       ├── audit/                      # Data auditing
+│       ├── users/[userId]/             # Per-user public API
+│       ├── backup/                     # Export & import
+│       ├── backups/                    # File-based backup management
+│       └── settings/                   # Settings CRUD
+├── docs/
+│   └── openapi.yaml                    # OpenAPI 3.0 spec (Swagger UI at /api/docs)
+└── app.css                             # Global styles & Tailwind config
 ```
 
 ## API Endpoints
+
+Full interactive API documentation is available at `/api/docs` (Swagger UI).
 
 ### Public Per-User API (unauthenticated)
 
@@ -181,7 +216,7 @@ src/
 | `GET /api/users/:id/stats` | Collection & playback statistics |
 | `GET /api/users/:id/favorites?type=movie` | Most-played items |
 
-### Internal API
+### Internal API (selected)
 
 | Endpoint | Description |
 |----------|-------------|
@@ -191,8 +226,15 @@ src/
 | `POST /api/backfill/history` | Trigger backfill (`trakt`, `lastfm`, `jellyfin`, `legacy`) |
 | `POST /api/sync` | Start/pause/resume/stop collection sync |
 | `GET /api/sync` | SSE stream for sync progress |
+| `POST /api/sync/item` | Sync single item (Jellyfin, TMDb, or MusicBrainz enrichment) |
+| `POST /api/ask` | Natural language queries via LLM |
 | `POST /api/arr/scan` | Scan network for *arr instances |
-| `POST /api/arr/[service]/test` | Test *arr connection |
+| `POST /api/arr/[service]/add` | Add item to *arr for monitoring |
+| `POST /api/arr/sonarr/episode-search` | Trigger Sonarr episode-level search |
+| `GET /api/arr/[service]/releases` | Search *arr indexers for releases |
+| `POST /api/pipeline` | Run automated enrichment pipeline |
+| `GET /api/calendar` | Upcoming movies/shows calendar |
+| `GET /api/connections?from=&to=` | Six Degrees of Separation |
 | `POST /api/backup` | Export full backup |
 | `POST /api/backup/import` | Import backup |
 

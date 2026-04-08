@@ -778,19 +778,53 @@ paths:
   /api/sync/item:
     post:
       tags: [Sync]
-      summary: Sync a single Jellyfin item
+      summary: Sync or enrich a single media item
+      description: |
+        Three enrichment modes:
+        1. **Jellyfin sync** — provide `jellyfinId` to re-fetch all data from Jellyfin (episodes, albums, people, Wikipedia).
+        2. **TMDb enrichment** — provide `mediaParentId` + `tmdbId` to enrich a stub (no Jellyfin) with TMDb metadata and credits.
+        3. **MusicBrainz enrichment** — provide `mediaParentId` + `musicbrainzId` to sync band members and Wikipedia for an artist stub.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [jellyfinId]
               properties:
-                jellyfinId: { type: string }
+                jellyfinId:
+                  type: string
+                  description: Jellyfin item ID (mode 1)
+                mediaParentId:
+                  type: integer
+                  description: Local media_parents ID (modes 2 & 3)
+                tmdbId:
+                  type: string
+                  description: TMDb ID for enrichment (mode 2)
+                musicbrainzId:
+                  type: string
+                  description: MusicBrainz artist ID for enrichment (mode 3)
       responses:
         '200':
-          $ref: '#/components/responses/Success'
+          description: Sync/enrichment result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  childCount: { type: integer }
+                  parent: { type: string }
+                  type: { type: string, enum: [movie, show, artist] }
+                  episodes: { type: integer }
+                  albums: { type: integer }
+                  people: { type: integer }
+                  members: { type: integer }
+                  source: { type: string, enum: [tmdb, musicbrainz] }
+                  wikipedia: { type: string }
+        '400':
+          description: Missing parameters or service not configured
+        '404':
+          description: Item not found
 
   /api/sync/people-ids:
     post:
