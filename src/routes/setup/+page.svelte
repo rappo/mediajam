@@ -2,12 +2,14 @@
 	import StepWelcome from "$lib/components/setup/StepWelcome.svelte";
 	import StepDiscover from "$lib/components/setup/StepDiscover.svelte";
 	import StepAuth from "$lib/components/setup/StepAuth.svelte";
+	import StepLLM from "$lib/components/setup/StepLLM.svelte";
 	import StepLibraries from "$lib/components/setup/StepLibraries.svelte";
 
 	const STEPS = [
 		{ label: "Welcome", icon: "👋" },
 		{ label: "Discover", icon: "🔍" },
 		{ label: "Account", icon: "👤" },
+		{ label: "AI", icon: "🤖" },
 		{ label: "Libraries", icon: "📚" },
 	];
 
@@ -119,6 +121,12 @@
 								onBack={prevStep}
 							/>
 						{:else if currentStep === 3}
+							<StepLLM
+								{wizardData}
+								{onStepComplete}
+								onBack={prevStep}
+							/>
+						{:else if currentStep === 4}
 							<StepLibraries
 								{wizardData}
 								onBack={prevStep}
