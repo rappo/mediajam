@@ -1,9 +1,9 @@
 # Mediajam Docker Compose
-# Pull from Forgejo container registry (built by CI)
+# Pull from GitHub Container Registry (built by CI on every push)
 # Or use `docker compose build` for local builds
 services:
   mediajam:
-    image: 192.168.1.50:3210/rappo/mediajam:latest
+    image: ghcr.io/rappo/mediajam:latest
     # build: .  # uncomment for local builds
     container_name: mediajam
     ports:
