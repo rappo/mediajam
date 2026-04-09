@@ -350,7 +350,7 @@ const PHASES = [
                 // TV
                 try {
                     let airingThisWeek = [], newUnwatched = [], behindOn = [], comingUp = [], recentlyWatchedTV = [];
-                    try { airingThisWeek = getAiringThisWeek(prefs, userId); } catch { /* */ }
+                    try { airingThisWeek = getAiringThisWeek(prefs); } catch { /* */ }
                     try { newUnwatched = getNewUnwatchedEpisodes(prefs, userId); } catch { /* */ }
                     try { behindOn = getBehindOnShows(userId); } catch { /* */ }
                     try { comingUp = getUpcomingEpisodes(prefs, userId); } catch { /* */ }

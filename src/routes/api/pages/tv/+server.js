@@ -141,7 +141,7 @@ export function GET({ locals, url }) {
 
     // Cache miss — compute live, save for next time
     let airingThisWeek = [], newUnwatched = [], behindOn = [], comingUp = [], recentlyWatched = [], nextUp = [];
-    try { airingThisWeek = getAiringThisWeek(prefs, userId); } catch (e) {
+    try { airingThisWeek = getAiringThisWeek(prefs); } catch (e) {
         console.error('[tv] airingThisWeek error:', e instanceof Error ? e.message : e);
     }
     try { newUnwatched = getNewUnwatchedEpisodes(prefs, userId); } catch (e) {
