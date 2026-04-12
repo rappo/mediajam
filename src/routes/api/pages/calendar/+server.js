@@ -115,51 +115,90 @@ export async function GET({ url, locals }) {
         })));
     }
 
-    // ── TV Shows ────────────────────────────────────────────────────
+    // ── TV Shows — use episode air dates ────────────────────────────
     if (typeFilter.includes('show')) {
-        // For TV, show at the show level with aggregated watch stats
-        // Filter by release_year range
-        const showStatusClause = status === 'all' ? ''
-            : status === 'watched' ? 'AND mp.watched_children > 0 AND mp.watched_children >= mp.collected_children'
-            : status === 'unwatched' ? 'AND mp.watched_children = 0'
-            : status === 'in_progress' ? 'AND mp.watched_children > 0 AND mp.watched_children < mp.collected_children'
+        // Query individual episodes by premiere_date so episodes show up
+        // on the day they air, not just where the show's release_year falls.
+        const epStatusClause = status === 'all' ? ''
+            : status === 'watched' ? "AND mc.watch_status = 'watched'"
+            : status === 'unwatched' ? "AND mc.watch_status != 'watched'"
+            : status === 'in_progress' ? "AND mc.watch_status = 'in_progress'"
             : '';
 
-        const showRows = /** @type {any[]} */ (db.prepare(`
-            SELECT mp.id, mp.title, mp.media_type, mp.release_year, mp.poster_url, mp.slug,
-                   mp.collected_children, mp.watched_children, mp.total_released_children,
-                   mp.release_year || '-01-01' as release_date
-            FROM media_parents mp
+        const epRows = /** @type {any[]} */ (db.prepare(`
+            SELECT mc.id as episode_id, mc.title as episode_title,
+                   mc.season_number, mc.item_number, mc.premiere_date,
+                   mc.watch_status, mc.is_collected, mc.play_count,
+                   mp.id as show_id, mp.title as show_title, mp.poster_url, mp.slug,
+                   mp.release_year,
+                   mp.watched_children, mp.collected_children, mp.total_released_children
+            FROM media_children mc
+            JOIN media_parents mp ON mc.parent_id = mp.id
             WHERE mp.media_type = 'show'
-              AND mp.release_year || '-01-01' >= ?
-              AND mp.release_year || '-01-01' <= ?
-              ${showStatusClause}
-            ORDER BY mp.release_year DESC, mp.title ASC
+              AND mp.is_dashboard_hidden = 0
+              AND mc.premiere_date IS NOT NULL
+              AND mc.is_special = 0
+              AND date(mc.premiere_date) >= ?
+              AND date(mc.premiere_date) <= ?
+              ${epStatusClause}
+            ORDER BY mc.premiere_date DESC, mp.title ASC
         `).all(startDate, endDate));
 
-        items.push(...showRows.map(r => {
-            const total = r.collected_children || 0;
-            const watched = r.watched_children || 0;
-            let watch_status = 'unwatched';
-            if (watched > 0 && watched >= total) watch_status = 'watched';
-            else if (watched > 0) watch_status = 'in_progress';
+        // Group episodes by show — one entry per show per air-date
+        /** @type {Map<string, any>} */
+        const showDateMap = new Map();
 
-            return {
-                id: r.id,
-                title: r.title,
-                media_type: 'show',
-                release_year: r.release_year,
-                release_date: `${r.release_year}-01-01`,
-                poster_url: r.poster_url,
-                slug: r.slug,
-                watch_status,
-                play_count: watched,
-                collected_children: total,
-                watched_children: watched,
-                total_released_children: r.total_released_children || 0,
-                href: `/tv/${r.slug || r.id}`,
-            };
-        }));
+        for (const ep of epRows) {
+            const dateKey = ep.premiere_date.split('T')[0];
+            const key = `${ep.show_id}-${dateKey}`;
+
+            if (!showDateMap.has(key)) {
+                const total = ep.collected_children || 0;
+                const watched = ep.watched_children || 0;
+                let show_watch_status = 'unwatched';
+                if (watched > 0 && watched >= total) show_watch_status = 'watched';
+                else if (watched > 0) show_watch_status = 'in_progress';
+
+                showDateMap.set(key, {
+                    id: ep.show_id,
+                    title: ep.show_title,
+                    media_type: 'show',
+                    release_year: ep.release_year,
+                    release_date: dateKey,
+                    poster_url: ep.poster_url,
+                    slug: ep.slug,
+                    watch_status: show_watch_status,
+                    play_count: watched,
+                    collected_children: total,
+                    watched_children: watched,
+                    total_released_children: ep.total_released_children || 0,
+                    href: `/tv/${ep.slug || ep.show_id}`,
+                    episodes: [],
+                });
+            }
+
+            showDateMap.get(key).episodes.push({
+                id: ep.episode_id,
+                title: ep.episode_title,
+                season: ep.season_number,
+                episode: ep.item_number,
+                watch_status: ep.watch_status,
+            });
+        }
+
+        // Build subtitle from episodes (e.g., "S02E05, S02E06")
+        for (const entry of showDateMap.values()) {
+            const epLabels = entry.episodes
+                .sort((/** @type {any} */ a, /** @type {any} */ b) => (a.season * 10000 + a.episode) - (b.season * 10000 + b.episode))
+                .map((/** @type {any} */ e) => `S${String(e.season).padStart(2, '0')}E${String(e.episode).padStart(2, '0')}`);
+            entry.subtitle = epLabels.join(', ');
+            // Count how many are watched vs total
+            const epWatched = entry.episodes.filter((/** @type {any} */ e) => e.watch_status === 'watched').length;
+            entry.ep_count = entry.episodes.length;
+            entry.ep_watched = epWatched;
+            delete entry.episodes;
+            items.push(entry);
+        }
     }
 
     // ── Music (Albums) ─────────────────────────────────────────────
