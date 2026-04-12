@@ -14,7 +14,7 @@
     let filteredCount = $state(0);
 
     // Filters
-    let viewMode = $state('list'); // 'grid' | 'list'
+    let viewMode = $state('posters'); // 'posters' | 'list' | 'grid'
     let typeFilter = $state('all'); // 'all' | 'movie' | 'show' | 'artist'
     let statusFilter = $state('all'); // 'all' | 'watched' | 'unwatched' | 'in_progress'
     let spanPreset = $state('last30d'); // 'last7d' | 'last30d' | 'last90d' | 'lastYear' | 'custom'
@@ -69,7 +69,7 @@
         return sorted;
     });
 
-    /** Items grouped by month for list view */
+    /** Items grouped by month for list/poster view */
     let groupedByMonth = $derived.by(() => {
         /** @type {Map<string, any[]>} */
         const groups = new Map();
@@ -88,28 +88,24 @@
 
     /** Items grouped into a calendar grid for the grid view */
     let calendarGrid = $derived.by(() => {
-        // Determine the month to display
         const month = gridMonth;
         const year = gridYear;
         const firstDay = new Date(year, month - 1, 1);
         const lastDay = new Date(year, month, 0);
         const daysInMonth = lastDay.getDate();
 
-        // Start from Monday
-        let startDow = firstDay.getDay(); // 0=Sun
-        startDow = startDow === 0 ? 6 : startDow - 1; // 0=Mon
+        let startDow = firstDay.getDay();
+        startDow = startDow === 0 ? 6 : startDow - 1;
 
         /** @type {Array<{date: string, day: number, isToday: boolean, isPast: boolean, items: any[]}>} */
         const cells = [];
 
-        // Pad leading empty days
         for (let i = 0; i < startDow; i++) {
             cells.push({ date: '', day: 0, isToday: false, isPast: false, items: [] });
         }
 
         const todayISO = new Date().toISOString().split('T')[0];
 
-        // Build lookup for items by date
         /** @type {Map<string, any[]>} */
         const byDate = new Map();
         for (const item of items) {
@@ -129,12 +125,10 @@
             });
         }
 
-        // Fill trailing to complete last week
         while (cells.length % 7 !== 0) {
             cells.push({ date: '', day: 0, isToday: false, isPast: false, items: [] });
         }
 
-        // Chunk into weeks
         /** @type {Array<typeof cells>} */
         const weeks = [];
         for (let i = 0; i < cells.length; i += 7) {
@@ -151,7 +145,6 @@
     function gridPrevMonth() {
         if (gridMonth === 1) { gridMonth = 12; gridYear--; }
         else gridMonth--;
-        // Update filters to fetch data for this month
         spanPreset = 'custom';
         selectedYear = gridYear;
         selectedMonth = gridMonth;
@@ -174,7 +167,6 @@
         selectedMonth = gridMonth;
     }
 
-    // When switching to grid mode, sync grid month
     function setViewMode(mode) {
         viewMode = mode;
         if (mode === 'grid') {
@@ -236,6 +228,13 @@
         return 'Unwatched';
     }
 
+    /** @param {string} status */
+    function statusBadgeLabel(status) {
+        if (status === 'watched') return 'watched';
+        if (status === 'in_progress') return 'in progress';
+        return 'unwatched';
+    }
+
     const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -284,6 +283,16 @@
             <!-- View toggle -->
             <div class="view-toggle">
                 <button
+                    class="toggle-btn {viewMode === 'posters' ? 'active' : ''}"
+                    onclick={() => setViewMode('posters')}
+                    title="Poster cards"
+                >
+                    <!-- Grid/poster icon -->
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
+                    </svg>
+                </button>
+                <button
                     class="toggle-btn {viewMode === 'list' ? 'active' : ''}"
                     onclick={() => setViewMode('list')}
                     title="List view"
@@ -329,7 +338,7 @@
         <div class="toolbar-row">
             <!-- Time span -->
             <div class="filter-group">
-                <label class="filter-label">Range</label>
+                <span class="filter-label">Range</span>
                 <div class="filter-pills">
                     {#each spanOptions as opt}
                         <button
@@ -349,16 +358,16 @@
             {#if spanPreset === 'custom'}
                 <!-- Year/Month selectors -->
                 <div class="filter-group">
-                    <label class="filter-label">Year</label>
+                    <span class="filter-label">Year</span>
                     <select class="select select-sm select-bordered" bind:value={selectedYear}>
                         {#each years as y}
                             <option value={y}>{y}</option>
                         {/each}
                     </select>
                 </div>
-                {#if viewMode === 'list'}
+                {#if viewMode !== 'grid'}
                     <div class="filter-group">
-                        <label class="filter-label">Month</label>
+                        <span class="filter-label">Month</span>
                         <select class="select select-sm select-bordered" bind:value={selectedMonth}>
                             <option value={0}>All</option>
                             {#each monthNames as m, i}
@@ -371,7 +380,7 @@
 
             <!-- Future padding -->
             <div class="filter-group">
-                <label class="filter-label">Future</label>
+                <span class="filter-label">Future</span>
                 <div class="filter-pills">
                     {#each futureOptions as opt}
                         <button
@@ -382,8 +391,8 @@
                 </div>
             </div>
 
-            <!-- Sort (list mode only) -->
-            {#if viewMode === 'list'}
+            <!-- Sort (list/poster mode only) -->
+            {#if viewMode !== 'grid'}
                 <button
                     class="sort-btn"
                     onclick={() => { sortNewestFirst = !sortNewestFirst; }}
@@ -405,18 +414,68 @@
         </div>
     {/if}
 
+    <!-- ═══ POSTER / CARD VIEW ═══ -->
+    {#if viewMode === 'posters' && loaded}
+        {#if groupedByMonth.length === 0}
+            <div class="empty-state">
+                <span class="empty-icon">📅</span>
+                <p class="empty-text">No items match the current filters</p>
+            </div>
+        {:else}
+            {#each groupedByMonth as group}
+                <section class="smart-section">
+                    <div class="section-header">
+                        <h2 class="section-title">{group.label}</h2>
+                        <span class="section-count">{group.items.length} item{group.items.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    <div class="poster-scroll">
+                        {#each group.items as item}
+                            <a href={item.href} class="poster-card" title="{item.title}{item.subtitle ? ' — ' + item.subtitle : ''}">
+                                <!-- Status badge -->
+                                {#if item.watch_status === 'watched'}
+                                    <span class="wb">watched</span>
+                                {:else if item.watch_status === 'in_progress'}
+                                    <span class="ipb">in progress</span>
+                                {:else}
+                                    <span class="uwb">unwatched</span>
+                                {/if}
+                                <!-- Type pip -->
+                                <span class="type-pip {typeBadgeClass(item.media_type)}">{typeIcon(item.media_type)}</span>
+                                <!-- Poster -->
+                                <div class="poster-img poster-placeholder">{typeIcon(item.media_type)}</div>
+                                {#if item.poster_url}
+                                    <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img poster-img-abs" loading="lazy" onerror={(e) => { /** @type {HTMLImageElement} */ (e.currentTarget).style.display='none'; }} />
+                                {/if}
+                                <div class="poster-meta">
+                                    <span class="poster-name">{item.title}</span>
+                                    {#if item.subtitle}
+                                        <span class="poster-sub">{item.subtitle}</span>
+                                    {:else if item.release_date && !item.release_date.endsWith('-01-01')}
+                                        <span class="poster-sub">{formatDate(item.release_date)}</span>
+                                    {:else}
+                                        <span class="poster-sub">{item.release_year}</span>
+                                    {/if}
+                                </div>
+                            </a>
+                        {/each}
+                    </div>
+                </section>
+            {/each}
+        {/if}
+    {/if}
+
     <!-- ═══ CALENDAR GRID VIEW ═══ -->
     {#if viewMode === 'grid' && loaded}
         <div class="cal-section">
             <!-- Grid month nav -->
             <div class="grid-nav">
-                <button class="nav-btn" onclick={gridPrevMonth}>
+                <button class="nav-btn" onclick={gridPrevMonth} aria-label="Previous month">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
                 </button>
                 <span class="grid-month-label">
                     {monthNames[calendarGrid.month - 1]} {calendarGrid.year}
                 </span>
-                <button class="nav-btn" onclick={gridNextMonth}>
+                <button class="nav-btn" onclick={gridNextMonth} aria-label="Next month">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
                 </button>
                 <button class="nav-btn nav-today" onclick={gridToday}>Today</button>
@@ -654,6 +713,128 @@
         display: flex;
         justify-content: center;
         padding: 2rem 0;
+    }
+
+    /* ═══ POSTER / CARD VIEW ═══ */
+    .smart-section {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    .section-header {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+    }
+    .section-title {
+        font-size: 1.1rem;
+        font-weight: 700;
+    }
+    .section-count {
+        font-size: 0.7rem;
+        color: oklch(var(--bc) / 0.35);
+    }
+
+    .poster-scroll {
+        display: flex;
+        gap: 14px;
+        overflow-x: auto;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+        padding-bottom: 4px;
+    }
+    .poster-scroll::-webkit-scrollbar { display: none; }
+
+    .poster-card {
+        flex-shrink: 0;
+        width: 130px;
+        text-decoration: none;
+        color: inherit;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        position: relative;
+    }
+    .poster-card:hover {
+        transform: translateY(-4px) scale(1.03);
+    }
+    .poster-img {
+        width: 100%;
+        aspect-ratio: 2/3;
+        border-radius: 10px;
+        object-fit: cover;
+        box-shadow: 0 4px 14px oklch(0 0 0 / 0.35);
+    }
+    .poster-img-abs {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+    }
+    .poster-placeholder {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: oklch(var(--b3));
+        font-size: 2rem;
+    }
+    .poster-meta {
+        margin-top: 6px;
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+    }
+    .poster-name {
+        font-size: 0.72rem;
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        line-height: 1.3;
+    }
+    .poster-sub {
+        font-size: 0.6rem;
+        color: oklch(var(--bc) / 0.4);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    /* Status badges on poster cards */
+    .uwb, .wb, .ipb {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        z-index: 2;
+        font-size: 0.5rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 2px 7px;
+        border-radius: 6px;
+        color: #fff;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+        border: 1px solid rgba(0,0,0,0.15);
+    }
+    .uwb {
+        background: #dc2626;
+    }
+    .wb {
+        background: #16a34a;
+    }
+    .ipb {
+        background: #ca8a04;
+    }
+
+    /* Type pip (bottom-left on poster) */
+    .type-pip {
+        position: absolute;
+        bottom: calc(2/3 * 100% + 2px);
+        left: 6px;
+        z-index: 2;
+        font-size: 0.55rem;
+        padding: 1px 5px;
+        border-radius: 5px;
+        background: oklch(0 0 0 / 0.6);
+        backdrop-filter: blur(4px);
+        bottom: 46px;
     }
 
     /* ── Calendar Grid View ── */
@@ -1001,6 +1182,9 @@
             width: 24px;
             height: 34px;
         }
+        .poster-card {
+            width: 110px;
+        }
     }
 
     @media (max-width: 600px) {
@@ -1018,6 +1202,9 @@
         .list-poster {
             width: 30px;
             height: 44px;
+        }
+        .poster-card {
+            width: 100px;
         }
     }
 </style>

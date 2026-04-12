@@ -317,52 +317,54 @@
 						</svg>
 						Music
 					</a>
-				<a href="/stats" role="tab" class="tab tab-sm font-medium {currentPath === '/stats' ? 'tab-active' : ''}">
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="h-4 w-4 mr-1.5"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-					>
-						<path d="M18 20V10" /><path d="M12 20V4" /><path d="M6 20v-6" />
-					</svg>
-					Stats
-				</a>
-				<a href="/calendar" role="tab" class="tab tab-sm font-medium {currentPath === '/calendar' ? 'tab-active' : ''}">
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="h-4 w-4 mr-1.5"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-					>
-						<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-					</svg>
-					Calendar
-				</a>
-				<a href="/connections" role="tab" class="tab tab-sm font-medium {currentPath === '/connections' ? 'tab-active' : ''}">
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="h-4 w-4 mr-1.5"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-					>
-						<circle cx="5" cy="6" r="3" /><circle cx="19" cy="6" r="3" /><circle cx="12" cy="18" r="3" />
-						<path d="M7.5 8 12 15.5 16.5 8" />
-					</svg>
-					6°
-				</a>
+				<div class="dropdown dropdown-end">
+					<div tabindex="0" role="button" class="tab tab-sm font-medium {['/stats', '/calendar', '/connections'].some(p => currentPath.startsWith(p)) ? 'tab-active' : ''}">
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							class="h-4 w-4 mr-1.5"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
+							<path d="M9 2v6l-2 4v1a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-1l-2-4V2" />
+							<path d="M8 2h8" />
+							<path d="M7 16v2a4 4 0 0 0 4 4h2a4 4 0 0 0 4-4v-2" />
+						</svg>
+						Experimental
+						<svg class="h-3 w-3 ml-0.5 opacity-50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+					</div>
+					<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+					<ul tabindex="0" class="dropdown-content menu bg-base-200 rounded-box z-[60] w-48 p-2 shadow-xl border border-base-content/10 mt-2">
+						<li>
+							<a href="/calendar" class="{currentPath === '/calendar' ? 'active' : ''}">
+								<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+									<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+								</svg>
+								Calendar
+							</a>
+						</li>
+						<li>
+							<a href="/stats" class="{currentPath === '/stats' ? 'active' : ''}">
+								<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+									<path d="M18 20V10" /><path d="M12 20V4" /><path d="M6 20v-6" />
+								</svg>
+								Stats
+							</a>
+						</li>
+						<li>
+							<a href="/connections" class="{currentPath === '/connections' ? 'active' : ''}">
+								<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+									<circle cx="5" cy="6" r="3" /><circle cx="19" cy="6" r="3" /><circle cx="12" cy="18" r="3" />
+									<path d="M7.5 8 12 15.5 16.5 8" />
+								</svg>
+								6° of Separation
+							</a>
+						</li>
+					</ul>
+				</div>
 			</div>
 			</div>
 
