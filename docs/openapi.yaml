@@ -1774,6 +1774,71 @@ paths:
         '200':
           description: Music calendar events
 
+  /api/pages/calendar:
+    get:
+      tags: [Page Data, Calendar]
+      summary: Calendar page data — all media by release date
+      description: |
+        Returns library media grouped by release date across TV, movies, and music.
+        Supports time span presets, future padding, and filtering by type and watch status.
+      parameters:
+        - name: type
+          in: query
+          schema: { type: string, enum: [all, movie, show, artist], default: all }
+          description: Filter by media type
+        - name: status
+          in: query
+          schema: { type: string, enum: [all, watched, unwatched, in_progress], default: all }
+          description: Filter by watch/listen state
+        - name: span
+          in: query
+          schema: { type: string, enum: [last7d, last30d, last90d, lastYear, custom], default: custom }
+          description: Time span preset. When 'custom', use year/month params.
+        - name: futureDays
+          in: query
+          schema: { type: integer, default: 0, minimum: 0, maximum: 365 }
+          description: Include items releasing up to N days in the future
+        - name: year
+          in: query
+          schema: { type: integer }
+          description: Filter to specific year (used when span=custom)
+        - name: month
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 12 }
+          description: Filter to specific month (used when span=custom)
+      responses:
+        '200':
+          description: Calendar items with metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        title: { type: string }
+                        media_type: { type: string, enum: [movie, show, album] }
+                        release_year: { type: integer }
+                        release_date: { type: string, format: date }
+                        poster_url: { type: string, nullable: true }
+                        slug: { type: string, nullable: true }
+                        watch_status: { type: string, enum: [watched, unwatched, in_progress] }
+                        play_count: { type: integer }
+                        href: { type: string }
+                        subtitle: { type: string, nullable: true, description: Artist name for albums }
+                  years:
+                    type: array
+                    items: { type: integer }
+                    description: Distinct release years in the library
+                  totalCount: { type: integer }
+                  filteredCount: { type: integer }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   # ── Arr Defaults ────────────────────────────────────────────────
   /api/arr/{service}/defaults:
     get:
