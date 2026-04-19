@@ -321,12 +321,10 @@
         }
     }
 
-    // Rating chart data — individual scores 1-100, fill gaps for smooth line
+    // Rating chart data — individual scores 1-100, null for gaps
     let chartByRating = $derived.by(() => {
         /** @type {Map<number, {watched: number, unwatched: number}>} */
         const map = new Map();
-        // Pre-fill all scores 1-100 for a smooth continuous line
-        for (let i = 1; i <= 100; i++) map.set(i, { watched: 0, unwatched: 0 });
         for (const m of movies) {
             const r = m.rating_value;
             if (r == null || r < 1) continue;
@@ -335,7 +333,17 @@
             if (m.watch_status === 'watched') entry.watched++; else entry.unwatched++;
             map.set(score, entry);
         }
-        return [...map.entries()].sort((a, b) => a[0] - b[0]).map(([rating, c]) => ({ rating, ...c }));
+        // Build full 1-100 range, null where no movies exist
+        const result = [];
+        for (let i = 1; i <= 100; i++) {
+            const entry = map.get(i);
+            if (entry && (entry.watched > 0 || entry.unwatched > 0)) {
+                result.push({ rating: i, watched: entry.watched, unwatched: entry.unwatched });
+            } else {
+                result.push({ rating: i, watched: null, unwatched: null });
+            }
+        }
+        return result;
     });
 
     let chartOptions = $derived.by(() => {
@@ -359,6 +367,7 @@
                 axisY: { title: "Count", titleFontColor: "#a6adba" },
                 toolTip: { shared: true },
                 legend: { fontColor: "#a6adba", fontSize: 11 },
+                spanGaps: false,
                 data: [
                     { type: "stackedArea", name: "Watched", color: "#36d399", showInLegend: true, markerSize: 0, lineThickness: 2, fillOpacity: 0.4, dataPoints: chartByRating.map(d => ({ x: d.rating, y: d.watched })) },
                     { type: "stackedArea", name: "Unwatched", color: "#a1a1aa", showInLegend: true, markerSize: 0, lineThickness: 2, fillOpacity: 0.4, dataPoints: chartByRating.map(d => ({ x: d.rating, y: d.unwatched })) },

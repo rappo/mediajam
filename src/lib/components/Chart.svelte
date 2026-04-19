@@ -79,6 +79,7 @@
                 dataset.fill = 'origin';
                 dataset.tension = 0.3;
                 dataset.pointRadius = s.markerSize ?? 0;
+                dataset.spanGaps = false;
                 // Apply fillOpacity via rgba
                 const hex = s.color || "#7c3aed";
                 const opacity = s.fillOpacity ?? 0.4;
