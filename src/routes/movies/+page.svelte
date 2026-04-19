@@ -50,7 +50,7 @@
     let sortDir = $state('asc'); // 'asc' | 'desc'
 
     // Chart toggle
-    let chartMode = $state('decade'); // 'decade' | 'year' | 'genre' | 'person'
+    let chartMode = $state('decade'); // 'decade' | 'year' | 'genre' | 'rating'
 
     // Pagination
     let page = $state(0);
@@ -246,33 +246,19 @@
         return [...map.entries()].sort((a, b) => a[0] - b[0]).map(([year, c]) => ({ year, ...c }));
     });
 
-    // Person chart data — top 20 persons by movie credit count
-    let chartByPerson = $derived.by(() => {
-        // Build O(1) name lookup once
-        /** @type {Map<number, string>} */
-        const nameMap = new Map();
-        for (const p of allPersons) nameMap.set(p.id, p.name);
-
-        /** @type {Map<number, {name: string, watched: number, unwatched: number}>} */
+    // Rating chart data — bucket by whole rating value
+    let chartByRating = $derived.by(() => {
+        /** @type {Map<number, {watched: number, unwatched: number}>} */
         const map = new Map();
         for (const m of movies) {
-            const isWatched = m.watch_status === 'watched';
-            for (const pid of (m.person_ids || [])) {
-                let entry = map.get(pid);
-                if (!entry) {
-                    entry = { name: nameMap.get(pid) || `Person ${pid}`, watched: 0, unwatched: 0 };
-                    map.set(pid, entry);
-                }
-                if (isWatched) entry.watched++; else entry.unwatched++;
-            }
+            const r = m.rating_value;
+            if (r == null) continue;
+            const bucket = Math.floor(r);
+            const entry = map.get(bucket) || { watched: 0, unwatched: 0 };
+            if (m.watch_status === 'watched') entry.watched++; else entry.unwatched++;
+            map.set(bucket, entry);
         }
-        const sorted = [...map.values()]
-            .sort((a, b) => (b.watched + b.unwatched) - (a.watched + a.unwatched));
-        const top = sorted.slice(0, 20);
-        const rest = sorted.slice(20);
-        const other = rest.reduce((acc, c) => ({ name: 'Other', watched: acc.watched + c.watched, unwatched: acc.unwatched + c.unwatched }), { name: 'Other', watched: 0, unwatched: 0 });
-        if (other.watched + other.unwatched > 0) top.push(other);
-        return top;
+        return [...map.entries()].sort((a, b) => a[0] - b[0]).map(([rating, c]) => ({ rating, ...c }));
     });
 
     let chartOptions = $derived.by(() => {
@@ -289,16 +275,16 @@
                 ],
             };
         }
-        if (chartMode === 'person') {
+        if (chartMode === 'rating') {
             return {
-                title: { text: "By Person" },
-                axisX: { labelFontSize: 9, labelAngle: -45 },
+                title: { text: "By Rating" },
+                axisX: { labelFontSize: 11, title: "Rating", titleFontColor: "#a6adba" },
                 axisY: { title: "Count", titleFontColor: "#a6adba" },
                 toolTip: { shared: true },
                 legend: { fontColor: "#a6adba", fontSize: 11 },
                 data: [
-                    { type: "stackedColumn", name: "Watched", color: "#36d399", showInLegend: true, dataPoints: chartByPerson.map(d => ({ label: d.name, y: d.watched })) },
-                    { type: "stackedColumn", name: "Unwatched", color: "#a1a1aa", showInLegend: true, dataPoints: chartByPerson.map(d => ({ label: d.name, y: d.unwatched })) },
+                    { type: "stackedColumn", name: "Watched", color: "#36d399", showInLegend: true, dataPoints: chartByRating.map(d => ({ label: String(d.rating), y: d.watched })) },
+                    { type: "stackedColumn", name: "Unwatched", color: "#a1a1aa", showInLegend: true, dataPoints: chartByRating.map(d => ({ label: String(d.rating), y: d.unwatched })) },
                 ],
             };
         }
@@ -529,7 +515,7 @@
                 <button class="btn btn-xs" class:btn-active={chartMode === 'decade'} onclick={() => chartMode = 'decade'}>Decade</button>
                 <button class="btn btn-xs" class:btn-active={chartMode === 'year'} onclick={() => chartMode = 'year'}>Year</button>
                 <button class="btn btn-xs" class:btn-active={chartMode === 'genre'} onclick={() => chartMode = 'genre'}>Genre</button>
-                <button class="btn btn-xs" class:btn-active={chartMode === 'person'} onclick={() => chartMode = 'person'}>Person</button>
+                <button class="btn btn-xs" class:btn-active={chartMode === 'rating'} onclick={() => chartMode = 'rating'}>Rating</button>
             </div>
             <Chart options={chartOptions} height={240} />
         </div>
