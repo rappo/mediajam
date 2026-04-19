@@ -3,6 +3,7 @@ import { json } from '@sveltejs/kit';
 import { isRunning as isSyncRunning } from '$lib/server/sync-engine.js';
 import { isMBRunning } from '$lib/server/musicbrainz-engine.js';
 import { markConflictsRead } from '$lib/server/activity-log.js';
+import { migrateRatings } from '$lib/server/ratings-engine.js';
 
 /**
  * GET /api/conflicts — list pending sync conflicts with media details.
@@ -100,7 +101,8 @@ export async function POST({ request, locals }) {
         // Move tracks that reference children of the secondary (already moved above)
         // Tracks reference media_children.id which didn't change, so no action needed
 
-        // Delete the secondary media_parent
+        // Migrate ratings and delete the secondary media_parent
+        migrateRatings(secondaryId, primaryId);
         db.prepare('DELETE FROM media_parents WHERE id = ?').run(secondaryId);
 
         // Mark conflict as resolved

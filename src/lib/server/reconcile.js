@@ -1,5 +1,6 @@
 import db from '$lib/server/db.js';
 import { slugify, ensureUniqueSlug } from '$lib/server/slugify.js';
+import { migrateRatings } from '$lib/server/ratings-engine.js';
 
 /**
  * Reconcile external media_children (created by Last.fm/Trakt) with Jellyfin-synced entries.
@@ -172,6 +173,7 @@ export function deduplicateParents() {
                         db.prepare('UPDATE media_parents SET slug = ? WHERE id = ?').run(staleSlug.slug, keepId);
                     }
                 }
+                migrateRatings(staleId, keepId);
                 db.prepare('DELETE FROM media_parents WHERE id = ?').run(staleId);
                 deletedIds.add(staleId);
                 deduped++;
@@ -347,6 +349,7 @@ export function deduplicateParentsByTitle() {
                 'SELECT COUNT(*) as c FROM media_children WHERE parent_id = ?'
             ).get(orphan_id));
             if (!remaining || remaining.c === 0) {
+                migrateRatings(orphan_id, keep_id);
                 db.prepare('DELETE FROM media_parents WHERE id = ?').run(orphan_id);
                 deduped++;
             }
@@ -527,6 +530,7 @@ export function mergeOrphanArtistsIntoAlbums() {
             // Delete orphan children and parent
             db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?').run(orphan.id);
             db.prepare('DELETE FROM media_children WHERE parent_id = ?').run(orphan.id);
+            migrateRatings(orphan.id, target.parent_id);
             db.prepare('DELETE FROM media_parents WHERE id = ?').run(orphan.id);
             merged++;
 

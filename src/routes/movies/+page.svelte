@@ -61,7 +61,7 @@
     let sortDir = $state('asc'); // 'asc' | 'desc'
 
     // Chart toggle
-    let chartMode = $state('decade'); // 'decade' | 'year' | 'genre' | 'rating'
+    let chartMode = $state('rating'); // 'decade' | 'year' | 'genre' | 'rating'
 
     // Pagination
     let page = $state(0);
@@ -1144,9 +1144,9 @@
     /* Person pick dropdown */
     .person-pick-menu {
         position: absolute; top: 100%; left: 0; z-index: 50;
-        background: oklch(var(--b2)); border: 1px solid oklch(var(--bc) / 0.15);
+        background-color: #1d232a; border: 1px solid rgba(255,255,255,0.1);
         border-radius: 0.5rem; padding: 0.375rem; min-width: 220px; max-width: 280px;
-        box-shadow: 0 8px 24px oklch(0 0 0 / 0.4);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.7);
     }
     .person-pick-list {
         max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 1px;

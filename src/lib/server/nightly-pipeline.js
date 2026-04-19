@@ -299,6 +299,12 @@ const PHASES = [
             const mp = mergePersonDuplicates();
             if (mp.merged > 0) log(`  Merged ${mp.merged} duplicate persons, moved ${mp.creditsMoved} credits`);
 
+            // Clean up orphaned external_ratings pointing to deleted parents
+            const orphanedRatings = db.prepare(`
+                DELETE FROM external_ratings WHERE media_parent_id NOT IN (SELECT id FROM media_parents)
+            `).run();
+            if (orphanedRatings.changes > 0) log(`  Cleaned ${orphanedRatings.changes} orphaned ratings`);
+
             const totalMerged = p.deduped + pt.deduped + c.deduped + ph.removed + oa.merged + ea.deduped + mp.merged;
             return totalMerged > 0
                 ? `Cleanup complete: ${totalMerged} total operations`
