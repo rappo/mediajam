@@ -95,10 +95,12 @@ export function GET({ locals }) {
 
     /** @type {Map<number, {source: string, value: number, raw_value: string}>} */
     const ratingMap = new Map();
+    const ratingPriority = /** @type {Record<string, number>} */ ({ omdb_imdb: 4, omdb_rt: 3, omdb_metacritic: 2, tmdb: 1 });
     for (const row of ratingRows) {
         const existing = ratingMap.get(row.media_parent_id);
-        // Prefer IMDb, then TMDB, then whatever
-        if (!existing || row.source === 'omdb_imdb' || (row.source === 'tmdb' && existing.source !== 'omdb_imdb')) {
+        const newPri = ratingPriority[row.source] || 0;
+        const existPri = existing ? (ratingPriority[existing.source] || 0) : -1;
+        if (newPri > existPri) {
             ratingMap.set(row.media_parent_id, { source: row.source, value: row.value, raw_value: row.raw_value });
         }
     }

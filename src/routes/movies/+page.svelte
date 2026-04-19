@@ -246,17 +246,17 @@
         return [...map.entries()].sort((a, b) => a[0] - b[0]).map(([year, c]) => ({ year, ...c }));
     });
 
-    // Rating chart data — bucket by whole rating value
+    // Rating chart data — individual scores 0-100, line chart
     let chartByRating = $derived.by(() => {
         /** @type {Map<number, {watched: number, unwatched: number}>} */
         const map = new Map();
         for (const m of movies) {
             const r = m.rating_value;
             if (r == null) continue;
-            const bucket = Math.floor(r);
-            const entry = map.get(bucket) || { watched: 0, unwatched: 0 };
+            const score = Math.round(r);
+            const entry = map.get(score) || { watched: 0, unwatched: 0 };
             if (m.watch_status === 'watched') entry.watched++; else entry.unwatched++;
-            map.set(bucket, entry);
+            map.set(score, entry);
         }
         return [...map.entries()].sort((a, b) => a[0] - b[0]).map(([rating, c]) => ({ rating, ...c }));
     });
@@ -277,14 +277,14 @@
         }
         if (chartMode === 'rating') {
             return {
-                title: { text: "By Rating" },
-                axisX: { labelFontSize: 11, title: "Rating", titleFontColor: "#a6adba" },
+                title: { text: "By Rating (IMDb / TMDB / RT / MC)" },
+                axisX: { labelFontSize: 10, interval: 10 },
                 axisY: { title: "Count", titleFontColor: "#a6adba" },
                 toolTip: { shared: true },
                 legend: { fontColor: "#a6adba", fontSize: 11 },
                 data: [
-                    { type: "stackedColumn", name: "Watched", color: "#36d399", showInLegend: true, dataPoints: chartByRating.map(d => ({ label: String(d.rating), y: d.watched })) },
-                    { type: "stackedColumn", name: "Unwatched", color: "#a1a1aa", showInLegend: true, dataPoints: chartByRating.map(d => ({ label: String(d.rating), y: d.unwatched })) },
+                    { type: "stackedArea", name: "Watched", color: "#36d399", showInLegend: true, markerSize: 0, lineThickness: 2, dataPoints: chartByRating.map(d => ({ label: String(d.rating), y: d.watched })) },
+                    { type: "stackedArea", name: "Unwatched", color: "#a1a1aa", showInLegend: true, markerSize: 0, lineThickness: 2, dataPoints: chartByRating.map(d => ({ label: String(d.rating), y: d.unwatched })) },
                 ],
             };
         }
@@ -520,34 +520,36 @@
             <Chart options={chartOptions} height={240} />
         </div>
 
-        <!-- Picks For You + Watch Again (side by side) -->
-        <div class="dual-row">
-            {#if sectionsLoaded && (sections.recommended.length > 0 || sections.personRecs.length > 0)}
-                {@const picks = [...sections.recommended.slice(0, 8), ...sections.personRecs.flatMap(s => s.items).slice(0, 4)].slice(0, 12)}
-                <section class="smart-section">
-                    <div class="section-header">
-                        <h2 class="section-title">🎯 Picks For You</h2>
-                        <span class="section-count">unwatched</span>
-                    </div>
-                    <div class="poster-scroll">
-                        {#each picks as item}
-                            <a href="/movies/{item.slug || item.id}" class="poster-card poster-card-sm" title={item.title}>
-                                <span class="uwb">unwatched</span>
-                                <div class="poster-img poster-placeholder">🎬</div>
-                                {#if item.poster_url}
-                                    <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img poster-img-abs" loading="lazy" onerror={(e) => { /** @type {HTMLImageElement} */ (e.currentTarget).style.display='none'; }} />
+        <!-- Picks For You (full width) -->
+        {#if sectionsLoaded && (sections.recommended.length > 0 || sections.personRecs.length > 0)}
+            {@const picks = [...sections.recommended.slice(0, 8), ...sections.personRecs.flatMap(s => s.items).slice(0, 4)].slice(0, 12)}
+            <section class="smart-section">
+                <div class="section-header">
+                    <h2 class="section-title">🎯 Picks For You</h2>
+                    <span class="section-count">unwatched</span>
+                </div>
+                <div class="poster-scroll">
+                    {#each picks as item}
+                        <a href="/movies/{item.slug || item.id}" class="poster-card poster-card-sm" title={item.title}>
+                            <span class="uwb">unwatched</span>
+                            <div class="poster-img poster-placeholder">🎬</div>
+                            {#if item.poster_url}
+                                <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img poster-img-abs" loading="lazy" onerror={(e) => { /** @type {HTMLImageElement} */ (e.currentTarget).style.display='none'; }} />
+                            {/if}
+                            <div class="poster-meta">
+                                <span class="poster-name">{item.title}</span>
+                                {#if item.reason}
+                                    <span class="poster-reason">{item.reason}</span>
                                 {/if}
-                                <div class="poster-meta">
-                                    <span class="poster-name">{item.title}</span>
-                                    {#if item.reason}
-                                        <span class="poster-reason">{item.reason}</span>
-                                    {/if}
-                                </div>
-                            </a>
-                        {/each}
-                    </div>
-                </section>
-            {/if}
+                            </div>
+                        </a>
+                    {/each}
+                </div>
+            </section>
+        {/if}
+
+        <!-- Watch Again + Recently Watched (side by side) -->
+        <div class="dual-row">
             {#if topRewatched.length > 0}
                 <section class="smart-section">
                     <div class="section-header">
@@ -571,29 +573,27 @@
                     </div>
                 </section>
             {/if}
+            {#if sectionsLoaded && sections.recentlyWatched.length > 0}
+                <section class="smart-section">
+                    <div class="section-header">
+                        <h2 class="section-title">🕐 Recently Watched</h2>
+                    </div>
+                    <div class="poster-scroll">
+                        {#each sections.recentlyWatched.slice(0, 20) as item}
+                            <a href="/movies/{item.slug || item.id}" class="poster-card poster-card-sm" title={item.title}>
+                                <div class="poster-img poster-placeholder">🎬</div>
+                                {#if item.poster_url}
+                                    <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img poster-img-abs" loading="lazy" onerror={(e) => { /** @type {HTMLImageElement} */ (e.currentTarget).style.display='none'; }} />
+                                {/if}
+                                <div class="poster-meta">
+                                    <span class="poster-name">{item.title}</span>
+                                </div>
+                            </a>
+                        {/each}
+                    </div>
+                </section>
+            {/if}
         </div>
-
-        <!-- Recently Watched (full width) -->
-        {#if sectionsLoaded && sections.recentlyWatched.length > 0}
-            <section class="smart-section">
-                <div class="section-header">
-                    <h2 class="section-title">🕐 Recently Watched</h2>
-                </div>
-                <div class="poster-scroll">
-                    {#each sections.recentlyWatched.slice(0, 20) as item}
-                        <a href="/movies/{item.slug || item.id}" class="poster-card poster-card-sm" title={item.title}>
-                            <div class="poster-img poster-placeholder">🎬</div>
-                            {#if item.poster_url}
-                                <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img poster-img-abs" loading="lazy" onerror={(e) => { /** @type {HTMLImageElement} */ (e.currentTarget).style.display='none'; }} />
-                            {/if}
-                            <div class="poster-meta">
-                                <span class="poster-name">{item.title}</span>
-                            </div>
-                        </a>
-                    {/each}
-                </div>
-            </section>
-        {/if}
 
         <!-- All Movies Section -->
         <div class="space-y-3">
