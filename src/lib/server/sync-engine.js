@@ -3,6 +3,7 @@ import { getJellyfinApis, getItemsApi, getSystemApi, getTvShowsApi } from '$lib/
 import { logError, logInfo, logWarn } from '$lib/server/logger.js';
 import { logActivity } from '$lib/server/activity-log.js';
 import { slugify, ensureUniqueSlug, episodeSlug } from '$lib/server/slugify.js';
+import { migrateRatings } from '$lib/server/ratings-engine.js';
 
 /** @type {Set<(data: any) => void>} */
 const listeners = new Set();
@@ -777,9 +778,9 @@ export async function startSync(libraryId = null, force = false) {
                                             // Delete source person_credits (target will re-sync its own)
                                             db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?')
                                                 .run(existing.id);
-                                            // Adopt slug from deleted entry before removing it
+                                            // Adopt slug and migrate ratings before removing
                                             adoptSlug('media_parents', existing.id, currentId);
-                                            // Delete the external parent
+                                            migrateRatings(existing.id, currentId);
                                             db.prepare('DELETE FROM media_parents WHERE id = ?').run(existing.id);
                                             // Apply the correct musicbrainz_id to the Jellyfin entry
                                             db.prepare('UPDATE media_parents SET musicbrainz_id = ? WHERE id = ?')
@@ -843,8 +844,9 @@ export async function startSync(libraryId = null, force = false) {
                                         }
                                         db.prepare('DELETE FROM media_children WHERE parent_id = ?').run(currentRow.id);
                                         db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?').run(currentRow.id);
-                                        // Adopt slug from deleted entry before removing it
+                                        // Adopt slug and migrate ratings before removing
                                         adoptSlug('media_parents', currentRow.id, existing.id);
+                                        migrateRatings(currentRow.id, existing.id);
                                         db.prepare('DELETE FROM media_parents WHERE id = ?').run(currentRow.id);
 
                                         // Now update the existing entry with fresh metadata and the current jellyfin_id
@@ -979,8 +981,9 @@ export async function startSync(libraryId = null, force = false) {
                                             // Delete source person_credits (target will re-sync its own)
                                             db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?')
                                                 .run(existing.id);
-                                            // Adopt slug from deleted entry before removing it
+                                            // Adopt slug and migrate ratings before removing
                                             adoptSlug('media_parents', existing.id, currentId);
+                                            migrateRatings(existing.id, currentId);
                                             db.prepare('DELETE FROM media_parents WHERE id = ?').run(existing.id);
                                             db.prepare('UPDATE media_parents SET imdb_id = ? WHERE id = ?')
                                                 .run(parentParams.imdbId, currentId);

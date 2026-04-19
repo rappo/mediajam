@@ -619,6 +619,14 @@ export async function runFullReconciliation(userId, options = {}) {
         });
 
         // Clean up orphan external parents (no jellyfin_id, no children with history)
+        // First, clean up their external_ratings to prevent orphans
+        db.prepare(`
+            DELETE FROM external_ratings WHERE media_parent_id IN (
+                SELECT id FROM media_parents WHERE jellyfin_id IS NULL AND collection_status IN ('external', 'watched_not_owned')
+                AND radarr_id IS NULL AND sonarr_id IS NULL AND lidarr_id IS NULL
+                AND id NOT IN (SELECT DISTINCT mc.parent_id FROM media_children mc JOIN playback_history ph ON ph.media_id = mc.id)
+            )
+        `).run();
         const externalsDeleted = db.prepare(`
             DELETE FROM media_parents WHERE jellyfin_id IS NULL AND collection_status IN ('external', 'watched_not_owned')
             AND radarr_id IS NULL AND sonarr_id IS NULL AND lidarr_id IS NULL

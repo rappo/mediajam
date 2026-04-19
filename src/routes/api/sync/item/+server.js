@@ -3,6 +3,7 @@ import { getJellyfinApis, getItemsApi, getTvShowsApi } from '$lib/server/jellyfi
 import { reconcileExternalMedia, deduplicateChildren } from '$lib/server/reconcile.js';
 import { fetchWikipediaForMediaParent } from '$lib/server/wikipedia-backfill.js';
 import { invalidatePrecomputed } from '$lib/server/section-cache.js';
+import { migrateRatings } from '$lib/server/ratings-engine.js';
 import { json } from '@sveltejs/kit';
 
 /**
@@ -133,6 +134,7 @@ export async function POST({ request, locals }) {
                             }
                             db.prepare('DELETE FROM media_children WHERE parent_id = ?').run(conflicting.id);
                             db.prepare('DELETE FROM watchlist WHERE media_parent_id = ?').run(conflicting.id);
+                            migrateRatings(conflicting.id, parent.id);
                             db.prepare('DELETE FROM media_parents WHERE id = ?').run(conflicting.id);
                             console.log(`[item-sync] 🔀 Auto-merged external ${field} duplicate (id=${conflicting.id})`);
                         } else if (conflicting) {

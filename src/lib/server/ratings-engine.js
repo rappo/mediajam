@@ -81,6 +81,24 @@ const hasRatingForSource = db.prepare(`
     SELECT 1 FROM external_ratings WHERE media_parent_id = ? AND source = ? LIMIT 1
 `);
 
+/**
+ * Migrate external_ratings from one media_parent to another.
+ * Handles UNIQUE conflicts (target already has that source+type) by keeping the target's row.
+ * Call this BEFORE deleting the source parent to preserve ratings through merges.
+ * @param {number} fromParentId - Parent being deleted/merged away
+ * @param {number} toParentId - Surviving parent
+ */
+export function migrateRatings(fromParentId, toParentId) {
+    if (fromParentId === toParentId) return;
+    db.prepare(`
+        UPDATE OR IGNORE external_ratings
+        SET media_parent_id = ?
+        WHERE media_parent_id = ?
+    `).run(toParentId, fromParentId);
+    // Clean up any that couldn't move (UNIQUE conflict = target already has that source)
+    db.prepare('DELETE FROM external_ratings WHERE media_parent_id = ?').run(fromParentId);
+}
+
 // ── Discogs ────────────────────────────────────────────────────────────────────
 
 /**

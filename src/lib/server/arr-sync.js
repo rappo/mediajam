@@ -393,6 +393,7 @@ export async function syncArrService(service, url, apiKey) {
         try {
             db.transaction(() => {
                 for (const staleId of staleWantedIds) {
+                    db.prepare('DELETE FROM external_ratings WHERE media_parent_id = ?').run(staleId);
                     db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?').run(staleId);
                     db.prepare('DELETE FROM media_children WHERE parent_id = ?').run(staleId);
                     db.prepare('DELETE FROM media_parents WHERE id = ?').run(staleId);
