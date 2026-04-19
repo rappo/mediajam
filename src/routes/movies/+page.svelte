@@ -248,17 +248,22 @@
 
     // Person chart data — top 20 persons by movie credit count
     let chartByPerson = $derived.by(() => {
+        // Build O(1) name lookup once
+        /** @type {Map<number, string>} */
+        const nameMap = new Map();
+        for (const p of allPersons) nameMap.set(p.id, p.name);
+
         /** @type {Map<number, {name: string, watched: number, unwatched: number}>} */
         const map = new Map();
         for (const m of movies) {
+            const isWatched = m.watch_status === 'watched';
             for (const pid of (m.person_ids || [])) {
-                const entry = map.get(pid) || { name: '', watched: 0, unwatched: 0 };
-                if (!entry.name) {
-                    const p = allPersons.find(pp => pp.id === pid);
-                    entry.name = p?.name || `Person ${pid}`;
+                let entry = map.get(pid);
+                if (!entry) {
+                    entry = { name: nameMap.get(pid) || `Person ${pid}`, watched: 0, unwatched: 0 };
+                    map.set(pid, entry);
                 }
-                if (m.watch_status === 'watched') entry.watched++; else entry.unwatched++;
-                map.set(pid, entry);
+                if (isWatched) entry.watched++; else entry.unwatched++;
             }
         }
         const sorted = [...map.values()]
