@@ -263,6 +263,57 @@
         return shuffle(pool).slice(0, 12);
     });
 
+    // "Because you like [Person]" section
+    /** @type {number|null} */
+    let selectedPersonId = $state(null);
+    let personPickSearch = $state('');
+    let personPickOpen = $state(false);
+    let personPickSeed = $state(0);
+
+    // Suggested persons: favorites first, then most-watched, then most-credited
+    let suggestedPersons = $derived.by(() => {
+        if (allPersons.length === 0) return [];
+        const favs = allPersons.filter(p => p.is_favorite).sort((a, b) => b.movie_count - a.movie_count);
+        const watched = allPersons.filter(p => !p.is_favorite && p.watched_count >= 2).sort((a, b) => b.watched_count - a.watched_count);
+        return [...favs, ...watched.slice(0, 20)];
+    });
+
+    // Auto-select first person when data loads
+    $effect(() => {
+        if (suggestedPersons.length > 0 && selectedPersonId === null) {
+            selectedPersonId = suggestedPersons[0].id;
+        }
+    });
+
+    let selectedPersonName = $derived(allPersons.find(p => p.id === selectedPersonId)?.name || '');
+
+    // Filtered person dropdown
+    let personPickFiltered = $derived.by(() => {
+        const q = personPickSearch.toLowerCase().trim();
+        if (!q) return suggestedPersons.slice(0, 15);
+        return allPersons.filter(p => p.name.toLowerCase().includes(q)).slice(0, 15);
+    });
+
+    // Unwatched movies by selected person — computed client-side from movies array
+    let personPickMovies = $derived.by(() => {
+        void personPickSeed;
+        if (!selectedPersonId) return [];
+        const unwatched = movies.filter(m =>
+            m.watch_status !== 'watched' &&
+            (m.person_ids || []).includes(selectedPersonId)
+        );
+        return shuffle(unwatched).slice(0, 12);
+    });
+
+    function cyclePersonPick() {
+        // Pick a different random person from suggested
+        const candidates = suggestedPersons.filter(p => p.id !== selectedPersonId);
+        if (candidates.length > 0) {
+            selectedPersonId = candidates[Math.floor(Math.random() * candidates.length)].id;
+            personPickSeed++;
+        }
+    }
+
     // Rating chart data — individual scores 0-100, line chart
     let chartByRating = $derived.by(() => {
         /** @type {Map<number, {watched: number, unwatched: number}>} */
@@ -537,37 +588,87 @@
             <Chart options={chartOptions} height={240} />
         </div>
 
-        <!-- Picks For You (full width) -->
-        {#if sectionsLoaded && picks.length > 0}
-            <section class="smart-section">
-                <div class="section-header">
-                    <h2 class="section-title">🎯 Picks For You</h2>
-                    <div class="flex items-center gap-2">
-                        <span class="section-count">unwatched</span>
-                        <button class="btn btn-ghost btn-xs btn-circle" onclick={() => picksSeed++} title="Shuffle picks">
+        <!-- Picks For You + Because You Like (side by side) -->
+        <div class="dual-row">
+            {#if sectionsLoaded && picks.length > 0}
+                <section class="smart-section">
+                    <div class="section-header">
+                        <h2 class="section-title">🎯 Picks For You</h2>
+                        <div class="flex items-center gap-2">
+                            <span class="section-count">unwatched</span>
+                            <button class="btn btn-ghost btn-xs btn-circle" onclick={() => picksSeed++} title="Shuffle picks">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="poster-scroll">
+                        {#each picks as item}
+                            <a href="/movies/{item.slug || item.id}" class="poster-card poster-card-sm" title={item.title}>
+                                <span class="uwb">unwatched</span>
+                                <div class="poster-img poster-placeholder">🎬</div>
+                                {#if item.poster_url}
+                                    <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img poster-img-abs" loading="lazy" onerror={(e) => { /** @type {HTMLImageElement} */ (e.currentTarget).style.display='none'; }} />
+                                {/if}
+                                <div class="poster-meta">
+                                    <span class="poster-name">{item.title}</span>
+                                    {#if item.reason}
+                                        <span class="poster-reason">{item.reason}</span>
+                                    {/if}
+                                </div>
+                            </a>
+                        {/each}
+                    </div>
+                </section>
+            {/if}
+            {#if selectedPersonId && personPickMovies.length > 0}
+                <section class="smart-section">
+                    <div class="section-header">
+                        <h2 class="section-title" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                            <span>Because you like</span>
+                            <div class="person-pick-dropdown" style="position:relative;display:inline-block;">
+                                <button class="btn btn-xs btn-ghost gap-1" onclick={() => { personPickOpen = !personPickOpen; personPickSearch = ''; }} title="Change person">
+                                    <span class="text-primary font-semibold">{selectedPersonName}</span>
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 opacity-50" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                                </button>
+                                {#if personPickOpen}
+                                    <div class="person-pick-menu">
+                                        <input type="text" class="input input-xs input-bordered w-full mb-1" placeholder="Search people..." bind:value={personPickSearch} />
+                                        <div class="person-pick-list">
+                                            {#each personPickFiltered as p}
+                                                <button
+                                                    class="person-pick-item" class:active={p.id === selectedPersonId}
+                                                    onclick={() => { selectedPersonId = p.id; personPickOpen = false; personPickSeed++; }}
+                                                >
+                                                    <span>{p.name}</span>
+                                                    <span class="text-xs opacity-40">{p.movie_count} films{p.is_favorite ? ' ★' : ''}</span>
+                                                </button>
+                                            {/each}
+                                        </div>
+                                    </div>
+                                {/if}
+                            </div>
+                        </h2>
+                        <button class="btn btn-ghost btn-xs btn-circle" onclick={cyclePersonPick} title="Different person">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
                         </button>
                     </div>
-                </div>
-                <div class="poster-scroll">
-                    {#each picks as item}
-                        <a href="/movies/{item.slug || item.id}" class="poster-card poster-card-sm" title={item.title}>
-                            <span class="uwb">unwatched</span>
-                            <div class="poster-img poster-placeholder">🎬</div>
-                            {#if item.poster_url}
-                                <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img poster-img-abs" loading="lazy" onerror={(e) => { /** @type {HTMLImageElement} */ (e.currentTarget).style.display='none'; }} />
-                            {/if}
-                            <div class="poster-meta">
-                                <span class="poster-name">{item.title}</span>
-                                {#if item.reason}
-                                    <span class="poster-reason">{item.reason}</span>
+                    <div class="poster-scroll">
+                        {#each personPickMovies as item}
+                            <a href="/movies/{item.slug || item.id}" class="poster-card poster-card-sm" title={item.title}>
+                                <span class="uwb">unwatched</span>
+                                <div class="poster-img poster-placeholder">🎬</div>
+                                {#if item.poster_url}
+                                    <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img poster-img-abs" loading="lazy" onerror={(e) => { /** @type {HTMLImageElement} */ (e.currentTarget).style.display='none'; }} />
                                 {/if}
-                            </div>
-                        </a>
-                    {/each}
-                </div>
-            </section>
-        {/if}
+                                <div class="poster-meta">
+                                    <span class="poster-name">{item.title}</span>
+                                </div>
+                            </a>
+                        {/each}
+                    </div>
+                </section>
+            {/if}
+        </div>
 
         <!-- Watch Again + Recently Watched (side by side) -->
         <div class="dual-row">
@@ -977,6 +1078,25 @@
         .dual-row { grid-template-columns: 1fr; }
     }
     .poster-card-sm { width: 80px; }
+
+    /* Person pick dropdown */
+    .person-pick-menu {
+        position: absolute; top: 100%; left: 0; z-index: 50;
+        background: oklch(var(--b2)); border: 1px solid oklch(var(--bc) / 0.15);
+        border-radius: 0.5rem; padding: 0.375rem; min-width: 220px; max-width: 280px;
+        box-shadow: 0 8px 24px oklch(0 0 0 / 0.4);
+    }
+    .person-pick-list {
+        max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 1px;
+    }
+    .person-pick-item {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 0.25rem 0.5rem; border-radius: 0.25rem; cursor: pointer;
+        background: transparent; border: none; color: inherit; font-size: 0.8rem;
+        text-align: left; width: 100%; transition: background 0.1s;
+    }
+    .person-pick-item:hover { background: oklch(var(--bc) / 0.08); }
+    .person-pick-item.active { background: oklch(var(--p) / 0.15); color: oklch(var(--p)); font-weight: 600; }
 
     .poster-card {
         flex-shrink: 0; width: 90px; text-decoration: none; color: inherit;

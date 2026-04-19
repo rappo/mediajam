@@ -189,15 +189,25 @@ export function GET({ locals }) {
 
     // ── All persons for filter (actors + directors with movies) ────
     const topPersons = /** @type {any[]} */ (db.prepare(`
-        SELECT p.id, p.name, COUNT(DISTINCT pc.media_parent_id) as movie_count
+        SELECT p.id, p.name, p.is_favorite,
+               COUNT(DISTINCT pc.media_parent_id) as movie_count,
+               COALESCE(w.watched_count, 0) as watched_count
         FROM person_credits pc
         JOIN persons p ON pc.person_id = p.id
         JOIN media_parents mp ON pc.media_parent_id = mp.id
+        LEFT JOIN (
+            SELECT pc2.person_id, COUNT(DISTINCT mc2.parent_id) as watched_count
+            FROM person_credits pc2
+            JOIN media_children mc2 ON mc2.parent_id = pc2.media_parent_id
+            JOIN playback_history ph ON ph.media_id = mc2.id AND ph.user_id = ?
+            WHERE pc2.role_type IN ('actor', 'director')
+            GROUP BY pc2.person_id
+        ) w ON w.person_id = p.id
         WHERE mp.media_type = 'movie' AND pc.role_type IN ('actor', 'director')
           AND mp.collection_status != 'external'
         GROUP BY p.id
         ORDER BY p.name
-    `).all());
+    `).all(userId));
 
     return json({
         movies: enriched,
