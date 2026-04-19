@@ -209,6 +209,13 @@
     let unwatchedRuntime = $derived(movies.filter(m => m.watch_status !== 'watched').reduce((sum, m) => sum + (m.runtime_minutes || 0), 0));
     let runtimeHours = $derived(Math.round(totalRuntime / 60));
     let watchPct = $derived(movies.length > 0 ? ((watchedCount / movies.length) * 100).toFixed(1) : '0');
+    let avgRating = $derived.by(() => {
+        const rated = movies.filter(m => m.rating_value != null);
+        if (rated.length === 0) return '—';
+        return (rated.reduce((s, m) => s + m.rating_value, 0) / rated.length).toFixed(1);
+    });
+    let genreCount = $derived(genres.length);
+    let missingCount = $derived(movies.filter(m => m.watch_status === 'not_downloaded').length);
 
     // Genre breakdown chart (top 10 + Other)
     let genreChartData = $derived.by(() => {
@@ -314,14 +321,16 @@
         }
     }
 
-    // Rating chart data — individual scores 0-100, line chart
+    // Rating chart data — individual scores 1-100, fill gaps for smooth line
     let chartByRating = $derived.by(() => {
         /** @type {Map<number, {watched: number, unwatched: number}>} */
         const map = new Map();
+        // Pre-fill all scores 1-100 for a smooth continuous line
+        for (let i = 1; i <= 100; i++) map.set(i, { watched: 0, unwatched: 0 });
         for (const m of movies) {
             const r = m.rating_value;
-            if (r == null) continue;
-            const score = Math.round(r);
+            if (r == null || r < 1) continue;
+            const score = Math.min(100, Math.round(r));
             const entry = map.get(score) || { watched: 0, unwatched: 0 };
             if (m.watch_status === 'watched') entry.watched++; else entry.unwatched++;
             map.set(score, entry);
@@ -346,13 +355,13 @@
         if (chartMode === 'rating') {
             return {
                 title: { text: "By Rating (IMDb / TMDB / RT / MC)" },
-                axisX: { labelFontSize: 10, interval: 10 },
+                axisX: { title: "Score (1–100)", titleFontColor: "#a6adba", labelFontSize: 10, minimum: 1, maximum: 100, interval: 10 },
                 axisY: { title: "Count", titleFontColor: "#a6adba" },
                 toolTip: { shared: true },
                 legend: { fontColor: "#a6adba", fontSize: 11 },
                 data: [
-                    { type: "stackedArea", name: "Watched", color: "#36d399", showInLegend: true, markerSize: 0, lineThickness: 2, dataPoints: chartByRating.map(d => ({ label: String(d.rating), y: d.watched })) },
-                    { type: "stackedArea", name: "Unwatched", color: "#a1a1aa", showInLegend: true, markerSize: 0, lineThickness: 2, dataPoints: chartByRating.map(d => ({ label: String(d.rating), y: d.unwatched })) },
+                    { type: "stackedArea", name: "Watched", color: "#36d399", showInLegend: true, markerSize: 0, lineThickness: 2, fillOpacity: 0.4, dataPoints: chartByRating.map(d => ({ x: d.rating, y: d.watched })) },
+                    { type: "stackedArea", name: "Unwatched", color: "#a1a1aa", showInLegend: true, markerSize: 0, lineThickness: 2, fillOpacity: 0.4, dataPoints: chartByRating.map(d => ({ x: d.rating, y: d.unwatched })) },
                 ],
             };
         }
@@ -575,6 +584,23 @@
                 <span class="stat-value text-base-content/50">{Math.round(unwatchedRuntime / 60).toLocaleString()} hr</span>
                 <span class="stat-label">Unwatched</span>
             </div>
+            <span class="stat-divider"></span>
+            <div class="stat-item">
+                <span class="stat-value text-warning">{avgRating}</span>
+                <span class="stat-label">Avg Rating</span>
+            </div>
+            <span class="stat-divider"></span>
+            <div class="stat-item">
+                <span class="stat-value">{genreCount}</span>
+                <span class="stat-label">Genres</span>
+            </div>
+            {#if missingCount > 0}
+                <span class="stat-divider"></span>
+                <div class="stat-item">
+                    <span class="stat-value text-error">{missingCount}</span>
+                    <span class="stat-label">Missing</span>
+                </div>
+            {/if}
         </div>
 
         <!-- Chart -->
