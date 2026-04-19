@@ -62,6 +62,21 @@
         return map[source] || null;
     }
 
+    function sourceUrl(source) {
+        const slug = data.movie.slug;
+        const imdb = data.movie.imdb_id;
+        const tmdb = data.movie.tmdb_id;
+        if (source === 'trakt') {
+            if (imdb) return `https://trakt.tv/search/imdb/${imdb}`;
+            if (tmdb) return `https://trakt.tv/search/tmdb/${tmdb}?type=movie`;
+            return 'https://trakt.tv';
+        }
+        if (source === 'jellyfin_pr' && data.movie.jellyfin_id) {
+            return null; // Jellyfin doesn't have a useful external URL
+        }
+        return null;
+    }
+
     const badge = watchStatusBadge(data.movie.watch_status);
 
     // Watchlist toggle
@@ -809,7 +824,15 @@
                                         </div>
                                     </td>
                                     <td>
-                                        {#if sourceIcon(play.source)}
+                                        {#if sourceUrl(play.source)}
+                                            <a href={sourceUrl(play.source)} target="_blank" rel="noopener" class="inline-flex opacity-80 hover:opacity-100 hover:scale-110 transition-all" title="View on {play.source}">
+                                                {#if sourceIcon(play.source)}
+                                                    <ServiceIcon service={sourceIcon(play.source)} size="w-4 h-4" />
+                                                {:else}
+                                                    <span class="badge badge-ghost badge-xs">{play.source}</span>
+                                                {/if}
+                                            </a>
+                                        {:else if sourceIcon(play.source)}
                                             <ServiceIcon
                                                 service={sourceIcon(
                                                     play.source,

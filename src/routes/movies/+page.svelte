@@ -522,16 +522,41 @@
                     </div>
                 </section>
             {/if}
+        {/if}
 
-            <!-- Recently Watched -->
-            {#if sections.recentlyWatched.length > 0}
+        <!-- Watch Again + Recently Watched row -->
+        <div class="dual-row">
+            {#if topRewatched.length > 0}
+                <section class="smart-section">
+                    <div class="section-header">
+                        <h2 class="section-title">🔁 Watch Again</h2>
+                        <span class="section-count">{topRewatched.length} films</span>
+                    </div>
+                    <div class="poster-scroll">
+                        {#each topRewatched as item}
+                            <a href="/movies/{item.slug || item.id}" class="poster-card poster-card-sm" title="{item.title} ({item.play_count}x)">
+                                <div class="poster-img poster-placeholder">🎬</div>
+                                {#if item.poster_url}
+                                    <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img poster-img-abs" loading="lazy" onerror={(e) => { /** @type {HTMLImageElement} */ (e.currentTarget).style.display='none'; }} />
+                                {/if}
+                                <span class="rewatch-badge">{item.play_count}×</span>
+                                <div class="poster-meta">
+                                    <span class="poster-name">{item.title}</span>
+                                    <span class="poster-year">{item.play_count}× watched</span>
+                                </div>
+                            </a>
+                        {/each}
+                    </div>
+                </section>
+            {/if}
+            {#if sectionsLoaded && sections.recentlyWatched.length > 0}
                 <section class="smart-section">
                     <div class="section-header">
                         <h2 class="section-title">🕐 Recently Watched</h2>
                     </div>
                     <div class="poster-scroll">
                         {#each sections.recentlyWatched.slice(0, 12) as item}
-                            <a href="/movies/{item.slug || item.id}" class="poster-card" title={item.title}>
+                            <a href="/movies/{item.slug || item.id}" class="poster-card poster-card-sm" title={item.title}>
                                 <div class="poster-img poster-placeholder">🎬</div>
                                 {#if item.poster_url}
                                     <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img poster-img-abs" loading="lazy" onerror={(e) => { /** @type {HTMLImageElement} */ (e.currentTarget).style.display='none'; }} />
@@ -544,32 +569,7 @@
                     </div>
                 </section>
             {/if}
-        {/if}
-
-        <!-- Watch Again -->
-        {#if topRewatched.length > 0}
-            <section class="smart-section">
-                <div class="section-header">
-                    <h2 class="section-title">🔁 Watch Again</h2>
-                    <span class="section-count">{topRewatched.length} films</span>
-                </div>
-                <div class="poster-scroll">
-                    {#each topRewatched as item}
-                        <a href="/movies/{item.slug || item.id}" class="poster-card" title="{item.title} ({item.play_count}x)">
-                            <div class="poster-img poster-placeholder">🎬</div>
-                            {#if item.poster_url}
-                                <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img poster-img-abs" loading="lazy" onerror={(e) => { /** @type {HTMLImageElement} */ (e.currentTarget).style.display='none'; }} />
-                            {/if}
-                            <span class="rewatch-badge">{item.play_count}×</span>
-                            <div class="poster-meta">
-                                <span class="poster-name">{item.title}</span>
-                                <span class="poster-year">{item.release_year || ''} · watched {item.play_count} times</span>
-                            </div>
-                        </a>
-                    {/each}
-                </div>
-            </section>
-        {/if}
+        </div>
 
         <!-- All Movies Section -->
         <div class="space-y-3">
@@ -918,6 +918,16 @@
         scrollbar-width: none; -ms-overflow-style: none; padding-bottom: 4px;
     }
     .poster-scroll::-webkit-scrollbar { display: none; }
+
+    .dual-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.5rem;
+    }
+    @media (max-width: 768px) {
+        .dual-row { grid-template-columns: 1fr; }
+    }
+    .poster-card-sm { width: 80px; }
 
     .poster-card {
         flex-shrink: 0; width: 90px; text-decoration: none; color: inherit;
