@@ -51,7 +51,7 @@
     /** @type {{id: number, name: string}[]} */
     let filterPersons = $state([]);
     let personMode = $state('all'); // 'any' (OR) | 'all' (AND)
-    let filterWatched = $state(false);
+    let filterUnwatched = $state(false);
     let filterRatingMin = $state(0);
     let filterRatingMax = $state(10);
     let downloadedOnly = $state(true);
@@ -94,7 +94,7 @@
             }
             if (params.get('pmode')) personMode = params.get('pmode') || 'all';
             if (params.get('year')) yearSearch = params.get('year') || '';
-            if (params.has('watched')) filterWatched = params.get('watched') === '1';
+            if (params.has('unwatched')) filterUnwatched = params.get('unwatched') === '1';
             if (params.get('rmin')) filterRatingMin = parseFloat(params.get('rmin') || '0');
             if (params.get('rmax')) filterRatingMax = parseFloat(params.get('rmax') || '10');
             if (params.has('downloaded')) downloadedOnly = params.get('downloaded') !== '0';
@@ -128,7 +128,7 @@
         if (filterPersons.length) p.set('persons', filterPersons.map(x => x.id).join(','));
         if (filterPersons.length && personMode !== 'all') p.set('pmode', personMode);
         if (yearSearch) p.set('year', yearSearch);
-        if (filterWatched) p.set('watched', '1');
+        if (filterUnwatched) p.set('unwatched', '1');
         if (filterRatingMin > 0) p.set('rmin', String(filterRatingMin));
         if (filterRatingMax < 10) p.set('rmax', String(filterRatingMax));
         if (!downloadedOnly) p.set('downloaded', '0');
@@ -173,8 +173,8 @@
                 result = result.filter(m => pids.some(pid => m.person_ids?.includes(pid)));
             }
         }
-        if (filterWatched) {
-            result = result.filter(m => m.watch_status === 'watched');
+        if (filterUnwatched) {
+            result = result.filter(m => m.watch_status !== 'watched');
         }
         if (filterRatingMin > 0 || filterRatingMax < 10) {
             result = result.filter(m => {
@@ -425,7 +425,7 @@
         filterPersons = [];
         personSearch = '';
         yearSearch = '';
-        filterWatched = false;
+        filterUnwatched = false;
         filterRatingMin = 0;
         filterRatingMax = 10;
         page = 0;
@@ -458,7 +458,7 @@
     }
 
     let hasActiveFilters = $derived(
-        searchQuery || filterGenres.length || filterPersons.length || yearSearch || filterWatched || filterRatingMin > 0 || filterRatingMax < 10
+        searchQuery || filterGenres.length || filterPersons.length || yearSearch || filterUnwatched || filterRatingMin > 0 || filterRatingMax < 10
     );
 
     // Filtered persons for search dropdown (exclude already selected)
@@ -881,8 +881,8 @@
                     <input type="number" min="0" max="10" step="0.5" class="rating-input" bind:value={filterRatingMax} oninput={() => { if (filterRatingMax < filterRatingMin) filterRatingMax = filterRatingMin; page = 0; }} />
                 </div>
                 <label class="flex items-center gap-1.5 cursor-pointer">
-                    <input type="checkbox" class="toggle toggle-xs toggle-success" bind:checked={filterWatched} onchange={() => page = 0} />
-                    <span class="text-xs text-base-content/60">Watched</span>
+                    <input type="checkbox" class="toggle toggle-xs toggle-success" bind:checked={filterUnwatched} onchange={() => page = 0} />
+                    <span class="text-xs text-base-content/60">Unwatched</span>
                 </label>
                 <label class="flex items-center gap-1.5 cursor-pointer">
                     <input type="checkbox" class="toggle toggle-xs toggle-success" bind:checked={downloadedOnly} onchange={() => page = 0} />
