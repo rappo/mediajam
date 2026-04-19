@@ -261,9 +261,20 @@
     $effect(() => {
         if (chart && options) {
             const cfg = translate(options);
-            chart.data = cfg.data;
-            chart.options = cfg.options;
-            chart.update();
+            // Chart.js can't change type in-place — must destroy and recreate
+            if (chart.config.type !== cfg.type) {
+                chart.destroy();
+                if (canvasEl) {
+                    // @ts-ignore — Chart constructor works with canvas element
+                    import("chart.js").then(({ Chart }) => {
+                        chart = new Chart(canvasEl, cfg);
+                    });
+                }
+            } else {
+                chart.data = cfg.data;
+                chart.options = cfg.options;
+                chart.update();
+            }
         }
     });
 </script>
