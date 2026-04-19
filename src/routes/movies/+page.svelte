@@ -16,6 +16,17 @@
     // Discovery sections
     let sectionsLoaded = $state(false);
     let sections = $state(/** @type {any} */ ({ hero: null, recommended: [], personRecs: [], recentlyWatched: [], unwatched: [] }));
+    let picksSeed = $state(0);
+
+    /** Fisher-Yates shuffle (returns new array) */
+    function shuffle(/** @type {any[]} */ arr) {
+        const a = [...arr];
+        for (let i = a.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [a[i], a[j]] = [a[j], a[i]];
+        }
+        return a;
+    }
 
     // Person search
     let personSearch = $state('');
@@ -244,6 +255,12 @@
             map.set(m.release_year, entry);
         }
         return [...map.entries()].sort((a, b) => a[0] - b[0]).map(([year, c]) => ({ year, ...c }));
+    });
+    // Picks derivation — depends on picksSeed to re-shuffle
+    let picks = $derived.by(() => {
+        void picksSeed; // reactive dependency
+        const pool = [...sections.recommended, ...sections.personRecs.flatMap(s => s.items)];
+        return shuffle(pool).slice(0, 12);
     });
 
     // Rating chart data — individual scores 0-100, line chart
@@ -521,12 +538,16 @@
         </div>
 
         <!-- Picks For You (full width) -->
-        {#if sectionsLoaded && (sections.recommended.length > 0 || sections.personRecs.length > 0)}
-            {@const picks = [...sections.recommended.slice(0, 8), ...sections.personRecs.flatMap(s => s.items).slice(0, 4)].slice(0, 12)}
+        {#if sectionsLoaded && picks.length > 0}
             <section class="smart-section">
                 <div class="section-header">
                     <h2 class="section-title">🎯 Picks For You</h2>
-                    <span class="section-count">unwatched</span>
+                    <div class="flex items-center gap-2">
+                        <span class="section-count">unwatched</span>
+                        <button class="btn btn-ghost btn-xs btn-circle" onclick={() => picksSeed++} title="Shuffle picks">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+                        </button>
+                    </div>
                 </div>
                 <div class="poster-scroll">
                     {#each picks as item}
