@@ -1,8 +1,8 @@
 <script>
     import { onMount } from "svelte";
 
-    /** @type {{ options: any, height?: number }} */
-    let { options, height = 300 } = $props();
+    /** @type {{ options: any, height?: number, onclick?: (detail: {label: string, x: any, datasetIndex: number, dataIndex: number}) => void }} */
+    let { options, height = 300, onclick } = $props();
 
     /** @type {HTMLCanvasElement|null} */
     let canvasEl = $state(null);
@@ -117,7 +117,16 @@
                                   family: "Inter, sans-serif",
                                   weight: "600",
                               },
-                              padding: { bottom: 12 },
+                              padding: { bottom: opts.subtitle?.text ? 2 : 12 },
+                          }
+                        : { display: false },
+                    subtitle: opts.subtitle?.text
+                        ? {
+                              display: true,
+                              text: opts.subtitle.text,
+                              color: "#6b7280",
+                              font: { size: 11, family: "Inter, sans-serif", weight: "400", style: "italic" },
+                              padding: { bottom: 10 },
                           }
                         : { display: false },
                     tooltip: {
@@ -128,6 +137,17 @@
                     },
                 },
                 animation: { duration: 600 },
+                onClick: onclick ? (/** @type {any} */ evt, /** @type {any[]} */ elements, /** @type {any} */ ch) => {
+                    if (elements.length === 0) return;
+                    const el = elements[0];
+                    const idx = el.index;
+                    const dsIdx = el.datasetIndex;
+                    const ds = ch.data.datasets[dsIdx];
+                    const point = ds.data[idx];
+                    const label = ch.data.labels?.[idx] ?? '';
+                    const x = typeof point === 'object' && point !== null ? point.x : label;
+                    onclick({ label: String(label), x, datasetIndex: dsIdx, dataIndex: idx });
+                } : undefined,
             },
         };
 
