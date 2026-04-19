@@ -16,45 +16,57 @@
      * @returns {any} Chart.js config
      */
     function translate(opts) {
-        const series = opts.data?.[0] || {};
+        const allSeries = opts.data || [];
+        const series = allSeries[0] || {};
         const canvasType = series.type || "column";
+        const isStacked = canvasType === "stackedColumn" || canvasType === "stackedBar";
 
         // Map CanvasJS type → Chart.js type + orientation
         let chartType = "bar";
         let indexAxis = "x";
         if (canvasType === "doughnut") chartType = "doughnut";
         else if (canvasType === "pie") chartType = "pie";
-        else if (canvasType === "bar") {
+        else if (canvasType === "bar" || canvasType === "stackedBar") {
             chartType = "bar";
             indexAxis = "y";
-        } else if (canvasType === "column") {
+        } else if (canvasType === "column" || canvasType === "stackedColumn") {
             chartType = "bar";
             indexAxis = "x";
         }
 
-        const points = series.dataPoints || [];
-        const labels = points.map(
-            (/** @type {any} */ p) => p.label ?? p.x ?? "",
-        );
-        const values = points.map((/** @type {any} */ p) => p.y ?? 0);
-        const colors = points
-            .map((/** @type {any} */ p) => p.color)
-            .filter(Boolean);
-
         const isPieType = chartType === "doughnut" || chartType === "pie";
 
-        /** @type {any} */
-        const dataset = {
-            data: values,
-            borderWidth: 0,
-        };
+        // Build datasets — support multiple series
+        const datasets = [];
+        let labels = [];
 
-        if (isPieType) {
-            dataset.backgroundColor =
-                colors.length === values.length ? colors : undefined;
-        } else {
-            dataset.backgroundColor = series.color || colors[0] || "#7c3aed";
-            dataset.borderRadius = series.cornerRadius || 0;
+        for (const s of allSeries) {
+            const points = s.dataPoints || [];
+            if (labels.length === 0) {
+                labels = points.map((/** @type {any} */ p) => p.label ?? p.x ?? "");
+            }
+            const values = points.map((/** @type {any} */ p) => p.y ?? 0);
+            const colors = points.map((/** @type {any} */ p) => p.color).filter(Boolean);
+
+            /** @type {any} */
+            const dataset = {
+                data: values,
+                borderWidth: 0,
+                label: s.name || undefined,
+            };
+
+            if (isPieType) {
+                dataset.backgroundColor = colors.length === values.length ? colors : undefined;
+            } else {
+                dataset.backgroundColor = s.color || colors[0] || "#7c3aed";
+                dataset.borderRadius = s.cornerRadius || 0;
+            }
+
+            if (isStacked) {
+                dataset.stack = "stack0";
+            }
+
+            datasets.push(dataset);
         }
 
         // Axis colors
@@ -64,13 +76,13 @@
         /** @type {any} */
         const config = {
             type: chartType,
-            data: { labels, datasets: [dataset] },
+            data: { labels, datasets },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 indexAxis: isPieType ? undefined : indexAxis,
                 plugins: {
-                    legend: { display: false },
+                    legend: { display: allSeries.length > 1 && allSeries.some((/** @type {any} */ s) => s.showInLegend), fontColor: opts.legend?.fontColor || labelColor },
                     title: opts.title?.text
                         ? {
                               display: true,
@@ -88,6 +100,7 @@
                         cornerRadius: 8,
                         titleFont: { family: "Inter, sans-serif" },
                         bodyFont: { family: "Inter, sans-serif" },
+                        mode: opts.toolTip?.shared ? "index" : "nearest",
                     },
                 },
                 animation: { duration: 600 },
@@ -101,6 +114,7 @@
                 series.startAngle != null ? series.startAngle - 90 : -90;
 
             // Custom tooltip using CanvasJS-style toolTipContent
+            const points = series.dataPoints || [];
             if (series.toolTipContent) {
                 config.options.plugins.tooltip.callbacks = {
                     label: (/** @type {any} */ ctx) => {
@@ -129,6 +143,7 @@
             const scales = {};
 
             scales.x = {
+                stacked: isStacked,
                 ticks: {
                     color: labelColor,
                     font: { size: xAxisOpts.labelFontSize || 11 },
@@ -147,6 +162,7 @@
             };
 
             scales.y = {
+                stacked: isStacked,
                 ticks: { color: labelColor },
                 grid: { color: gridColor, lineWidth: 0.5 },
                 title: yAxisOpts.title
@@ -159,14 +175,18 @@
             };
 
             // For numeric x-axis (e.g. years), use the x values directly
-            if (points.length > 0 && typeof points[0].x === "number") {
+            const firstPoints = (allSeries[0]?.dataPoints || []);
+            if (firstPoints.length > 0 && typeof firstPoints[0].x === "number") {
                 scales.x.type = "linear";
                 scales.x.ticks.stepSize = xAxisOpts.interval || undefined;
-                // Use {x, y} format for dataset
-                dataset.data = points.map((/** @type {any} */ p) => ({
-                    x: p.x,
-                    y: p.y,
-                }));
+                // Use {x, y} format for all datasets
+                for (const ds of datasets) {
+                    const pts = allSeries[datasets.indexOf(ds)]?.dataPoints || [];
+                    ds.data = pts.map((/** @type {any} */ p) => ({
+                        x: p.x,
+                        y: p.y,
+                    }));
+                }
                 config.data.labels = undefined;
             }
 
