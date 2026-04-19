@@ -362,7 +362,8 @@
         }
         if (chartMode === 'rating') {
             return {
-                title: { text: "By Rating (IMDb / TMDB / RT / MC)" },
+                title: { text: "By Rating" },
+                subtitle: { text: "Best available: IMDb → RT → Metacritic → TMDB" },
                 axisX: { title: "Score (1–100)", titleFontColor: "#a6adba", labelFontSize: 10, minimum: 1, maximum: 100, interval: 10 },
                 axisY: { title: "Count", titleFontColor: "#a6adba" },
                 toolTip: { shared: true },
@@ -432,6 +433,32 @@
         filterRatingMin = 0;
         filterRatingMax = 10;
         page = 0;
+    }
+
+    /** Handle chart element click — update filters and scroll to All Movies */
+    function onChartClick(/** @type {{label: string, x: any}} */ detail) {
+        // Reset filters first
+        clearFilters();
+        if (chartMode === 'rating') {
+            // x is the numeric score (1-100), convert to 0-10 scale
+            const score = Number(detail.x);
+            filterRatingMin = Math.floor(score / 10);
+            filterRatingMax = Math.ceil(score / 10);
+        } else if (chartMode === 'genre') {
+            const genre = detail.label;
+            if (genre && genre !== 'Other') filterGenres = [genre];
+        } else if (chartMode === 'year') {
+            yearSearch = detail.label;
+        } else if (chartMode === 'decade') {
+            const label = detail.label; // e.g. "1980s"
+            const decade = parseInt(label);
+            if (!isNaN(decade)) yearSearch = `${decade}-${decade + 9}`;
+        }
+        page = 0;
+        // Scroll to All Movies section
+        setTimeout(() => {
+            document.getElementById('all-movies-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 50);
     }
 
     let hasActiveFilters = $derived(
@@ -620,7 +647,7 @@
                 <button class="btn btn-xs" class:btn-active={chartMode === 'genre'} onclick={() => chartMode = 'genre'}>Genre</button>
                 <button class="btn btn-xs" class:btn-active={chartMode === 'rating'} onclick={() => chartMode = 'rating'}>Rating</button>
             </div>
-            <Chart options={chartOptions} height={240} />
+            <Chart options={chartOptions} height={240} onclick={onChartClick} />
         </div>
 
         <!-- Picks For You + Because You Like (side by side) -->
@@ -753,7 +780,7 @@
         </div>
 
         <!-- All Movies Section -->
-        <div class="space-y-3">
+        <div class="space-y-3" id="all-movies-section">
             <div class="flex items-center justify-between">
                 <h2 class="text-xl font-bold">All Movies</h2>
                 <div class="flex items-center gap-2">
