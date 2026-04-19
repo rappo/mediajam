@@ -50,7 +50,7 @@
     let sortDir = $state('asc'); // 'asc' | 'desc'
 
     // Chart toggle
-    let chartMode = $state('decade'); // 'decade' | 'year' | 'genre'
+    let chartMode = $state('decade'); // 'decade' | 'year' | 'genre' | 'person'
 
     // Pagination
     let page = $state(0);
@@ -59,22 +59,13 @@
 
     onMount(async () => {
         try {
-            // Fetch library data and discovery sections in parallel
-            const [libRes, secRes] = await Promise.all([
-                fetch('/api/pages/movies/library'),
-                fetch('/api/pages/movies'),
-            ]);
+            // Load library data first (critical path)
+            const libRes = await fetch('/api/pages/movies/library');
             const d = await libRes.json();
             movies = d.movies;
             genres = d.genres;
             allPersons = d.topPersons;
             topRewatched = d.topRewatched;
-
-            try {
-                const secData = await secRes.json();
-                sections = secData.sections;
-            } catch { /* discovery sections are non-critical */ }
-            sectionsLoaded = true;
 
             // Read URL params into state
             const params = new URLSearchParams(window.location.search);
@@ -103,10 +94,17 @@
             if (params.get('per')) pageSize = parseInt(params.get('per') || '50');
 
             loaded = true;
+            loading = false;
+
+            // Load discovery sections lazily (non-critical, loads after render)
+            fetch('/api/pages/movies').then(r => r.json()).then(secData => {
+                sections = secData.sections;
+                sectionsLoaded = true;
+            }).catch(() => { sectionsLoaded = true; });
         } catch (e) {
             console.error('[movies] Failed to load:', e);
+            loading = false;
         }
-        loading = false;
     });
 
     // Sync state → URL
@@ -248,6 +246,30 @@
         return [...map.entries()].sort((a, b) => a[0] - b[0]).map(([year, c]) => ({ year, ...c }));
     });
 
+    // Person chart data — top 20 persons by movie credit count
+    let chartByPerson = $derived.by(() => {
+        /** @type {Map<number, {name: string, watched: number, unwatched: number}>} */
+        const map = new Map();
+        for (const m of movies) {
+            for (const pid of (m.person_ids || [])) {
+                const entry = map.get(pid) || { name: '', watched: 0, unwatched: 0 };
+                if (!entry.name) {
+                    const p = allPersons.find(pp => pp.id === pid);
+                    entry.name = p?.name || `Person ${pid}`;
+                }
+                if (m.watch_status === 'watched') entry.watched++; else entry.unwatched++;
+                map.set(pid, entry);
+            }
+        }
+        const sorted = [...map.values()]
+            .sort((a, b) => (b.watched + b.unwatched) - (a.watched + a.unwatched));
+        const top = sorted.slice(0, 20);
+        const rest = sorted.slice(20);
+        const other = rest.reduce((acc, c) => ({ name: 'Other', watched: acc.watched + c.watched, unwatched: acc.unwatched + c.unwatched }), { name: 'Other', watched: 0, unwatched: 0 });
+        if (other.watched + other.unwatched > 0) top.push(other);
+        return top;
+    });
+
     let chartOptions = $derived.by(() => {
         if (chartMode === 'genre') {
             return {
@@ -259,6 +281,19 @@
                 data: [
                     { type: "stackedColumn", name: "Watched", color: "#36d399", showInLegend: true, dataPoints: genreChartData.map(d => ({ label: d.name, y: d.watched })) },
                     { type: "stackedColumn", name: "Unwatched", color: "#a1a1aa", showInLegend: true, dataPoints: genreChartData.map(d => ({ label: d.name, y: d.unwatched })) },
+                ],
+            };
+        }
+        if (chartMode === 'person') {
+            return {
+                title: { text: "By Person" },
+                axisX: { labelFontSize: 9, labelAngle: -45 },
+                axisY: { title: "Count", titleFontColor: "#a6adba" },
+                toolTip: { shared: true },
+                legend: { fontColor: "#a6adba", fontSize: 11 },
+                data: [
+                    { type: "stackedColumn", name: "Watched", color: "#36d399", showInLegend: true, dataPoints: chartByPerson.map(d => ({ label: d.name, y: d.watched })) },
+                    { type: "stackedColumn", name: "Unwatched", color: "#a1a1aa", showInLegend: true, dataPoints: chartByPerson.map(d => ({ label: d.name, y: d.unwatched })) },
                 ],
             };
         }
@@ -489,23 +524,23 @@
                 <button class="btn btn-xs" class:btn-active={chartMode === 'decade'} onclick={() => chartMode = 'decade'}>Decade</button>
                 <button class="btn btn-xs" class:btn-active={chartMode === 'year'} onclick={() => chartMode = 'year'}>Year</button>
                 <button class="btn btn-xs" class:btn-active={chartMode === 'genre'} onclick={() => chartMode = 'genre'}>Genre</button>
+                <button class="btn btn-xs" class:btn-active={chartMode === 'person'} onclick={() => chartMode = 'person'}>Person</button>
             </div>
             <Chart options={chartOptions} height={240} />
         </div>
 
-        <!-- Discovery Rows -->
-        {#if sectionsLoaded}
-            <!-- Picks For You (recommended + person recs merged) -->
-            {#if sections.recommended.length > 0 || sections.personRecs.length > 0}
+        <!-- Picks For You + Watch Again (side by side) -->
+        <div class="dual-row">
+            {#if sectionsLoaded && (sections.recommended.length > 0 || sections.personRecs.length > 0)}
                 {@const picks = [...sections.recommended.slice(0, 8), ...sections.personRecs.flatMap(s => s.items).slice(0, 4)].slice(0, 12)}
                 <section class="smart-section">
                     <div class="section-header">
                         <h2 class="section-title">🎯 Picks For You</h2>
-                        <span class="section-count">unwatched in your library</span>
+                        <span class="section-count">unwatched</span>
                     </div>
                     <div class="poster-scroll">
                         {#each picks as item}
-                            <a href="/movies/{item.slug || item.id}" class="poster-card" title={item.title}>
+                            <a href="/movies/{item.slug || item.id}" class="poster-card poster-card-sm" title={item.title}>
                                 <span class="uwb">unwatched</span>
                                 <div class="poster-img poster-placeholder">🎬</div>
                                 {#if item.poster_url}
@@ -522,10 +557,6 @@
                     </div>
                 </section>
             {/if}
-        {/if}
-
-        <!-- Watch Again + Recently Watched row -->
-        <div class="dual-row">
             {#if topRewatched.length > 0}
                 <section class="smart-section">
                     <div class="section-header">
@@ -549,27 +580,29 @@
                     </div>
                 </section>
             {/if}
-            {#if sectionsLoaded && sections.recentlyWatched.length > 0}
-                <section class="smart-section">
-                    <div class="section-header">
-                        <h2 class="section-title">🕐 Recently Watched</h2>
-                    </div>
-                    <div class="poster-scroll">
-                        {#each sections.recentlyWatched.slice(0, 12) as item}
-                            <a href="/movies/{item.slug || item.id}" class="poster-card poster-card-sm" title={item.title}>
-                                <div class="poster-img poster-placeholder">🎬</div>
-                                {#if item.poster_url}
-                                    <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img poster-img-abs" loading="lazy" onerror={(e) => { /** @type {HTMLImageElement} */ (e.currentTarget).style.display='none'; }} />
-                                {/if}
-                                <div class="poster-meta">
-                                    <span class="poster-name">{item.title}</span>
-                                </div>
-                            </a>
-                        {/each}
-                    </div>
-                </section>
-            {/if}
         </div>
+
+        <!-- Recently Watched (full width) -->
+        {#if sectionsLoaded && sections.recentlyWatched.length > 0}
+            <section class="smart-section">
+                <div class="section-header">
+                    <h2 class="section-title">🕐 Recently Watched</h2>
+                </div>
+                <div class="poster-scroll">
+                    {#each sections.recentlyWatched.slice(0, 20) as item}
+                        <a href="/movies/{item.slug || item.id}" class="poster-card poster-card-sm" title={item.title}>
+                            <div class="poster-img poster-placeholder">🎬</div>
+                            {#if item.poster_url}
+                                <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img poster-img-abs" loading="lazy" onerror={(e) => { /** @type {HTMLImageElement} */ (e.currentTarget).style.display='none'; }} />
+                            {/if}
+                            <div class="poster-meta">
+                                <span class="poster-name">{item.title}</span>
+                            </div>
+                        </a>
+                    {/each}
+                </div>
+            </section>
+        {/if}
 
         <!-- All Movies Section -->
         <div class="space-y-3">
@@ -923,6 +956,10 @@
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 1.5rem;
+    }
+    .dual-row > * {
+        min-width: 0;
+        overflow: hidden;
     }
     @media (max-width: 768px) {
         .dual-row { grid-template-columns: 1fr; }
