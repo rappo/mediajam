@@ -15,11 +15,21 @@
      * @param {any} opts CanvasJS-style options
      * @returns {any} Chart.js config
      */
+    /** Convert hex color to rgba string */
+    function hexToRgba(/** @type {string} */ hex, /** @type {number} */ alpha) {
+        const h = hex.replace('#', '');
+        const r = parseInt(h.substring(0, 2), 16);
+        const g = parseInt(h.substring(2, 4), 16);
+        const b = parseInt(h.substring(4, 6), 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+
     function translate(opts) {
         const allSeries = opts.data || [];
         const series = allSeries[0] || {};
         const canvasType = series.type || "column";
-        const isStacked = canvasType === "stackedColumn" || canvasType === "stackedBar";
+        const isStacked = canvasType === "stackedColumn" || canvasType === "stackedBar" || canvasType === "stackedArea";
+        const isArea = canvasType === "stackedArea";
 
         // Map CanvasJS type → Chart.js type + orientation
         let chartType = "bar";
@@ -29,6 +39,8 @@
         else if (canvasType === "bar" || canvasType === "stackedBar") {
             chartType = "bar";
             indexAxis = "y";
+        } else if (canvasType === "stackedArea") {
+            chartType = "line";
         } else if (canvasType === "column" || canvasType === "stackedColumn") {
             chartType = "bar";
             indexAxis = "x";
@@ -51,7 +63,7 @@
             /** @type {any} */
             const dataset = {
                 data: values,
-                borderWidth: 0,
+                borderWidth: isArea ? (s.lineThickness ?? 2) : 0,
                 label: s.name || undefined,
             };
 
@@ -59,7 +71,18 @@
                 dataset.backgroundColor = colors.length === values.length ? colors : undefined;
             } else {
                 dataset.backgroundColor = s.color || colors[0] || "#7c3aed";
+                dataset.borderColor = s.color || colors[0] || "#7c3aed";
                 dataset.borderRadius = s.cornerRadius || 0;
+            }
+
+            if (isArea) {
+                dataset.fill = 'origin';
+                dataset.tension = 0.3;
+                dataset.pointRadius = s.markerSize ?? 0;
+                // Apply fillOpacity via rgba
+                const hex = s.color || "#7c3aed";
+                const opacity = s.fillOpacity ?? 0.4;
+                dataset.backgroundColor = hexToRgba(hex, opacity);
             }
 
             if (isStacked) {
