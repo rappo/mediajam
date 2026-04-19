@@ -902,16 +902,18 @@
                 {#if filterGenres.length > 0}
                     <span class="stat-divider"></span>
                     <div class="badge-group">
-                        <span class="badge-group-label">Genres</span>
+                        <span class="badge-group-label">Genres:</span>
                         {#if filterGenres.length > 1}
-                            <button class="mode-chip" onclick={() => genreMode = genreMode === 'any' ? 'all' : 'any'} title="Toggle between Any (OR) and All (AND)">
-                                {genreMode === 'any' ? 'any' : 'all'}
-                            </button>
+                            <span class="mode-toggle">
+                                <button class="mode-opt" class:active={genreMode === 'any'} onclick={() => genreMode = 'any'}>any</button>
+                                <span class="mode-sep">|</span>
+                                <button class="mode-opt" class:active={genreMode === 'all'} onclick={() => genreMode = 'all'}>all</button>
+                            </span>
                         {/if}
                         {#each filterGenres as g}
                             <span class="filter-badge genre-badge">
                                 {g.charAt(0).toUpperCase() + g.slice(1)}
-                                <button class="badge-dismiss" onclick={() => removeGenre(g)}>✕</button>
+                                <button class="badge-dismiss" onclick={() => removeGenre(g)}>×</button>
                             </span>
                         {/each}
                     </div>
@@ -919,16 +921,18 @@
                 {#if filterPersons.length > 0}
                     <span class="stat-divider"></span>
                     <div class="badge-group">
-                        <span class="badge-group-label">People</span>
+                        <span class="badge-group-label">People:</span>
                         {#if filterPersons.length > 1}
-                            <button class="mode-chip" onclick={() => personMode = personMode === 'all' ? 'any' : 'all'} title="Toggle between All (AND) and Any (OR)">
-                                {personMode === 'all' ? 'all' : 'any'}
-                            </button>
+                            <span class="mode-toggle">
+                                <button class="mode-opt" class:active={personMode === 'any'} onclick={() => personMode = 'any'}>any</button>
+                                <span class="mode-sep">|</span>
+                                <button class="mode-opt" class:active={personMode === 'all'} onclick={() => personMode = 'all'}>all</button>
+                            </span>
                         {/if}
                         {#each filterPersons as p}
                             <span class="filter-badge person-badge">
                                 {p.name}
-                                <button class="badge-dismiss" onclick={() => removePerson(p.id)}>✕</button>
+                                <button class="badge-dismiss" onclick={() => removePerson(p.id)}>×</button>
                             </span>
                         {/each}
                     </div>
@@ -1260,18 +1264,27 @@
         font-size: 0.65rem; font-weight: 600; text-transform: uppercase;
         color: oklch(var(--bc) / 0.4); letter-spacing: 0.05em; margin-right: 2px;
     }
-    .mode-chip {
-        font-size: 0.6rem; font-weight: 700; text-transform: uppercase;
-        padding: 2px 8px; border-radius: 6px; cursor: pointer;
-        background: oklch(var(--p) / 0.25); color: oklch(var(--p));
-        border: 1px solid oklch(var(--p) / 0.4);
-        transition: all 0.15s ease;
-        letter-spacing: 0.04em;
-        box-shadow: 0 1px 3px oklch(0 0 0 / 0.2);
+    .mode-toggle {
+        display: inline-flex; align-items: center; gap: 1px;
+        font-size: 0.65rem; font-weight: 600; text-transform: lowercase;
+        margin-right: 2px;
     }
-    .mode-chip:hover {
-        background: oklch(var(--p) / 0.4);
-        box-shadow: 0 1px 5px oklch(var(--p) / 0.3);
+    .mode-opt {
+        background: none; border: none; cursor: pointer;
+        padding: 0 2px; font-size: 0.65rem; font-weight: 600;
+        color: oklch(var(--bc) / 0.3);
+        transition: color 0.15s ease;
+    }
+    .mode-opt.active {
+        color: oklch(var(--p));
+    }
+    .mode-opt:hover:not(.active) {
+        color: oklch(var(--bc) / 0.6);
+    }
+    .mode-sep {
+        color: oklch(var(--bc) / 0.2);
+        font-size: 0.6rem;
+        user-select: none;
     }
     .filter-badge {
         display: inline-flex; align-items: center; gap: 4px;
