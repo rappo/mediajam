@@ -1,36 +1,14 @@
 <script>
     import { onMount } from 'svelte';
-    import StatCard from "$lib/components/StatCard.svelte";
-    import DataTable from "$lib/components/DataTable.svelte";
-    import Chart from "$lib/components/Chart.svelte";
     import DeleteToast from "$lib/components/DeleteToast.svelte";
     import Skeleton from "$lib/components/Skeleton.svelte";
     import { imgUrl } from "$lib/utils.js";
 
     let { data } = $props();
 
-    const total =
-        data.movieStats.watched +
-        data.movieStats.unwatched +
-        data.movieStats.inProgress;
-    const watchPct = (
-        (data.movieStats.watched / Math.max(total, 1)) *
-        100
-    ).toFixed(1);
-
-    let showLibrary = $state(false);
-
     // Smart sections — loaded on mount
     let sectionsLoaded = $state(false);
     let sections = $state(/** @type {any} */ ({ hero: null, recommended: [], personRecs: [], recentlyWatched: [], unwatched: [] }));
-
-    // Library data — loaded lazily on toggle
-    let libraryLoaded = $state(false);
-    let libraryLoading = $state(false);
-    let movies = $state(/** @type {any[]} */ ([]));
-    let moviesByDecade = $state(/** @type {any[]} */ ([]));
-    let moviesByYear = $state(/** @type {any[]} */ ([]));
-    let mostRewatched = $state(/** @type {any[]} */ ([]));
 
     onMount(async () => {
         try {
@@ -42,28 +20,6 @@
         }
         sectionsLoaded = true;
     });
-
-    async function loadLibrary() {
-        if (libraryLoaded || libraryLoading) return;
-        libraryLoading = true;
-        try {
-            const res = await fetch('/api/pages/movies?view=library');
-            const d = await res.json();
-            movies = d.movies;
-            moviesByDecade = d.moviesByDecade;
-            moviesByYear = d.moviesByYear;
-            mostRewatched = d.mostRewatched;
-            libraryLoaded = true;
-        } catch (e) {
-            console.error('[movies] Failed to load library:', e);
-        }
-        libraryLoading = false;
-    }
-
-    function toggleLibrary() {
-        showLibrary = !showLibrary;
-        if (showLibrary && !libraryLoaded) loadLibrary();
-    }
 
     /** @param {string} ts */
     function timeAgo(ts) {
@@ -77,111 +33,6 @@
         if (diff < 365) return `${Math.floor(diff / 30)}mo ago`;
         return `${Math.floor(diff / 365)}y ago`;
     }
-
-    // Chart options are reactive since data loads async
-    let watchPieOptions = $derived({
-        title: { text: "Watch Status" },
-        data: [{
-            type: "doughnut", startAngle: 240,
-            indexLabelFontColor: "#a6adba", indexLabelFontSize: 12,
-            indexLabelFontFamily: "Inter, sans-serif",
-            toolTipContent: "{label}: {y} movies",
-            dataPoints: [
-                { label: "Watched", y: data.movieStats.watched, color: "#36d399" },
-                { label: "Unwatched", y: data.movieStats.unwatched, color: "#6b7280" },
-                { label: "In Progress", y: data.movieStats.inProgress, color: "#fbbd23" },
-            ],
-        }],
-    });
-
-    let decadeBarOptions = $derived({
-        title: { text: "Movies by Decade" },
-        axisX: { labelFontSize: 11 },
-        axisY: { title: "Count", titleFontColor: "#a6adba" },
-        data: [{
-            type: "column", color: "#f472b6", cornerRadius: 4,
-            dataPoints: moviesByDecade.map((/** @type {any} */ d) => ({ label: `${d.decade}s`, y: d.count })),
-        }],
-    });
-
-    let yearBarOptions = $derived({
-        title: { text: "Movies by Year" },
-        axisX: { title: "Year", titleFontColor: "#a6adba", labelFontSize: 11, interval: 2, valueFormatString: "####" },
-        axisY: { title: "Count", titleFontColor: "#a6adba" },
-        data: [{
-            type: "column", color: "#f472b6", cornerRadius: 4,
-            dataPoints: moviesByYear.map((/** @type {any} */ d) => ({ x: d.year, y: d.count })),
-        }],
-    });
-
-    let rewatchedBarOptions = $derived(mostRewatched.length > 0
-        ? {
-            title: { text: "Most Rewatched" },
-            axisX: { labelAngle: -45, labelFontSize: 11 },
-            axisY: { title: "Play Count", titleFontColor: "#a6adba" },
-            data: [{
-                type: "bar", color: "#a78bfa", cornerRadius: 4,
-                dataPoints: mostRewatched.map((/** @type {any} */ m) => ({
-                    label: m.title.length > 25 ? m.title.substring(0, 23) + "…" : m.title,
-                    y: m.play_count,
-                })),
-            }],
-        } : null);
-
-    /** @param {string} status */
-    function watchBadge(status) {
-        /** @type {Record<string, string>} */
-        const map = {
-            watched: '<span class="badge badge-success badge-sm">Watched</span>',
-            in_progress: '<span class="badge badge-warning badge-sm">In Progress</span>',
-            unwatched: '<span class="badge badge-ghost badge-sm">Unwatched</span>',
-            wanted: '<span class="badge badge-error badge-sm">Missing</span>',
-        };
-        return map[status] || map.unwatched;
-    }
-
-    /** @param {any} row */
-    function rowClass(row) {
-        if (row.collection_status !== "wanted") return "";
-        const upcoming = ["announced", "inCinemas"].includes(row.arr_status);
-        return upcoming ? "arr-upcoming" : "arr-missing";
-    }
-
-    const columns = [
-        { key: "title", label: "Title", class: "font-medium",
-          render: (/** @type {any} */ row) => `<a href="/movies/${row.id}" class="link link-hover link-primary">${row.title}</a>` },
-        { key: "release_year", label: "Year", class: "text-center w-20" },
-        { key: "watch_status", label: "Status", class: "text-center w-28",
-          render: (/** @type {any} */ row) => {
-            if (row.collection_status === "wanted") {
-                return ["announced", "inCinemas"].includes(row.arr_status)
-                    ? '<span class="badge badge-warning badge-sm">Upcoming</span>'
-                    : '<span class="badge badge-error badge-sm">Missing</span>';
-            }
-            return watchBadge(row.watch_status);
-        }},
-        { key: "runtime_minutes", label: "Runtime", class: "text-center w-24",
-          render: (/** @type {any} */ row) => {
-            const mins = row.runtime_minutes || 0;
-            if (mins === 0) return "—";
-            const h = Math.floor(mins / 60);
-            const m = Math.round(mins % 60);
-            return h > 0 ? `${h}h ${m}m` : `${m}m`;
-        }},
-        { key: "play_count", label: "Plays", class: "text-center w-20" },
-        { key: "last_watched", label: "Last Watched", class: "text-center w-32",
-          render: (/** @type {any} */ row) => {
-            if (!row.last_watched) return "—";
-            const d = new Date(row.last_watched);
-            const now = new Date();
-            const diff = Math.floor((now.getTime() - d.getTime()) / 86400000);
-            if (diff === 0) return "Today";
-            if (diff === 1) return "Yesterday";
-            if (diff < 30) return `${diff}d ago`;
-            if (diff < 365) return `${Math.floor(diff / 30)}mo ago`;
-            return `${Math.floor(diff / 365)}y ago`;
-        }},
-    ];
 </script>
 
 <svelte:head>
@@ -199,56 +50,12 @@
                 {data.totalMovies.toLocaleString()} films · {data.movieStats.watched.toLocaleString()} watched · {data.runtimeHours.toLocaleString()}h total runtime
             </p>
         </div>
-        <button class="btn btn-ghost btn-sm" onclick={toggleLibrary}>
-            {showLibrary ? '← Back to Home' : 'Library & Stats →'}
-        </button>
+        <a href="/movies/library" class="btn btn-ghost btn-sm">
+            Library & Stats →
+        </a>
     </div>
 
-    {#if showLibrary}
-        <!-- ═══ LIBRARY VIEW ═══ -->
-        {#if libraryLoading || !libraryLoaded}
-            <Skeleton type="stat-cards" />
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Skeleton type="chart" />
-                <Skeleton type="chart" />
-            </div>
-            <Skeleton type="table" />
-        {:else}
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard icon="🎬" label="Movies" value={data.totalMovies} sub="in your library" color="primary" />
-            <StatCard icon="✅" label="Watched" value={data.movieStats.watched} sub="{watchPct}% of collection" color="success" />
-            <StatCard icon="👀" label="Unwatched" value={data.movieStats.unwatched} sub="still to watch" color="warning" />
-            <StatCard icon="⏱️" label="Runtime" value="{data.runtimeHours.toLocaleString()}h" sub="total watch time" color="secondary" />
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Chart options={watchPieOptions} height={320} />
-            {#if moviesByDecade.length > 0}
-                <Chart options={decadeBarOptions} height={320} />
-            {:else}
-                <Skeleton type="chart" />
-            {/if}
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {#if moviesByYear.length > 0}
-                <Chart options={yearBarOptions} height={320} />
-            {:else}
-                <Skeleton type="chart" />
-            {/if}
-            {#if rewatchedBarOptions}
-                <Chart options={rewatchedBarOptions} height={320} />
-            {:else}
-                <div class="rounded-2xl bg-base-300/20 border border-base-content/5 p-4 flex items-center justify-center h-[320px]">
-                    <p class="text-base-content/40 text-sm">No rewatched movies yet</p>
-                </div>
-            {/if}
-        </div>
-        <div class="space-y-2">
-            <h2 class="text-xl font-bold">All Movies</h2>
-            <DataTable {columns} data={movies} searchKey="title" pageSize={25} hideCollectedKey="collection_pct" {rowClass} />
-        </div>
-        {/if}
-    {:else}
-        <!-- ═══ SMART HOME VIEW ═══ -->
+    <!-- ═══ SMART HOME VIEW ═══ -->
 
         {#if !sectionsLoaded}
             <!-- Skeleton placeholders while sections load -->
@@ -403,7 +210,6 @@
             </section>
         {/if}
         {/if} <!-- end loaded -->
-    {/if}
 </div>
 
 <style>
