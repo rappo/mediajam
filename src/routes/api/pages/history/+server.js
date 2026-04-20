@@ -36,6 +36,9 @@ export function GET({ locals, url }) {
         params.push(mediaType);
     }
 
+    // Exclude unknown-date sentinel timestamps so they don't pollute sort order
+    conditions.push("ph.timestamp > '1900-01-02'");
+
     const whereClause = conditions.join(' AND ');
 
     // Get playback history with filters applied
