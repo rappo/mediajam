@@ -64,6 +64,8 @@
     let chartMode = $state('zscore'); // 'decade' | 'year' | 'genre' | 'rating' | 'zscore' | 'percentile'
     let pctShowWatched = $state(true);
     let pctShowUnwatched = $state(true);
+    let zShowWatched = $state(true);
+    let zShowUnwatched = $state(true);
 
     // Pagination
     let page = $state(0);
@@ -470,17 +472,21 @@
             const tierKeys = ['S', 'A', 'B', 'C', 'F'];
             // Snapshot for tooltip/click closures
             const zData = chartByZScore;
-            // Series: watched then unwatched for each tier
+            // Series: watched then unwatched for each tier (filtered by toggle)
             const series = [];
-            for (const t of /** @type {const} */ (['S', 'A', 'B', 'C', 'F'])) {
-                series.push({ type: 'stackedColumn', name: tn[t], color: tc[t], showInLegend: false, dataPoints: zData.map(d => ({ label: d.label, y: d[t + 'w'] || null })) });
+            if (zShowWatched) {
+                for (const t of /** @type {const} */ (['S', 'A', 'B', 'C', 'F'])) {
+                    series.push({ type: 'stackedColumn', name: tn[t], color: tc[t], showInLegend: false, dataPoints: zData.map(d => ({ label: d.label, y: d[t + 'w'] || null })) });
+                }
             }
-            for (const t of /** @type {const} */ (['S', 'A', 'B', 'C', 'F'])) {
-                series.push({ type: 'stackedColumn', name: tn[t] + ' (unwatched)', color: tu[t], showInLegend: false, dataPoints: zData.map(d => ({ label: d.label, y: d[t + 'u'] || null })) });
+            if (zShowUnwatched) {
+                for (const t of /** @type {const} */ (['S', 'A', 'B', 'C', 'F'])) {
+                    series.push({ type: 'stackedColumn', name: tn[t] + ' (unwatched)', color: tu[t], showInLegend: false, dataPoints: zData.map(d => ({ label: d.label, y: d[t + 'u'] || null })) });
+                }
             }
             return {
                 title: { text: "Rating Tiers (Z-Score)" },
-                subtitle: { text: "solid = watched, faded = unwatched" },
+                subtitle: { text: zShowWatched && zShowUnwatched ? "solid = watched, faded = unwatched" : zShowWatched ? "showing watched only" : zShowUnwatched ? "showing unwatched only" : "" },
                 axisX: { labelFontSize: 11 },
                 axisY: { title: "Count", titleFontColor: "#a6adba" },
                 toolTip: {
@@ -878,7 +884,18 @@
                 <button class="btn btn-xs" class:btn-active={chartMode === 'zscore'} onclick={() => chartMode = 'zscore'}>Z-Score</button>
                 <button class="btn btn-xs" class:btn-active={chartMode === 'percentile'} onclick={() => chartMode = 'percentile'}>Percentile</button>
             </div>
-            {#if chartMode === 'percentile'}
+            {#if chartMode === 'zscore'}
+                <div class="chart-toggle-sub">
+                    <button
+                        class="btn btn-xs {zShowWatched ? 'btn-success btn-outline' : 'btn-ghost opacity-40'}"
+                        onclick={() => zShowWatched = !zShowWatched}
+                    >{zShowWatched ? '✔' : '✕'} Watched</button>
+                    <button
+                        class="btn btn-xs {zShowUnwatched ? 'btn-warning btn-outline' : 'btn-ghost opacity-40'}"
+                        onclick={() => zShowUnwatched = !zShowUnwatched}
+                    >{zShowUnwatched ? '✔' : '✕'} Unwatched</button>
+                </div>
+            {:else if chartMode === 'percentile'}
                 <div class="chart-toggle-sub">
                     <button
                         class="btn btn-xs {pctShowWatched ? 'btn-success btn-outline' : 'btn-ghost opacity-40'}"
