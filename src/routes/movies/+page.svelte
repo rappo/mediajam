@@ -61,7 +61,7 @@
     let sortDir = $state('asc'); // 'asc' | 'desc'
 
     // Chart toggle
-    let chartMode = $state('rating'); // 'decade' | 'year' | 'genre' | 'rating'
+    let chartMode = $state('zscore'); // 'decade' | 'year' | 'genre' | 'rating' | 'zscore'
 
     // Pagination
     let page = $state(0);
@@ -342,6 +342,68 @@
         return result;
     });
 
+    // Z-Score chart data — bins ratings by σ, grouped into tiers
+    let chartByZScore = $derived.by(() => {
+        const rated = movies.filter(m => m.rating_value != null && m.rating_value >= 1);
+        if (rated.length < 2) return [];
+        const mean = rated.reduce((s, m) => s + m.rating_value, 0) / rated.length;
+        const variance = rated.reduce((s, m) => s + Math.pow(m.rating_value - mean, 2), 0) / rated.length;
+        const stdDev = Math.sqrt(variance);
+        if (stdDev === 0) return [];
+
+        /** @param {number} z */
+        function tier(z) {
+            if (z > 2.0) return 'S';
+            if (z >= 1.0) return 'A';
+            if (z >= -0.5) return 'B';
+            if (z >= -1.5) return 'C';
+            return 'F';
+        }
+
+        const tiers = /** @type {const} */ (['S', 'A', 'B', 'C', 'F']);
+        /** @type {Map<number, Record<string, number>>} */
+        const map = new Map();
+        for (const m of rated) {
+            const z = (m.rating_value - mean) / stdDev;
+            const bin = Math.round(z * 2) / 2;
+            const t = tier(bin);
+            const w = m.watch_status === 'watched' ? 'w' : 'u';
+            const entry = map.get(bin) || {};
+            for (const k of tiers) { entry[k + 'w'] = entry[k + 'w'] || 0; entry[k + 'u'] = entry[k + 'u'] || 0; }
+            entry[t + w]++;
+            map.set(bin, entry);
+        }
+        // Build range, skipping empty bins and clamping to ±4σ
+        const bins = [...map.keys()].sort((a, b) => a - b);
+        if (bins.length === 0) return [];
+        const result = [];
+        const lo = Math.max(bins[0], -4);
+        const hi = Math.min(bins[bins.length - 1], 4);
+        for (let b = lo; b <= hi; b = Math.round((b + 0.5) * 10) / 10) {
+            const entry = map.get(b);
+            if (!entry) continue;
+            result.push({
+                z: b,
+                sigma: b === 0 ? '0σ' : `${b > 0 ? '+' : ''}${b}σ`,
+                label: '',
+                ...entry,
+            });
+        }
+        // Assign tier names to center bin of each tier group
+        /** @type {Record<string, number[]>} */
+        const tierIndices = { F: [], C: [], B: [], A: [], S: [] };
+        const tierLabels = { F: 'Trash', C: 'Mediocre', B: 'Good', A: 'Great', S: 'Masterpiece' };
+        for (let i = 0; i < result.length; i++) {
+            tierIndices[tier(result[i].z)].push(i);
+        }
+        for (const [t, indices] of Object.entries(tierIndices)) {
+            if (indices.length === 0) continue;
+            const mid = indices[Math.floor(indices.length / 2)];
+            result[mid].label = tierLabels[t];
+        }
+        return result;
+    });
+
     let chartOptions = $derived.by(() => {
         if (chartMode === 'genre') {
             return {
@@ -354,6 +416,48 @@
                     { type: "stackedColumn", name: "Watched", color: "#36d399", showInLegend: true, dataPoints: genreChartData.map(d => ({ label: d.name, y: d.watched })) },
                     { type: "stackedColumn", name: "Unwatched", color: "#a1a1aa", showInLegend: true, dataPoints: genreChartData.map(d => ({ label: d.name, y: d.unwatched })) },
                 ],
+            };
+        }
+        if (chartMode === 'zscore') {
+            const tc = { S: '#fbbf24', A: '#36d399', B: '#38bdf8', C: '#fb923c', F: '#f87171' };
+            const tn = { S: 'Masterpiece', A: 'Great', B: 'Good', C: 'Mediocre', F: 'Trash' };
+            // Semi-transparent versions for unwatched
+            const tu = { S: 'rgba(251,191,36,0.35)', A: 'rgba(54,211,153,0.35)', B: 'rgba(56,189,248,0.35)', C: 'rgba(251,146,60,0.35)', F: 'rgba(248,113,113,0.35)' };
+            // Series: watched then unwatched for each tier
+            const series = [];
+            for (const t of /** @type {const} */ (['S', 'A', 'B', 'C', 'F'])) {
+                series.push({ type: 'stackedColumn', name: tn[t], color: tc[t], showInLegend: false, dataPoints: chartByZScore.map(d => ({ label: d.label, y: d[t + 'w'] || null })) });
+            }
+            for (const t of /** @type {const} */ (['S', 'A', 'B', 'C', 'F'])) {
+                series.push({ type: 'stackedColumn', name: tn[t] + ' (unwatched)', color: tu[t], showInLegend: false, dataPoints: chartByZScore.map(d => ({ label: d.label, y: d[t + 'u'] || null })) });
+            }
+            return {
+                title: { text: "Rating Tiers (Z-Score)" },
+                subtitle: { text: "solid = watched, faded = unwatched" },
+                axisX: { labelFontSize: 11 },
+                axisY: { title: "Count", titleFontColor: "#a6adba" },
+                toolTip: {
+                    shared: true,
+                    contentFormatter: function(e) {
+                        // Show σ value from first entry's data
+                        const idx = e.entries[0]?.index;
+                        const sigma = idx != null && chartByZScore[idx]?.sigma || e.entries[0]?.dataPoint?.label || '';
+                        let html = `<strong>${sigma}</strong>`;
+                        const tierKeys = ['S', 'A', 'B', 'C', 'F'];
+                        const tierNames = { S: 'Masterpiece', A: 'Great', B: 'Good', C: 'Mediocre', F: 'Trash' };
+                        const tierColors = { S: '#fbbf24', A: '#36d399', B: '#38bdf8', C: '#fb923c', F: '#f87171' };
+                        for (let i = 0; i < tierKeys.length; i++) {
+                            const w = e.entries[i]?.dataPoint?.y || 0;
+                            const u = e.entries[i + 5]?.dataPoint?.y || 0;
+                            if (w + u > 0) {
+                                const t = tierKeys[i];
+                                html += `<br/><span style="color:${tierColors[t]}">■</span> ${tierNames[t]}: ${w} watched, ${u} unwatched`;
+                            }
+                        }
+                        return html;
+                    }
+                },
+                data: series,
             };
         }
         if (chartMode === 'rating') {
@@ -642,6 +746,7 @@
                 <button class="btn btn-xs" class:btn-active={chartMode === 'year'} onclick={() => chartMode = 'year'}>Year</button>
                 <button class="btn btn-xs" class:btn-active={chartMode === 'genre'} onclick={() => chartMode = 'genre'}>Genre</button>
                 <button class="btn btn-xs" class:btn-active={chartMode === 'rating'} onclick={() => chartMode = 'rating'}>Rating</button>
+                <button class="btn btn-xs" class:btn-active={chartMode === 'zscore'} onclick={() => chartMode = 'zscore'}>Z-Score</button>
             </div>
             <Chart options={chartOptions} height={240} onclick={onChartClick} />
         </div>
