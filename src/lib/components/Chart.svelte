@@ -134,6 +134,8 @@
                         titleFont: { family: "Inter, sans-serif" },
                         bodyFont: { family: "Inter, sans-serif" },
                         mode: opts.toolTip?.shared ? "index" : "nearest",
+                        ...(opts.toolTip?.callbacks ? { callbacks: opts.toolTip.callbacks } : {}),
+                        filter: opts.toolTip?.filter || undefined,
                     },
                 },
                 animation: { duration: 600 },

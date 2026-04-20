@@ -423,13 +423,16 @@
             const tn = { S: 'Masterpiece', A: 'Great', B: 'Good', C: 'Mediocre', F: 'Trash' };
             // Semi-transparent versions for unwatched
             const tu = { S: 'rgba(251,191,36,0.35)', A: 'rgba(54,211,153,0.35)', B: 'rgba(56,189,248,0.35)', C: 'rgba(251,146,60,0.35)', F: 'rgba(248,113,113,0.35)' };
+            const tierKeys = ['S', 'A', 'B', 'C', 'F'];
+            // Snapshot for tooltip/click closures
+            const zData = chartByZScore;
             // Series: watched then unwatched for each tier
             const series = [];
             for (const t of /** @type {const} */ (['S', 'A', 'B', 'C', 'F'])) {
-                series.push({ type: 'stackedColumn', name: tn[t], color: tc[t], showInLegend: false, dataPoints: chartByZScore.map(d => ({ label: d.label, y: d[t + 'w'] || null })) });
+                series.push({ type: 'stackedColumn', name: tn[t], color: tc[t], showInLegend: false, dataPoints: zData.map(d => ({ label: d.label, y: d[t + 'w'] || null })) });
             }
             for (const t of /** @type {const} */ (['S', 'A', 'B', 'C', 'F'])) {
-                series.push({ type: 'stackedColumn', name: tn[t] + ' (unwatched)', color: tu[t], showInLegend: false, dataPoints: chartByZScore.map(d => ({ label: d.label, y: d[t + 'u'] || null })) });
+                series.push({ type: 'stackedColumn', name: tn[t] + ' (unwatched)', color: tu[t], showInLegend: false, dataPoints: zData.map(d => ({ label: d.label, y: d[t + 'u'] || null })) });
             }
             return {
                 title: { text: "Rating Tiers (Z-Score)" },
@@ -438,25 +441,32 @@
                 axisY: { title: "Count", titleFontColor: "#a6adba" },
                 toolTip: {
                     shared: true,
-                    contentFormatter: function(e) {
-                        // Show σ value from first entry's data
-                        const idx = e.entries[0]?.index;
-                        const sigma = idx != null && chartByZScore[idx]?.sigma || e.entries[0]?.dataPoint?.label || '';
-                        let html = `<strong>${sigma}</strong>`;
-                        const tierKeys = ['S', 'A', 'B', 'C', 'F'];
-                        const tierNames = { S: 'Masterpiece', A: 'Great', B: 'Good', C: 'Mediocre', F: 'Trash' };
-                        const tierColors = { S: '#fbbf24', A: '#36d399', B: '#38bdf8', C: '#fb923c', F: '#f87171' };
-                        for (let i = 0; i < tierKeys.length; i++) {
-                            const w = e.entries[i]?.dataPoint?.y || 0;
-                            const u = e.entries[i + 5]?.dataPoint?.y || 0;
-                            if (w + u > 0) {
-                                const t = tierKeys[i];
-                                html += `<br/><span style="color:${tierColors[t]}">■</span> ${tierNames[t]}: ${w} watched, ${u} unwatched`;
-                            }
-                        }
-                        return html;
-                    }
+                    filter: (/** @type {any} */ item) => {
+                        return item.raw > 0;
+                    },
+                    callbacks: {
+                        title: (/** @type {any[]} */ items) => {
+                            if (!items.length) return '';
+                            const idx = items[0].dataIndex;
+                            const d = zData[idx];
+                            if (!d) return '';
+                            // Find which tier this bin belongs to
+                            const z = d.z;
+                            let tierName = 'Trash';
+                            if (z > 2.0) tierName = 'Masterpiece';
+                            else if (z >= 1.0) tierName = 'Great';
+                            else if (z >= -0.5) tierName = 'Good';
+                            else if (z >= -1.5) tierName = 'Mediocre';
+                            return `${d.sigma}  ·  ${tierName}`;
+                        },
+                        label: (/** @type {any} */ ctx) => {
+                            if (!ctx.raw || ctx.raw <= 0) return null;
+                            return `${ctx.dataset.label}: ${ctx.raw}`;
+                        },
+                    },
                 },
+                // Store z-score data for click handler
+                _zData: zData,
                 data: series,
             };
         }
@@ -536,10 +546,29 @@
     }
 
     /** Handle chart element click — update filters and scroll to All Movies */
-    function onChartClick(/** @type {{label: string, x: any}} */ detail) {
+    function onChartClick(/** @type {{label: string, x: any, datasetIndex: number, dataIndex: number}} */ detail) {
         // Reset filters first
         resetFilters();
-        if (chartMode === 'rating') {
+        if (chartMode === 'zscore') {
+            // Look up the z-score bin and convert to rating range
+            const zData = chartOptions._zData;
+            const d = zData?.[detail.dataIndex];
+            if (d) {
+                // Compute mean/stdDev from current movies to convert z back to rating
+                const rated = movies.filter(m => m.rating_value != null && m.rating_value >= 1);
+                if (rated.length >= 2) {
+                    const mean = rated.reduce((s, m) => s + m.rating_value, 0) / rated.length;
+                    const variance = rated.reduce((s, m) => s + Math.pow(m.rating_value - mean, 2), 0) / rated.length;
+                    const stdDev = Math.sqrt(variance);
+                    // z bin is ±0.25 wide (0.5 step, half step each side)
+                    const lo = (d.z - 0.25) * stdDev + mean;
+                    const hi = (d.z + 0.25) * stdDev + mean;
+                    // Convert to 0-10 scale (ratings are stored as 1-100)
+                    filterRatingMin = Math.max(0, Math.floor(lo / 10 * 2) / 2);
+                    filterRatingMax = Math.min(10, Math.ceil(hi / 10 * 2) / 2);
+                }
+            }
+        } else if (chartMode === 'rating') {
             // x is the numeric score (1-100), convert to 0-10 scale
             const score = Number(detail.x);
             filterRatingMin = Math.floor(score / 10);
