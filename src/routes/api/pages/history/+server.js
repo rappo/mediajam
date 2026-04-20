@@ -12,6 +12,8 @@ export function GET({ locals, url }) {
     const search = url.searchParams.get('q') || '';
     const mediaType = url.searchParams.get('type') || '';
 
+    const sortDir = url.searchParams.get('sort') === 'asc' ? 'ASC' : 'DESC';
+
     // Build WHERE clause dynamically
     const conditions = ['ph.user_id = ?'];
     const params = [userId];
@@ -61,7 +63,7 @@ export function GET({ locals, url }) {
         JOIN media_children mc ON ph.media_id = mc.id
         JOIN media_parents mp ON mc.parent_id = mp.id
         WHERE ${whereClause}
-        ORDER BY ph.timestamp DESC
+        ORDER BY ph.timestamp ${sortDir}
         LIMIT 500
     `).all(...params)) : [];
 
@@ -266,7 +268,7 @@ export function GET({ locals, url }) {
         jellyfinUrl,
         yearMap,
         userTimezone,
-        filters: { from: fromDate, to: toDate, search, mediaType },
+        filters: { from: fromDate, to: toDate, search, mediaType, sort: sortDir === 'ASC' ? 'asc' : 'desc' },
         stats: {
             totalPlays: stats?.total_plays || 0,
             uniqueItems: stats?.unique_items || 0,
