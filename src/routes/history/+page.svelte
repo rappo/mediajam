@@ -37,6 +37,7 @@
             searchText = d.filters?.search || '';
             fromDate = d.filters?.from || '';
             toDate = d.filters?.to || '';
+            sortOrder = d.filters?.sort || 'desc';
             showDateRange = !!(d.filters?.from || d.filters?.to);
         } catch (e) {
             console.error('[history] Failed to load data:', e);
@@ -51,6 +52,7 @@
     let searchText = $state('');
     let fromDate = $state('');
     let toDate = $state('');
+    let sortOrder = $state('desc');
     let searchTimer = $state(/** @type {ReturnType<typeof setTimeout>|null} */ (null));
     let showDateRange = $state(false);
 
@@ -63,6 +65,7 @@
         if (searchText.trim()) params.set("q", searchText.trim());
         if (fromDate) params.set("from", fromDate);
         if (toDate) params.set("to", toDate);
+        if (sortOrder === 'asc') params.set("sort", "asc");
         const qs = params.toString();
         // Update URL for bookmarkability (replaceState to avoid history spam)
         window.history.replaceState({}, '', `/history${qs ? "?" + qs : ""}`);
@@ -102,6 +105,7 @@
         searchText = "";
         fromDate = "";
         toDate = "";
+        sortOrder = "desc";
         goto("/history", { keepFocus: true });
     }
 
@@ -273,6 +277,21 @@
                         <line x1="16" y1="2" x2="16" y2="6" />
                         <line x1="8" y1="2" x2="8" y2="6" />
                         <line x1="3" y1="10" x2="21" y2="10" />
+                    </svg>
+                </button>
+
+                <!-- Reverse order toggle -->
+                <button
+                    class="btn btn-sm btn-square {sortOrder === 'asc' ? 'btn-primary' : 'btn-ghost'}"
+                    onclick={() => { sortOrder = sortOrder === 'desc' ? 'asc' : 'desc'; applyFilters(); }}
+                    title={sortOrder === 'desc' ? 'Showing newest first — click for oldest first' : 'Showing oldest first — click for newest first'}
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        {#if sortOrder === 'desc'}
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 4h13M3 8h9M3 12h5m8 0v8m0 0l-4-4m4 4l4-4" />
+                        {:else}
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 4h13M3 8h9M3 12h5m8 8V12m0 0l-4 4m4-4l4 4" />
+                        {/if}
                     </svg>
                 </button>
 
