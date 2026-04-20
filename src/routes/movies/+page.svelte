@@ -179,9 +179,11 @@
             result = result.filter(m => m.watch_status !== 'watched');
         }
         if (filterRatingMin > 0 || filterRatingMax < 10) {
+            const rMin = filterRatingMin * 10;
+            const rMax = filterRatingMax * 10;
             result = result.filter(m => {
                 if (m.rating_value === null) return filterRatingMin === 0;
-                return m.rating_value >= filterRatingMin && m.rating_value <= filterRatingMax;
+                return m.rating_value >= rMin && m.rating_value <= rMax;
             });
         }
         // Sort
