@@ -61,7 +61,9 @@
     let sortDir = $state('asc'); // 'asc' | 'desc'
 
     // Chart toggle
-    let chartMode = $state('zscore'); // 'decade' | 'year' | 'genre' | 'rating' | 'zscore'
+    let chartMode = $state('zscore'); // 'decade' | 'year' | 'genre' | 'rating' | 'zscore' | 'percentile'
+    let pctShowWatched = $state(true);
+    let pctShowUnwatched = $state(true);
 
     // Pagination
     let page = $state(0);
@@ -404,6 +406,46 @@
         return result;
     });
 
+    // Percentile chart data — one bar per tier
+    let chartByPercentile = $derived.by(() => {
+        const rated = movies.filter(m => m.rating_value != null && m.rating_value >= 1);
+        if (rated.length < 5) return { tiers: [], tierBoundaries: [] };
+        // Sort ascending by rating
+        const sorted = [...rated].sort((a, b) => a.rating_value - b.rating_value);
+        const n = sorted.length;
+
+        // Tier definitions by percentile
+        const tierDefs = [
+            { key: 'F', name: 'Trash', pctLo: 0, pctHi: 5, color: '#f87171' },
+            { key: 'C', name: 'Mediocre', pctLo: 5, pctHi: 25, color: '#fb923c' },
+            { key: 'B', name: 'Good', pctLo: 25, pctHi: 75, color: '#38bdf8' },
+            { key: 'A', name: 'Great', pctLo: 75, pctHi: 95, color: '#36d399' },
+            { key: 'S', name: 'Masterpiece', pctLo: 95, pctHi: 100, color: '#fbbf24' },
+        ];
+
+        // Count watched/unwatched per tier
+        const tiers = tierDefs.map(td => {
+            const idxLo = Math.floor(td.pctLo / 100 * n);
+            const idxHi = td.pctHi === 100 ? n : Math.floor(td.pctHi / 100 * n);
+            const slice = sorted.slice(idxLo, idxHi);
+            const watched = slice.filter(m => m.watch_status === 'watched').length;
+            const unwatched = slice.length - watched;
+            const ratingLo = slice[0]?.rating_value || 0;
+            const ratingHi = slice[slice.length - 1]?.rating_value || 0;
+            return {
+                ...td,
+                label: `${td.name}\n(${ratingLo}–${ratingHi})`,
+                watched,
+                unwatched,
+                total: slice.length,
+                ratingLo,
+                ratingHi,
+            };
+        });
+
+        return { tiers, tierBoundaries: tiers };
+    });
+
     let chartOptions = $derived.by(() => {
         if (chartMode === 'genre') {
             return {
@@ -468,6 +510,54 @@
                 // Store z-score data for click handler
                 _zData: zData,
                 data: series,
+            };
+        }
+        if (chartMode === 'percentile') {
+            const pData = chartByPercentile;
+            const tiers = pData.tiers || [];
+            // Watched series (solid tier colors)
+            const watchedDs = {
+                type: 'stackedColumn', name: 'Watched', showInLegend: false,
+                dataPoints: tiers.map(t => ({ label: t.name, y: t.watched || null, color: t.color })),
+            };
+            // Unwatched series (faded tier colors)
+            /** @param {string} hex @param {number} a */
+            const hexA = (hex, a) => {
+                const h = hex.replace('#', '');
+                return `rgba(${parseInt(h.substring(0,2),16)},${parseInt(h.substring(2,4),16)},${parseInt(h.substring(4,6),16)},${a})`;
+            };
+            const unwatchedDs = {
+                type: 'stackedColumn', name: 'Unwatched', showInLegend: false,
+                dataPoints: tiers.map(t => ({
+                    label: t.name, y: t.unwatched || null,
+                    color: hexA(t.color, 0.35),
+                })),
+            };
+            return {
+                title: { text: "Rating Tiers (Percentile)" },
+                subtitle: { text: tiers.map(t => `${t.name}: ${t.ratingLo}\u2013${t.ratingHi}`).join('  \u00b7  ') },
+                axisX: { labelFontSize: 11 },
+                axisY: { title: "Count", titleFontColor: "#a6adba" },
+                toolTip: {
+                    shared: true,
+                    filter: (/** @type {any} */ item) => item.raw > 0,
+                    callbacks: {
+                        title: (/** @type {any[]} */ items) => {
+                            if (!items.length) return '';
+                            const t = tiers[items[0].dataIndex];
+                            return t ? `${t.name}  (${t.pctLo}th\u2013${t.pctHi}th percentile, ratings ${t.ratingLo}\u2013${t.ratingHi})` : '';
+                        },
+                        label: (/** @type {any} */ ctx) => {
+                            if (!ctx.raw || ctx.raw <= 0) return null;
+                            return `${ctx.dataset.label}: ${ctx.raw}`;
+                        },
+                    },
+                },
+                _pData: tiers,
+                data: [
+                    ...(pctShowWatched ? [watchedDs] : []),
+                    ...(pctShowUnwatched ? [unwatchedDs] : []),
+                ],
             };
         }
         if (chartMode === 'rating') {
@@ -567,6 +657,14 @@
                     filterRatingMin = Math.max(0, Math.floor(lo / 10 * 2) / 2);
                     filterRatingMax = Math.min(10, Math.ceil(hi / 10 * 2) / 2);
                 }
+            }
+        } else if (chartMode === 'percentile') {
+            // Convert clicked tier to rating range filter
+            const tiers = chartOptions._pData;
+            const t = tiers?.[detail.dataIndex];
+            if (t) {
+                filterRatingMin = Math.max(0, Math.floor(t.ratingLo / 10));
+                filterRatingMax = Math.min(10, Math.ceil(t.ratingHi / 10));
             }
         } else if (chartMode === 'rating') {
             // x is the numeric score (1-100), convert to 0-10 scale
@@ -776,7 +874,20 @@
                 <button class="btn btn-xs" class:btn-active={chartMode === 'genre'} onclick={() => chartMode = 'genre'}>Genre</button>
                 <button class="btn btn-xs" class:btn-active={chartMode === 'rating'} onclick={() => chartMode = 'rating'}>Rating</button>
                 <button class="btn btn-xs" class:btn-active={chartMode === 'zscore'} onclick={() => chartMode = 'zscore'}>Z-Score</button>
+                <button class="btn btn-xs" class:btn-active={chartMode === 'percentile'} onclick={() => chartMode = 'percentile'}>Percentile</button>
             </div>
+            {#if chartMode === 'percentile'}
+                <div class="chart-toggle-sub">
+                    <button
+                        class="btn btn-xs {pctShowWatched ? 'btn-success btn-outline' : 'btn-ghost opacity-40'}"
+                        onclick={() => pctShowWatched = !pctShowWatched}
+                    >{pctShowWatched ? '✔' : '✕'} Watched</button>
+                    <button
+                        class="btn btn-xs {pctShowUnwatched ? 'btn-warning btn-outline' : 'btn-ghost opacity-40'}"
+                        onclick={() => pctShowUnwatched = !pctShowUnwatched}
+                    >{pctShowUnwatched ? '✔' : '✕'} Unwatched</button>
+                </div>
+            {/if}
             <Chart options={chartOptions} height={240} onclick={onChartClick} />
         </div>
 
@@ -1192,6 +1303,10 @@
     .chart-toggle {
         position: absolute; top: 8px; right: 12px; z-index: 5;
         display: flex; gap: 2px;
+    }
+    .chart-toggle-sub {
+        position: absolute; top: 34px; right: 12px; z-index: 5;
+        display: flex; gap: 4px;
     }
 
     /* Sort controls */
