@@ -1122,6 +1122,8 @@
     .poster-scroll {
         display: flex; gap: 14px; overflow-x: auto;
         scrollbar-width: none; -ms-overflow-style: none; padding-bottom: 4px;
+        mask-image: linear-gradient(to right, black calc(100% - 48px), transparent);
+        -webkit-mask-image: linear-gradient(to right, black calc(100% - 48px), transparent);
     }
     .poster-scroll::-webkit-scrollbar { display: none; }
 
