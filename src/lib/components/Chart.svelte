@@ -69,6 +69,11 @@
 
             if (isPieType) {
                 dataset.backgroundColor = colors.length === values.length ? colors : undefined;
+            } else if (!s.color && colors.length === values.length) {
+                // Per-point colors (e.g., tier-colored bars)
+                dataset.backgroundColor = colors;
+                dataset.borderColor = colors;
+                dataset.borderRadius = s.cornerRadius || 0;
             } else {
                 dataset.backgroundColor = s.color || colors[0] || "#7c3aed";
                 dataset.borderColor = s.color || colors[0] || "#7c3aed";
