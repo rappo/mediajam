@@ -211,6 +211,17 @@
         return classes[mediaType] || '';
     }
 
+    /** Grid bar CSS class by media type @param {any} item */
+    function gridBarClass(item) {
+        const classes = {
+            movie: 'bar-movie',
+            show: 'bar-show',
+            album: 'bar-album',
+            artist: 'bar-album',
+        };
+        return classes[item.media_type] || 'bar-default';
+    }
+
     /** @param {string} status */
     function statusBadgeClass(status) {
         const classes = {
@@ -235,7 +246,8 @@
         return 'unwatched';
     }
 
-    const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const dayNamesShort = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
     const spanOptions = [
@@ -469,52 +481,54 @@
         <div class="cal-section">
             <!-- Grid month nav -->
             <div class="grid-nav">
-                <button class="nav-btn" onclick={gridPrevMonth} aria-label="Previous month">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
-                </button>
-                <span class="grid-month-label">
-                    {monthNames[calendarGrid.month - 1]} {calendarGrid.year}
-                </span>
-                <button class="nav-btn" onclick={gridNextMonth} aria-label="Next month">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-                </button>
-                <button class="nav-btn nav-today" onclick={gridToday}>Today</button>
+                <h2 class="grid-month-label">
+                    {new Date(calendarGrid.year, calendarGrid.month - 1).toLocaleString('en-US', { month: 'long' })} {calendarGrid.year}
+                </h2>
+                <div class="grid-nav-controls">
+                    <button class="nav-btn nav-today" onclick={gridToday}>Today</button>
+                    <button class="nav-btn nav-arrow" onclick={gridPrevMonth} aria-label="Previous month">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="15 18 9 12 15 6"/></svg>
+                    </button>
+                    <button class="nav-btn nav-arrow" onclick={gridNextMonth} aria-label="Next month">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                </div>
             </div>
 
             <!-- Day names header -->
             <div class="grid-header">
-                {#each dayNames as day}
-                    <div class="grid-day-name">{day}</div>
+                {#each dayNames as day, i}
+                    <div class="grid-day-name" class:day-weekend={i >= 5}>{day}</div>
                 {/each}
             </div>
 
             <!-- Weeks -->
-            {#each calendarGrid.weeks as week}
-                <div class="grid-week">
-                    {#each week as cell}
-                        <div class="grid-cell" class:cell-empty={!cell.date} class:cell-today={cell.isToday} class:cell-past={cell.isPast && !cell.isToday}>
-                            {#if cell.date}
-                                <div class="cell-day" class:day-today={cell.isToday}>{cell.day}</div>
-                                <div class="cell-items">
-                                    {#each cell.items.slice(0, 4) as item}
-                                        <a href={item.href} class="cell-item" title="{item.title}{item.subtitle ? ' — ' + item.subtitle : ''} ({statusLabel(item.watch_status)})">
-                                            {#if item.poster_url}
-                                                <img src={imgUrl(item.poster_url, 60)} alt="" loading="lazy" class="cell-poster" />
-                                            {:else}
-                                                <div class="cell-poster cell-poster-ph">{typeIcon(item.media_type)}</div>
-                                            {/if}
-                                            <span class="cell-dot {statusBadgeClass(item.watch_status)}"></span>
-                                        </a>
-                                    {/each}
-                                    {#if cell.items.length > 4}
-                                        <span class="cell-more">+{cell.items.length - 4}</span>
-                                    {/if}
-                                </div>
-                            {/if}
-                        </div>
-                    {/each}
-                </div>
-            {/each}
+            <div class="grid-body">
+                {#each calendarGrid.weeks as week}
+                    <div class="grid-week">
+                        {#each week as cell, i}
+                            <div class="grid-cell" class:cell-empty={!cell.date} class:cell-today={cell.isToday} class:cell-past={cell.isPast && !cell.isToday} class:cell-weekend={i >= 5}>
+                                {#if cell.date}
+                                    <div class="cell-day" class:day-today={cell.isToday}>{cell.day}</div>
+                                    <div class="cell-items">
+                                        {#each cell.items.slice(0, 3) as item}
+                                            <a href={item.href} class="cell-bar {gridBarClass(item)}" title="{item.title}{item.subtitle ? ' — ' + item.subtitle : ''} ({statusLabel(item.watch_status)})">
+                                                <span class="cell-bar-title">{item.title}</span>
+                                                {#if item.subtitle}
+                                                    <span class="cell-bar-sub">{item.subtitle}</span>
+                                                {/if}
+                                            </a>
+                                        {/each}
+                                        {#if cell.items.length > 3}
+                                            <span class="cell-more">+ {cell.items.length - 3} more</span>
+                                        {/if}
+                                    </div>
+                                {/if}
+                            </div>
+                        {/each}
+                    </div>
+                {/each}
+            </div>
         </div>
     {/if}
 
@@ -635,8 +649,8 @@
         transition: all 0.15s;
     }
     .toggle-btn.active {
-        background: oklch(var(--p) / 0.15);
-        color: oklch(var(--p));
+        background: oklch(var(--p));
+        color: oklch(var(--pc));
     }
     .toggle-btn:hover:not(.active) {
         color: oklch(var(--bc) / 0.7);
@@ -666,9 +680,12 @@
         color: oklch(var(--bc) / 0.8);
     }
     .pill-active {
-        background: oklch(var(--p) / 0.15);
-        border-color: oklch(var(--p) / 0.3);
-        color: oklch(var(--p));
+        background: oklch(var(--p));
+        border-color: oklch(var(--p));
+        color: oklch(var(--pc));
+    }
+    .pill-active:hover {
+        background: oklch(var(--p) / 0.85);
     }
     .pill-sm {
         padding: 3px 10px;
@@ -814,13 +831,13 @@
         border: 1px solid rgba(0,0,0,0.15);
     }
     .uwb {
-        background: #dc2626;
+        background: oklch(var(--er));
     }
     .wb {
-        background: #16a34a;
+        background: oklch(var(--su));
     }
     .ipb {
-        background: #ca8a04;
+        background: oklch(var(--wa));
     }
 
     /* Type pip (bottom-left on poster) */
@@ -841,22 +858,33 @@
     .cal-section {
         display: flex;
         flex-direction: column;
-        gap: 4px;
+        gap: 0;
     }
 
     .grid-nav {
         display: flex;
         align-items: center;
-        gap: 8px;
-        justify-content: center;
-        margin-bottom: 8px;
+        justify-content: space-between;
+        padding: 0 2px 12px;
+    }
+    .grid-month-label {
+        font-size: 1.4rem;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        margin: 0;
+    }
+    .grid-nav-controls {
+        display: flex;
+        align-items: center;
+        gap: 6px;
     }
     .nav-btn {
         display: flex;
         align-items: center;
+        justify-content: center;
         gap: 4px;
-        background: oklch(0.22 0.005 260);
-        border: 1px solid oklch(0.3 0.005 260);
+        background: oklch(var(--b2));
+        border: 1px solid oklch(var(--bc) / 0.08);
         color: oklch(var(--bc) / 0.65);
         padding: 5px 14px;
         border-radius: 8px;
@@ -866,30 +894,28 @@
         transition: background 0.15s, color 0.15s, border-color 0.15s;
     }
     .nav-btn:hover {
-        background: oklch(0.28 0.01 260);
+        background: oklch(var(--b3));
         color: oklch(var(--bc));
-        border-color: oklch(0.4 0.01 260);
+        border-color: oklch(var(--bc) / 0.15);
+    }
+    .nav-arrow {
+        padding: 5px 8px;
     }
     .nav-today {
-        background: oklch(var(--p) / 0.15);
-        color: oklch(var(--p));
-        border-color: oklch(var(--p) / 0.3);
+        background: oklch(var(--p));
+        color: oklch(var(--pc));
+        border-color: oklch(var(--p));
+        font-weight: 700;
     }
     .nav-today:hover {
-        background: oklch(var(--p) / 0.25);
-    }
-
-    .grid-month-label {
-        font-size: 1rem;
-        font-weight: 800;
-        min-width: 160px;
-        text-align: center;
+        background: oklch(var(--p) / 0.85);
     }
 
     .grid-header {
         display: grid;
         grid-template-columns: repeat(7, 1fr);
-        gap: 2px;
+        gap: 1px;
+        background: oklch(var(--bc) / 0.06);
     }
     .grid-day-name {
         text-align: center;
@@ -897,108 +923,143 @@
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.08em;
-        color: oklch(var(--bc) / 0.35);
-        padding: 6px 0;
+        color: oklch(var(--bc) / 0.4);
+        padding: 8px 0;
+        background: oklch(var(--b1));
+    }
+    .grid-day-name.day-weekend {
+        color: oklch(var(--p) / 0.7);
+    }
+
+    .grid-body {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        background: oklch(var(--bc) / 0.06);
+        border: 1px solid oklch(var(--bc) / 0.06);
+        border-radius: 0 0 10px 10px;
     }
 
     .grid-week {
         display: grid;
         grid-template-columns: repeat(7, 1fr);
-        gap: 2px;
+        gap: 1px;
     }
 
     .grid-cell {
-        min-height: 90px;
-        background: oklch(var(--b2) / 0.3);
-        border: 1px solid oklch(var(--bc) / 0.04);
-        border-radius: 8px;
-        padding: 4px;
+        min-height: 110px;
+        background: oklch(var(--b1));
+        padding: 6px;
         display: flex;
         flex-direction: column;
         gap: 3px;
         transition: background 0.12s;
     }
     .grid-cell:hover:not(.cell-empty) {
-        background: oklch(var(--b2) / 0.6);
+        background: oklch(var(--b2) / 0.7);
     }
     .cell-empty {
-        background: transparent;
-        border-color: transparent;
+        background: oklch(var(--b1) / 0.4);
     }
     .cell-today {
-        border-color: oklch(var(--p) / 0.4);
-        background: oklch(var(--p) / 0.05);
+        background: oklch(var(--p) / 0.06);
+    }
+    .cell-today:hover {
+        background: oklch(var(--p) / 0.1);
     }
     .cell-past {
-        opacity: 0.55;
+        opacity: 0.5;
+    }
+    .cell-past:hover {
+        opacity: 0.8;
+    }
+    .cell-weekend {
+        background: oklch(var(--b2) / 0.35);
+    }
+    .cell-weekend.cell-empty {
+        background: oklch(var(--b2) / 0.2);
     }
 
     .cell-day {
-        font-size: 0.7rem;
+        font-size: 0.72rem;
         font-weight: 700;
-        color: oklch(var(--bc) / 0.6);
+        color: oklch(var(--bc) / 0.5);
         line-height: 1;
-        padding: 2px 4px;
+        padding: 1px 2px;
     }
     .day-today {
         color: oklch(var(--pc));
         background: oklch(var(--p));
         border-radius: 50%;
-        width: 22px;
-        height: 22px;
+        width: 24px;
+        height: 24px;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 0.65rem;
+        font-size: 0.68rem;
         font-weight: 900;
     }
 
     .cell-items {
         display: flex;
-        flex-wrap: wrap;
-        gap: 3px;
+        flex-direction: column;
+        gap: 2px;
         flex: 1;
     }
-    .cell-item {
-        position: relative;
-        width: 28px;
-        height: 40px;
-        border-radius: 4px;
-        overflow: hidden;
-        transition: transform 0.12s, box-shadow 0.12s;
-    }
-    .cell-item:hover {
-        transform: scale(1.15);
-        box-shadow: 0 2px 10px oklch(0 0 0 / 0.4);
-        z-index: 5;
-    }
-    .cell-poster {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-    }
-    .cell-poster-ph {
+
+    /* Horizontal bar items in grid cells */
+    .cell-bar {
         display: flex;
-        align-items: center;
+        flex-direction: column;
         justify-content: center;
-        background: oklch(var(--b3));
-        font-size: 0.6rem;
+        padding: 3px 6px;
+        border-radius: 4px;
+        text-decoration: none;
+        color: #fff;
+        min-height: 0;
+        overflow: hidden;
+        transition: opacity 0.12s, filter 0.12s;
     }
-    .cell-dot {
-        position: absolute;
-        bottom: 2px;
-        right: 2px;
-        width: 7px;
-        height: 7px;
-        border-radius: 50%;
-        border: 1px solid oklch(0 0 0 / 0.3);
+    .cell-bar:hover {
+        filter: brightness(1.15);
     }
+    .cell-bar-title {
+        font-size: 0.58rem;
+        font-weight: 700;
+        line-height: 1.2;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        text-shadow: 0 1px 2px oklch(0 0 0 / 0.3);
+    }
+    .cell-bar-sub {
+        font-size: 0.48rem;
+        opacity: 0.8;
+        line-height: 1.2;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    /* Bar color classes — theme-compatible oklch */
+    .bar-movie {
+        background: oklch(0.65 0.18 350);
+    }
+    .bar-show {
+        background: oklch(0.62 0.14 260);
+    }
+    .bar-album {
+        background: oklch(0.60 0.16 300);
+    }
+    .bar-default {
+        background: oklch(var(--bc) / 0.25);
+    }
+
     .cell-more {
         font-size: 0.5rem;
         color: oklch(var(--bc) / 0.4);
         font-weight: 600;
-        display: flex;
-        align-items: flex-end;
+        padding: 1px 2px;
     }
 
     /* ── List View ── */
@@ -1140,16 +1201,16 @@
         border-radius: 6px;
     }
     .status-watched {
-        background: #16a34a;
-        color: #fff;
+        background: oklch(var(--su));
+        color: oklch(var(--suc));
     }
     .status-unwatched {
         background: oklch(var(--bc) / 0.1);
         color: oklch(var(--bc) / 0.5);
     }
     .status-inprogress {
-        background: #ca8a04;
-        color: #fff;
+        background: oklch(var(--wa));
+        color: oklch(var(--wac));
     }
 
     /* Empty state */
@@ -1176,14 +1237,19 @@
             align-items: flex-start;
         }
         .grid-cell {
-            min-height: 70px;
+            min-height: 80px;
         }
-        .cell-item {
-            width: 24px;
-            height: 34px;
+        .cell-bar-title {
+            font-size: 0.5rem;
+        }
+        .cell-bar-sub {
+            display: none;
         }
         .poster-card {
             width: 110px;
+        }
+        .grid-day-name {
+            font-size: 0.5rem;
         }
     }
 
@@ -1192,12 +1258,25 @@
             grid-template-columns: repeat(7, 1fr);
         }
         .grid-cell {
-            min-height: 50px;
-            padding: 2px;
+            min-height: 56px;
+            padding: 3px;
         }
-        .cell-item {
-            width: 20px;
-            height: 28px;
+        .cell-bar {
+            padding: 2px 3px;
+        }
+        .cell-bar-title {
+            font-size: 0.45rem;
+        }
+        .cell-bar-sub {
+            display: none;
+        }
+        .cell-day {
+            font-size: 0.6rem;
+        }
+        .day-today {
+            width: 18px;
+            height: 18px;
+            font-size: 0.55rem;
         }
         .list-poster {
             width: 30px;
@@ -1205,6 +1284,9 @@
         }
         .poster-card {
             width: 100px;
+        }
+        .grid-month-label {
+            font-size: 1.1rem;
         }
     }
 </style>
