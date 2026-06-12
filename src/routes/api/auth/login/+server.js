@@ -15,7 +15,44 @@ export async function POST({ request, cookies }) {
     const user = /** @type {any} */ (db.prepare('SELECT id, username, password_hash, is_admin, jellyfin_user_id FROM users WHERE username = ?').get(username));
 
     if (!user) {
-        return json({ success: false, error: 'Invalid username or password.' }, { status: 401 });
+        // User not found locally — try Jellyfin auto-create
+        const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_url FROM app_settings WHERE id = 1').get());
+        if (!settings?.jellyfin_url) {
+            return json({ success: false, error: 'Invalid username or password.' }, { status: 401 });
+        }
+
+        try {
+            const api = createJellyfinApi(settings.jellyfin_url);
+            const result = await getUserApi(api).authenticateUserByName({
+                authenticateUserByName: { Username: username, Pw: password }
+            });
+
+            const jellyfinUser = result.data?.User;
+            const accessToken = result.data?.AccessToken;
+            if (!jellyfinUser?.Id) {
+                return json({ success: false, error: 'Invalid username or password.' }, { status: 401 });
+            }
+
+            // Auto-create local account linked to Jellyfin
+            const insertResult = db.prepare(
+                `INSERT INTO users (username, jellyfin_user_id, jellyfin_access_token, is_admin)
+                 VALUES (?, ?, ?, 0)`
+            ).run(jellyfinUser.Name || username, jellyfinUser.Id, accessToken || '');
+
+            const newUserId = insertResult.lastInsertRowid;
+            cookies.set(SESSION_COOKIE, signSession(Number(newUserId)), COOKIE_OPTIONS);
+            return json({
+                success: true,
+                user: { id: newUserId, username: jellyfinUser.Name || username, isAdmin: false }
+            });
+        } catch (/** @type {any} */ e) {
+            const status = e?.response?.status;
+            if (status === 401) {
+                return json({ success: false, error: 'Invalid username or password.' }, { status: 401 });
+            }
+            console.error('[auth] Jellyfin auto-create auth error:', e?.message || e);
+            return json({ success: false, error: 'Invalid username or password.' }, { status: 401 });
+        }
     }
 
     // Jellyfin-linked account (no local password) — authenticate against Jellyfin server
