@@ -340,7 +340,7 @@
 						Music
 					</a>
 				<div class="dropdown dropdown-end">
-					<div tabindex="0" role="button" class="tab tab-sm font-medium {['/stats', '/calendar', '/connections'].some(p => currentPath.startsWith(p)) ? 'tab-active' : ''}">
+					<div tabindex="0" role="button" class="tab tab-sm font-medium {['/stats', '/calendar', '/connections', '/wanted'].some(p => currentPath.startsWith(p)) ? 'tab-active' : ''}">
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							class="h-4 w-4 mr-1.5"
@@ -360,6 +360,14 @@
 					</div>
 					<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 					<ul tabindex="0" class="dropdown-content menu bg-base-200 rounded-box z-[60] w-48 p-2 shadow-xl border border-base-content/10 mt-2">
+						<li>
+							<a href="/wanted" class="{currentPath === '/wanted' ? 'active' : ''}">
+								<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+									<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+								</svg>
+								Wanted
+							</a>
+						</li>
 						<li>
 							<a href="/calendar" class="{currentPath === '/calendar' ? 'active' : ''}">
 								<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
