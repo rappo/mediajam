@@ -197,7 +197,7 @@
         <div class="title-area">
             <h1 class="detail-title">
                 {title}
-                {#if year}<span class="title-year">{year}</span>{/if}
+                {#if year}<span class="title-year">({year})</span>{/if}
                 <FavoriteButton type={favoriteType} id={favoriteId} {isFavorite} />
             </h1>
             <div class="meta-row">
@@ -448,8 +448,9 @@
     }
     @media (min-width: 768px) { .detail-title { font-size: 2.5rem; } }
     .title-year {
-        font-weight: 400;
-        color: oklch(var(--bc) / 0.4);
+        font-weight: 300;
+        font-size: 0.6em;
+        color: oklch(var(--bc) / 0.25);
     }
 
     .meta-row {

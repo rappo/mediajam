@@ -324,6 +324,34 @@ paths:
                   isFavorite: { type: boolean }
 
   /api/watchlist:
+    get:
+      tags: [Favorites & Watchlist]
+      summary: Get user's watchlist
+      description: Return the current user's watchlist with media details, ordered by most recently added.
+      responses:
+        '200':
+          description: Watchlist items
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        title: { type: string }
+                        poster_url: { type: string, nullable: true }
+                        backdrop_url: { type: string, nullable: true }
+                        media_type: { type: string, enum: [movie, show, artist] }
+                        slug: { type: string, nullable: true }
+                        release_year: { type: integer, nullable: true }
+                        overview: { type: string, nullable: true }
+                        added_at: { type: string, format: date-time }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
     post:
       tags: [Favorites & Watchlist]
       summary: Toggle watchlist
@@ -1569,18 +1597,32 @@ paths:
     post:
       tags: [Backup & Restore]
       summary: Factory reset (destructive)
+      description: Wipe the database and reset to fresh install state. Requires admin privileges. Server will restart after reset.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [confirm]
+              required: [confirmation]
               properties:
-                confirm: { type: string, enum: [RESET] }
+                confirmation: { type: string, enum: ['goodbye'] }
       responses:
         '200':
-          $ref: '#/components/responses/Success'
+          description: Factory reset initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string, example: 'Factory reset complete. Server restarting...' }
+        '400':
+          description: Invalid confirmation phrase
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
   # ── Tracks ──────────────────────────────────────────────────────
   /api/tracks/{albumId}:
@@ -1604,44 +1646,6 @@ paths:
                   $ref: '#/components/schemas/Track'
 
   # ── Debug ───────────────────────────────────────────────────────
-  /api/debug/movie/{id}:
-    get:
-      tags: [Debug]
-      summary: Raw debug data for a movie
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema: { type: integer }
-      responses:
-        '200':
-          description: Raw DB fields, children, and credits
-
-  /api/debug/trakt-check/{tmdbId}:
-    get:
-      tags: [Debug]
-      summary: Check TMDB ID in Trakt history
-      parameters:
-        - name: tmdbId
-          in: path
-          required: true
-          schema: { type: integer }
-      responses:
-        '200':
-          description: Trakt check result
-
-  /api/debug/unmatched/{artistId}:
-    get:
-      tags: [Debug]
-      summary: Debug unmatched albums for artist
-      parameters:
-        - name: artistId
-          in: path
-          required: true
-          schema: { type: integer }
-      responses:
-        '200':
-          description: Unmatched album debug info
 
   # ── User Preferences ───────────────────────────────────────────
   /api/user/preferences:
@@ -2003,14 +2007,34 @@ paths:
 
   # ── Media Extras ────────────────────────────────────────────────
   /api/media/{id}/dashboard-hide:
-    post:
+    patch:
       tags: [Media]
       summary: Toggle dashboard visibility for a media item
+      description: Toggle is_dashboard_hidden on a media_parent.
       parameters:
         - $ref: '#/components/parameters/MediaId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [hidden]
+              properties:
+                hidden: { type: boolean }
       responses:
         '200':
-          $ref: '#/components/responses/Success'
+          description: Visibility toggled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  hidden: { type: boolean }
+                  title: { type: string }
+        '404':
+          description: Media item not found
 
   /api/media/merge-parents:
     post:
@@ -2057,17 +2081,37 @@ paths:
           $ref: '#/components/responses/Success'
 
   /api/albums/{id}/hide:
-    post:
+    patch:
       tags: [Media]
       summary: Toggle album visibility
+      description: Toggle is_hidden on a media_child (album).
       parameters:
         - name: id
           in: path
           required: true
           schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [hidden]
+              properties:
+                hidden: { type: boolean }
       responses:
         '200':
-          $ref: '#/components/responses/Success'
+          description: Visibility toggled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  hidden: { type: boolean }
+                  title: { type: string }
+        '404':
+          description: Album not found
 
   # ── Sync Extras ─────────────────────────────────────────────────
   /api/sync/ratings:
@@ -2272,12 +2316,24 @@ paths:
           $ref: '#/components/responses/SSEStream'
 
   /api/audit/compare:
-    get:
+    post:
       tags: [Debug]
       summary: Compare two audit snapshots
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [before, after]
+              properties:
+                before: { type: string, description: Filename of the 'before' audit snapshot }
+                after: { type: string, description: Filename of the 'after' audit snapshot }
       responses:
         '200':
           description: Audit comparison results
+        '400':
+          description: Missing before or after filenames
 
   /api/audit/{filename}:
     get:
@@ -2292,7 +2348,146 @@ paths:
         '200':
           description: Audit file contents
 
+  # ── Arr Wanted ──────────────────────────────────────────────────
+  /api/arr/wanted:
+    get:
+      tags: [Arr Integration]
+      summary: Get wanted/missing items from *arr services
+      description: |
+        Fetch all missing/wanted items from configured Sonarr, Radarr, and Lidarr services.
+        Includes download queue status, failure info, and cutoff-unmet items.
+        Results are cached for 2 minutes with stale-while-revalidate.
+      parameters:
+        - name: includeCutoff
+          in: query
+          schema: { type: string, enum: ['0', '1'], default: '0' }
+          description: Set to 1 to include cutoff-unmet items
+        - name: refresh
+          in: query
+          schema: { type: string, enum: ['0', '1'], default: '0' }
+          description: Set to 1 to force a fresh fetch
+      responses:
+        '200':
+          description: Wanted items grouped by series/movie/artist
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        service: { type: string, enum: [sonarr, radarr, lidarr] }
+                        type: { type: string, enum: [show, movie, artist] }
+                        title: { type: string }
+                        year: { type: integer, nullable: true }
+                        arrId: { type: integer }
+                        mediaParentId: { type: integer, nullable: true }
+                        slug: { type: string, nullable: true }
+                        poster_url: { type: string, nullable: true }
+                        reason: { type: string, enum: [in_queue, failed, not_available, not_out_yet, cutoff_unmet] }
+                        reasonLabel: { type: string }
+                        missingCount: { type: integer }
+                        episodes:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              label: { type: string }
+                              title: { type: string }
+                              airDate: { type: string, format: date-time, nullable: true }
+                              isAired: { type: boolean }
+                  summary:
+                    type: object
+                    properties:
+                      total: { type: integer }
+                      totalItems: { type: integer }
+                      byReason: { type: object, additionalProperties: { type: integer } }
+                      byService: { type: object, additionalProperties: { type: integer } }
+                  cached: { type: boolean }
+                  refreshing: { type: boolean }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   # ── Page Data ───────────────────────────────────────────────────
+  /api/pages/dashboard:
+    get:
+      tags: [Page Data]
+      summary: Dashboard page data
+      description: |
+        Returns all data needed to render the dashboard: greeting, stats, watchlist,
+        upcoming calendar, trending movies/shows, recommendations, actor deep dive,
+        hot albums, and recently added items. Supports lazy-loading individual sections.
+      parameters:
+        - name: calendarDays
+          in: query
+          schema: { type: integer, default: 7 }
+          description: Number of days for upcoming calendar
+        - name: calendarTypes
+          in: query
+          schema: { type: string }
+          description: Comma-separated media types (movie,show,artist). Defaults to app settings.
+        - name: trendingMoviePage
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: trendingShowPage
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: section
+          in: query
+          schema: { type: string, enum: [trendingMovies, trendingShows] }
+          description: Load a specific section only (for lazy loading / pagination)
+      responses:
+        '200':
+          description: Dashboard data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  greeting: { type: string }
+                  stats: { type: object }
+                  watchlist: { type: array, items: { type: object } }
+                  upcoming: { type: array, items: { type: object } }
+                  trendingMovies: { type: object }
+                  trendingShows: { type: object }
+                  recommended: { type: object }
+                  actorDeepDive: { type: object, nullable: true }
+                  hotAlbums: { type: array, items: { type: object } }
+                  recentlyAdded: { type: array, items: { type: object } }
+
+  /api/pages/calendar-month:
+    get:
+      tags: [Page Data, Calendar]
+      summary: Monthly calendar view
+      description: Returns calendar data for a specific month, grouped by day.
+      parameters:
+        - name: year
+          in: query
+          schema: { type: integer }
+          description: Calendar year (defaults to current year)
+        - name: month
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 12 }
+          description: Calendar month 1-12 (defaults to current month)
+        - name: calendarTypes
+          in: query
+          schema: { type: string }
+          description: Comma-separated media types (movie,show,artist). Defaults to app settings.
+      responses:
+        '200':
+          description: Monthly calendar days
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  days:
+                    type: array
+                    items:
+                      type: object
   /api/pages/movies:
     get:
       tags: [Page Data]

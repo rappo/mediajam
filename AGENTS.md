@@ -28,6 +28,7 @@ export const BUILD_VERSION = 'YYYY-MM-DD_HH-MM';
 2. Remove entries for deleted routes.
 3. Add appropriate tags (see existing tags at the top of the file).
 4. The spec is served at runtime from the Docker container; it is copied during the build via `COPY --from=builder /app/docs ./docs` in the `Dockerfile`.
+5. Check `src/mcp/tools/` for any MCP tools that wrap the endpoint and update them accordingly.
 
 ---
 
@@ -104,3 +105,17 @@ All sync operations must implement:
 - Use `Authorization: Bearer <API_KEY>` header (NOT `x-api-key`).
 - Useful for testing endpoints directly: `curl -H "Authorization: Bearer $API_KEY" $BASE_URL/api/sync/status`
 - The key has full permissions and does not expire.
+
+---
+
+## 11. MCP Server
+
+The MCP (Model Context Protocol) server lives in `src/mcp/` and exposes the MediaJam API to LLM agents.
+
+- **Architecture**: Pure REST API client — does NOT import DB or server code directly. Connects via `MEDIAJAM_URL` + `MEDIAJAM_API_KEY` environment variables.
+- **Tool modules**: Each file in `src/mcp/tools/` exports a `tools` array (tool definitions) and a `handle(name, args)` function.
+- **When modifying API endpoints**, check if a corresponding MCP tool exists in `src/mcp/tools/` and update it to match.
+- **When adding new API endpoints**, evaluate if an MCP tool should be added (read-only, high LLM value endpoints are best candidates).
+- **Tool descriptions** must be clear enough for an LLM to use without examples — describe what the tool does, what inputs it needs, and what it returns.
+- **Testing**: `cd src/mcp && npx @modelcontextprotocol/inspector node server.js`
+- **Dependencies**: The MCP server has its own `package.json` in `src/mcp/`. Run `npm install` there separately.
