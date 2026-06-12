@@ -1,1 +1,1 @@
-export const BUILD_VERSION = '2026-06-12_12-28';
+export const BUILD_VERSION = '2026-06-12_12-30';

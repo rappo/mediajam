@@ -424,12 +424,11 @@
             favoriteType="media"
             favoriteId={data.show.id}
             heartBorderEnabled={!!data.settings?.heartBorderShows}
-            heroBadges={[
-                { label: `${data.seasons.length} seasons` },
-                ...(data.show.collection_pct !== null ? [{ label: `${data.show.collection_pct}% collected` }] : []),
-            ]}
+            heroBadges={[]}
             stats={[
+                { label: data.seasons.length === 1 ? 'season' : 'seasons', value: data.seasons.length },
                 { label: 'watched', value: `${data.totalWatched}/${data.totalEpisodes}` },
+                ...(data.show.collection_pct !== null ? [{ label: 'collected', value: `${data.show.collection_pct}%` }] : []),
                 ...(data.totalMissing > 0 ? [{ label: 'missing', value: data.totalMissing }] : []),
                 ...(data.totalUpcoming > 0 ? [{ label: 'upcoming', value: data.totalUpcoming }] : []),
             ]}
