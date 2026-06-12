@@ -197,10 +197,10 @@
         <div class="title-area">
             <h1 class="detail-title">
                 {title}
+                {#if year}<span class="title-year">{year}</span>{/if}
                 <FavoriteButton type={favoriteType} id={favoriteId} {isFavorite} />
             </h1>
             <div class="meta-row">
-                {#if year}<span class="meta-year">{year}</span>{/if}
                 {#if subtitle}<span>{subtitle}</span>{/if}
                 {#if runtime}<span>· {runtime}</span>{/if}
                 {#each heroBadges as hb}
@@ -447,6 +447,10 @@
         text-shadow: 0 0 20px rgba(0,0,0,0.8), 0 0 40px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.9);
     }
     @media (min-width: 768px) { .detail-title { font-size: 2.5rem; } }
+    .title-year {
+        font-weight: 400;
+        color: oklch(var(--bc) / 0.4);
+    }
 
     .meta-row {
         display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem;
