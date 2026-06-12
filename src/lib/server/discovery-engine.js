@@ -286,10 +286,11 @@ export function getRecentlyAdded(limit = 20) {
         `).all(limit));
 
         return rows.map(mp => ({
-            href: `/${mp.media_type === 'artist' ? 'music' : mp.media_type + 's'}/${mp.slug}`,
+            href: `/${mp.media_type === 'artist' ? 'music' : mp.media_type === 'show' ? 'tv' : 'movies'}/${mp.slug}`,
             title: mp.title,
             poster_url: mp.poster_url,
             subtitle: mp.release_year,
+            media_type: mp.media_type,
             icon: mp.media_type === 'movie' ? '🎬' : mp.media_type === 'show' ? '📺' : '🎵',
         }));
     } catch (err) {

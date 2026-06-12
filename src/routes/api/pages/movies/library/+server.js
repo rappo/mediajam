@@ -13,7 +13,7 @@ export function GET({ locals }) {
         SELECT mp.id, mp.slug, mp.title, mp.release_year, mp.poster_url,
                mp.tmdb_id, mp.imdb_id, mp.jellyfin_id,
                mp.collection_status, mp.arr_status, mp.arr_has_file,
-               mp.runtime_minutes,
+               mp.runtime_minutes, mp.date_last_modified,
                MAX(mc.runtime_ticks) as child_runtime_ticks,
                MAX(mc.community_rating) as community_rating,
                MAX(mc.watch_status) as watch_status,
@@ -146,6 +146,7 @@ export function GET({ locals }) {
             arr_status: m.arr_status,
             arr_has_file: m.arr_has_file,
             jellyfin_id: m.jellyfin_id,
+            date_added: m.date_last_modified,
         };
     });
 

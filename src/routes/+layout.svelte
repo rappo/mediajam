@@ -564,39 +564,33 @@
 						</li>
 						<div class="divider my-0"></div>
 						<li>
-							<form
-								method="POST"
-								action="/api/auth/logout"
-								style="display:contents"
+							<a
+							href="/login"
+							role="button"
+							class="text-error/70 hover:text-error whitespace-nowrap flex items-center gap-2"
+							onclick={async (e) => { e.preventDefault(); await fetch('/api/auth/logout', { method: 'POST' }); window.location.href = '/login'; }}
+						>
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								class="h-4 w-4"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
 							>
-								<a
-									href="/api/auth/logout"
-									role="button"
-									class="text-error/70 hover:text-error whitespace-nowrap flex items-center gap-2"
-									onclick={(e) => { e.preventDefault(); e.currentTarget.closest('form').requestSubmit(); }}
-								>
-									<svg
-										xmlns="http://www.w3.org/2000/svg"
-										class="h-4 w-4"
-										viewBox="0 0 24 24"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2"
-									>
-										<path
-											d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"
-										/><polyline
-											points="16 17 21 12 16 7"
-										/><line
-											x1="21"
-											y1="12"
-											x2="9"
-											y2="12"
-										/>
-									</svg>
-									Logout
-								</a>
-							</form>
+								<path
+									d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"
+								/><polyline
+									points="16 17 21 12 16 7"
+								/><line
+									x1="21"
+									y1="12"
+									x2="9"
+									y2="12"
+								/>
+							</svg>
+							Logout
+						</a>
 						</li>
 					</ul>
 				</div>

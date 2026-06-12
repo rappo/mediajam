@@ -139,7 +139,8 @@
         }))
     );
 
-    let recentlyAddedItems = $derived(
+    let recentlyAddedFilter = $state('all'); // 'all' | 'show' | 'movie' | 'artist'
+    let recentlyAddedAll = $derived(
         (dash?.recentlyAdded || []).map(m => ({
             href: m.href,
             title: m.title,
@@ -147,7 +148,13 @@
             poster_url: m.poster_url,
             icon: m.icon,
             badge: m.badge || null,
+            media_type: m.media_type,
         }))
+    );
+    let recentlyAddedItems = $derived(
+        recentlyAddedFilter === 'all'
+            ? recentlyAddedAll
+            : recentlyAddedAll.filter(m => m.media_type === recentlyAddedFilter)
     );
 
     let hotAlbumItems = $derived(
@@ -344,8 +351,19 @@
         {/if}
 
         <!-- Recently Added -->
-        {#if recentlyAddedItems.length > 0}
-            <PosterRow title="🆕 Recently Added to Your Library" items={recentlyAddedItems} />
+        {#if recentlyAddedAll.length > 0}
+            <div class="poster-section">
+                <div class="poster-title-row">
+                    <h3 class="poster-section-title">🆕 Recently Added to Your Library</h3>
+                    <div class="media-type-chips">
+                        <button class="media-chip" class:active={recentlyAddedFilter === 'all'} onclick={() => recentlyAddedFilter = 'all'}>All</button>
+                        <button class="media-chip chip-tv" class:active={recentlyAddedFilter === 'show'} onclick={() => recentlyAddedFilter = 'show'}>📺 TV</button>
+                        <button class="media-chip chip-movie" class:active={recentlyAddedFilter === 'movie'} onclick={() => recentlyAddedFilter = 'movie'}>🎬 Movies</button>
+                        <button class="media-chip chip-music" class:active={recentlyAddedFilter === 'artist'} onclick={() => recentlyAddedFilter = 'artist'}>🎵 Music</button>
+                    </div>
+                </div>
+            </div>
+            <PosterRow title="" items={recentlyAddedItems} />
         {/if}
 
         <!-- Trending Movies -->
@@ -734,5 +752,68 @@
         .dash-hero-title {
             font-size: 2rem;
         }
+    }
+
+    /* Filter chips for Recently Added */
+    .poster-title-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.25rem;
+    }
+    .poster-title-row::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: currentColor;
+        opacity: 0.12;
+        min-width: 2rem;
+        margin-left: 0.5rem;
+    }
+    .poster-section-title {
+        font-size: 1.1rem;
+        font-weight: 700;
+        opacity: 0.9;
+        white-space: nowrap;
+    }
+    .media-type-chips {
+        display: flex;
+        gap: 0.3rem;
+    }
+    .media-chip {
+        font-size: 0.65rem;
+        font-weight: 600;
+        padding: 0.15rem 0.5rem;
+        border-radius: 999px;
+        border: 1px solid oklch(var(--bc) / 0.15);
+        background: oklch(var(--b2) / 0.5);
+        color: oklch(var(--bc) / 0.6);
+        cursor: pointer;
+        transition: all 0.15s;
+        white-space: nowrap;
+    }
+    .media-chip:hover {
+        border-color: oklch(var(--bc) / 0.3);
+        color: oklch(var(--bc) / 0.8);
+    }
+    .media-chip.active {
+        background: oklch(var(--bc) / 0.12);
+        border-color: oklch(var(--bc) / 0.3);
+        color: oklch(var(--bc));
+    }
+    .chip-tv.active {
+        background: oklch(0.55 0.15 160 / 0.2);
+        border-color: oklch(0.55 0.15 160 / 0.5);
+        color: oklch(0.75 0.15 160);
+    }
+    .chip-movie.active {
+        background: oklch(0.65 0.15 85 / 0.2);
+        border-color: oklch(0.65 0.15 85 / 0.5);
+        color: oklch(0.8 0.15 85);
+    }
+    .chip-music.active {
+        background: oklch(0.55 0.15 300 / 0.2);
+        border-color: oklch(0.55 0.15 300 / 0.5);
+        color: oklch(0.75 0.15 300);
     }
 </style>

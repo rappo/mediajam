@@ -57,8 +57,8 @@
     let downloadedOnly = $state(true);
 
     // Sort
-    let sortBy = $state('title'); // 'title' | 'year' | 'rating'
-    let sortDir = $state('asc'); // 'asc' | 'desc'
+    let sortBy = $state('date_added'); // 'title' | 'year' | 'rating' | 'runtime' | 'date_added'
+    let sortDir = $state('desc'); // 'asc' | 'desc'
 
     // Chart toggle
     let chartMode = $state('zscore'); // 'decade' | 'year' | 'genre' | 'rating' | 'zscore' | 'percentile'
@@ -195,6 +195,7 @@
             if (sortBy === 'year') return dir * ((a.release_year || 0) - (b.release_year || 0));
             if (sortBy === 'rating') return dir * ((a.rating_value ?? -1) - (b.rating_value ?? -1));
             if (sortBy === 'runtime') return dir * ((a.runtime_minutes || 0) - (b.runtime_minutes || 0));
+            if (sortBy === 'date_added') return dir * (a.date_added || '').localeCompare(b.date_added || '');
             return 0;
         });
         return result;
@@ -1046,6 +1047,7 @@
                 <div class="flex items-center gap-2">
                     <div class="sort-controls">
                         <select class="select select-bordered select-xs bg-base-300/30" bind:value={sortBy} onchange={() => page = 0}>
+                            <option value="date_added">Date Added</option>
                             <option value="title">Name</option>
                             <option value="year">Year</option>
                             <option value="rating">Rating</option>
