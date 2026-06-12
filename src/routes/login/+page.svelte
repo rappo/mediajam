@@ -57,22 +57,14 @@
             <div class="flex gap-1 bg-base-300/50 rounded-lg p-1 mb-2">
                 <button
                     type="button"
-                    class="flex-1 text-xs font-medium py-1.5 px-3 rounded-md transition-all"
-                    class:bg-base-100={mode === 'local'}
-                    class:shadow-sm={mode === 'local'}
-                    class:text-base-content={mode === 'local'}
-                    class:text-base-content/50={mode !== 'local'}
+                    class="flex-1 text-xs font-medium py-1.5 px-3 rounded-md transition-all {mode === 'local' ? 'bg-base-100 shadow-sm text-base-content' : 'text-base-content/50'}"
                     onclick={() => { mode = 'local'; error = ''; }}
                 >
                     Local Account
                 </button>
                 <button
                     type="button"
-                    class="flex-1 text-xs font-medium py-1.5 px-3 rounded-md transition-all flex items-center justify-center gap-1.5"
-                    class:bg-base-100={mode === 'jellyfin'}
-                    class:shadow-sm={mode === 'jellyfin'}
-                    class:text-base-content={mode === 'jellyfin'}
-                    class:text-base-content/50={mode !== 'jellyfin'}
+                    class="flex-1 text-xs font-medium py-1.5 px-3 rounded-md transition-all flex items-center justify-center gap-1.5 {mode === 'jellyfin' ? 'bg-base-100 shadow-sm text-base-content' : 'text-base-content/50'}"
                     onclick={() => { mode = 'jellyfin'; error = ''; }}
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 512 512" fill="currentColor">
