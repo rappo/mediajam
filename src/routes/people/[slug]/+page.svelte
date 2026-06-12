@@ -416,9 +416,9 @@
             favoriteId={data.person.id}
             heartBorderEnabled={!!data.settings?.heartBorderPeople}
             stats={[
-                ...(data.stats.movieCount > 0 ? [{ label: 'movies', value: data.stats.movieCount }] : []),
-                ...(data.stats.movieCount > 0 && data.stats.watchedMovies > 0 ? [{ label: 'movies watched', value: `${data.stats.watchedMovies}/${data.stats.movieCount}` }] : []),
-                ...(data.stats.showCount > 0 ? [{ label: 'TV shows', value: data.stats.showCount }] : []),
+                ...(data.stats.movieCount > 0 ? [{ label: data.stats.movieCount === 1 ? 'movie' : 'movies', value: data.stats.movieCount }] : []),
+                ...(data.stats.movieCount > 0 && data.stats.watchedMovies > 0 ? [{ label: 'watched', value: `${data.stats.watchedMovies}/${data.stats.movieCount}` }] : []),
+                ...(data.stats.showCount > 0 ? [{ label: data.stats.showCount === 1 ? 'TV show' : 'TV shows', value: data.stats.showCount }] : []),
                 ...(data.stats.artistCount > 0 ? [{ label: data.stats.artistCount === 1 ? 'band' : 'bands', value: data.stats.artistCount }] : []),
             ]}
             externalLinks={{
