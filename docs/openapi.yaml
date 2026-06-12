@@ -92,7 +92,10 @@ paths:
     post:
       tags: [Authentication]
       summary: Log in
-      description: Authenticate and receive an `mjsession` cookie. Supports local password and Jellyfin-delegated auth.
+      description: |
+        Authenticate and receive an `mjsession` cookie. Supports local password and Jellyfin-delegated auth.
+        If the username is not found locally but matches a valid Jellyfin user on the configured server,
+        a new local account is automatically created and linked to the Jellyfin user ID.
       security: []
       requestBody:
         required: true
@@ -2492,9 +2495,13 @@ paths:
     get:
       tags: [Page Data]
       summary: Movies page server data
+      description: |
+        Returns the full movies library with enriched data including genres, ratings,
+        person credits, and top rewatched movies. Each movie includes a `date_added`
+        field (ISO 8601) from `date_last_modified`, suitable for sorting by newest.
       responses:
         '200':
-          description: Movies with filtering and sorting
+          description: Movies with filtering and sorting data
 
   /api/pages/tv:
     get:
