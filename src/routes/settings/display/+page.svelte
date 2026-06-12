@@ -119,6 +119,25 @@
         });
         savingHeartBorder = false;
     }
+    // Calendar display settings
+    let calendarShowMovies = $state(data.settings.calendarShowMovies ?? true);
+    let calendarShowShows = $state(data.settings.calendarShowShows ?? true);
+    let calendarShowMusic = $state(data.settings.calendarShowMusic ?? true);
+    let savingCalendar = $state(false);
+
+    async function saveCalendarSettings() {
+        savingCalendar = true;
+        await fetch("/api/settings", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                calendar_show_movies: calendarShowMovies ? 1 : 0,
+                calendar_show_shows: calendarShowShows ? 1 : 0,
+                calendar_show_music: calendarShowMusic ? 1 : 0,
+            }),
+        });
+        savingCalendar = false;
+    }
 </script>
 
 <div class="space-y-6">
@@ -238,6 +257,53 @@
         </div>
     </div>
 
+    <!-- Calendar Display -->
+    <div class="card bg-base-200/50 border border-base-300">
+        <div class="card-body">
+            <h2 class="card-title text-lg">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-secondary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+                </svg>
+                Calendar
+            </h2>
+            <p class="text-sm text-base-content/60 mb-2">
+                Choose which media types appear on the dashboard calendar widget and the <a href="/calendar" class="link link-primary">/calendar</a> page.
+            </p>
+            <div class="space-y-2">
+                <label class="label cursor-pointer justify-start gap-3">
+                    <input
+                        type="checkbox"
+                        class="toggle toggle-primary toggle-sm"
+                        bind:checked={calendarShowMovies}
+                        onchange={saveCalendarSettings}
+                        disabled={savingCalendar}
+                    />
+                    <span class="label-text">🎬 Movies</span>
+                </label>
+                <label class="label cursor-pointer justify-start gap-3">
+                    <input
+                        type="checkbox"
+                        class="toggle toggle-primary toggle-sm"
+                        bind:checked={calendarShowShows}
+                        onchange={saveCalendarSettings}
+                        disabled={savingCalendar}
+                    />
+                    <span class="label-text">📺 TV Shows</span>
+                </label>
+                <label class="label cursor-pointer justify-start gap-3">
+                    <input
+                        type="checkbox"
+                        class="toggle toggle-primary toggle-sm"
+                        bind:checked={calendarShowMusic}
+                        onchange={saveCalendarSettings}
+                        disabled={savingCalendar}
+                    />
+                    <span class="label-text">🎵 Music / Albums</span>
+                </label>
+            </div>
+        </div>
+    </div>
+
     <!-- Timezone -->
     <div class="card bg-base-200/50 border border-base-300">
         <div class="card-body">
@@ -333,3 +399,4 @@
         </div>
     </div>
 </div>
+

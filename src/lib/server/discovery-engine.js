@@ -321,6 +321,29 @@ export function getWatchlistItems(userId, limit = 10) {
 }
 
 /**
+ * Helper: fetch arr calendar with fallback — race primary + external URLs, first success wins.
+ * Defined at module level so both getUpcomingDays and getMonthCalendar can use it.
+ */
+async function arrCalendarFetch(primaryUrl, externalUrl, apiKey, path, apiVersion = 'v3') {
+    const candidates = [primaryUrl, externalUrl].filter(Boolean);
+    if (candidates.length === 0) return null;
+
+    try {
+        return await Promise.any(candidates.map(async (baseUrl) => {
+            const url = `${baseUrl.replace(/\/+$/, '')}/api/${apiVersion}/${path}`;
+            const res = await fetch(url, {
+                headers: { 'X-Api-Key': apiKey },
+                signal: AbortSignal.timeout(4000),
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.json();
+        }));
+    } catch {
+        return null;
+    }
+}
+
+/**
  * Upcoming releases for the next N days, grouped by date.
  * Fetches LIVE data from Sonarr/Radarr/Lidarr calendar APIs,
  * falling back to local DB data.
@@ -376,27 +399,6 @@ export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artis
             'SELECT sonarr_url, sonarr_api_key, sonarr_external_url, radarr_url, radarr_api_key, radarr_external_url, lidarr_url, lidarr_api_key, lidarr_external_url FROM app_settings WHERE id = 1'
         ).get());
 
-        // Helper: fetch with fallback — race primary + external URLs in parallel, use first success
-        async function arrCalendarFetch(primaryUrl, externalUrl, apiKey, path, apiVersion = 'v3') {
-            const candidates = [primaryUrl, externalUrl].filter(Boolean);
-            if (candidates.length === 0) return null;
-
-            try {
-                // Race all URLs — first successful response wins
-                return await Promise.any(candidates.map(async (baseUrl) => {
-                    const url = `${baseUrl.replace(/\/+$/, '')}/api/${apiVersion}/${path}`;
-                    const res = await fetch(url, {
-                        headers: { 'X-Api-Key': apiKey },
-                        signal: AbortSignal.timeout(4000),
-                    });
-                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                    return res.json();
-                }));
-            } catch {
-                return null; // All URLs failed
-            }
-        }
-
         // Build local slug lookup maps for linking
         const localShowSlugs = new Map();
         try {
@@ -425,7 +427,7 @@ export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artis
                 try {
                     const episodes = await arrCalendarFetch(
                         settings.sonarr_url, settings.sonarr_external_url, settings.sonarr_api_key,
-                        `calendar?start=${fetchStartISO}&end=${fetchEndISO}&includeSeries=true&includeEpisodeFile=true`
+                        `calendar?start=${fetchStartISO}&end=${fetchEndISO}&includeSeries=true&includeEpisodeFile=true&unmonitored=true`
                     );
                     if (!episodes) return;
                     for (const ep of episodes) {
@@ -464,7 +466,7 @@ export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artis
                 try {
                     const movies = await arrCalendarFetch(
                         settings.radarr_url, settings.radarr_external_url, settings.radarr_api_key,
-                        `calendar?start=${fetchStartISO}&end=${fetchEndISO}`
+                        `calendar?start=${fetchStartISO}&end=${fetchEndISO}&unmonitored=true`
                     );
                     if (!movies) return;
                     for (const movie of movies) {
@@ -709,7 +711,7 @@ export async function getMonthCalendar(year, month, types = ['movie', 'show', 'a
                 try {
                     const episodes = await arrCalendarFetch(
                         settings.sonarr_url, settings.sonarr_external_url, settings.sonarr_api_key,
-                        `calendar?start=${fetchStartISO}&end=${fetchEndISO}&includeSeries=true&includeEpisodeFile=true`
+                        `calendar?start=${fetchStartISO}&end=${fetchEndISO}&includeSeries=true&includeEpisodeFile=true&unmonitored=true`
                     );
                     if (!episodes) return;
                     for (const ep of episodes) {
@@ -745,7 +747,7 @@ export async function getMonthCalendar(year, month, types = ['movie', 'show', 'a
                 try {
                     const movies = await arrCalendarFetch(
                         settings.radarr_url, settings.radarr_external_url, settings.radarr_api_key,
-                        `calendar?start=${fetchStartISO}&end=${fetchEndISO}`
+                        `calendar?start=${fetchStartISO}&end=${fetchEndISO}&unmonitored=true`
                     );
                     if (!movies) return;
                     for (const movie of movies) {

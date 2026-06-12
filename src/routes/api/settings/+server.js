@@ -46,6 +46,10 @@ export async function GET() {
         hasGeminiKey: !!settings?.gemini_api_key,
         hasClaudeKey: !!settings?.claude_api_key,
         hasKimiKey: !!settings?.kimi_api_key,
+        // Calendar display
+        calendarShowMovies: settings?.calendar_show_movies !== 0,
+        calendarShowShows: settings?.calendar_show_shows !== 0,
+        calendarShowMusic: settings?.calendar_show_music !== 0,
     });
 }
 
@@ -115,6 +119,10 @@ export async function PUT({ request }) {
             openai_client_secret: 'openai_client_secret',
             gemini_client_id: 'gemini_client_id',
             gemini_client_secret: 'gemini_client_secret',
+            // Calendar display
+            calendar_show_movies: 'calendar_show_movies',
+            calendar_show_shows: 'calendar_show_shows',
+            calendar_show_music: 'calendar_show_music',
         };
 
         for (const [key, column] of Object.entries(allowedFields)) {

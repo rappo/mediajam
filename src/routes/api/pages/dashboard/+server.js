@@ -9,7 +9,19 @@ import {
 export async function GET({ url, locals }) {
     const userId = locals.user.id;
     const calendarDays = parseInt(url.searchParams.get('calendarDays') || '7');
-    const calendarTypes = (url.searchParams.get('calendarTypes') || 'movie,show,artist').split(',');
+
+    // Build default calendar types from DB settings
+    const calSettings = /** @type {any} */ (db.prepare(
+        'SELECT calendar_show_movies, calendar_show_shows, calendar_show_music FROM app_settings WHERE id = 1'
+    ).get());
+    const defaultTypes = [];
+    if (calSettings?.calendar_show_movies !== 0) defaultTypes.push('movie');
+    if (calSettings?.calendar_show_shows !== 0) defaultTypes.push('show');
+    if (calSettings?.calendar_show_music !== 0) defaultTypes.push('artist');
+
+    const calendarTypes = url.searchParams.has('calendarTypes')
+        ? url.searchParams.get('calendarTypes').split(',').filter(Boolean)
+        : defaultTypes;
     const trendingMoviePage = parseInt(url.searchParams.get('trendingMoviePage') || '1');
     const trendingShowPage = parseInt(url.searchParams.get('trendingShowPage') || '1');
     const section = url.searchParams.get('section'); // for lazy loading individual sections

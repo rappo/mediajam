@@ -1382,8 +1382,9 @@
 
     /* Smart section (rewatched) */
     .smart-section { display: flex; flex-direction: column; gap: 0.75rem; }
-    .section-header { display: flex; align-items: baseline; gap: 10px; }
-    .section-title { font-size: 1.1rem; font-weight: 700; }
+    .section-header { display: flex; align-items: center; gap: 10px; }
+    .section-header::after { content: ''; flex: 1; height: 1px; background: currentColor; opacity: 0.12; min-width: 2rem; margin-left: 0.5rem; }
+    .section-title { font-size: 1.1rem; font-weight: 700; white-space: nowrap; }
     .section-count { font-size: 0.7rem; color: oklch(var(--bc) / 0.35); }
 
     /* Poster scroll row (rewatched) */

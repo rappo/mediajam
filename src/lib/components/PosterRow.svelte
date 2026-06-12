@@ -87,10 +87,20 @@
         gap: 0.5rem;
         margin-bottom: 0.5rem;
     }
+    .poster-title-row::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: currentColor;
+        opacity: 0.12;
+        min-width: 2rem;
+        margin-left: 0.5rem;
+    }
     .poster-section-title {
         font-size: 1.1rem;
         font-weight: 700;
         opacity: 0.9;
+        white-space: nowrap;
     }
     .time-select {
         font-size: 0.7rem;

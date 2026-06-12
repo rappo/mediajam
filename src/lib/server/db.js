@@ -481,6 +481,10 @@ const newAppCols = [
     ['radarr_skip_add_dialog', 'INTEGER DEFAULT 0'],
     ['sonarr_skip_add_dialog', 'INTEGER DEFAULT 0'],
     ['lidarr_skip_add_dialog', 'INTEGER DEFAULT 0'],
+    // Calendar display settings
+    ['calendar_show_movies', 'INTEGER DEFAULT 1'],
+    ['calendar_show_shows', 'INTEGER DEFAULT 1'],
+    ['calendar_show_music', 'INTEGER DEFAULT 1'],
 ];
 for (const [col, type] of newAppCols) {
     if (!existingCols.has(col)) {

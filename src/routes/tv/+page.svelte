@@ -385,7 +385,7 @@
         <!-- ▌NEXT UP (episode-level continue watching) ──────────── -->
         {#if sections.nextUp.length > 0}
             <section class="smart-section">
-                <h2 class="section-title">▶ Next Up</h2>
+                <div class="section-header"><h2 class="section-title">▶ Next Up</h2></div>
                 <div class="poster-scroll">
                     {#each sections.nextUp.filter((/** @type {any} */ e) => !hiddenShows.has(e.show_id)) as ep}
                         <a href="/tv/{ep.show_id}" class="poster-card group" title="{ep.show_title} {epCode(ep)} — {ep.episode_title}">
@@ -474,19 +474,21 @@
 
         <!-- ▌UPCOMING EPISODES ─────────────────────────────────────── -->
         <section class="smart-section">
-            <h2 class="section-title">
-                Upcoming Episodes
-                {#if calendarLoading}
-                    <span class="loading loading-spinner loading-sm" style="margin-left: 8px; vertical-align: middle;"></span>
-                {/if}
-            </h2>
+            <div class="section-header">
+                <h2 class="section-title">
+                    Upcoming Episodes
+                    {#if calendarLoading}
+                        <span class="loading loading-spinner loading-sm" style="margin-left: 8px; vertical-align: middle;"></span>
+                    {/if}
+                </h2>
+            </div>
             <CalendarStrip days={calendarDays} weekOffset={calendarOffset} onNavigate={navigateCalendar} />
         </section>
 
         <!-- ▌NEW EPISODES (poster scroll with NEW badges) ──────────── -->
         {#if sections.newUnwatched.length > 0}
             <section class="smart-section">
-                <h2 class="section-title">New Episodes</h2>
+                <div class="section-header"><h2 class="section-title">New Episodes</h2></div>
                 <div class="poster-scroll">
                     {#each sections.newUnwatched.filter((/** @type {any} */ e) => !hiddenShows.has(e.show_id)) as ep}
                         <a href="/tv/{ep.show_id}" class="poster-card group" title="{ep.show_title} {epCode(ep)} — {ep.episode_title}">
@@ -693,12 +695,22 @@
     }
     .section-header {
         display: flex;
-        align-items: baseline;
+        align-items: center;
         gap: 10px;
+    }
+    .section-header::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: currentColor;
+        opacity: 0.12;
+        min-width: 2rem;
+        margin-left: 0.5rem;
     }
     .section-title {
         font-size: 1.1rem;
         font-weight: 700;
+        white-space: nowrap;
     }
 
     /* Recently watched section (darker bg) */

@@ -366,12 +366,14 @@
         <!-- ▌UPCOMING RELEASES ─────────────────────────────────────── -->
         {#if calendarDays.some(d => d.episodes?.length > 0)}
         <section class="smart-section">
-            <h2 class="section-title text-lg font-bold">
-                Upcoming Releases
-                {#if calendarLoading}
-                    <span class="loading loading-spinner loading-sm" style="margin-left: 8px; vertical-align: middle;"></span>
-                {/if}
-            </h2>
+            <div class="section-header">
+                <h2 class="section-title">
+                    Upcoming Releases
+                    {#if calendarLoading}
+                        <span class="loading loading-spinner loading-sm" style="margin-left: 8px; vertical-align: middle;"></span>
+                    {/if}
+                </h2>
+            </div>
             <CalendarStrip mode="music" days={calendarDays} weekOffset={calendarOffset} onNavigate={navigateCalendar} />
         </section>
         {/if}
@@ -403,7 +405,7 @@
         <!-- Rediscover -->
         {#if sections.rediscover.length > 0}
             <section class="smart-section">
-                <h2 class="text-lg font-bold">Rediscover</h2>
+                <div class="section-header"><h2 class="section-title">Rediscover</h2></div>
                 <div class="progress-grid">
                     {#each sections.rediscover as artist}
                         <ProgressCard
@@ -434,6 +436,25 @@
         display: flex;
         flex-direction: column;
         gap: 10px;
+    }
+    .section-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .section-header::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: currentColor;
+        opacity: 0.12;
+        min-width: 2rem;
+        margin-left: 0.5rem;
+    }
+    .section-title {
+        font-size: 1.1rem;
+        font-weight: 700;
+        white-space: nowrap;
     }
 
     .progress-grid {
