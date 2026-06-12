@@ -9,6 +9,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "start:sse": "node server.js --sse",
     "inspect": "npx @modelcontextprotocol/inspector node server.js"
   },
   "dependencies": {
