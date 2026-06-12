@@ -660,6 +660,208 @@ export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artis
 }
 
 /**
+ * Fetch calendar data for a specific month (used by /calendar page).
+ * Returns the same shape as getUpcomingDays but for an entire month.
+ * @param {number} year
+ * @param {number} month - 1-indexed (1=Jan, 12=Dec)
+ * @param {string[]} types
+ */
+export async function getMonthCalendar(year, month, types = ['movie', 'show', 'artist']) {
+    try {
+        const firstDay = new Date(year, month - 1, 1);
+        const lastDay = new Date(year, month, 0);
+        const daysInMonth = lastDay.getDate();
+
+        const localISO = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        const toLocalDate = (s) => { if (!s) return ''; return localISO(new Date(s)); };
+
+        const todayISO = localISO(new Date());
+        const startISO = localISO(firstDay);
+        const endISO = localISO(lastDay);
+
+        // Extend fetch range ±1 day for timezone edge cases
+        const fetchStart = new Date(firstDay);
+        fetchStart.setDate(fetchStart.getDate() - 1);
+        const fetchEnd = new Date(lastDay);
+        fetchEnd.setDate(fetchEnd.getDate() + 1);
+        const fetchStartISO = localISO(fetchStart);
+        const fetchEndISO = localISO(fetchEnd);
+
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+        /** @type {Record<string, any[]>} */
+        const byDate = {};
+        for (let d = 1; d <= daysInMonth; d++) {
+            const dt = new Date(year, month - 1, d);
+            byDate[localISO(dt)] = [];
+        }
+
+        // Get arr connection info
+        const settings = /** @type {any} */ (db.prepare(
+            'SELECT sonarr_url, sonarr_api_key, sonarr_external_url, radarr_url, radarr_api_key, radarr_external_url, lidarr_url, lidarr_api_key, lidarr_external_url FROM app_settings WHERE id = 1'
+        ).get());
+
+        const fetches = [];
+
+        // ── Sonarr ────────────────────────────────────
+        if (types.includes('show') && settings?.sonarr_api_key) {
+            fetches.push((async () => {
+                try {
+                    const episodes = await arrCalendarFetch(
+                        settings.sonarr_url, settings.sonarr_external_url, settings.sonarr_api_key,
+                        `calendar?start=${fetchStartISO}&end=${fetchEndISO}&includeSeries=true&includeEpisodeFile=true`
+                    );
+                    if (!episodes) return;
+                    for (const ep of episodes) {
+                        const dateKey = ep.airDate || (ep.airDateUtc ? toLocalDate(ep.airDateUtc) : null);
+                        if (!dateKey || !byDate[dateKey]) continue;
+
+                        const series = ep.series || {};
+                        const tvdbId = series.tvdbId;
+                        const localParent = tvdbId
+                            ? /** @type {any} */ (db.prepare('SELECT id, slug, poster_url FROM media_parents WHERE tvdb_id = ?').get(tvdbId))
+                            : null;
+
+                        byDate[dateKey].push({
+                            title: series.title || ep.title || 'Unknown',
+                            subtitle: `S${String(ep.seasonNumber).padStart(2,'0')}E${String(ep.episodeNumber).padStart(2,'0')}`,
+                            episode_title: ep.title || '',
+                            poster_url: localParent?.poster_url || (series.images?.find(i => i.coverType === 'poster')?.remoteUrl) || '',
+                            display_poster: localParent?.poster_url || '',
+                            media_type: 'show',
+                            href: localParent ? `/tv/${localParent.slug}` : null,
+                            premiere_date: ep.airDateUtc || dateKey,
+                            season_number: ep.seasonNumber,
+                            episode_number: ep.episodeNumber,
+                        });
+                    }
+                } catch { /* silent */ }
+            })());
+        }
+
+        // ── Radarr ────────────────────────────────────
+        if (types.includes('movie') && settings?.radarr_api_key) {
+            fetches.push((async () => {
+                try {
+                    const movies = await arrCalendarFetch(
+                        settings.radarr_url, settings.radarr_external_url, settings.radarr_api_key,
+                        `calendar?start=${fetchStartISO}&end=${fetchEndISO}`
+                    );
+                    if (!movies) return;
+                    for (const movie of movies) {
+                        const releaseDate = toLocalDate(movie.digitalRelease || movie.physicalRelease || movie.inCinemas || '');
+                        if (!releaseDate || !byDate[releaseDate]) continue;
+
+                        const tmdbId = movie.tmdbId;
+                        const localParent = tmdbId
+                            ? /** @type {any} */ (db.prepare('SELECT id, slug, poster_url FROM media_parents WHERE tmdb_id = ?').get(tmdbId))
+                            : null;
+
+                        byDate[releaseDate].push({
+                            title: movie.title || 'Unknown Movie',
+                            subtitle: movie.year ? String(movie.year) : '',
+                            episode_title: '',
+                            poster_url: localParent?.poster_url || (movie.images?.find(i => i.coverType === 'poster')?.remoteUrl) || '',
+                            display_poster: localParent?.poster_url || '',
+                            media_type: 'movie',
+                            href: localParent ? `/movies/${localParent.slug}` : null,
+                            premiere_date: releaseDate,
+                        });
+                    }
+                } catch { /* silent */ }
+            })());
+        }
+
+        // ── Lidarr ────────────────────────────────────
+        if (types.includes('artist') && settings?.lidarr_api_key) {
+            fetches.push((async () => {
+                try {
+                    const albums = await arrCalendarFetch(
+                        settings.lidarr_url, settings.lidarr_external_url, settings.lidarr_api_key,
+                        `calendar?start=${fetchStartISO}&end=${fetchEndISO}&includeArtist=true&unmonitored=true`, 'v1'
+                    );
+                    if (!albums) return;
+                    for (const album of albums) {
+                        const releaseDate = toLocalDate(album.releaseDate || '');
+                        if (!releaseDate || !byDate[releaseDate]) continue;
+
+                        const artist = album.artist || {};
+                        const localArtist = artist.foreignArtistId
+                            ? /** @type {any} */ (db.prepare('SELECT id, slug, poster_url FROM media_parents WHERE musicbrainz_id = ?').get(artist.foreignArtistId))
+                            : null;
+
+                        const coverImg = album.images?.find(i => i.coverType === 'cover')?.remoteUrl || '';
+
+                        byDate[releaseDate].push({
+                            title: artist.artistName || 'Unknown Artist',
+                            subtitle: album.title || '',
+                            episode_title: album.title || '',
+                            poster_url: coverImg || localArtist?.poster_url || '',
+                            display_poster: coverImg || localArtist?.poster_url || '',
+                            media_type: 'artist',
+                            href: localArtist ? `/music/${localArtist.slug}` : null,
+                            premiere_date: releaseDate,
+                        });
+                    }
+                } catch { /* silent */ }
+            })());
+        }
+
+        await Promise.all(fetches);
+
+        // Fallback: local DB data
+        try {
+            const placeholders = types.map(() => '?').join(',');
+            const localRows = /** @type {any[]} */ (db.prepare(`
+                SELECT mc.id, mc.title as episode_title, mc.premiere_date,
+                       mp.id as parent_id, mp.title, mp.poster_url, mp.media_type, mp.slug,
+                       mc.season_number, mc.item_number, mc.poster_url as episode_poster
+                FROM media_children mc
+                JOIN media_parents mp ON mc.parent_id = mp.id
+                WHERE substr(mc.premiere_date, 1, 10) BETWEEN ? AND ?
+                  AND mp.media_type IN (${placeholders})
+                ORDER BY mc.premiere_date ASC
+            `).all(fetchStartISO, fetchEndISO, ...types));
+
+            for (const row of localRows) {
+                const dateKey = row.premiere_date?.split('T')[0] || row.premiere_date;
+                if (!byDate[dateKey]) continue;
+                const isDuplicate = byDate[dateKey].some(e =>
+                    e.title === row.title && (e.season_number === row.season_number || e.media_type !== 'show')
+                );
+                if (isDuplicate) continue;
+                byDate[dateKey].push({
+                    title: row.title,
+                    subtitle: row.media_type === 'show' ? `S${String(row.season_number||0).padStart(2,'0')}E${String(row.item_number||0).padStart(2,'0')}` : '',
+                    episode_title: row.episode_title || '',
+                    poster_url: row.poster_url || '',
+                    display_poster: row.episode_poster || row.poster_url || '',
+                    media_type: row.media_type,
+                    href: `/${row.media_type === 'movie' ? 'movies' : row.media_type === 'show' ? 'tv' : 'music'}/${row.slug}`,
+                    premiere_date: row.premiere_date,
+                    season_number: row.season_number,
+                    episode_number: row.item_number,
+                });
+            }
+        } catch { /* silent */ }
+
+        return Object.entries(byDate).map(([date, items]) => {
+            const d = new Date(date + 'T12:00:00');
+            return {
+                date,
+                dayName: dayNames[d.getDay()],
+                dayNum: d.getDate(),
+                isToday: date === todayISO,
+                items,
+            };
+        });
+    } catch (err) {
+        console.error('[discovery-engine] getMonthCalendar error:', err?.message || err);
+        return [];
+    }
+}
+
+/**
  * Library statistics: counts of media types + total watch hours.
  */
 export function getLibraryStats() {
