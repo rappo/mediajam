@@ -330,6 +330,9 @@ export function getWatchlistItems(userId, limit = 10) {
 export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artist']) {
     try {
         const today = new Date();
+        const currentHour = today.getHours();
+        const isEarlyMorning = currentHour < 5;
+
         const endDate = new Date(today);
         endDate.setDate(today.getDate() + days - 1);
 
@@ -340,13 +343,29 @@ export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artis
         const todayISO = localISO(today);
         const endISO = localISO(endDate);
 
+        // Extend API fetch window ±1 day to handle timezone edge cases
+        const fetchStart = new Date(today);
+        fetchStart.setDate(fetchStart.getDate() - 1);
+        const fetchEnd = new Date(endDate);
+        fetchEnd.setDate(fetchEnd.getDate() + 1);
+        const fetchStartISO = localISO(fetchStart);
+        const fetchEndISO = localISO(fetchEnd);
+
         const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
         /** @type {Record<string, any[]>} */
         const byDate = {};
 
+        // If early morning, include the previous day (and show one fewer future day to keep total = days)
+        const displayDays = isEarlyMorning ? days - 1 : days;
+        if (isEarlyMorning) {
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+            byDate[localISO(yesterday)] = [];
+        }
+
         // Pre-populate days
-        for (let i = 0; i < days; i++) {
+        for (let i = 0; i < displayDays; i++) {
             const d = new Date(today);
             d.setDate(today.getDate() + i);
             byDate[localISO(d)] = [];
@@ -406,11 +425,11 @@ export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artis
                 try {
                     const episodes = await arrCalendarFetch(
                         settings.sonarr_url, settings.sonarr_external_url, settings.sonarr_api_key,
-                        `calendar?start=${todayISO}&end=${endISO}&includeSeries=true&includeEpisodeFile=true`
+                        `calendar?start=${fetchStartISO}&end=${fetchEndISO}&includeSeries=true&includeEpisodeFile=true`
                     );
                     if (!episodes) return;
                     for (const ep of episodes) {
-                        const dateKey = ep.airDate || ep.airDateUtc?.split('T')[0];
+                        const dateKey = ep.airDate || (ep.airDateUtc ? toLocalDate(ep.airDateUtc) : null);
                         if (!dateKey || !byDate[dateKey]) continue;
 
                         const series = ep.series || {};
@@ -445,7 +464,7 @@ export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artis
                 try {
                     const movies = await arrCalendarFetch(
                         settings.radarr_url, settings.radarr_external_url, settings.radarr_api_key,
-                        `calendar?start=${todayISO}&end=${endISO}`
+                        `calendar?start=${fetchStartISO}&end=${fetchEndISO}`
                     );
                     if (!movies) return;
                     for (const movie of movies) {
@@ -480,7 +499,7 @@ export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artis
                 try {
                     const albums = await arrCalendarFetch(
                         settings.lidarr_url, settings.lidarr_external_url, settings.lidarr_api_key,
-                        `calendar?start=${todayISO}&end=${endISO}&includeArtist=true&unmonitored=true`, 'v1'
+                        `calendar?start=${fetchStartISO}&end=${fetchEndISO}&includeArtist=true&unmonitored=true`, 'v1'
                     );
                     if (!albums) return;
                     for (const album of albums) {
@@ -533,7 +552,7 @@ export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artis
                 WHERE substr(mc.premiere_date, 1, 10) BETWEEN ? AND ?
                   AND mp.media_type IN (${placeholders})
                 ORDER BY mc.premiere_date ASC
-            `).all(todayISO, endISO, ...types));
+            `).all(fetchStartISO, fetchEndISO, ...types));
 
             for (const row of localRows) {
                 const dateKey = row.premiere_date?.split('T')[0] || row.premiere_date;

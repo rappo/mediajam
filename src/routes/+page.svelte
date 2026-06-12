@@ -1,9 +1,10 @@
 <script>
-    import { onMount } from "svelte";
+    import { onMount, onDestroy } from "svelte";
     import { imgUrl } from "$lib/utils.js";
     import Skeleton from "$lib/components/Skeleton.svelte";
     import PosterRow from "$lib/components/PosterRow.svelte";
-    import DashboardCalendar from "$lib/components/DashboardCalendar.svelte";
+    // import DashboardCalendar from "$lib/components/DashboardCalendar.svelte";
+    import DashboardCalendarHero from "$lib/components/DashboardCalendarHero.svelte";
 
     let { data } = $props();
 
@@ -12,7 +13,7 @@
     let error = $state(null);
 
     // Calendar settings
-    let calendarDays = $state(7);
+    let calendarDays = $state(14);
     let calendarTypes = $state(['movie', 'show', 'artist']);
 
     // Trending pagination
@@ -160,11 +161,18 @@
         }))
     );
 
-    // Hero card: pick random from watchlist on each load
+    // Hero card: rotate through watchlist every 60s
+    let heroIndex = $state(0);
+    let heroProgress = $state(0);
+    let heroInterval = null;
+    let heroProgressInterval = null;
+    const HERO_ROTATE_MS = 60000;
+    const HERO_TICK_MS = 100;
+
     let hero = $derived.by(() => {
         const wl = dash?.watchlist;
         if (!wl || wl.length === 0) return null;
-        return wl[Math.floor(Math.random() * wl.length)];
+        return wl[heroIndex % wl.length];
     });
     let heroPath = $derived(
         hero
@@ -172,7 +180,37 @@
             : null
     );
 
-    onMount(fetchDashboard);
+    function startHeroRotation() {
+        stopHeroRotation();
+        heroProgress = 0;
+        heroProgressInterval = setInterval(() => {
+            heroProgress = Math.min(heroProgress + (HERO_TICK_MS / HERO_ROTATE_MS) * 100, 100);
+        }, HERO_TICK_MS);
+        heroInterval = setInterval(() => {
+            const wl = dash?.watchlist;
+            if (wl && wl.length > 1) {
+                heroIndex = (heroIndex + 1) % wl.length;
+            }
+            heroProgress = 0;
+        }, HERO_ROTATE_MS);
+    }
+
+    function stopHeroRotation() {
+        if (heroInterval) { clearInterval(heroInterval); heroInterval = null; }
+        if (heroProgressInterval) { clearInterval(heroProgressInterval); heroProgressInterval = null; }
+    }
+
+    onMount(() => {
+        fetchDashboard().then(() => {
+            // Pick a random starting index
+            const wl = dash?.watchlist;
+            if (wl && wl.length > 0) {
+                heroIndex = Math.floor(Math.random() * wl.length);
+            }
+            startHeroRotation();
+        });
+    });
+    onDestroy(stopHeroRotation);
 </script>
 
 <svelte:head>
@@ -214,6 +252,12 @@
                         {/if}
                         <span class="dash-hero-btn">▶ View Details</span>
                     </div>
+                    <!-- Progress bar -->
+                    {#if dash?.watchlist?.length > 1}
+                        <div class="dash-hero-progress">
+                            <div class="dash-hero-progress-fill" style="width: {heroProgress}%"></div>
+                        </div>
+                    {/if}
                 </a>
             </div>
         {/if}
@@ -234,6 +278,15 @@
                 </div>
                 <span class="stat-cell-label">Movie Size</span>
             </div>
+            {#if dash.watchlist?.length > 0}
+                <div class="stat-cell">
+                    <div class="stat-cell-top">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="stat-cell-icon" style="color: oklch(var(--color-movies) / 0.7)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+                        <span class="stat-cell-value" style="color: oklch(var(--color-movies) / 0.7)">{dash.watchlist.length}</span>
+                    </div>
+                    <span class="stat-cell-label">Watchlist</span>
+                </div>
+            {/if}
 
             <div class="stat-cell-divider"></div>
 
@@ -286,7 +339,8 @@
 
         <!-- Calendar -->
         {#if dash.upcoming}
-            <DashboardCalendar upcoming={dash.upcoming} onSettingsChange={refreshCalendar} />
+            <!-- <DashboardCalendar upcoming={dash.upcoming} onSettingsChange={refreshCalendar} /> -->
+            <DashboardCalendarHero upcoming={dash.upcoming} onSettingsChange={refreshCalendar} />
         {/if}
 
         <!-- Recently Added -->
@@ -574,6 +628,21 @@
         padding: 0.25rem 0.75rem;
         border-radius: 999px;
         width: fit-content;
+    }
+    .dash-hero-progress {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: rgba(255,255,255,0.08);
+        z-index: 3;
+        pointer-events: none;
+    }
+    .dash-hero-progress-fill {
+        height: 100%;
+        background: oklch(var(--p));
+        transition: width 0.1s linear;
     }
 
     /* ── Section ────────────────────────────────────────────── */

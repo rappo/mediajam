@@ -442,13 +442,12 @@
             {/snippet}
             {#snippet ratingsBar()}
                 {#if externalRatings.length > 0}
-                    <div class="hero-links-bar">
+                    <div class="hero-ratings-bar">
                         {#if getRating('omdb_imdb')}
                             {@const r = getRating('omdb_imdb')}
                             <a href={data.movie.imdb_id ? `https://www.imdb.com/title/${data.movie.imdb_id}/` : `https://www.imdb.com/find?q=${encodeURIComponent(data.movie.title)}`} target="_blank" rel="noopener" class="hero-link">
                                 <ServiceIcon service="imdb" size="w-4 h-4" />
                                 <span class="hero-link-text">{r.raw_value}</span>
-                                {#if r.vote_count}<span class="hero-link-sub">{(r.vote_count / 1000).toFixed(0)}k</span>{/if}
                             </a>
                         {/if}
                         {#if getRating('omdb_rt')}
@@ -470,14 +469,12 @@
                             <a href={data.movie.tmdb_id ? `https://www.themoviedb.org/movie/${data.movie.tmdb_id}` : '#'} target="_blank" rel="noopener" class="hero-link">
                                 <ServiceIcon service="tmdb" size="w-4 h-4" />
                                 <span class="hero-link-text">{r.raw_value}</span>
-                                {#if r.vote_count}<span class="hero-link-sub">{(r.vote_count / 1000).toFixed(0)}k</span>{/if}
                             </a>
                         {/if}
                         {#if data.movie.jellyfin_user_rating}
                             <span class="hero-link">
                                 <span style="color: oklch(var(--wa))">★</span>
                                 <span class="hero-link-text">{data.movie.jellyfin_user_rating}</span>
-                                <span class="hero-link-sub">Yours</span>
                             </span>
                         {/if}
                     </div>

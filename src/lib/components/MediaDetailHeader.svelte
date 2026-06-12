@@ -534,6 +534,37 @@
     .hero-link:hover { color: oklch(var(--bc) / 0.95); }
     .hero-link-text { font-weight: 500; }
     .hero-link-sub { font-size: 0.65rem; color: oklch(var(--bc) / 0.4); }
+    :global(.hero-ratings-bar) {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        flex-wrap: wrap;
+        margin-top: 0.3rem;
+        padding: 0.3rem 0.55rem;
+        background: oklch(var(--b1) / 0.25);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border-radius: 0.4rem;
+        max-width: fit-content;
+    }
+    :global(.hero-ratings-bar .hero-link) {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: 0.75rem;
+        color: oklch(var(--bc) / 0.65);
+        text-decoration: none;
+        transition: color 0.15s;
+        white-space: nowrap;
+    }
+    :global(.hero-ratings-bar .hero-link:hover) { color: oklch(var(--bc) / 0.95); }
+    :global(.hero-ratings-bar .hero-link img),
+    :global(.hero-ratings-bar .hero-link svg) {
+        width: 16px !important;
+        height: 16px !important;
+        flex-shrink: 0;
+    }
+    :global(.hero-ratings-bar .hero-link-text) { font-weight: 500; }
 
     /* ══════════════ TOOLBAR RIBBON ══════════════ */
     .toolbar-ribbon {
