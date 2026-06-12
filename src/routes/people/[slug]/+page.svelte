@@ -530,7 +530,7 @@
         <div class="space-y-3">
             <div class="flex items-center justify-between">
                 <h2 class="text-xl font-bold flex items-center gap-2">
-                    🎬 Movies
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" style="color: oklch(var(--color-movies))" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg> Movies
                     <span class="badge badge-ghost badge-sm"
                         >{libraryMovies.length}</span
                     >
@@ -756,7 +756,7 @@
         {@const stubShows = data.shows.filter(c => !isInLibrary(c))}
         <div class="space-y-3">
             <h2 class="text-xl font-bold flex items-center gap-2">
-                📺 TV Shows
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" style="color: oklch(var(--color-tv))" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="15" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/></svg> TV Shows
                 <span class="badge badge-ghost badge-sm"
                     >{libraryShows.length}</span
                 >
@@ -976,7 +976,7 @@
     {#if data.artists.length > 0}
         <div class="space-y-3">
             <h2 class="text-xl font-bold flex items-center gap-2">
-                🎵 Music
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" style="color: oklch(var(--color-music))" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg> Music
                 <span class="badge badge-ghost badge-sm"
                     >{data.artists.length}</span
                 >

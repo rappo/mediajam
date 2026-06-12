@@ -217,38 +217,58 @@
 					class="tabs tabs-boxed bg-base-300/50 flex-nowrap"
 				>
 					{#if data.showWelcome}
-						<a
-							href="/welcome"
-							role="tab"
-							class="tab tab-sm font-medium"
-						>
-							<span class="mr-1.5">👋</span>
-							Welcome
-						</a>
+					<a
+						href="/welcome"
+						role="tab"
+						class="tab tab-sm font-medium"
+					>
+						<span class="mr-1.5">👋</span>
+						Welcome
+					</a>
 					{/if}
 					<a
-					href="/history"
-					role="tab"
-					class="tab tab-sm font-medium {currentPath === '/history' ? 'tab-active' : ''}"
-				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						class="h-4 w-4 mr-1.5"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2"
-						stroke-linecap="round"
+						href="/"
+						role="tab"
+						class="tab tab-sm font-medium {currentPath === '/' ? 'tab-active' : ''}"
 					>
-						<line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" />
-						<circle cx="4" cy="6" r="1" fill="currentColor" /><circle cx="4" cy="12" r="1" fill="currentColor" /><circle cx="4" cy="18" r="1" fill="currentColor" />
-					</svg>
-					History
-				</a>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							class="h-4 w-4 mr-1.5"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
+							<path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />
+						</svg>
+						Dashboard
+					</a>
+					<a
+						href="/history"
+						role="tab"
+						class="tab tab-sm font-medium {currentPath === '/history' ? 'tab-active' : ''}"
+					>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							class="h-4 w-4 mr-1.5"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+						>
+							<line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" />
+							<circle cx="4" cy="6" r="1" fill="currentColor" /><circle cx="4" cy="12" r="1" fill="currentColor" /><circle cx="4" cy="18" r="1" fill="currentColor" />
+						</svg>
+						History
+					</a>
 					<a href="/tv" role="tab" class="tab tab-sm font-medium {currentPath.startsWith('/tv') ? 'tab-active' : ''}">
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							class="h-4 w-4 mr-1.5"
+							style="color: oklch(var(--color-tv))"
 							viewBox="0 0 24 24"
 							fill="none"
 							stroke="currentColor"
@@ -269,6 +289,7 @@
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							class="h-4 w-4 mr-1.5"
+							style="color: oklch(var(--color-movies))"
 							viewBox="0 0 24 24"
 							fill="none"
 							stroke="currentColor"
@@ -304,6 +325,7 @@
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							class="h-4 w-4 mr-1.5"
+							style="color: oklch(var(--color-music))"
 							viewBox="0 0 24 24"
 							fill="none"
 							stroke="currentColor"

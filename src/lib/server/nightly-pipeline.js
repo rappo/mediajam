@@ -38,6 +38,7 @@ import { startPeopleSync, startExternalIdsSync, startPeopleEnrichSync } from '$l
 import { startMusicBrainzEnrich } from '$lib/server/musicbrainz-engine.js';
 import { autoMergeMediumPlus, enrichUnmatchedAlbums, backfillOriginalYears } from '$lib/server/album-matcher.js';
 import { fetchAllRatings } from '$lib/server/ratings-engine.js';
+import { refreshLibrarySizes } from '$lib/server/discovery-engine.js';
 import { backfillWikipedia } from '$lib/server/wikipedia-backfill.js';
 import { generate, embed, isEmbeddingAvailable } from '$lib/server/llm.js';
 import crypto from 'crypto';
@@ -747,6 +748,14 @@ export async function runPipeline(mode = 'nightly', { audit = false } = {}) {
         try { takeSnapshot(`post-${mode}`); } catch (e) {
             console.warn('[pipeline] Post-audit snapshot failed:', e instanceof Error ? e.message : e);
         }
+    }
+
+    // Refresh library sizes cache so dashboard shows up-to-date data
+    try {
+        await refreshLibrarySizes();
+        console.log('[pipeline] Library sizes cache refreshed');
+    } catch (e) {
+        console.warn('[pipeline] Library sizes cache refresh failed:', e instanceof Error ? e.message : e);
     }
 
     releaseLock('pipeline');

@@ -17,6 +17,7 @@ export async function GET({ url }) {
             'coverartarchive.org',
             'img.discogs.com',
             'assets.fanart.tv',
+            'images.lidarr.audio',
         ];
         // Allow Jellyfin (any host on local network or custom domain)
         // Allow known CDNs

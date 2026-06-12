@@ -55,6 +55,7 @@
         onFileInfoClick,
         actions,
         watchlistAction,
+        ratingsBar,
         children,
     } = $props();
 
@@ -124,6 +125,12 @@
 
     /** Count how many sections are rendered, for divider placement */
     const sectionFlags = $derived([internalLinks.length > 0, externalLinksList.length > 0, hasStats, hasFileInfo].filter(Boolean));
+
+    /** Filter stats: hide if only stat is "0 plays" */
+    const visibleStats = $derived(
+        stats.filter(s => !(s.value === 0 && (s.label === 'plays' || s.label === 'play')))
+    );
+    const hasVisibleStats = $derived(visibleStats.length > 0);
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -202,6 +209,7 @@
                 {#if watchStatusBadge}<span class="badge {watchStatusBadge.cls} badge-sm watch-badge">{watchStatusBadge.label}</span>{/if}
                 {#if watchlistAction}{@render watchlistAction()}{/if}
             </div>
+            {#if ratingsBar}{@render ratingsBar()}{/if}
             {#if overview}
                 <div class="hero-overview-wrap">
                     <p class="hero-overview">{overview}
@@ -213,51 +221,35 @@
                     </p>
                 </div>
             {/if}
+            {#if hasAnyLinks}
+                <div class="hero-links-bar">
+                    {#each internalLinks as link}
+                        <a href={link.url} target="_blank" rel="noopener noreferrer" class="hero-link" title={link.label}>
+                            <ServiceIcon service={link.service} size="w-4 h-4" />
+                            <span class="hero-link-text">{link.label}</span>
+                        </a>
+                    {/each}
+                    {#each externalLinksList as link}
+                        <a href={link.url} target="_blank" rel="noopener noreferrer" class="hero-link" title={link.label}>
+                            <ServiceIcon service={link.service} size="w-4 h-4" />
+                            <span class="hero-link-text">{link.label}</span>
+                        </a>
+                    {/each}
+                </div>
+            {/if}
         </div>
     </div>
 </div>
 
 <!-- ═══ TOOLBAR RIBBON ═══ -->
-{#if hasAnyLinks || hasStats || hasFileInfo || extraBadges.length > 0}
+{#if hasVisibleStats || hasFileInfo || extraBadges.length > 0}
 <div class="toolbar-ribbon">
-    <!-- Section 1: Links (internal: Jellyfin, Arr) -->
-    {#if internalLinks.length > 0}
-        <div class="ribbon-section">
-            <span class="ribbon-section-label">Links</span>
-            <div class="ribbon-links">
-                {#each internalLinks as link}
-                    <a href={link.url} target="_blank" rel="noopener noreferrer" class="ribbon-link" title={link.label}>
-                        <ServiceIcon service={link.service} size="w-4 h-4" />
-                        <span class="ribbon-link-text">{link.label}</span>
-                    </a>
-                {/each}
-            </div>
-        </div>
-    {/if}
-
-    <!-- Section 2: Read More (external: TMDB, IMDb, TVDB, etc.) -->
-    {#if externalLinksList.length > 0}
-        {#if internalLinks.length > 0}<span class="ribbon-divider"></span>{/if}
-        <div class="ribbon-section">
-            <span class="ribbon-section-label">Read More</span>
-            <div class="ribbon-links">
-                {#each externalLinksList as link}
-                    <a href={link.url} target="_blank" rel="noopener noreferrer" class="ribbon-link" title={link.label}>
-                        <ServiceIcon service={link.service} size="w-4 h-4" />
-                        <span class="ribbon-link-text">{link.label}</span>
-                    </a>
-                {/each}
-            </div>
-        </div>
-    {/if}
-
-    <!-- Section 3: Stats -->
-    {#if hasStats}
-        {#if hasAnyLinks}<span class="ribbon-divider"></span>{/if}
+    <!-- Stats -->
+    {#if hasVisibleStats}
         <div class="ribbon-section">
             <span class="ribbon-section-label">Stats</span>
             <div class="ribbon-stats-row">
-                {#each stats as stat}
+                {#each visibleStats as stat}
                     <div class="ribbon-stat-cell">
                         <span class="ribbon-stat-value">{stat.value}</span>
                         <span class="ribbon-stat-label">{stat.label}</span>
@@ -267,9 +259,9 @@
         </div>
     {/if}
 
-    <!-- Section 4: File Info -->
+    <!-- File Info -->
     {#if hasFileInfo}
-        <span class="ribbon-divider"></span>
+        {#if hasVisibleStats}<span class="ribbon-divider"></span>{/if}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div class="ribbon-section" class:clickable-section={!!onFileInfoClick} onclick={onFileInfoClick}>
@@ -507,6 +499,41 @@
         color: oklch(var(--bc) / 0.35);
         font-style: italic;
     }
+
+    /* ══════════════ HERO LINKS BAR ══════════════ */
+    .hero-links-bar {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        flex-wrap: wrap;
+        margin-top: 0.375rem;
+        padding: 0.35rem 0.6rem;
+        background: oklch(var(--b1) / 0.6);
+        backdrop-filter: blur(12px) brightness(0.85);
+        -webkit-backdrop-filter: blur(12px) brightness(0.85);
+        border-radius: 0.4rem;
+        border: 1px solid oklch(var(--bc) / 0.08);
+        max-width: fit-content;
+    }
+    .hero-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: 0.75rem;
+        color: oklch(var(--bc) / 0.65);
+        text-decoration: none;
+        transition: color 0.15s;
+        white-space: nowrap;
+    }
+    .hero-link :global(img),
+    .hero-link :global(svg) {
+        width: 16px !important;
+        height: 16px !important;
+        flex-shrink: 0;
+    }
+    .hero-link:hover { color: oklch(var(--bc) / 0.95); }
+    .hero-link-text { font-weight: 500; }
+    .hero-link-sub { font-size: 0.65rem; color: oklch(var(--bc) / 0.4); }
 
     /* ══════════════ TOOLBAR RIBBON ══════════════ */
     .toolbar-ribbon {

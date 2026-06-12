@@ -1,6 +1,6 @@
 <script>
-    /** @type {{ icon: string, label: string, value: string|number, sub?: string, color?: string }} */
-    let { icon, label, value, sub = "", color = "primary" } = $props();
+    /** @type {{ icon?: string, label: string, value: string|number, sub?: string, color?: string, iconColor?: string, children?: import('svelte').Snippet }} */
+    let { icon, label, value, sub = "", color = "primary", iconColor = "", children } = $props();
 </script>
 
 <div
@@ -9,8 +9,13 @@
     <div class="flex items-center gap-2 mb-2">
         <div
             class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-{color}/15 flex items-center justify-center text-base shrink-0"
+            style={iconColor ? `color: ${iconColor}` : ''}
         >
-            {icon}
+            {#if children}
+                {@render children()}
+            {:else}
+                {icon}
+            {/if}
         </div>
         <span class="stat-title text-[10px] sm:text-xs font-medium uppercase tracking-wider truncate"
             >{label}</span

@@ -13,6 +13,13 @@ body {
 	min-height: 100vh;
 }
 
+/* Media type color system — unique, theme-independent colors */
+:root {
+	--color-tv: 0.72 0.17 275;      /* blue-violet */
+	--color-movies: 0.78 0.16 75;    /* amber-gold */
+	--color-music: 0.72 0.17 165;    /* teal-green */
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
 	width: 8px;
