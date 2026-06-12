@@ -426,11 +426,10 @@
             heartBorderEnabled={!!data.settings?.heartBorderShows}
             heroBadges={[
                 { label: `${data.seasons.length} seasons` },
-                { label: `${data.totalWatched}/${data.totalEpisodes} watched` },
                 ...(data.show.collection_pct !== null ? [{ label: `${data.show.collection_pct}% collected` }] : []),
             ]}
             stats={[
-                { label: (data.show.total_plays ?? 0) === 1 ? 'play' : 'total plays', value: data.show.total_plays ?? 0 },
+                { label: 'watched', value: `${data.totalWatched}/${data.totalEpisodes}` },
                 ...(data.totalMissing > 0 ? [{ label: 'missing', value: data.totalMissing }] : []),
                 ...(data.totalUpcoming > 0 ? [{ label: 'upcoming', value: data.totalUpcoming }] : []),
             ]}
