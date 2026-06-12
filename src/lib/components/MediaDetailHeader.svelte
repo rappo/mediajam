@@ -221,7 +221,7 @@
                     </p>
                 </div>
             {/if}
-            {#if hasAnyLinks}
+            {#if hasAnyLinks || hasVisibleStats}
                 <div class="hero-links-bar">
                     {#each internalLinks as link}
                         <a href={link.url} target="_blank" rel="noopener noreferrer" class="hero-link" title={link.label}>
@@ -235,6 +235,17 @@
                             <span class="hero-link-text">{link.label}</span>
                         </a>
                     {/each}
+                    {#if hasVisibleStats && hasAnyLinks}
+                        <span class="hero-links-divider"></span>
+                    {/if}
+                    {#if hasVisibleStats}
+                        {#each visibleStats as stat}
+                            <span class="hero-stat-item">
+                                <span class="hero-stat-value">{stat.value}</span>
+                                <span class="hero-stat-label">{stat.label}</span>
+                            </span>
+                        {/each}
+                    {/if}
                 </div>
             {/if}
         </div>
@@ -242,26 +253,10 @@
 </div>
 
 <!-- ═══ TOOLBAR RIBBON ═══ -->
-{#if hasVisibleStats || hasFileInfo || extraBadges.length > 0}
+{#if hasFileInfo || extraBadges.length > 0}
 <div class="toolbar-ribbon">
-    <!-- Stats -->
-    {#if hasVisibleStats}
-        <div class="ribbon-section">
-            <span class="ribbon-section-label">Stats</span>
-            <div class="ribbon-stats-row">
-                {#each visibleStats as stat}
-                    <div class="ribbon-stat-cell">
-                        <span class="ribbon-stat-value">{stat.value}</span>
-                        <span class="ribbon-stat-label">{stat.label}</span>
-                    </div>
-                {/each}
-            </div>
-        </div>
-    {/if}
-
     <!-- File Info -->
     {#if hasFileInfo}
-        {#if hasVisibleStats}<span class="ribbon-divider"></span>{/if}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div class="ribbon-section" class:clickable-section={!!onFileInfoClick} onclick={onFileInfoClick}>
@@ -534,6 +529,34 @@
     .hero-link:hover { color: oklch(var(--bc) / 0.95); }
     .hero-link-text { font-weight: 500; }
     .hero-link-sub { font-size: 0.65rem; color: oklch(var(--bc) / 0.4); }
+
+    /* Stats inline with links */
+    .hero-links-divider {
+        display: block;
+        width: 1px;
+        align-self: stretch;
+        background: oklch(var(--bc) / 0.2);
+        margin: 0.1rem 0.15rem;
+        flex-shrink: 0;
+    }
+    .hero-stat-item {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 0.25rem;
+        white-space: nowrap;
+    }
+    .hero-stat-value {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: oklch(var(--bc) / 0.85);
+        text-shadow: 0 0 10px rgba(0,0,0,0.6), 0 1px 3px rgba(0,0,0,0.8);
+    }
+    .hero-stat-label {
+        font-size: 0.7rem;
+        color: oklch(var(--bc) / 0.45);
+        font-weight: 500;
+        text-shadow: 0 0 10px rgba(0,0,0,0.6), 0 1px 3px rgba(0,0,0,0.8);
+    }
     :global(.hero-ratings-bar) {
         display: flex;
         align-items: center;

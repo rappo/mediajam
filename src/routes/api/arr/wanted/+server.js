@@ -84,7 +84,6 @@ async function fetchWantedData(includeCutoff) {
 
     /** @type {any[]} */
     const items = [];
-    const now = new Date();
 
     // Helper: safe arr fetch with fallback to external URL (same pattern as arrCalendarFetch)
     const safeFetch = async (primaryUrl, externalUrl, apiKey, service, path) => {
