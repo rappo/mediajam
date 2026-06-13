@@ -297,6 +297,18 @@ CREATE INDEX IF NOT EXISTS idx_history_user_time ON playback_history(user_id, ti
 CREATE INDEX IF NOT EXISTS idx_history_media ON playback_history(media_id);
 CREATE INDEX IF NOT EXISTS idx_history_media_user ON playback_history(media_id, user_id);
 
+-- Unified "has been watched?" view: combines playback_history + Jellyfin watch_status
+-- Use this for ALL "is watched?" read queries. Write path stays on media_children + playback_history.
+CREATE VIEW IF NOT EXISTS all_plays AS
+SELECT media_id, user_id, timestamp, source
+FROM playback_history
+UNION ALL
+SELECT mc.id, u.id, NULL, 'jellyfin_sync'
+FROM media_children mc
+CROSS JOIN users u
+WHERE mc.watch_status = 'watched'
+  AND NOT EXISTS (SELECT 1 FROM playback_history ph WHERE ph.media_id = mc.id);
+
 -- 10. Last.fm Raw Scrobbles (1:1 mirror of external data)
 CREATE TABLE IF NOT EXISTS lastfm_scrobbles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

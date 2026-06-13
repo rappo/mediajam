@@ -101,7 +101,7 @@ export function detectMoviePatterns(userId, prefs) {
         JOIN media_children mc ON mc.parent_id = mp.id
         WHERE pc.person_id = ? AND pc.role_type = ?
           AND mp.media_type = 'movie'
-          AND mc.watch_status != 'watched'
+          AND NOT EXISTS (SELECT 1 FROM all_plays ap WHERE ap.media_id = mc.id)
         ORDER BY mp.release_year DESC
         LIMIT ?
     `).all(best.person_id, best.role_type, prefs.maxItemsPerSection));
@@ -147,10 +147,7 @@ export function getPersonRecommendations(userId, prefs) {
             JOIN media_children mc ON mc.parent_id = mp.id
             WHERE pc.person_id = ? AND pc.role_type = ?
               AND mp.media_type = 'movie'
-              AND mc.watch_status != 'watched'
-              AND NOT EXISTS (
-                  SELECT 1 FROM playback_history ph WHERE ph.media_id = mc.id
-              )
+              AND NOT EXISTS (SELECT 1 FROM all_plays ap WHERE ap.media_id = mc.id)
             ORDER BY mp.release_year DESC
             LIMIT ?
         `).all(personId, roleType, prefs.maxItemsPerSection));
@@ -418,12 +415,9 @@ export function getUnwatchedMovies(limit = 20) {
         FROM media_parents mp
         JOIN media_children mc ON mc.parent_id = mp.id
         WHERE mp.media_type = 'movie'
-          AND mc.watch_status = 'unwatched'
           AND mp.poster_url IS NOT NULL
           AND mp.collection_status != 'wanted'
-          AND NOT EXISTS (
-              SELECT 1 FROM playback_history ph WHERE ph.media_id = mc.id
-          )
+          AND NOT EXISTS (SELECT 1 FROM all_plays ap WHERE ap.media_id = mc.id)
         ORDER BY mp.release_year DESC
         LIMIT ?
     `).all(limit * 4));
@@ -468,13 +462,10 @@ export function getRecommendedMovies(userId, limit = 12) {
         JOIN media_children mc ON mc.parent_id = mp.id
         JOIN media_tags mt ON mt.media_parent_id = mp.id
         WHERE mp.media_type = 'movie'
-          AND mc.watch_status = 'unwatched'
           AND mp.poster_url IS NOT NULL
           AND mp.collection_status != 'wanted'
           AND mt.tag_value IN (${placeholders})
-          AND NOT EXISTS (
-              SELECT 1 FROM playback_history ph WHERE ph.media_id = mc.id
-          )
+          AND NOT EXISTS (SELECT 1 FROM all_plays ap WHERE ap.media_id = mc.id)
         GROUP BY mp.id
         ORDER BY tag_matches DESC
         LIMIT ?
