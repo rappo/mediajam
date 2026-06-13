@@ -13,7 +13,7 @@
     let error = $state(null);
 
     // Calendar settings
-    let calendarDays = $state(14);
+    let calendarDays = $state(7);
     let calendarTypes = $state(['movie', 'show', 'artist']);
 
     // Trending pagination
@@ -103,21 +103,23 @@
     // Trending movie items formatted for PosterRow
     let trendingMovieItems = $derived(
         (dash?.trendingMovies?.items || []).map(m => ({
-            href: m.in_library ? `/movies/${m.library_slug || m.tmdb_id}` : `/movies/${m.library_slug || m.tmdb_id}`,
+            href: m.in_library ? `/movies/${m.library_slug}` : `https://www.themoviedb.org/movie/${m.tmdb_id}`,
             title: m.title,
             subtitle: m.release_year || '',
             poster_url: m.poster_url,
-            badge: m.in_library ? '✓ Library' : null,
+            badge: m.watch_status === 'watched' ? '✓ Watched' : m.in_library ? '✓ Library' : null,
+            external: !m.in_library,
         }))
     );
 
     let trendingShowItems = $derived(
         (dash?.trendingShows?.items || []).map(s => ({
-            href: s.in_library ? `/tv/${s.library_slug || s.tmdb_id}` : `/tv/${s.library_slug || s.tmdb_id}`,
+            href: s.in_library ? `/tv/${s.library_slug}` : `https://www.themoviedb.org/tv/${s.tmdb_id}`,
             title: s.title,
             subtitle: s.release_year || '',
             poster_url: s.poster_url,
-            badge: s.in_library ? '✓ Library' : null,
+            badge: s.watch_status === 'watched' ? '✓ Watched' : s.in_library ? '✓ Library' : null,
+            external: !s.in_library,
         }))
     );
 
@@ -207,6 +209,22 @@
         if (heroProgressInterval) { clearInterval(heroProgressInterval); heroProgressInterval = null; }
     }
 
+    function heroNext() {
+        const wl = dash?.watchlist;
+        if (wl && wl.length > 1) {
+            heroIndex = (heroIndex + 1) % wl.length;
+            startHeroRotation();
+        }
+    }
+
+    function heroPrev() {
+        const wl = dash?.watchlist;
+        if (wl && wl.length > 1) {
+            heroIndex = (heroIndex - 1 + wl.length) % wl.length;
+            startHeroRotation();
+        }
+    }
+
     onMount(() => {
         fetchDashboard().then(() => {
             // Pick a random starting index
@@ -251,7 +269,10 @@
                 <a href={heroPath} class="dash-hero">
                     <img class="dash-hero-bg" src={imgUrl(hero.backdrop_url || hero.poster_url)} alt="" />
                     <div class="dash-hero-overlay">
-                        <span class="dash-hero-badge">FROM YOUR WATCHLIST</span>
+                        <span class="dash-hero-badge">
+                            FROM YOUR WATCHLIST
+                            <span class="dash-hero-badge-progress" style="width: {heroProgress}%"></span>
+                        </span>
                         <h2 class="dash-hero-title">{hero.title}</h2>
                         <p class="dash-hero-year">{hero.release_year || ''}</p>
                         {#if hero.overview}
@@ -259,13 +280,16 @@
                         {/if}
                         <span class="dash-hero-btn">▶ View Details</span>
                     </div>
-                    <!-- Progress bar -->
-                    {#if dash?.watchlist?.length > 1}
-                        <div class="dash-hero-progress">
-                            <div class="dash-hero-progress-fill" style="width: {heroProgress}%"></div>
-                        </div>
-                    {/if}
                 </a>
+                <!-- Prev/Next navigation -->
+                {#if dash?.watchlist?.length > 1}
+                    <button class="dash-hero-nav dash-hero-nav-prev" onclick={(e) => { e.preventDefault(); heroPrev(); }} title="Previous">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+                    </button>
+                    <button class="dash-hero-nav dash-hero-nav-next" onclick={(e) => { e.preventDefault(); heroNext(); }} title="Next">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18" /></svg>
+                    </button>
+                {/if}
             </div>
         {/if}
 
@@ -600,16 +624,31 @@
         justify-content: flex-end;
     }
     .dash-hero-badge {
-        font-size: 0.6rem;
-        font-weight: 700;
-        letter-spacing: 0.08em;
+        display: inline-block;
+        position: relative;
+        font-size: 0.75rem;
+        font-weight: 800;
+        letter-spacing: 0.1em;
         text-transform: uppercase;
         color: oklch(var(--p));
-        background: oklch(var(--p) / 0.15);
-        padding: 0.15rem 0.5rem;
+        background: oklch(var(--p) / 0.2);
+        padding: 0.2rem 0.65rem 0.35rem;
         border-radius: 999px;
+        border: 1px solid oklch(var(--p) / 0.3);
         width: fit-content;
-        margin-bottom: 0.4rem;
+        margin-bottom: 0.5rem;
+        text-shadow: 0 0 12px oklch(var(--p) / 0.5);
+        overflow: hidden;
+    }
+    .dash-hero-badge-progress {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        height: 2px;
+        background: rgba(255,255,255,0.45);
+        box-shadow: 0 0 4px rgba(255,255,255,0.2);
+        border-radius: 0 999px 999px 0;
+        transition: width 0.1s linear;
     }
     .dash-hero-title {
         font-size: 1.5rem;
@@ -638,30 +677,44 @@
         font-weight: 700;
         color: oklch(var(--p));
         margin-top: 0.6rem;
-        transition: color 0.15s;
+        padding: 0.25rem 0.75rem;
+        border-radius: 999px;
+        width: fit-content;
+        transition: color 0.15s, background 0.15s;
     }
     .dash-hero:hover .dash-hero-btn {
         color: oklch(var(--pc));
         background: oklch(var(--p));
-        padding: 0.25rem 0.75rem;
-        border-radius: 999px;
-        width: fit-content;
     }
-    .dash-hero-progress {
+    /* Nav buttons */
+    .dash-hero-nav {
         position: absolute;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        height: 2px;
-        background: rgba(255,255,255,0.08);
-        z-index: 3;
-        pointer-events: none;
+        top: 50%;
+        transform: translateY(-50%);
+        z-index: 5;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 2.25rem;
+        height: 2.25rem;
+        border-radius: 50%;
+        background: rgba(0,0,0,0.45);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border: 1px solid rgba(255,255,255,0.1);
+        color: rgba(255,255,255,0.7);
+        cursor: pointer;
+        opacity: 0;
+        transition: opacity 0.2s, background 0.15s, color 0.15s;
     }
-    .dash-hero-progress-fill {
-        height: 100%;
-        background: oklch(var(--p));
-        transition: width 0.1s linear;
+    .dash-hero-glow-wrap:hover .dash-hero-nav { opacity: 1; }
+    .dash-hero-nav:hover {
+        background: rgba(0,0,0,0.7);
+        color: #fff;
     }
+    .dash-hero-nav-prev { left: 0.75rem; }
+    .dash-hero-nav-next { right: 0.75rem; }
+
 
     /* ── Section ────────────────────────────────────────────── */
     .dash-section {

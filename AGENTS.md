@@ -113,11 +113,11 @@ All sync operations must implement:
 The MCP (Model Context Protocol) server lives in `src/mcp/` and exposes the MediaJam API to LLM agents.
 
 - **Architecture**: Pure REST API client — does NOT import DB or server code directly. Connects via `MEDIAJAM_URL` + `MEDIAJAM_API_KEY` environment variables.
-- **Transports**: Supports both **stdio** (default, for local clients like Claude Desktop) and **SSE** (`--sse` flag, for remote/network clients). SSE listens on port 3099 by default (`--port` to override).
+- **Transports**: Supports both **stdio** (default, for local clients like Claude Desktop) and **SSE** (`--sse` flag, for remote/network clients). SSE listens on port 7332 by default (`--port` to override).
 - **Tool modules**: Each file in `src/mcp/tools/` exports a `tools` array (tool definitions) and a `handle(name, args)` function.
 - **When modifying API endpoints**, check if a corresponding MCP tool exists in `src/mcp/tools/` and update it to match.
 - **When adding new API endpoints**, evaluate if an MCP tool should be added (read-only, high LLM value endpoints are best candidates).
 - **Tool descriptions** must be clear enough for an LLM to use without examples — describe what the tool does, what inputs it needs, and what it returns.
 - **Testing**: `cd src/mcp && npx @modelcontextprotocol/inspector node server.js`
-- **SSE testing**: `cd src/mcp && MEDIAJAM_URL=... MEDIAJAM_API_KEY=... node server.js --sse` then connect to `http://host:3099/sse`
+- **SSE testing**: `cd src/mcp && MEDIAJAM_URL=... MEDIAJAM_API_KEY=... node server.js --sse` then connect to `http://host:7332/sse`
 - **Dependencies**: The MCP server has its own `package.json` in `src/mcp/`. Run `npm install` there separately.

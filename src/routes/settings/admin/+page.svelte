@@ -110,6 +110,41 @@
     let litellmModels = $state([]);
     let litellmTestError = $state('');
 
+    // MCP Server
+    let mcpEnabled = $state(!!data.settings.mcpEnabled);
+    let mcpPort = $state(data.settings.mcpPort || 7332);
+    /** @type {{ running: boolean, port: number|null, pid: number|null } | null} */
+    let mcpStatus = $state(null);
+    let mcpStatusLoading = $state(false);
+
+    async function fetchMcpStatus() {
+        mcpStatusLoading = true;
+        try {
+            const res = await fetch('/api/mcp/status');
+            if (res.ok) {
+                mcpStatus = await res.json();
+            }
+        } catch { /* ignore */ }
+        mcpStatusLoading = false;
+    }
+
+    // Auto-refresh MCP status every 5 seconds when on server tab
+    let mcpStatusInterval = $state(null);
+    $effect(() => {
+        if (activeTab === 'server') {
+            fetchMcpStatus();
+            mcpStatusInterval = setInterval(fetchMcpStatus, 5000);
+            return () => {
+                if (mcpStatusInterval) clearInterval(mcpStatusInterval);
+            };
+        } else {
+            if (mcpStatusInterval) {
+                clearInterval(mcpStatusInterval);
+                mcpStatusInterval = null;
+            }
+        }
+    });
+
 
     // *arr Integration
     /** @type {Array<{service: string, label: string, defaultPort: number}>} */
@@ -647,6 +682,9 @@
                 payload[`${svc}_skip_add_dialog`] = arrSkipDialog[svc] ? 1 : 0;
             }
 
+            // MCP server
+            payload.mcp_enabled = mcpEnabled ? 1 : 0;
+            payload.mcp_port = mcpPort;
 
             const res = await fetch("/api/settings", {
                 method: "PUT",
@@ -3814,6 +3852,94 @@ cat ~/.codex/auth.json</pre>
                             ✗ {taggingError || "Tag generation failed"}
                         </p>
                     {/if}
+                {/if}
+            </div>
+        </div>
+    </div>
+
+
+    <!-- MCP Server -->
+    <div
+        id="mcp"
+        class="card bg-base-200/50 border border-base-300 scroll-mt-20"
+    >
+        <div class="card-body">
+            <h2 class="card-title text-lg">
+                <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    class="h-5 w-5 text-accent"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    ><path d="M4 6h16M4 12h16M4 18h16" /><circle cx="20" cy="6" r="1.5" /><circle cx="20" cy="12" r="1.5" /><circle cx="20" cy="18" r="1.5" /></svg
+                >
+                MCP Server
+                <span class="badge badge-ghost badge-sm">optional</span>
+            </h2>
+            <p class="text-sm text-base-content/60">
+                Enable the MCP (Model Context Protocol) server so AI assistants can interact with your library.
+            </p>
+
+            <div class="grid gap-4 mt-4">
+                <!-- Enable toggle -->
+                <div class="flex items-center justify-between">
+                    <div>
+                        <span class="text-sm font-medium">Enable MCP Server</span>
+                        <p class="text-xs text-base-content/50">
+                            Starts an SSE server that MCP-compatible clients can connect to.
+                        </p>
+                    </div>
+                    <input
+                        type="checkbox"
+                        class="toggle toggle-primary"
+                        bind:checked={mcpEnabled}
+                    />
+                </div>
+
+                {#if mcpEnabled}
+                    <!-- Port input -->
+                    <label class="form-control w-full max-w-xs">
+                        <div class="label pb-1">
+                            <span class="label-text text-xs font-medium">SSE Port</span>
+                        </div>
+                        <input
+                            type="number"
+                            bind:value={mcpPort}
+                            min="1024"
+                            max="65535"
+                            class="input input-bordered input-sm w-32 font-mono"
+                        />
+                    </label>
+
+                    <!-- Status -->
+                    <div class="flex items-center gap-2">
+                        {#if mcpStatusLoading && !mcpStatus}
+                            <span class="loading loading-spinner loading-xs"></span>
+                            <span class="text-xs text-base-content/50">Checking status…</span>
+                        {:else if mcpStatus?.running}
+                            <span class="inline-block w-2.5 h-2.5 rounded-full bg-success animate-pulse"></span>
+                            <span class="text-xs text-success font-medium">Running</span>
+                            <span class="text-xs text-base-content/40">
+                                port {mcpStatus.port} · pid {mcpStatus.pid}
+                            </span>
+                        {:else}
+                            <span class="inline-block w-2.5 h-2.5 rounded-full bg-error/60"></span>
+                            <span class="text-xs text-base-content/50">Not running</span>
+                            <span class="text-xs text-base-content/30">(save settings to start)</span>
+                        {/if}
+                    </div>
+
+                    <!-- Connection info -->
+                    <div class="bg-base-300/50 rounded-lg p-3 space-y-1.5">
+                        <p class="text-xs font-medium text-base-content/70">Connection URL</p>
+                        <code class="text-xs font-mono text-primary select-all">
+                            http://&lt;host&gt;:{mcpPort}/sse
+                        </code>
+                        <p class="text-[10px] text-base-content/40 mt-1">
+                            Add this URL to your MCP client config (Claude Desktop, Cursor, etc.)
+                        </p>
+                    </div>
                 {/if}
             </div>
         </div>

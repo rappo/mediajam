@@ -48,7 +48,7 @@
                 onscroll={updateScrollState}
             >
                 {#each items as item}
-                    <a href={item.href} class="poster-card" title={item.title}>
+                    <a href={item.href} class="poster-card" title={item.title} target={item.external ? '_blank' : undefined} rel={item.external ? 'noopener noreferrer' : undefined}>
                         {#if item.poster_url}
                             <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img" loading="lazy" />
                         {:else}

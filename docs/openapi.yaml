@@ -83,6 +83,8 @@ tags:
     description: Initial application setup wizard
   - name: LLM Integration
     description: Gemini and OpenAI LLM connectivity
+  - name: MCP Server
+    description: MCP (Model Context Protocol) server management
   - name: Page Data
     description: Server-side page data endpoints
 
@@ -1493,6 +1495,24 @@ paths:
         '200':
           $ref: '#/components/responses/SSEStream'
 
+  # ── MCP Server ────────────────────────────────────────────────────
+  /api/mcp/status:
+    get:
+      tags: [MCP Server]
+      summary: MCP server status
+      description: Returns whether the MCP server child process is running, its port, and PID.
+      responses:
+        '200':
+          description: MCP server status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  running: { type: boolean }
+                  port: { type: integer, nullable: true }
+                  pid: { type: integer, nullable: true }
+
   # ── API Keys ────────────────────────────────────────────────────
   /api/api-keys:
     get:
@@ -2831,6 +2851,8 @@ components:
         heart_border_shows: { type: boolean }
         heart_border_music: { type: boolean }
         heart_border_people: { type: boolean }
+        mcp_enabled: { type: boolean }
+        mcp_port: { type: integer }
 
     ApiKey:
       type: object

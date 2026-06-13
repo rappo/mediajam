@@ -5,6 +5,7 @@ import { startAutoSyncScheduler } from '$lib/server/auto-sync.js';
 import { startPrPoller } from '$lib/server/pr-poller.js';
 import { startBackupScheduler } from '$lib/server/backup-engine.js';
 import { startPipelineScheduler } from '$lib/server/nightly-pipeline.js';
+import { startMcpServer } from '$lib/server/mcp-manager.js';
 import { logError } from '$lib/server/logger.js';
 import { prefetchIcons } from '$lib/server/icon-cache.js';
 
@@ -36,6 +37,7 @@ export async function handle({ event, resolve }) {
         startPrPoller();
         startBackupScheduler();
         startPipelineScheduler();
+        startMcpServer();
     }
 
     event.locals.isSetupComplete = isSetupComplete;

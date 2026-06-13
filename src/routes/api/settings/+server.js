@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import db from '$lib/server/db.js';
+import { restartMcpServer, stopMcpServer } from '$lib/server/mcp-manager.js';
 
 /** @type {import('./$types').RequestHandler} */
 export async function GET() {
@@ -50,6 +51,9 @@ export async function GET() {
         calendarShowMovies: settings?.calendar_show_movies !== 0,
         calendarShowShows: settings?.calendar_show_shows !== 0,
         calendarShowMusic: settings?.calendar_show_music !== 0,
+        // MCP server
+        mcpEnabled: settings?.mcp_enabled === 1,
+        mcpPort: settings?.mcp_port ?? 7332,
     });
 }
 
@@ -123,6 +127,9 @@ export async function PUT({ request }) {
             calendar_show_movies: 'calendar_show_movies',
             calendar_show_shows: 'calendar_show_shows',
             calendar_show_music: 'calendar_show_music',
+            // MCP server
+            mcp_enabled: 'mcp_enabled',
+            mcp_port: 'mcp_port',
         };
 
         for (const [key, column] of Object.entries(allowedFields)) {
@@ -138,6 +145,15 @@ export async function PUT({ request }) {
 
         values.push(1); // WHERE id = 1
         db.prepare(`UPDATE app_settings SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+
+        // If MCP settings changed, restart or stop the MCP server
+        if ('mcp_enabled' in data || 'mcp_port' in data) {
+            if (data.mcp_enabled === 0 || data.mcp_enabled === false) {
+                stopMcpServer();
+            } else {
+                restartMcpServer();
+            }
+        }
 
         return json({ success: true });
     } catch (e) {

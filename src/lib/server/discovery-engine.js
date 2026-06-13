@@ -94,7 +94,7 @@ export async function getTrendingMovies(userGenres, limit = 20, page = 1) {
             let library_slug = null;
             try {
                 const local = db.prepare(
-                    `SELECT slug FROM media_parents WHERE tmdb_id = ? AND media_type = 'movie' LIMIT 1`
+                    `SELECT slug, play_count FROM media_parents WHERE tmdb_id = ? AND media_type = 'movie' LIMIT 1`
                 ).get(item.id);
                 if (local) {
                     in_library = true;
@@ -115,6 +115,7 @@ export async function getTrendingMovies(userGenres, limit = 20, page = 1) {
                 affinity_score: affinityScore,
                 in_library,
                 library_slug,
+                watch_status: local?.play_count > 0 ? 'watched' : null,
             };
         });
 
@@ -157,7 +158,7 @@ export async function getTrendingShows(userGenres, limit = 20, page = 1) {
             let library_slug = null;
             try {
                 const local = db.prepare(
-                    `SELECT slug FROM media_parents WHERE tmdb_id = ? AND media_type = 'show' LIMIT 1`
+                    `SELECT slug, play_count FROM media_parents WHERE tmdb_id = ? AND media_type = 'show' LIMIT 1`
                 ).get(item.id);
                 if (local) {
                     in_library = true;
@@ -178,6 +179,7 @@ export async function getTrendingShows(userGenres, limit = 20, page = 1) {
                 affinity_score: affinityScore,
                 in_library,
                 library_slug,
+                watch_status: local?.play_count > 0 ? 'watched' : null,
             };
         });
 
@@ -278,7 +280,7 @@ export function getRecentlyAdded(limit = 20) {
     try {
         const rows = /** @type {any[]} */ (db.prepare(`
             SELECT mp.id, mp.title, mp.poster_url, mp.media_type, mp.slug, mp.release_year,
-                   mp.date_last_modified
+                   mp.date_last_modified, mp.play_count
             FROM media_parents mp
             WHERE mp.collection_status = 'collected'
             ORDER BY mp.date_last_modified DESC
@@ -292,6 +294,7 @@ export function getRecentlyAdded(limit = 20) {
             subtitle: mp.release_year,
             media_type: mp.media_type,
             icon: mp.media_type === 'movie' ? '🎬' : mp.media_type === 'show' ? '📺' : '🎵',
+            badge: mp.play_count > 0 ? '✓ Watched' : null,
         }));
     } catch (err) {
         console.error('[discovery-engine] getRecentlyAdded error:', err?.message || err);

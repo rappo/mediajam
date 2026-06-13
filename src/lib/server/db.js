@@ -485,6 +485,10 @@ const newAppCols = [
     ['calendar_show_movies', 'INTEGER DEFAULT 1'],
     ['calendar_show_shows', 'INTEGER DEFAULT 1'],
     ['calendar_show_music', 'INTEGER DEFAULT 1'],
+    // MCP server
+    ['mcp_enabled', 'INTEGER DEFAULT 0'],
+    ['mcp_port', 'INTEGER DEFAULT 7332'],
+    ['mcp_api_key', 'TEXT'],
 ];
 for (const [col, type] of newAppCols) {
     if (!existingCols.has(col)) {

@@ -221,8 +221,9 @@
                     </p>
                 </div>
             {/if}
-            {#if hasAnyLinks || hasVisibleStats}
+            {#if hasAnyLinks}
                 <div class="hero-links-bar">
+                    <span class="hero-row-label">Links:</span>
                     {#each internalLinks as link}
                         <a href={link.url} target="_blank" rel="noopener noreferrer" class="hero-link" title={link.label}>
                             <ServiceIcon service={link.service} size="w-4 h-4" />
@@ -235,15 +236,26 @@
                             <span class="hero-link-text">{link.label}</span>
                         </a>
                     {/each}
-                    {#if hasVisibleStats && hasAnyLinks}
-                        <span class="hero-links-divider"></span>
-                    {/if}
+                </div>
+            {/if}
+            {#if hasVisibleStats || hasFileInfo}
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <div class="hero-stats-bar" class:clickable-bar={hasFileInfo && !!onFileInfoClick} onclick={hasFileInfo && onFileInfoClick ? onFileInfoClick : undefined}>
                     {#if hasVisibleStats}
                         {#each visibleStats as stat}
                             <span class="hero-stat-item">
-                                <span class="hero-stat-value">{stat.value}</span>
+                                {#if stat.value !== '' && stat.value != null}<span class="hero-stat-value">{stat.value}</span>{/if}
                                 <span class="hero-stat-label">{stat.label}</span>
                             </span>
+                        {/each}
+                    {/if}
+                    {#if hasVisibleStats && hasFileInfo}
+                        <span class="hero-links-divider"></span>
+                    {/if}
+                    {#if hasFileInfo}
+                        {#each fileInfo as info}
+                            <span class="hero-file-chip">{info.value}</span>
                         {/each}
                     {/if}
                 </div>
@@ -252,34 +264,14 @@
     </div>
 </div>
 
-<!-- ═══ TOOLBAR RIBBON ═══ -->
-{#if hasFileInfo || extraBadges.length > 0}
+<!-- ═══ TOOLBAR RIBBON (extra badges only) ═══ -->
+{#if extraBadges.length > 0}
 <div class="toolbar-ribbon">
-    <!-- File Info -->
-    {#if hasFileInfo}
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div class="ribbon-section" class:clickable-section={!!onFileInfoClick} onclick={onFileInfoClick}>
-            <span class="ribbon-section-label">File Info</span>
-            <div class="ribbon-stats-row">
-                {#each fileInfo as info}
-                    <div class="ribbon-stat-cell">
-                        <span class="ribbon-stat-value">{info.value}</span>
-                        <span class="ribbon-stat-label">{info.label}</span>
-                    </div>
-                {/each}
-            </div>
-        </div>
-    {/if}
-
-    <!-- Extra badges -->
-    {#if extraBadges.length > 0}
-        <div class="ribbon-badges">
-            {#each extraBadges as badge}
-                <span class="badge badge-sm {badge.cls || 'badge-ghost'}">{badge.label}</span>
-            {/each}
-        </div>
-    {/if}
+    <div class="ribbon-badges">
+        {#each extraBadges as badge}
+            <span class="badge badge-sm {badge.cls || 'badge-ghost'}">{badge.label}</span>
+        {/each}
+    </div>
 </div>
 {/if}
 
@@ -514,6 +506,48 @@
         border-radius: 0.4rem;
         border: 1px solid oklch(var(--bc) / 0.08);
         max-width: fit-content;
+    }
+    .hero-row-label {
+        font-size: 0.65rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: oklch(var(--bc) / 0.35);
+        text-shadow: 0 0 10px rgba(0,0,0,0.6), 0 1px 3px rgba(0,0,0,0.8);
+    }
+    .hero-stats-bar {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        flex-wrap: wrap;
+        margin-top: 0.25rem;
+        padding: 0.35rem 0.6rem;
+        background: oklch(var(--b1) / 0.6);
+        backdrop-filter: blur(12px) brightness(0.85);
+        -webkit-backdrop-filter: blur(12px) brightness(0.85);
+        border-radius: 0.4rem;
+        border: 1px solid oklch(var(--bc) / 0.08);
+        max-width: fit-content;
+    }
+    .hero-stats-bar.clickable-bar {
+        cursor: pointer;
+        transition: background 0.15s, border-color 0.15s;
+    }
+    .hero-stats-bar.clickable-bar:hover {
+        background: oklch(var(--b1) / 0.75);
+        border-color: oklch(var(--bc) / 0.15);
+    }
+    .hero-file-chip {
+        display: inline-flex;
+        align-items: center;
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: oklch(var(--bc) / 0.7);
+        padding: 0.1rem 0.4rem;
+        background: oklch(var(--bc) / 0.08);
+        border-radius: 0.25rem;
+        white-space: nowrap;
+        text-shadow: 0 0 10px rgba(0,0,0,0.6), 0 1px 3px rgba(0,0,0,0.8);
     }
     .hero-link {
         display: inline-flex;

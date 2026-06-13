@@ -12,6 +12,10 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
+
+# Install MCP server dependencies (separate package.json)
+RUN cd src/mcp && npm ci
+
 RUN npm run build
 
 # Install production-only deps (native modules compile here with build tools)
@@ -38,6 +42,9 @@ COPY --from=builder /app/docs/openapi.yaml ./docs/openapi.yaml
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
 
+# Copy MCP server source and its dependencies
+COPY --from=builder /app/src/mcp ./src/mcp
+
 RUN mkdir -p /app/data /app/cache
 
 ENV PORT=7331
@@ -46,6 +53,7 @@ ENV DATABASE_PATH=/app/data/mediajam.sqlite
 ENV BODY_SIZE_LIMIT=Infinity
 
 EXPOSE 7331
+EXPOSE 7332
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD node -e "fetch('http://localhost:7331').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"

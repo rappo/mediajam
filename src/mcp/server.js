@@ -12,7 +12,7 @@
  *
  *   SSE (for remote/network access):
  *     MEDIAJAM_URL=http://localhost:7331 MEDIAJAM_API_KEY=your-key node server.js --sse
- *     MEDIAJAM_URL=http://localhost:7331 MEDIAJAM_API_KEY=your-key node server.js --sse --port 3099
+ *     MEDIAJAM_URL=http://localhost:7331 MEDIAJAM_API_KEY=your-key node server.js --sse --port 7332
  *
  *   MCP client config (stdio):
  *   {
@@ -32,7 +32,7 @@
  *   {
  *     "mcpServers": {
  *       "mediajam": {
- *         "url": "http://your-host:3099/sse"
+ *         "url": "http://your-host:7332/sse"
  *       }
  *     }
  *   }
@@ -182,7 +182,7 @@ function createMcpServer() {
 const args = process.argv.slice(2);
 const useSSE = args.includes('--sse');
 const portIdx = args.indexOf('--port');
-const port = portIdx !== -1 ? parseInt(args[portIdx + 1], 10) : 3099;
+const port = portIdx !== -1 ? parseInt(args[portIdx + 1], 10) : 7332;
 const toolCount = modules.reduce((n, m) => n + m.tools.length, 0);
 
 // ── Start ─────────────────────────────────────────────────────────

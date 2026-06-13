@@ -8,6 +8,8 @@ services:
     container_name: mediajam
     ports:
       - 7331:7331
+      # MCP server (enable in Admin Settings → Server → MCP Server)
+      # - 7332:7332
     volumes:
       # Persistent storage for Mediajam's SQLite database
       - /mnt/cache/appdata/mediajam:/app/data

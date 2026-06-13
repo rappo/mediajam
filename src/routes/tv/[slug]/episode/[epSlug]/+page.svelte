@@ -79,9 +79,12 @@
             ...(jf?.officialRating ? [{ label: jf.officialRating }] : []),
         ]}
         stats={[
-            { label: ep.play_count === 1 ? 'play' : 'plays', value: ep.play_count || 0 },
-            ...(data.stats.firstWatched ? [{ label: 'first watched', value: timeAgo(data.stats.firstWatched) }] : []),
-            ...(data.stats.lastWatched && data.stats.totalPlays > 1 ? [{ label: 'last watched', value: timeAgo(data.stats.lastWatched) }] : []),
+            ...(ep.play_count === 1 && data.stats.firstWatched
+                ? [{ label: `watched ${timeAgo(data.stats.firstWatched)}`, value: '' }]
+                : [
+                    ...(ep.play_count > 1 ? [{ label: 'plays', value: ep.play_count }] : []),
+                    ...(data.stats.lastWatched ? [{ label: timeAgo(data.stats.lastWatched), value: '' }] : []),
+                ]),
         ]}
         externalLinks={{
             jellyfin_id: ep.jellyfin_id,

@@ -399,13 +399,19 @@
             favoriteId={data.movie.id}
             heartBorderEnabled={!!data.settings?.heartBorderMovies}
             stats={[
-                { label: data.stats.totalPlays === 1 ? 'play' : 'plays', value: data.stats.totalPlays },
-                ...(data.stats.lastWatched ? [{ label: 'watched', value: timeAgo(data.stats.lastWatched) }] : []),
+                ...(data.stats.totalPlays === 1 && data.stats.lastWatched
+                    ? [{ label: `watched ${timeAgo(data.stats.lastWatched)}`, value: '' }]
+                    : [
+                        ...(data.stats.totalPlays > 1 ? [{ label: 'plays', value: data.stats.totalPlays }] : []),
+                        ...(data.stats.lastWatched ? [{ label: timeAgo(data.stats.lastWatched), value: '' }] : []),
+                    ]),
                 ...(data.movie.community_rating ? [{ label: 'Rating', value: `${data.movie.community_rating} ★` }] : []),
             ]}
             fileInfo={[
                 ...(formatResolution(fileInfo) ? [{ label: 'quality', value: formatResolution(fileInfo) }] : []),
-                ...(hasHDR(fileInfo) ? [{ label: 'hdr', value: 'HDR' }] : []),
+                ...(hasHDR(fileInfo) ? [{ label: 'hdr', value: fileInfo.videoDynamicRangeType || 'HDR' }] : []),
+                ...(fileInfo?.videoCodec ? [{ label: 'codec', value: fileInfo.videoCodec }] : []),
+                ...(fileInfo?.audioCodec ? [{ label: 'audio', value: `${fileInfo.audioCodec}${fileInfo.audioChannels ? ` ${fileInfo.audioChannels}ch` : ''}` }] : []),
                 ...(formatFileSize(fileInfo?.fileSize) ? [{ label: 'size', value: formatFileSize(fileInfo?.fileSize) }] : []),
             ]}
             onFileInfoClick={() => fileInfoExpanded = !fileInfoExpanded}

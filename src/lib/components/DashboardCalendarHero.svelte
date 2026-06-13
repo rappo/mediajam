@@ -3,11 +3,12 @@
 
     let { upcoming = [], onSettingsChange = () => {} } = $props();
 
-    let calendarDays = $state(14);
+    let calendarDays = $state(7);
     let activeTypes = $state(['movie', 'show', 'artist']);
     /** @type {Set<string>} */
     let expandedDays = $state(new Set());
     const MAX_VISIBLE = 3;
+    const MAX_CARDS = 7;
 
     const typeLabels = [
         { key: 'show', label: 'TV', icon: '📺', colorVar: '--color-tv' },
@@ -22,10 +23,22 @@
         }))
     );
 
+    /** Cap total cards across all days to MAX_CARDS */
+    let cappedDays = $derived.by(() => {
+        let total = 0;
+        return filteredDays.map(day => {
+            if (total >= MAX_CARDS) return { ...day, items: [] };
+            const remaining = MAX_CARDS - total;
+            const items = day.items.slice(0, remaining);
+            total += items.length;
+            return { ...day, items };
+        });
+    });
+
     let weekRows = $derived.by(() => {
         const rows = [];
-        for (let i = 0; i < filteredDays.length; i += 7) {
-            rows.push(filteredDays.slice(i, i + 7));
+        for (let i = 0; i < cappedDays.length; i += 7) {
+            rows.push(cappedDays.slice(i, i + 7));
         }
         return rows;
     });
@@ -79,8 +92,8 @@
 
 <div class="hcal-outer">
     <!-- Ambient glow from first poster -->
-    {#if filteredDays[0]?.items[0]}
-        {@const heroSrc = dayHeroImage(filteredDays[0])}
+    {#if cappedDays[0]?.items[0]}
+        {@const heroSrc = dayHeroImage(cappedDays[0])}
         {#if heroSrc}
             <div class="hcal-glow" style="background-image: url('{heroSrc}')"></div>
         {/if}
@@ -193,6 +206,7 @@
         border-radius: 1rem;
         overflow: hidden;
         isolation: isolate;
+        margin-bottom: 1rem;
     }
     .hcal-glow {
         position: absolute;
@@ -456,16 +470,15 @@
 
     /* ══════════════ SHOW MORE ══════════════ */
     .hcal-show-more {
-        display: block;
-        width: 100%;
-        margin-top: 0.6rem;
-        padding: 0.4rem;
-        font-size: 0.7rem;
+        display: inline-block;
+        margin-top: 0.4rem;
+        padding: 0.2rem 0.7rem;
+        font-size: 0.65rem;
         font-weight: 600;
-        color: oklch(var(--bc) / 0.5);
+        color: oklch(var(--bc) / 0.4);
         background: transparent;
         border: 1px dashed oklch(var(--bc) / 0.1);
-        border-radius: 0.5rem;
+        border-radius: 999px;
         cursor: pointer;
         transition: all 0.15s;
     }
