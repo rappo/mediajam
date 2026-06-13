@@ -191,7 +191,7 @@
     }
 
     function handleManualSearch() {
-        searchDialog?.open?.();
+        searchDialog?.show?.();
     }
 
     async function onArrAdded() {

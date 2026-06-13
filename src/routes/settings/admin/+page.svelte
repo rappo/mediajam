@@ -326,6 +326,9 @@
         arrDefaultRootFolder: { radarr: '', sonarr: '', lidarr: '' },
         arrDefaultMonitor: { radarr: 'movieOnly', sonarr: 'all', lidarr: 'all' },
         arrSkipDialog: { radarr: false, sonarr: false, lidarr: false },
+        // MCP
+        mcpEnabled: !!data.settings.mcpEnabled,
+        mcpPort: data.settings.mcpPort || 7332,
     });
 
     let saving = $state(false);
@@ -367,7 +370,9 @@
             JSON.stringify(arrDefaultQualityProfileId) !== JSON.stringify(initialValues.arrDefaultQualityProfileId) ||
             JSON.stringify(arrDefaultRootFolder) !== JSON.stringify(initialValues.arrDefaultRootFolder) ||
             JSON.stringify(arrDefaultMonitor) !== JSON.stringify(initialValues.arrDefaultMonitor) ||
-            JSON.stringify(arrSkipDialog) !== JSON.stringify(initialValues.arrSkipDialog),
+            JSON.stringify(arrSkipDialog) !== JSON.stringify(initialValues.arrSkipDialog) ||
+            mcpEnabled !== initialValues.mcpEnabled ||
+            mcpPort !== initialValues.mcpPort,
     );
 
     // ─── Undo Toast ──────────────────────────────────────────────────────────────
@@ -503,6 +508,8 @@
             arrDefaultRootFolder: { ...arrDefaultRootFolder },
             arrDefaultMonitor: { ...arrDefaultMonitor },
             arrSkipDialog: { ...arrSkipDialog },
+            mcpEnabled,
+            mcpPort,
         };
     }
 
@@ -542,6 +549,8 @@
         if (snapshot.arrDefaultRootFolder) arrDefaultRootFolder = { ...snapshot.arrDefaultRootFolder };
         if (snapshot.arrDefaultMonitor) arrDefaultMonitor = { ...snapshot.arrDefaultMonitor };
         if (snapshot.arrSkipDialog) arrSkipDialog = { ...snapshot.arrSkipDialog };
+        if (snapshot.mcpEnabled != null) mcpEnabled = snapshot.mcpEnabled;
+        if (snapshot.mcpPort != null) mcpPort = snapshot.mcpPort;
     }
 
     // ─── Validation ──────────────────────────────────────────────────────────────

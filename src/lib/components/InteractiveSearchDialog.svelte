@@ -164,9 +164,16 @@
     function formatAge(days) {
         if (days == null) return '—';
         if (days === 0) return 'today';
-        if (days === 1) return '1 day';
-        if (days < 365) return `${days}d`;
-        return `${Math.floor(days / 365)}y ${days % 365}d`;
+        if (days === 1) return '1d';
+        if (days < 30) return `${days}d`;
+        if (days < 365) {
+            const months = Math.floor(days / 30);
+            const remainDays = days % 30;
+            return remainDays > 0 ? `${months}mo ${remainDays}d` : `${months}mo`;
+        }
+        const years = Math.floor(days / 365);
+        const remainMonths = Math.floor((days % 365) / 30);
+        return remainMonths > 0 ? `${years}y ${remainMonths}mo` : `${years}y`;
     }
 </script>
 
