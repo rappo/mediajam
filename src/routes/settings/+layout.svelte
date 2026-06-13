@@ -39,7 +39,7 @@
                 { tab: "sync", label: "Data Sync" },
                 { tab: "cleanup", label: "Data Clean-up" },
                 { href: "/settings/backups", label: "Backups" },
-                { href: "/settings/audit", label: "Audit" },
+
                 { href: "/settings/pipeline", label: "Pipeline" },
             ],
         },

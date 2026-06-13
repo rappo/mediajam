@@ -27,6 +27,7 @@
 
 {#if items.length > 0}
     <div class="poster-section">
+        {#if title}
         <div class="poster-title-row">
             <h3 class="poster-section-title">{title}</h3>
             {#if timeFilter}
@@ -37,6 +38,7 @@
                 </select>
             {/if}
         </div>
+        {/if}
         <div class="poster-row-wrapper">
             {#if canScrollLeft}
                 <button class="poster-scroll-btn left" onclick={() => scrollBy(-1)}>‹</button>

@@ -2323,54 +2323,6 @@ paths:
         '200':
           description: LLM availability status
 
-  # ── Audit ───────────────────────────────────────────────────────
-  /api/audit:
-    get:
-      tags: [Debug]
-      summary: List available audit files
-      responses:
-        '200':
-          description: Audit file list
-    post:
-      tags: [Debug]
-      summary: Run a data audit
-      responses:
-        '200':
-          $ref: '#/components/responses/SSEStream'
-
-  /api/audit/compare:
-    post:
-      tags: [Debug]
-      summary: Compare two audit snapshots
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [before, after]
-              properties:
-                before: { type: string, description: Filename of the 'before' audit snapshot }
-                after: { type: string, description: Filename of the 'after' audit snapshot }
-      responses:
-        '200':
-          description: Audit comparison results
-        '400':
-          description: Missing before or after filenames
-
-  /api/audit/{filename}:
-    get:
-      tags: [Debug]
-      summary: Get a specific audit file
-      parameters:
-        - name: filename
-          in: path
-          required: true
-          schema: { type: string }
-      responses:
-        '200':
-          description: Audit file contents
-
   # ── Arr Wanted ──────────────────────────────────────────────────
   /api/arr/wanted:
     get:

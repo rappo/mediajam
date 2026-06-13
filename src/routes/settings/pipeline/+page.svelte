@@ -19,7 +19,6 @@
     /** @type {Array<{time: string, message: string, type: string}>} */
     let logs = $state([]);
     let runMode = $state('nightly');
-    let auditSnapshot = $state(false);
 
     /** Settings dirty state */
     let saving = $state(false);
@@ -157,7 +156,7 @@
             const res = await fetch('/api/pipeline', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ mode: runMode, audit: auditSnapshot })
+                body: JSON.stringify({ mode: runMode })
             });
 
             if (!res.ok) {
@@ -510,10 +509,6 @@
                         </select>
                     </div>
 
-                    <label class="flex items-center gap-2 cursor-pointer pb-0.5">
-                        <input type="checkbox" class="checkbox checkbox-sm" bind:checked={auditSnapshot} disabled={running} />
-                        <span class="text-sm">Take audit snapshots</span>
-                    </label>
 
                     <div class="flex gap-2">
                         {#if running}

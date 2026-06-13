@@ -26,7 +26,7 @@ export async function GET({ locals }) {
 
 /**
  * POST /api/pipeline — run pipeline with SSE streaming output
- * Body: { mode: 'nightly' | 'weekly', audit?: boolean }
+ * Body: { mode: 'nightly' | 'weekly' }
  */
 export async function POST({ request, locals }) {
     if (!locals.user?.isAdmin) return json({ error: 'Unauthorized' }, { status: 401 });
@@ -37,7 +37,6 @@ export async function POST({ request, locals }) {
 
     const body = await request.json().catch(() => ({}));
     const mode = body.mode === 'weekly' ? 'weekly' : 'nightly';
-    const audit = !!body.audit;
 
     // SSE stream
     const stream = new ReadableStream({
@@ -59,7 +58,7 @@ export async function POST({ request, locals }) {
             });
 
             // Start pipeline in background
-            runPipeline(mode, { audit }).then((result) => {
+            runPipeline(mode).then((result) => {
                 send({ type: 'result', ...result });
                 removeListener();
                 try { controller.close(); } catch { /* already closed */ }

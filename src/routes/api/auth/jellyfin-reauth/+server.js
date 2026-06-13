@@ -36,6 +36,7 @@ export async function POST({ request, locals }) {
 
         // Store fresh token and clear invalid flag
         db.prepare('UPDATE users SET jellyfin_access_token = ? WHERE id = ?').run(accessToken, user.id);
+        db.prepare("UPDATE user_identities SET access_token = ? WHERE user_id = ? AND provider = 'jellyfin'").run(accessToken, user.id);
         db.prepare("UPDATE app_settings SET jellyfin_auth_status = 'ok' WHERE id = 1").run();
 
         console.log(`[auth] Jellyfin token refreshed for user ${user.username}`);
