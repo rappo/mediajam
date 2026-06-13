@@ -739,6 +739,53 @@ export async function startSync(libraryId = null, force = false) {
                                     logInfo('sync', `Merged external-only entry for ${item.Name} (DB id=${staleParent.id}) with Jellyfin ${item.Id}`);
                                 }
                             }
+                        } else {
+                            // ── Pre-merge: Jellyfin row exists, but incoming external IDs may clash ──
+                            // When Jellyfin metadata is corrected (e.g. tmdb_id added/changed),
+                            // ON CONFLICT(jellyfin_id) DO UPDATE would set tmdb_id on our row, but
+                            // if a DIFFERENT row already holds that (tmdb_id, media_type), the UNIQUE
+                            // constraint fires. Pre-absorb the conflicting row before the upsert.
+                            const currentId = existingByJellyfinId.id;
+
+                            const externalIdChecks = [
+                                { field: 'tmdb_id', value: parentParams.tmdbId, label: 'TMDB' },
+                                { field: 'imdb_id', value: parentParams.imdbId, label: 'IMDb' },
+                            ];
+
+                            for (const { field, value, label } of externalIdChecks) {
+                                if (!value) continue;
+                                const conflicting = /** @type {any} */ (db.prepare(
+                                    `SELECT id, jellyfin_id, title FROM media_parents WHERE ${field} = ? AND media_type = ? AND id != ? LIMIT 1`
+                                ).get(value, parentParams.mediaType, currentId));
+                                if (!conflicting) continue;
+
+                                // Another row holds this external ID — absorb it
+                                try {
+                                    // Migrate children
+                                    const moved = db.prepare(
+                                        'UPDATE media_children SET parent_id = ? WHERE parent_id = ?'
+                                    ).run(currentId, conflicting.id);
+                                    // Delete source person_credits
+                                    db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?')
+                                        .run(conflicting.id);
+                                    // Adopt slug and migrate ratings
+                                    adoptSlug('media_parents', conflicting.id, currentId);
+                                    migrateRatings(conflicting.id, currentId);
+                                    // Delete conflicting row
+                                    db.prepare('DELETE FROM media_parents WHERE id = ?').run(conflicting.id);
+
+                                    broadcast({
+                                        type: 'progress',
+                                        log: `🔀 ${item.Name}: absorbed conflicting ${label} entry "${conflicting.title}" (id=${conflicting.id}, moved ${moved.changes} children)`,
+                                        logType: 'info'
+                                    });
+                                    logInfo('sync', `Pre-merge: absorbed ${label} entry id=${conflicting.id} ("${conflicting.title}") into Jellyfin entry id=${currentId} for ${item.Name}`);
+                                } catch (mergeErr) {
+                                    const mergeErrStr = mergeErr instanceof Error ? mergeErr.message : String(mergeErr);
+                                    broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: ${label} pre-merge failed: ${mergeErrStr}`, logType: 'warning' });
+                                    logWarn('sync', `${label} pre-merge failed for ${item.Name}: ${mergeErrStr}`);
+                                }
+                            }
                         }
 
                         upsertParent.run(parentParams);
