@@ -52,13 +52,12 @@ export async function GET({ url, locals }) {
         return result;
     };
 
-    const [trendingMovies, trendingShows, recommended, upcoming, libSizes, incomingData] = await Promise.all([
+    const [trendingMovies, trendingShows, recommended, upcoming, libSizes] = await Promise.all([
         timedAsync('getTrendingMovies', () => getTrendingMovies(genreProfile, 20)),
         timedAsync('getTrendingShows', () => getTrendingShows(genreProfile, 20)),
         timedAsync('getSmartRecommendations', () => getSmartRecommendations(userId, 20)),
         timedAsync('getUpcomingDays', () => getUpcomingDays(calendarDays, calendarTypes)),
         timedAsync('getLibrarySizes', () => getLibrarySizes()),
-        timedAsync('getIncoming', () => fetchIncomingForDashboard()),
     ]);
     console.log(`[dashboard] parallel block: ${(performance.now() - tParallel).toFixed(0)}ms`);
 
@@ -144,73 +143,5 @@ export async function GET({ url, locals }) {
         newAlbums,
         recentlyPlayedAlbums,
         recentlyAdded,
-        incoming: incomingData?.items || [],
-        incomingSummary: incomingData?.summary || null,
-        arrHealth: incomingData?.health || null,
     });
-}
-
-/**
- * Fetch incoming/wanted data for the dashboard.
- * Calls the internal wanted API and builds arr health from the summary.
- */
-async function fetchIncomingForDashboard() {
-    try {
-        const settings = /** @type {any} */ (db.prepare(
-            `SELECT sonarr_url, sonarr_api_key, radarr_url, radarr_api_key, lidarr_url, lidarr_api_key FROM app_settings WHERE id = 1`
-        ).get());
-
-        // Check if any arr service is configured
-        const hasArr = (settings?.sonarr_api_key && settings?.sonarr_url) ||
-                       (settings?.radarr_api_key && settings?.radarr_url) ||
-                       (settings?.lidarr_api_key && settings?.lidarr_url);
-        if (!hasArr) return null;
-
-        // Fetch wanted data via internal HTTP call (reuses caching)
-        const baseUrl = `http://localhost:${process.env.PORT || 3000}`;
-        const apiKey = db.prepare('SELECT api_key FROM users WHERE is_admin = 1 LIMIT 1').get()?.api_key;
-        if (!apiKey) return null;
-
-        const res = await fetch(`${baseUrl}/api/arr/wanted`, {
-            headers: { 'Authorization': `Bearer ${apiKey}` },
-            signal: AbortSignal.timeout(20000),
-        });
-        if (!res.ok) return null;
-        const data = await res.json();
-
-        // Build arr health from summary
-        const health = {
-            services: [],
-            totalWanted: data.summary?.totalItems || 0,
-        };
-
-        // Per-service health
-        const serviceConfigs = [
-            { key: 'sonarr', name: 'Sonarr', color: '0.65 0.17 250', hasConfig: !!settings?.sonarr_api_key },
-            { key: 'radarr', name: 'Radarr', color: '0.72 0.18 40', hasConfig: !!settings?.radarr_api_key },
-            { key: 'lidarr', name: 'Lidarr', color: '0.70 0.17 145', hasConfig: !!settings?.lidarr_api_key },
-        ];
-
-        for (const svc of serviceConfigs) {
-            if (!svc.hasConfig) continue;
-            const wantedCount = data.summary?.byService?.[svc.key] || 0;
-            const failedCount = (data.items || []).filter(i => i.service === svc.key && i.reason === 'failed').length;
-            const queueCount = (data.items || []).filter(i => i.service === svc.key && i.reason === 'in_queue').length;
-
-            health.services.push({
-                key: svc.key,
-                name: svc.name,
-                color: svc.color,
-                wanted: wantedCount,
-                failed: failedCount,
-                queue: queueCount,
-                status: failedCount > 0 ? 'warning' : 'ok',
-            });
-        }
-
-        return { items: data.items || [], summary: data.summary, health };
-    } catch (e) {
-        console.error('[dashboard] incoming fetch failed:', e.message);
-        return null;
-    }
 }

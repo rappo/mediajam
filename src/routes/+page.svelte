@@ -11,6 +11,7 @@
     let loading = $state(true);
     let dash = $state(null);
     let error = $state(null);
+    let incomingRaw = $state(null); // { items, summary } from /api/arr/wanted
 
     // Calendar settings
     let calendarDays = $state(7);
@@ -32,10 +33,20 @@
             if (!res.ok) throw new Error('Failed to load dashboard');
             dash = await res.json();
             loading = false;
+            // Fire-and-forget: fetch incoming data from arr wanted endpoint
+            fetchIncoming();
         } catch (e) {
             error = e.message;
             loading = false;
         }
+    }
+
+    async function fetchIncoming() {
+        try {
+            const res = await fetch('/api/arr/wanted');
+            if (!res.ok) return;
+            incomingRaw = await res.json();
+        } catch { /* silent — arr services may not be configured */ }
     }
 
     async function refreshCalendar(settings) {
@@ -171,7 +182,7 @@
     // Incoming (wanted/missing) items
     let incomingFilter = $state('all'); // 'all' | 'show' | 'movie' | 'artist'
     let incomingAll = $derived(
-        (dash?.incoming || []).map(item => {
+        (incomingRaw?.items || []).map(item => {
             const mediaType = item.type === 'movie' ? 'movies' : item.type === 'show' ? 'tv' : 'music';
             // Build badge
             let badge = item.reasonLabel || '';
@@ -223,6 +234,29 @@
         show: incomingAll.filter(m => m.media_type === 'show').length,
         movie: incomingAll.filter(m => m.media_type === 'movie').length,
         artist: incomingAll.filter(m => m.media_type === 'artist').length,
+    });
+
+    // Arr Health — derived from incoming raw data
+    const arrServiceConfigs = [
+        { key: 'sonarr', name: 'Sonarr', color: '0.65 0.17 250' },
+        { key: 'radarr', name: 'Radarr', color: '0.72 0.18 40' },
+        { key: 'lidarr', name: 'Lidarr', color: '0.70 0.17 145' },
+    ];
+    let arrHealth = $derived.by(() => {
+        if (!incomingRaw?.summary?.byService) return [];
+        return arrServiceConfigs
+            .filter(svc => (incomingRaw.summary.byService[svc.key] ?? -1) >= 0 ||
+                           (incomingRaw.items || []).some(i => i.service === svc.key))
+            .map(svc => {
+                const items = incomingRaw.items || [];
+                return {
+                    ...svc,
+                    wanted: incomingRaw.summary.byService[svc.key] || 0,
+                    queue: items.filter(i => i.service === svc.key && i.reason === 'in_queue').length,
+                    failed: items.filter(i => i.service === svc.key && i.reason === 'failed').length,
+                    status: items.some(i => i.service === svc.key && i.reason === 'failed') ? 'warning' : 'ok',
+                };
+            });
     });
 
     let newAlbumItems = $derived(
@@ -446,9 +480,9 @@
         </div>
 
         <!-- Arr Health Bar -->
-        {#if dash.arrHealth?.services?.length > 0}
+        {#if arrHealth.length > 0}
             <div class="dash-stats-bar arr-health-bar">
-                {#each dash.arrHealth.services as svc, i}
+                {#each arrHealth as svc, i}
                     {#if i > 0}
                         <div class="stat-cell-divider"></div>
                     {/if}

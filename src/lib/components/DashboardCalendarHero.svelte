@@ -23,12 +23,14 @@
         }))
     );
 
-    /** Cap total cards across all days to MAX_CARDS */
+    /** Cap total cards — scales with number of weeks shown */
     let cappedDays = $derived.by(() => {
+        const weeks = Math.max(1, Math.ceil(calendarDays / 7));
+        const maxCards = MAX_CARDS * weeks;
         let total = 0;
         return filteredDays.map(day => {
-            if (total >= MAX_CARDS) return { ...day, items: [] };
-            const remaining = MAX_CARDS - total;
+            if (total >= maxCards) return { ...day, items: [] };
+            const remaining = maxCards - total;
             const items = day.items.slice(0, remaining);
             total += items.length;
             return { ...day, items };
