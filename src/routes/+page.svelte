@@ -5,6 +5,7 @@
     import PosterRow from "$lib/components/PosterRow.svelte";
     // import DashboardCalendar from "$lib/components/DashboardCalendar.svelte";
     import DashboardCalendarHero from "$lib/components/DashboardCalendarHero.svelte";
+    import MediaTypeFilter from "$lib/components/MediaTypeFilter.svelte";
 
     let { data } = $props();
 
@@ -180,7 +181,7 @@
     );
 
     // Incoming (wanted/missing) items
-    let incomingFilter = $state('all'); // 'all' | 'show' | 'movie' | 'artist'
+    let incomingActiveTypes = $state(['movie', 'show', 'artist']);
     let incomingAll = $derived(
         (incomingRaw?.items || []).map(item => {
             const mediaType = item.type === 'movie' ? 'movies' : item.type === 'show' ? 'tv' : 'music';
@@ -225,16 +226,8 @@
         })
     );
     let incomingItems = $derived(
-        incomingFilter === 'all'
-            ? incomingAll
-            : incomingAll.filter(m => m.media_type === incomingFilter)
+        incomingAll.filter(m => incomingActiveTypes.includes(m.media_type))
     );
-    let incomingCounts = $derived({
-        all: incomingAll.length,
-        show: incomingAll.filter(m => m.media_type === 'show').length,
-        movie: incomingAll.filter(m => m.media_type === 'movie').length,
-        artist: incomingAll.filter(m => m.media_type === 'artist').length,
-    });
 
     // Arr Health — derived from incoming raw data
     const arrServiceConfigs = [
@@ -504,18 +497,7 @@
             <div class="poster-section">
                 <div class="poster-title-row">
                     <h3 class="poster-section-title">📡 Incoming</h3>
-                    <div class="media-type-chips">
-                        <button class="media-chip" class:active={incomingFilter === 'all'} onclick={() => incomingFilter = 'all'}>All ({incomingCounts.all})</button>
-                        {#if incomingCounts.show > 0}
-                            <button class="media-chip chip-tv" class:active={incomingFilter === 'show'} onclick={() => incomingFilter = 'show'}>📺 TV ({incomingCounts.show})</button>
-                        {/if}
-                        {#if incomingCounts.movie > 0}
-                            <button class="media-chip chip-movie" class:active={incomingFilter === 'movie'} onclick={() => incomingFilter = 'movie'}>🎬 Movies ({incomingCounts.movie})</button>
-                        {/if}
-                        {#if incomingCounts.artist > 0}
-                            <button class="media-chip chip-music" class:active={incomingFilter === 'artist'} onclick={() => incomingFilter = 'artist'}>🎵 Music ({incomingCounts.artist})</button>
-                        {/if}
-                    </div>
+                    <MediaTypeFilter activeTypes={incomingActiveTypes} onchange={(types) => incomingActiveTypes = types} />
                 </div>
             </div>
             <PosterRow title="" items={incomingItems} />

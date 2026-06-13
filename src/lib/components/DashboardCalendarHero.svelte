@@ -1,5 +1,6 @@
 <script>
     import { imgUrl } from "$lib/utils.js";
+    import MediaTypeFilter from "$lib/components/MediaTypeFilter.svelte";
 
     let { upcoming = [], onSettingsChange = () => {} } = $props();
 
@@ -9,12 +10,6 @@
     let expandedDays = $state(new Set());
     const MAX_VISIBLE = 3;
     const MAX_CARDS = 7;
-
-    const typeLabels = [
-        { key: 'show', label: 'TV', icon: '📺', colorVar: '--color-tv' },
-        { key: 'movie', label: 'Movies', icon: '🎬', colorVar: '--color-movies' },
-        { key: 'artist', label: 'Music', icon: '🎵', colorVar: '--color-music' },
-    ];
 
     let filteredDays = $derived(
         upcoming.map(day => ({
@@ -58,14 +53,8 @@
         return imgUrl(withPoster[0].display_poster || withPoster[0].poster_url);
     }
 
-    function onTypeChange(type, checked) {
-        if (checked) {
-            activeTypes = [...activeTypes, type];
-        } else {
-            if (activeTypes.length > 1) {
-                activeTypes = activeTypes.filter(t => t !== type);
-            }
-        }
+    function onTypesChanged(types) {
+        activeTypes = types;
         onSettingsChange({ calendarDays, calendarTypes: activeTypes });
     }
 
@@ -109,19 +98,7 @@
                 <h3 class="hcal-title">Upcoming · {rangeLabel}</h3>
             </div>
             <div class="hcal-header-right">
-                <form class="hcal-filter">
-                    {#each typeLabels as { key, label, icon, colorVar }}
-                        <input
-                            class="btn btn-xs hcal-filter-btn"
-                            type="checkbox"
-                            name="media-types"
-                            aria-label="{icon} {label}"
-                            checked={activeTypes.includes(key)}
-                            onchange={(e) => onTypeChange(key, e.target.checked)}
-                            style="--filter-color: oklch(var({colorVar})); {activeTypes.includes(key) ? `background: oklch(var(${colorVar}) / 0.18); color: oklch(var(${colorVar})); border-color: oklch(var(${colorVar}) / 0.5);` : `opacity: 0.35; border-color: oklch(var(${colorVar}) / 0.15);`}"
-                        />
-                    {/each}
-                </form>
+                <MediaTypeFilter {activeTypes} onchange={onTypesChanged} />
                 <a href="/calendar" class="hcal-link">Calendar →</a>
             </div>
         </div>
@@ -271,16 +248,6 @@
     .hcal-link:hover {
         background: oklch(var(--p) / 0.1);
         border-color: oklch(var(--p) / 0.4);
-    }
-
-    /* ══════════════ FILTER ══════════════ */
-    .hcal-filter {
-        display: flex;
-        gap: 0.25rem;
-        align-items: center;
-    }
-    .hcal-filter-btn {
-        transition: all 0.2s ease !important;
     }
 
     /* ══════════════ DAY STRIP ══════════════ */
