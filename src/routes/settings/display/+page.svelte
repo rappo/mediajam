@@ -123,6 +123,7 @@
     let calendarShowMovies = $state(data.settings.calendarShowMovies ?? true);
     let calendarShowShows = $state(data.settings.calendarShowShows ?? true);
     let calendarShowMusic = $state(data.settings.calendarShowMusic ?? true);
+    let calendarMaxPerDay = $state(data.settings.calendarMaxPerDay ?? 2);
     let savingCalendar = $state(false);
 
     async function saveCalendarSettings() {
@@ -134,6 +135,7 @@
                 calendar_show_movies: calendarShowMovies ? 1 : 0,
                 calendar_show_shows: calendarShowShows ? 1 : 0,
                 calendar_show_music: calendarShowMusic ? 1 : 0,
+                calendar_max_per_day: calendarMaxPerDay,
             }),
         });
         savingCalendar = false;
@@ -299,6 +301,23 @@
                         disabled={savingCalendar}
                     />
                     <span class="label-text">🎵 Music / Albums</span>
+                </label>
+            </div>
+            <div class="divider my-1"></div>
+            <div class="form-control">
+                <label class="label cursor-pointer justify-start gap-3">
+                    <span class="label-text">Events per day</span>
+                    <select
+                        class="select select-bordered select-sm w-20"
+                        bind:value={calendarMaxPerDay}
+                        onchange={saveCalendarSettings}
+                        disabled={savingCalendar}
+                    >
+                        {#each [1, 2, 3, 4, 5] as n}
+                            <option value={n}>{n}</option>
+                        {/each}
+                    </select>
+                    <span class="text-xs text-base-content/50">shown before "show more"</span>
                 </label>
             </div>
         </div>

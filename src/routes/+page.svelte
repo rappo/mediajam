@@ -506,7 +506,7 @@
         <!-- Calendar -->
         {#if dash.upcoming}
             <!-- <DashboardCalendar upcoming={dash.upcoming} onSettingsChange={refreshCalendar} /> -->
-            <DashboardCalendarHero upcoming={dash.upcoming} onSettingsChange={refreshCalendar} />
+            <DashboardCalendarHero upcoming={dash.upcoming} onSettingsChange={refreshCalendar} maxPerDay={data.settings.calendarMaxPerDay ?? 2} />
         {/if}
 
         <!-- Recently Added -->

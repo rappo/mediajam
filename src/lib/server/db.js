@@ -497,6 +497,7 @@ const newAppCols = [
     ['calendar_show_movies', 'INTEGER DEFAULT 1'],
     ['calendar_show_shows', 'INTEGER DEFAULT 1'],
     ['calendar_show_music', 'INTEGER DEFAULT 1'],
+    ['calendar_max_per_day', 'INTEGER DEFAULT 2'],
     // MCP server
     ['mcp_enabled', 'INTEGER DEFAULT 0'],
     ['mcp_port', 'INTEGER DEFAULT 7332'],

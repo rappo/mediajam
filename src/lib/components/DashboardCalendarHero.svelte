@@ -2,13 +2,13 @@
     import { imgUrl } from "$lib/utils.js";
     import MediaTypeFilter from "$lib/components/MediaTypeFilter.svelte";
 
-    let { upcoming = [], onSettingsChange = () => {} } = $props();
+    let { upcoming = [], onSettingsChange = () => {}, maxPerDay = 2 } = $props();
 
     let calendarDays = $state(7);
     let activeTypes = $state(['movie', 'show', 'artist']);
     /** @type {Set<string>} */
     let expandedDays = $state(new Set());
-    const MAX_VISIBLE = 3;
+    const MAX_VISIBLE = maxPerDay;
 
     let filteredDays = $derived(
         upcoming.map(day => ({
