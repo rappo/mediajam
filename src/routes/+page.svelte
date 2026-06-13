@@ -132,6 +132,15 @@
         }))
     );
 
+    let watchlistItems = $derived(
+        (dash?.watchlist || []).map(m => ({
+            href: `/${m.media_type === 'show' ? 'tv' : m.media_type === 'artist' ? 'music' : 'movies'}/${m.slug || m.id}`,
+            title: m.title,
+            subtitle: String(m.release_year || ''),
+            poster_url: m.poster_url,
+        }))
+    );
+
     let actorUnwatchedItems = $derived(
         (dash?.actorDeepDive?.unwatched || []).map(m => ({
             href: m.href || `/movies/${m.slug || m.id}`,
@@ -159,8 +168,19 @@
             : recentlyAddedAll.filter(m => m.media_type === recentlyAddedFilter)
     );
 
-    let hotAlbumItems = $derived(
-        (dash?.hotAlbums || []).map(a => ({
+    let newAlbumItems = $derived(
+        (dash?.newAlbums || []).map(a => ({
+            href: a.href,
+            title: a.title,
+            subtitle: a.subtitle,
+            poster_url: a.poster_url,
+            badge: a.badge,
+            icon: a.icon,
+        }))
+    );
+
+    let recentlyPlayedItems = $derived(
+        (dash?.recentlyPlayedAlbums || []).map(a => ({
             href: a.href,
             title: a.title,
             subtitle: a.subtitle,
@@ -450,9 +470,19 @@
             </div>
         {/if}
 
-        <!-- Hot Albums -->
-        {#if hotAlbumItems.length > 0}
-            <PosterRow title="🎵 Hot Albums" items={hotAlbumItems} square />
+        <!-- Watchlist -->
+        {#if watchlistItems.length > 0}
+            <PosterRow title="📋 Your Watchlist" items={watchlistItems} />
+        {/if}
+
+        <!-- Recently Played Albums -->
+        {#if recentlyPlayedItems.length > 0}
+            <PosterRow title="🎵 Recently Played" items={recentlyPlayedItems} square />
+        {/if}
+
+        <!-- New Albums -->
+        {#if newAlbumItems.length > 0}
+            <PosterRow title="💿 New Albums" items={newAlbumItems} square />
         {/if}
 
     {/if}

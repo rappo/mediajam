@@ -228,17 +228,23 @@ export function getActorDeepDive(userId) {
         const idx = seed % pool.length;
         const actor = pool[idx];
 
-        // Get unwatched films by this actor
+        // Get unwatched films by this actor (check both watch_status AND playback_history)
         const unwatched = /** @type {any[]} */ (db.prepare(`
-            SELECT mp.id, mp.title, mp.poster_url, mp.release_year, mp.slug, mp.tmdb_id,
-                   mc.watch_status
+            SELECT DISTINCT mp.id, mp.title, mp.poster_url, mp.release_year, mp.slug, mp.tmdb_id
             FROM person_credits pc
             JOIN media_parents mp ON pc.media_parent_id = mp.id
-            LEFT JOIN media_children mc ON mc.parent_id = mp.id
             WHERE pc.person_id = ? AND pc.role_type = 'actor' AND mp.media_type = 'movie'
-              AND (mc.watch_status IS NULL OR mc.watch_status != 'watched')
+              AND NOT EXISTS (
+                SELECT 1 FROM media_children mc2
+                WHERE mc2.parent_id = mp.id AND mc2.watch_status = 'watched'
+              )
+              AND NOT EXISTS (
+                SELECT 1 FROM media_children mc3
+                JOIN playback_history ph ON ph.media_id = mc3.id
+                WHERE mc3.parent_id = mp.id AND ph.user_id = ?
+              )
             ORDER BY mp.release_year DESC
-        `).all(actor.id));
+        `).all(actor.id, userId));
 
         // Total films count for this actor
         const totalRow = db.prepare(`

@@ -65,32 +65,68 @@ export async function GET({ url, locals }) {
     const tLocal = performance.now();
     const stats = { ...getLibraryStats(), ...libSizes };
     const greeting = getGreeting();
-    const watchlist = getWatchlistItems(userId, 10);
+    const watchlist = getWatchlistItems(userId, 20);
     const actorDeepDive = getActorDeepDive(userId);
     const recentlyAdded = getRecentlyAdded(20);
     console.log(`[dashboard] local SQLite queries: ${(performance.now() - tLocal).toFixed(0)}ms`);
 
-    // Hot albums — most-played albums in the library
-    let hotAlbums = [];
+    // New Albums — recently released albums in the library
+    let newAlbums = [];
+    let recentlyPlayedAlbums = [];
     try {
-        hotAlbums = /** @type {any[]} */ (db.prepare(`
+        // Recently played albums (by playback history)
+        recentlyPlayedAlbums = /** @type {any[]} */ (db.prepare(`
             SELECT mc.id, mc.title, mc.poster_url, mc.play_count,
-                   mp.id as artist_id, mp.title as artist_name, mp.poster_url as artist_poster, mp.slug as artist_slug
-            FROM media_children mc
+                   mp.id as artist_id, mp.title as artist_name, mp.poster_url as artist_poster, mp.slug as artist_slug,
+                   MAX(ph.timestamp) as last_played
+            FROM playback_history ph
+            JOIN media_children mc ON ph.media_id = mc.id
             JOIN media_parents mp ON mc.parent_id = mp.id
             WHERE mp.media_type = 'artist'
-              AND mc.play_count > 0
+              AND ph.user_id = ?
               AND (mc.poster_url IS NOT NULL OR mp.poster_url IS NOT NULL)
-            ORDER BY mc.play_count DESC
+            GROUP BY mc.id
+            ORDER BY last_played DESC
             LIMIT 20
-        `).all()).map(a => ({
+        `).all(userId)).map(a => ({
             href: `/music/${a.artist_slug || a.artist_id}`,
             title: a.title,
             subtitle: a.artist_name,
             poster_url: a.poster_url || a.artist_poster,
             badge: `${a.play_count} plays`,
             icon: '🎵',
+            _id: a.id,
         }));
+
+        // Build set of recently played IDs for de-dup
+        const playedIds = new Set(recentlyPlayedAlbums.map(a => a._id));
+
+        // New albums — recently released, excluding ones already in recently played
+        newAlbums = /** @type {any[]} */ (db.prepare(`
+            SELECT mc.id, mc.title, mc.poster_url, mc.premiere_date,
+                   mp.id as artist_id, mp.title as artist_name, mp.poster_url as artist_poster, mp.slug as artist_slug
+            FROM media_children mc
+            JOIN media_parents mp ON mc.parent_id = mp.id
+            WHERE mp.media_type = 'artist'
+              AND mp.collection_status = 'collected'
+              AND (mc.poster_url IS NOT NULL OR mp.poster_url IS NOT NULL)
+              AND mc.premiere_date IS NOT NULL
+            ORDER BY mc.premiere_date DESC
+            LIMIT 30
+        `).all())
+            .filter(a => !playedIds.has(a.id))
+            .slice(0, 20)
+            .map(a => ({
+                href: `/music/${a.artist_slug || a.artist_id}`,
+                title: a.title,
+                subtitle: a.artist_name,
+                poster_url: a.poster_url || a.artist_poster,
+                badge: a.premiere_date ? new Date(a.premiere_date).getFullYear().toString() : '',
+                icon: '🎵',
+            }));
+
+        // Clean up internal _id from recently played
+        recentlyPlayedAlbums = recentlyPlayedAlbums.map(({ _id, ...rest }) => rest);
     } catch { /* music tables might not exist */ }
 
     console.log(`[dashboard] TOTAL: ${(performance.now() - t0).toFixed(0)}ms`);
@@ -104,7 +140,8 @@ export async function GET({ url, locals }) {
         trendingShows,
         recommended,
         actorDeepDive,
-        hotAlbums,
+        newAlbums,
+        recentlyPlayedAlbums,
         recentlyAdded,
     });
 }
