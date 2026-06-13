@@ -68,7 +68,7 @@ export async function GET({ url, locals }) {
     const greeting = getGreeting();
     const watchlist = getWatchlistItems(userId, 20);
     const actorDeepDive = getActorDeepDive(userId);
-    const recentlyAdded = getRecentlyAdded(20);
+    const recentlyAdded = await getRecentlyAdded(20);
     console.log(`[dashboard] local SQLite queries: ${(performance.now() - tLocal).toFixed(0)}ms`);
 
     // New Albums — recently released albums in the library

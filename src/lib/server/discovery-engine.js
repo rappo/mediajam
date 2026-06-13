@@ -274,11 +274,12 @@ export function getActorDeepDive(userId) {
 }
 
 /**
- * Recently added items to the library.
+ * Recently added media from the local library, merged with arr import history.
  * @param {number} limit
  */
-export function getRecentlyAdded(limit = 20) {
+export async function getRecentlyAdded(limit = 20) {
     try {
+        // 1. Local DB recently added (existing behavior)
         const rows = /** @type {any[]} */ (db.prepare(`
             SELECT mp.id, mp.title, mp.poster_url, mp.media_type, mp.slug, mp.release_year,
                    mp.date_last_modified, mp.play_count
@@ -286,9 +287,10 @@ export function getRecentlyAdded(limit = 20) {
             WHERE mp.collection_status = 'collected'
             ORDER BY mp.date_last_modified DESC
             LIMIT ?
-        `).all(limit));
+        `).all(limit * 2)); // fetch extra for merge headroom
 
-        return rows.map(mp => ({
+        const localItems = rows.map(mp => ({
+            id: mp.id,
             href: `/${mp.media_type === 'artist' ? 'music' : mp.media_type === 'show' ? 'tv' : 'movies'}/${mp.slug}`,
             title: mp.title,
             poster_url: mp.poster_url,
@@ -296,7 +298,153 @@ export function getRecentlyAdded(limit = 20) {
             media_type: mp.media_type,
             icon: mp.media_type === 'movie' ? '🎬' : mp.media_type === 'show' ? '📺' : '🎵',
             badge: mp.play_count > 0 ? '✓ Watched' : null,
+            date: mp.date_last_modified,
+            source: null,
         }));
+
+        // 2. Try to fetch arr import history (last 72h)
+        let arrImports = [];
+        try {
+            const settings = /** @type {any} */ (db.prepare(
+                'SELECT sonarr_url, sonarr_api_key, sonarr_external_url, radarr_url, radarr_api_key, radarr_external_url, lidarr_url, lidarr_api_key, lidarr_external_url FROM app_settings WHERE id = 1'
+            ).get());
+
+            // Build arr_id -> media_parent lookup
+            const arrLookup = new Map();
+            /** @type {any[]} */ (db.prepare(
+                `SELECT id, slug, poster_url, media_type, title, release_year, play_count,
+                        sonarr_id, radarr_id, lidarr_id
+                 FROM media_parents
+                 WHERE sonarr_id IS NOT NULL OR radarr_id IS NOT NULL OR lidarr_id IS NOT NULL`
+            ).all()).forEach(r => {
+                if (r.radarr_id) arrLookup.set(`radarr:${r.radarr_id}`, r);
+                if (r.sonarr_id) arrLookup.set(`sonarr:${r.sonarr_id}`, r);
+                if (r.lidarr_id) arrLookup.set(`lidarr:${r.lidarr_id}`, r);
+            });
+
+            const since = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
+            const importFetches = [];
+
+            // Radarr: eventType=1 = downloadFolderImported
+            if (settings?.radarr_api_key && settings?.radarr_url) {
+                importFetches.push(
+                    arrCalendarFetch(settings.radarr_url, settings.radarr_external_url, settings.radarr_api_key,
+                        `history?page=1&pageSize=50&sortKey=date&sortDirection=descending&eventType=1`)
+                    .then(data => {
+                        if (!data?.records) return [];
+                        return data.records.filter(r => new Date(r.date) >= new Date(since)).map(r => {
+                            const local = arrLookup.get(`radarr:${r.movieId}`);
+                            if (!local) return null;
+                            const quality = r.quality?.quality?.name || '';
+                            return {
+                                id: local.id,
+                                href: `/movies/${local.slug}`,
+                                title: local.title,
+                                poster_url: local.poster_url,
+                                subtitle: quality || local.release_year,
+                                media_type: 'movie',
+                                icon: '🎬',
+                                badge: local.play_count > 0 ? '✓ Watched' : null,
+                                date: r.date,
+                                source: 'radarr',
+                            };
+                        }).filter(Boolean);
+                    }).catch(() => [])
+                );
+            }
+
+            // Sonarr: eventType=1 = downloadFolderImported
+            if (settings?.sonarr_api_key && settings?.sonarr_url) {
+                importFetches.push(
+                    arrCalendarFetch(settings.sonarr_url, settings.sonarr_external_url, settings.sonarr_api_key,
+                        `history?page=1&pageSize=50&sortKey=date&sortDirection=descending&eventType=1&includeSeries=true`)
+                    .then(data => {
+                        if (!data?.records) return [];
+                        // Group by series to avoid duplicates per-episode
+                        const seen = new Set();
+                        return data.records.filter(r => new Date(r.date) >= new Date(since)).map(r => {
+                            const seriesId = r.seriesId;
+                            if (seen.has(seriesId)) return null;
+                            seen.add(seriesId);
+                            const local = arrLookup.get(`sonarr:${seriesId}`);
+                            if (!local) return null;
+                            const quality = r.quality?.quality?.name || '';
+                            return {
+                                id: local.id,
+                                href: `/tv/${local.slug}`,
+                                title: local.title,
+                                poster_url: local.poster_url,
+                                subtitle: quality || local.release_year,
+                                media_type: 'show',
+                                icon: '📺',
+                                badge: null,
+                                date: r.date,
+                                source: 'sonarr',
+                            };
+                        }).filter(Boolean);
+                    }).catch(() => [])
+                );
+            }
+
+            // Lidarr: eventType=1 = downloadImported
+            if (settings?.lidarr_api_key && settings?.lidarr_url) {
+                importFetches.push(
+                    arrCalendarFetch(settings.lidarr_url, settings.lidarr_external_url, settings.lidarr_api_key,
+                        `history?page=1&pageSize=50&sortKey=date&sortDirection=descending&eventType=1&includeArtist=true`, 'v1')
+                    .then(data => {
+                        if (!data?.records) return [];
+                        const seen = new Set();
+                        return data.records.filter(r => new Date(r.date) >= new Date(since)).map(r => {
+                            const artistId = r.artistId;
+                            if (seen.has(artistId)) return null;
+                            seen.add(artistId);
+                            const local = arrLookup.get(`lidarr:${artistId}`);
+                            if (!local) return null;
+                            return {
+                                id: local.id,
+                                href: `/music/${local.slug}`,
+                                title: local.title,
+                                poster_url: local.poster_url,
+                                subtitle: local.release_year,
+                                media_type: 'artist',
+                                icon: '🎵',
+                                badge: null,
+                                date: r.date,
+                                source: 'lidarr',
+                            };
+                        }).filter(Boolean);
+                    }).catch(() => [])
+                );
+            }
+
+            if (importFetches.length > 0) {
+                const results = await Promise.all(importFetches);
+                arrImports = results.flat();
+            }
+        } catch (e) {
+            console.error('[discovery-engine] arr import history fetch failed:', e?.message || e);
+        }
+
+        // 3. Merge + dedup (local items take priority, arr imports fill gaps)
+        const seenIds = new Set();
+        const merged = [];
+
+        // Combine all items and sort by date descending
+        const all = [...localItems, ...arrImports].sort((a, b) => {
+            const da = a.date ? new Date(a.date).getTime() : 0;
+            const db = b.date ? new Date(b.date).getTime() : 0;
+            return db - da;
+        });
+
+        for (const item of all) {
+            if (seenIds.has(item.id)) continue;
+            seenIds.add(item.id);
+            merged.push(item);
+            if (merged.length >= limit) break;
+        }
+
+        // Strip internal fields
+        return merged.map(({ id, date, source, ...rest }) => ({ ...rest, source }));
     } catch (err) {
         console.error('[discovery-engine] getRecentlyAdded error:', err?.message || err);
         return [];
