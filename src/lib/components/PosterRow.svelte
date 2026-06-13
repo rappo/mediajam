@@ -63,7 +63,7 @@
                             {/if}
                         </div>
                         {#if item.badge}
-                            <span class="poster-badge">{item.badge}</span>
+                            <span class="poster-badge {item.badgeClass || ''}">{item.badge}</span>
                         {/if}
                     </a>
                 {/each}
@@ -204,6 +204,27 @@
         border-radius: 0.25rem;
         background: oklch(var(--p));
         color: oklch(var(--pc));
+    }
+    /* Incoming status badge variants */
+    .poster-badge.badge-queue {
+        background: oklch(0.55 0.18 250);
+        color: #fff;
+    }
+    .poster-badge.badge-failed {
+        background: oklch(0.55 0.22 25);
+        color: #fff;
+    }
+    .poster-badge.badge-missing {
+        background: oklch(0.6 0.18 55);
+        color: #fff;
+    }
+    .poster-badge.badge-unreleased {
+        background: oklch(0.45 0.02 260);
+        color: oklch(0.85 0 0);
+    }
+    .poster-badge.badge-upgrade {
+        background: oklch(0.7 0.17 85);
+        color: oklch(0.25 0 0);
     }
     .poster-scroll-btn {
         position: absolute;

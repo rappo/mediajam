@@ -168,6 +168,63 @@
             : recentlyAddedAll.filter(m => m.media_type === recentlyAddedFilter)
     );
 
+    // Incoming (wanted/missing) items
+    let incomingFilter = $state('all'); // 'all' | 'show' | 'movie' | 'artist'
+    let incomingAll = $derived(
+        (dash?.incoming || []).map(item => {
+            const mediaType = item.type === 'movie' ? 'movies' : item.type === 'show' ? 'tv' : 'music';
+            // Build badge
+            let badge = item.reasonLabel || '';
+            let badgeClass = 'badge-missing';
+            if (item.reason === 'in_queue') {
+                const progress = item.queueInfo?.progress || item.episodes?.find(e => e.queue)?.queue?.progress;
+                badge = progress != null ? `${progress}%` : 'Queued';
+                badgeClass = 'badge-queue';
+            } else if (item.reason === 'failed') {
+                badgeClass = 'badge-failed';
+            } else if (item.reason === 'not_out_yet') {
+                badgeClass = 'badge-unreleased';
+            } else if (item.reason === 'cutoff_unmet') {
+                badgeClass = 'badge-upgrade';
+            } else if (item.reason === 'not_available') {
+                badgeClass = 'badge-missing';
+            }
+            // Build subtitle
+            let subtitle = '';
+            if (item.reason === 'in_queue') {
+                const q = item.queueInfo || item.episodes?.find(e => e.queue)?.queue;
+                subtitle = q?.timeleft ? `ETA ${q.timeleft}` : item.year ? String(item.year) : '';
+            } else if (item.reason === 'failed') {
+                subtitle = item.failureInfo?.message || item.episodes?.find(e => e.failure)?.failure?.message || 'Download failed';
+            } else if (item.missingCount > 1) {
+                subtitle = `${item.missingCount} ${item.type === 'show' ? 'episodes' : 'albums'} missing`;
+            } else {
+                subtitle = item.year ? String(item.year) : '';
+            }
+            return {
+                href: item.slug ? `/${mediaType}/${item.slug}` : null,
+                title: item.title,
+                subtitle,
+                poster_url: item.poster_url,
+                badge,
+                badgeClass,
+                media_type: item.type,
+                icon: item.type === 'movie' ? '🎬' : item.type === 'show' ? '📺' : '🎵',
+            };
+        })
+    );
+    let incomingItems = $derived(
+        incomingFilter === 'all'
+            ? incomingAll
+            : incomingAll.filter(m => m.media_type === incomingFilter)
+    );
+    let incomingCounts = $derived({
+        all: incomingAll.length,
+        show: incomingAll.filter(m => m.media_type === 'show').length,
+        movie: incomingAll.filter(m => m.media_type === 'movie').length,
+        artist: incomingAll.filter(m => m.media_type === 'artist').length,
+    });
+
     let newAlbumItems = $derived(
         (dash?.newAlbums || []).map(a => ({
             href: a.href,
@@ -388,6 +445,48 @@
             </div>
         </div>
 
+        <!-- Arr Health Bar -->
+        {#if dash.arrHealth?.services?.length > 0}
+            <div class="dash-stats-bar arr-health-bar">
+                {#each dash.arrHealth.services as svc, i}
+                    {#if i > 0}
+                        <div class="stat-cell-divider"></div>
+                    {/if}
+                    <div class="stat-cell">
+                        <div class="stat-cell-top">
+                            <span class="arr-health-dot" class:dot-ok={svc.status === 'ok'} class:dot-warn={svc.status === 'warning'}></span>
+                            <span class="stat-cell-value" style="color: oklch({svc.color})">{svc.name}</span>
+                        </div>
+                        <span class="stat-cell-label">
+                            {svc.wanted} wanted{#if svc.queue > 0} · {svc.queue} ↓{/if}{#if svc.failed > 0} · <span class="arr-failed-count">{svc.failed} ✗</span>{/if}
+                        </span>
+                    </div>
+                {/each}
+            </div>
+        {/if}
+
+        <!-- Incoming (Wanted / Missing / Downloading) -->
+        {#if incomingAll.length > 0}
+            <div class="poster-section">
+                <div class="poster-title-row">
+                    <h3 class="poster-section-title">📡 Incoming</h3>
+                    <div class="media-type-chips">
+                        <button class="media-chip" class:active={incomingFilter === 'all'} onclick={() => incomingFilter = 'all'}>All ({incomingCounts.all})</button>
+                        {#if incomingCounts.show > 0}
+                            <button class="media-chip chip-tv" class:active={incomingFilter === 'show'} onclick={() => incomingFilter = 'show'}>📺 TV ({incomingCounts.show})</button>
+                        {/if}
+                        {#if incomingCounts.movie > 0}
+                            <button class="media-chip chip-movie" class:active={incomingFilter === 'movie'} onclick={() => incomingFilter = 'movie'}>🎬 Movies ({incomingCounts.movie})</button>
+                        {/if}
+                        {#if incomingCounts.artist > 0}
+                            <button class="media-chip chip-music" class:active={incomingFilter === 'artist'} onclick={() => incomingFilter = 'artist'}>🎵 Music ({incomingCounts.artist})</button>
+                        {/if}
+                    </div>
+                </div>
+            </div>
+            <PosterRow title="" items={incomingItems} />
+        {/if}
+
         <!-- Calendar -->
         {#if dash.upcoming}
             <!-- <DashboardCalendar upcoming={dash.upcoming} onSettingsChange={refreshCalendar} /> -->
@@ -605,6 +704,28 @@
         .stat-cell-divider {
             display: none;
         }
+    }
+
+    /* ── Arr Health Bar ────────────────────────────────────── */
+    .arr-health-bar {
+        margin-bottom: 0.75rem;
+    }
+    .arr-health-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+    .arr-health-dot.dot-ok {
+        background: oklch(0.72 0.2 145);
+        box-shadow: 0 0 4px oklch(0.72 0.2 145 / 0.5);
+    }
+    .arr-health-dot.dot-warn {
+        background: oklch(0.8 0.18 85);
+        box-shadow: 0 0 4px oklch(0.8 0.18 85 / 0.5);
+    }
+    .arr-failed-count {
+        color: oklch(0.7 0.2 25);
     }
 
     /* ── Hero / Watchlist ───────────────────────────────────── */
