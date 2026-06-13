@@ -9,7 +9,6 @@
     /** @type {Set<string>} */
     let expandedDays = $state(new Set());
     const MAX_VISIBLE = 3;
-    const MAX_CARDS = 7;
 
     let filteredDays = $derived(
         upcoming.map(day => ({
@@ -18,24 +17,10 @@
         }))
     );
 
-    /** Cap total cards — scales with number of weeks shown */
-    let cappedDays = $derived.by(() => {
-        const weeks = Math.max(1, Math.ceil(calendarDays / 7));
-        const maxCards = MAX_CARDS * weeks;
-        let total = 0;
-        return filteredDays.map(day => {
-            if (total >= maxCards) return { ...day, items: [] };
-            const remaining = maxCards - total;
-            const items = day.items.slice(0, remaining);
-            total += items.length;
-            return { ...day, items };
-        });
-    });
-
     let weekRows = $derived.by(() => {
         const rows = [];
-        for (let i = 0; i < cappedDays.length; i += 7) {
-            rows.push(cappedDays.slice(i, i + 7));
+        for (let i = 0; i < filteredDays.length; i += 7) {
+            rows.push(filteredDays.slice(i, i + 7));
         }
         return rows;
     });
@@ -83,8 +68,8 @@
 
 <div class="hcal-outer">
     <!-- Ambient glow from first poster -->
-    {#if cappedDays[0]?.items[0]}
-        {@const heroSrc = dayHeroImage(cappedDays[0])}
+    {#if filteredDays[0]?.items[0]}
+        {@const heroSrc = dayHeroImage(filteredDays[0])}
         {#if heroSrc}
             <div class="hcal-glow" style="background-image: url('{heroSrc}')"></div>
         {/if}
