@@ -1,6 +1,8 @@
 <script>
     /** @type {{ data: any }} */
     let { data } = $props();
+    import MdiIcon from "$lib/components/MdiIcon.svelte";
+    import { mdiAccount, mdiClockOutline, mdiCalendar } from '@mdi/js';
     import { imgUrl } from "$lib/utils.js";
     import MediaDetailHeader from "$lib/components/MediaDetailHeader.svelte";
     import CollectionStatusBanner from "$lib/components/CollectionStatusBanner.svelte";
@@ -39,9 +41,9 @@
     }
 
     const statusConfig = {
-        watched: { icon: "✅", label: "Watched", cls: "badge-success" },
-        in_progress: { icon: "▶️", label: "In Progress", cls: "badge-warning" },
-        unwatched: { icon: "⬜", label: "Unwatched", cls: "badge-ghost" },
+        watched: { icon: "✓", label: "Watched", cls: "badge-success" },
+        in_progress: { icon: "►", label: "In Progress", cls: "badge-warning" },
+        unwatched: { icon: "", label: "Unwatched", cls: "badge-ghost" },
     };
     const status = statusConfig[ep.watch_status] || statusConfig.unwatched;
 
@@ -73,8 +75,8 @@
             { label: `Season ${ep.season_number}` },
             { label: `Episode ${ep.item_number}` },
             ...(ep.is_special ? [{ label: 'Special', cls: 'badge-secondary' }] : []),
-            ...(formatRuntime(ep.runtime_minutes) ? [{ label: `🕐 ${formatRuntime(ep.runtime_minutes)}` }] : []),
-            ...(ep.premiere_date ? [{ label: `📅 ${formatDate(ep.premiere_date)}` }] : []),
+            ...(formatRuntime(ep.runtime_minutes) ? [{ label: formatRuntime(ep.runtime_minutes) }] : []),
+            ...(ep.premiere_date ? [{ label: formatDate(ep.premiere_date) }] : []),
             ...(jf?.communityRating ? [{ label: `★ ${jf.communityRating.toFixed(1)}`, cls: 'badge-warning' }] : []),
             ...(jf?.officialRating ? [{ label: jf.officialRating }] : []),
         ]}
@@ -179,7 +181,7 @@
                         {#if guest.photoUrl}
                             <img src={imgUrl(guest.photoUrl)} alt={guest.name} class="w-10 h-10 rounded-full object-cover shrink-0" />
                         {:else}
-                            <div class="w-10 h-10 rounded-full bg-base-300 flex items-center justify-center text-sm shrink-0">👤</div>
+                            <div class="w-10 h-10 rounded-full bg-base-300 flex items-center justify-center text-sm shrink-0"><MdiIcon icon={mdiAccount} size={16} /></div>
                         {/if}
                         <div class="min-w-0">
                             <div class="font-medium text-sm truncate">{guest.name}</div>
@@ -203,7 +205,7 @@
                         {#if person.photo_url}
                             <img src={imgUrl(person.photo_url)} alt={person.name} class="w-10 h-10 rounded-full object-cover shrink-0" />
                         {:else}
-                            <div class="w-10 h-10 rounded-full bg-base-300 flex items-center justify-center text-sm shrink-0">👤</div>
+                            <div class="w-10 h-10 rounded-full bg-base-300 flex items-center justify-center text-sm shrink-0"><MdiIcon icon={mdiAccount} size={16} /></div>
                         {/if}
                         <div class="min-w-0">
                             <div class="font-medium text-sm truncate">{person.name}</div>
@@ -232,7 +234,7 @@
                         {#if person.photo_url}
                             <img src={imgUrl(person.photo_url)} alt={person.name} class="w-10 h-10 rounded-full object-cover shrink-0" />
                         {:else}
-                            <div class="w-10 h-10 rounded-full bg-base-300 flex items-center justify-center text-sm shrink-0">👤</div>
+                            <div class="w-10 h-10 rounded-full bg-base-300 flex items-center justify-center text-sm shrink-0"><MdiIcon icon={mdiAccount} size={16} /></div>
                         {/if}
                         <div class="min-w-0">
                             <div class="font-medium text-sm truncate">{person.name}</div>

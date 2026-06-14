@@ -5,6 +5,8 @@
     import StatCard from "$lib/components/StatCard.svelte";
     import YearScrubber from "$lib/components/YearScrubber.svelte";
     import Skeleton from "$lib/components/Skeleton.svelte";
+    import MdiIcon from "$lib/components/MdiIcon.svelte";
+    import { mdiPlay, mdiBullseyeArrow, mdiCalendar, mdiTimerSand, mdiFire, mdiMagnify, mdiSortDescending, mdiSortAscending, mdiTelevision, mdiMovieOpen, mdiMusic, mdiPackageVariantRemove } from '@mdi/js';
     import { page } from "$app/stores";
     import { goto } from "$app/navigation";
 
@@ -201,38 +203,43 @@
     {:else}
     <div class="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-8">
         <StatCard
-            icon="▶"
             label="Total Plays"
             value={stats.totalPlays}
             color="primary"
-        />
+        >
+            <MdiIcon icon={mdiPlay} size={16} />
+        </StatCard>
         <StatCard
-            icon="🎯"
             label="Unique Items"
             value={stats.uniqueItems}
             color="secondary"
-        />
+        >
+            <MdiIcon icon={mdiBullseyeArrow} size={16} />
+        </StatCard>
         <StatCard
-            icon="📅"
             label="Active Days"
             value={stats.activeDays}
             sub={stats.totalDaysSince ? `/${stats.totalDaysSince.toLocaleString()} (${stats.activePct}%) since ${stats.firstCheckInLabel}` : ''}
             color="accent"
-        />
+        >
+            <MdiIcon icon={mdiCalendar} size={16} />
+        </StatCard>
         <StatCard
-            icon="⏱"
             label="Time Spent"
             value={stats.friendlyTime}
             color="info"
-        />
+        >
+            <MdiIcon icon={mdiTimerSand} size={16} />
+        </StatCard>
         <StatCard
-            icon="🔥"
             label="Longest Streak"
             value={stats.longestStreak
                 ? `${stats.longestStreak} days`
                 : "0"}
             color="warning"
-        />
+        >
+            <MdiIcon icon={mdiFire} size={16} />
+        </StatCard>
     </div>
     {/if}
 
@@ -243,19 +250,7 @@
             <div class="flex flex-wrap items-center gap-3">
                 <!-- Search -->
                 <div class="relative flex-1 min-w-48">
-                    <svg
-                        class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-base-content/40"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                        />
-                    </svg>
+                    <MdiIcon icon={mdiMagnify} size={16} class="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/40" />
                     <input
                         id="history-search"
                         type="text"
@@ -272,12 +267,7 @@
                     onclick={() => showDateRange = !showDateRange}
                     title="Filter by date range"
                 >
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                        <line x1="16" y1="2" x2="16" y2="6" />
-                        <line x1="8" y1="2" x2="8" y2="6" />
-                        <line x1="3" y1="10" x2="21" y2="10" />
-                    </svg>
+                    <MdiIcon icon={mdiCalendar} size={16} />
                 </button>
 
                 <!-- Reverse order toggle -->
@@ -286,13 +276,11 @@
                     onclick={() => { sortOrder = sortOrder === 'desc' ? 'asc' : 'desc'; applyFilters(); }}
                     title={sortOrder === 'desc' ? 'Showing newest first — click for oldest first' : 'Showing oldest first — click for newest first'}
                 >
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        {#if sortOrder === 'desc'}
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 4h13M3 8h9M3 12h5m8 0v8m0 0l-4-4m4 4l4-4" />
-                        {:else}
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 4h13M3 8h9M3 12h5m8 8V12m0 0l-4 4m4-4l4 4" />
-                        {/if}
-                    </svg>
+                    {#if sortOrder === 'desc'}
+                        <MdiIcon icon={mdiSortDescending} size={16} />
+                    {:else}
+                        <MdiIcon icon={mdiSortAscending} size={16} />
+                    {/if}
                 </button>
 
                 <!-- Type tabs -->
@@ -314,7 +302,7 @@
                         class:tab-active={filterType === "show"}
                         onclick={() => setFilterType("show")}
                     >
-                        📺 TV
+                        <MdiIcon icon={mdiTelevision} size={14} /> TV
                     </button>
                     <button
                         role="tab"
@@ -322,7 +310,7 @@
                         class:tab-active={filterType === "movie"}
                         onclick={() => setFilterType("movie")}
                     >
-                        🎬 Movies
+                        <MdiIcon icon={mdiMovieOpen} size={14} /> Movies
                     </button>
                     <button
                         role="tab"
@@ -330,7 +318,7 @@
                         class:tab-active={filterType === "artist"}
                         onclick={() => setFilterType("artist")}
                     >
-                        🎵 Music
+                        <MdiIcon icon={mdiMusic} size={14} /> Music
                     </button>
                 </div>
 
@@ -397,7 +385,7 @@
         <div class="card bg-base-200/30 border border-base-300/50">
             <div class="card-body items-center text-center py-16">
                 {#if hasActiveFilters}
-                    <div class="text-5xl mb-4">🔍</div>
+                    <div class="text-5xl mb-4"><MdiIcon icon={mdiMagnify} size={48} /></div>
                     <h2 class="text-xl font-bold">No results</h2>
                     <p class="text-base-content/60 max-w-md">
                         No history entries match your filters.
@@ -407,7 +395,7 @@
                         onclick={clearFilters}>Clear filters</button
                     >
                 {:else}
-                    <div class="text-5xl mb-4">📭</div>
+                    <div class="text-5xl mb-4"><MdiIcon icon={mdiPackageVariantRemove} size={48} /></div>
                     <h2 class="text-xl font-bold">No history yet</h2>
                     <p class="text-base-content/60 max-w-md">
                         Set up the Jellyfin Webhook Plugin to point to <code

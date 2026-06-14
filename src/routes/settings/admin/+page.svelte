@@ -2,6 +2,8 @@
     import ServiceIcon from "$lib/components/ServiceIcon.svelte";
     import LogConsole from "$lib/components/LogConsole.svelte";
     import ReconciliationPanel from "$lib/components/ReconciliationPanel.svelte";
+    import MdiIcon from "$lib/components/MdiIcon.svelte";
+    import { mdiMagnify, mdiAlert, mdiRocketLaunch, mdiCheckCircle, mdiCloseCircle, mdiTelevision, mdiMovieOpen, mdiMusic, mdiFolder, mdiStar, mdiSync, mdiSatelliteUplink, mdiTrayArrowDown, mdiImage, mdiKey, mdiAccountGroup, mdiChevronDown, mdiCheck, mdiClose, mdiInformation, mdiLock, mdiShieldStarOutline, mdiLinkVariant, mdiBrain, mdiServerNetwork, mdiDatabase, mdiTag, mdiViewGrid, mdiMapMarkerRadius, mdiConnection, mdiDelete, mdiContentCopy, mdiBookOpenPageVariant, mdiPlusCircleOutline, mdiPause } from '@mdi/js';
     import { copyToClipboard } from "$lib/utils.js";
     import { page } from "$app/stores";
     import { goto } from "$app/navigation";
@@ -1632,10 +1634,10 @@
     let runAllStep = $state(0); // 0=not started, 1=jellyfin, 2=people, 3=musicbrainz, 4=reconcile, 5=done
     let runAllLogs = $state([]);
     const RUN_ALL_STEPS = [
-        { num: 1, label: "Jellyfin Sync", emoji: "📚" },
-        { num: 2, label: "People Sync", emoji: "👥" },
-        { num: 3, label: "MusicBrainz Enrich", emoji: "🎵" },
-        { num: 4, label: "Reconciliation", emoji: "🔄" },
+        { num: 1, label: "Jellyfin Sync", icon: mdiBookOpenPageVariant },
+        { num: 2, label: "People Sync", icon: mdiAccountGroup },
+        { num: 3, label: "MusicBrainz Enrich", icon: mdiMusic },
+        { num: 4, label: "Reconciliation", icon: mdiSync },
     ];
 
     function addRunAllLog(message, type = "info") {
@@ -2204,21 +2206,7 @@
     style="max-height: {isDirty ? '80px' : '0px'}; opacity: {isDirty ? 1 : 0};"
 >
     <div class="alert alert-warning shadow-lg rounded-xl py-2 px-4">
-        <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-5 w-5 shrink-0"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-        >
-            <circle cx="12" cy="12" r="10" /><line
-                x1="12"
-                y1="8"
-                x2="12"
-                y2="12"
-            /><line x1="12" y1="16" x2="12.01" y2="16" />
-        </svg>
+        <MdiIcon icon={mdiInformation} size={20} class="shrink-0" />
         <span class="text-sm font-medium">You have unsaved changes</span>
         <button
             class="btn btn-sm btn-primary gap-1"
@@ -2239,23 +2227,7 @@
         <div class="card bg-error/10 border border-error/30">
             <div class="card-body py-4">
                 <div class="flex items-center gap-3">
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="h-5 w-5 text-error shrink-0"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                    >
-                        <rect
-                            x="3"
-                            y="11"
-                            width="18"
-                            height="11"
-                            rx="2"
-                            ry="2"
-                        /><path d="M7 11V7a5 5 0 0110 0v4" />
-                    </svg>
+                    <MdiIcon icon={mdiLock} size={20} class="text-error shrink-0" />
                     <div>
                         <p class="font-semibold text-sm">
                             Admin access required
@@ -2272,20 +2244,7 @@
         <div class="card bg-warning/5 border border-warning/20">
             <div class="card-body py-4">
                 <div class="flex items-center gap-3">
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="h-5 w-5 text-warning shrink-0"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                    >
-                        <path
-                            d="M12 2l2.4 3.6L18 6l-1 4 2.5 3H15l-3 5-3-5H4.5L7 10l-1-4 3.6-.4z"
-                        />
-                    </svg>
+                    <MdiIcon icon={mdiShieldStarOutline} size={20} class="text-warning shrink-0" />
                     <div>
                         <p class="font-semibold text-sm">
                             This is an admin-only section
@@ -2377,7 +2336,7 @@
                         {#if prDbStatus === 'checking'}
                             <span class="loading loading-spinner loading-xs"></span>
                         {:else}
-                            🔍 Test
+                            <MdiIcon icon={mdiMagnify} size={14} /> Test
                         {/if}
                     </button>
                 </div>
@@ -2388,7 +2347,7 @@
                     </div>
                 {:else if prDbStatus === 'error'}
                     <div class="mt-2 text-xs text-error flex items-start gap-1.5">
-                        <span>⚠️</span>
+                        <span><MdiIcon icon={mdiAlert} size={14} /></span>
                         <div>
                             <p>{prDbMessage}</p>
                             <p class="text-base-content/40 mt-1">
@@ -2442,18 +2401,7 @@
     >
         <div class="card-body">
             <h2 class="card-title text-lg">
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5 text-secondary"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                >
-                    <path
-                        d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"
-                    />
-                </svg>
+                <MdiIcon icon={mdiKey} size={20} class="text-secondary" />
                 Metadata & Ratings
             </h2>
             <p class="text-xs text-base-content/50">API keys for fetching metadata, artwork, IMDb/RT/Metacritic scores, and Discogs community ratings.</p>
@@ -2605,20 +2553,7 @@
     >
         <div class="card-body">
             <h2 class="card-title text-lg">
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5 text-accent"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                >
-                    <path
-                        d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"
-                    /><path
-                        d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"
-                    />
-                </svg>
+                <MdiIcon icon={mdiLinkVariant} size={20} class="text-accent" />
                 Tracker App Credentials
             </h2>
             <p class="text-sm text-base-content/60">
@@ -2648,40 +2583,12 @@
                                 <span
                                     class="badge badge-success badge-sm gap-1"
                                 >
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        class="h-3 w-3"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="3"
-                                        ><polyline
-                                            points="20 6 9 17 4 12"
-                                        /></svg
-                                    >
+                                    <MdiIcon icon={mdiCheck} size={12} />
                                     Valid
                                 </span>
                             {:else}
                                 <span class="badge badge-error badge-sm gap-1">
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        class="h-3 w-3"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="3"
-                                        ><line
-                                            x1="18"
-                                            y1="6"
-                                            x2="6"
-                                            y2="18"
-                                        /><line
-                                            x1="6"
-                                            y1="6"
-                                            x2="18"
-                                            y2="18"
-                                        /></svg
-                                    >
+                                    <MdiIcon icon={mdiClose} size={12} />
                                     Invalid
                                 </span>
                             {/if}
@@ -2769,40 +2676,12 @@
                                 <span
                                     class="badge badge-success badge-sm gap-1"
                                 >
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        class="h-3 w-3"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="3"
-                                        ><polyline
-                                            points="20 6 9 17 4 12"
-                                        /></svg
-                                    >
+                                    <MdiIcon icon={mdiCheck} size={12} />
                                     Valid
                                 </span>
                             {:else}
                                 <span class="badge badge-error badge-sm gap-1">
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        class="h-3 w-3"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="3"
-                                        ><line
-                                            x1="18"
-                                            y1="6"
-                                            x2="6"
-                                            y2="18"
-                                        /><line
-                                            x1="6"
-                                            y1="6"
-                                            x2="18"
-                                            y2="18"
-                                        /></svg
-                                    >
+                                    <MdiIcon icon={mdiClose} size={12} />
                                     Invalid
                                 </span>
                             {/if}
@@ -2873,16 +2752,7 @@
     >
         <div class="card-body">
             <h2 class="card-title text-lg">
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5 text-info"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                >
-                    <path
-                        d="M4 3a2 2 0 100 4h12a2 2 0 100-4H4zM3 8h14v7a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"
-                    />
-                </svg>
+                <MdiIcon icon={mdiDatabase} size={20} class="text-info" />
                 Media Management
             </h2>
             <p class="text-sm text-base-content/60">
@@ -2901,7 +2771,7 @@
                         <span class="loading loading-spinner loading-xs"></span>
                         Scanning...
                     {:else}
-                        🔍 Scan Network
+                        <MdiIcon icon={mdiMagnify} size={14} /> Scan Network
                     {/if}
                 </button>
                 <span class="text-xs text-base-content/50"
@@ -3043,7 +2913,7 @@
                                         class="loading loading-spinner loading-xs"
                                     ></span>
                                 {:else}
-                                    🔌 Test
+                                    <MdiIcon icon={mdiConnection} size={14} /> Test
                                 {/if}
                             </button>
                         </div>
@@ -3166,17 +3036,7 @@
     >
         <div class="card-body">
             <h2 class="card-title text-lg">
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5 text-accent"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    ><path
-                        d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4zm-2 4a2 2 0 1 1 4 0v2h-4V6z"
-                    /><circle cx="12" cy="15" r="2" /></svg
-                >
+                <MdiIcon icon={mdiBrain} size={20} class="text-accent" />
                 LLM Integration
                 <span class="badge badge-ghost badge-sm">optional</span>
             </h2>
@@ -3371,7 +3231,7 @@ cat ~/.codex/auth.json</pre>
                             </select>
                             {#if llmEmbedProvider !== 'ollama'}
                                 <p class="text-[10px] text-warning mt-1">
-                                    ⚠️ Switching embed providers requires re-embedding all items
+                                    <MdiIcon icon={mdiAlert} size={14} class="text-warning" /> Switching embed providers requires re-embedding all items
                                 </p>
                             {/if}
                         </label>
@@ -3433,9 +3293,9 @@ cat ~/.codex/auth.json</pre>
                                     {#if litellmTestStatus === 'checking'}
                                         <span class="loading loading-spinner loading-xs"></span>
                                     {:else if litellmTestStatus === 'ok'}
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-success" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
+                                        <MdiIcon icon={mdiCheck} size={16} class="text-success" />
                                     {:else if litellmTestStatus === 'error'}
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-error" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+                                        <MdiIcon icon={mdiClose} size={16} class="text-error" />
                                     {/if}
                                     Test
                                 </button>
@@ -3501,7 +3361,7 @@ cat ~/.codex/auth.json</pre>
                             </select>
                             {#if llmEmbedProvider !== 'ollama'}
                                 <p class="text-[10px] text-warning mt-1">
-                                    ⚠️ Switching embed providers requires re-embedding all items
+                                    <MdiIcon icon={mdiAlert} size={14} class="text-warning" /> Switching embed providers requires re-embedding all items
                                 </p>
                             {/if}
                         </label>
@@ -3533,29 +3393,9 @@ cat ~/.codex/auth.json</pre>
                                 <span class="loading loading-spinner loading-xs"
                                 ></span>
                             {:else if ollamaHealthStatus === "ok"}
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    class="h-4 w-4 text-success"
-                                    viewBox="0 0 20 20"
-                                    fill="currentColor"
-                                    ><path
-                                        fill-rule="evenodd"
-                                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                        clip-rule="evenodd"
-                                    /></svg
-                                >
+                                <MdiIcon icon={mdiCheck} size={16} class="text-success" />
                             {:else if ollamaHealthStatus === "error"}
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    class="h-4 w-4 text-error"
-                                    viewBox="0 0 20 20"
-                                    fill="currentColor"
-                                    ><path
-                                        fill-rule="evenodd"
-                                        d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                                        clip-rule="evenodd"
-                                    /></svg
-                                >
+                                <MdiIcon icon={mdiClose} size={16} class="text-error" />
                             {/if}
                             Test
                         </button>
@@ -3569,17 +3409,7 @@ cat ~/.codex/auth.json</pre>
                                 <span class="loading loading-spinner loading-xs"
                                 ></span>
                             {:else}
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    class="h-4 w-4"
-                                    viewBox="0 0 20 20"
-                                    fill="currentColor"
-                                    ><path
-                                        fill-rule="evenodd"
-                                        d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z"
-                                        clip-rule="evenodd"
-                                    /></svg
-                                >
+                                <MdiIcon icon={mdiMapMarkerRadius} size={16} />
                             {/if}
                             Scan
                         </button>
@@ -3703,15 +3533,7 @@ cat ~/.codex/auth.json</pre>
                                 <span class="loading loading-spinner loading-xs"
                                 ></span>
                             {:else}
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    class="h-4 w-4"
-                                    viewBox="0 0 20 20"
-                                    fill="currentColor"
-                                    ><path
-                                        d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"
-                                    /></svg
-                                >
+                                <MdiIcon icon={mdiViewGrid} size={16} />
                             {/if}
                             Generate Embeddings
                         </button>
@@ -3757,17 +3579,7 @@ cat ~/.codex/auth.json</pre>
                                 <span class="loading loading-spinner loading-xs"
                                 ></span>
                             {:else}
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    class="h-4 w-4"
-                                    viewBox="0 0 20 20"
-                                    fill="currentColor"
-                                    ><path
-                                        fill-rule="evenodd"
-                                        d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7A.997.997 0 012 10V5a3 3 0 013-3h5c.256 0 .512.098.707.293l7 7zM5 6a1 1 0 100-2 1 1 0 000 2z"
-                                        clip-rule="evenodd"
-                                    /></svg
-                                >
+                                <MdiIcon icon={mdiTag} size={16} />
                             {/if}
                             Generate Tags
                         </button>
@@ -3815,15 +3627,7 @@ cat ~/.codex/auth.json</pre>
     >
         <div class="card-body">
             <h2 class="card-title text-lg">
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5 text-accent"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    ><path d="M4 6h16M4 12h16M4 18h16" /><circle cx="20" cy="6" r="1.5" /><circle cx="20" cy="12" r="1.5" /><circle cx="20" cy="18" r="1.5" /></svg
-                >
+                <MdiIcon icon={mdiServerNetwork} size={20} class="text-accent" />
                 MCP Server
                 <span class="badge badge-ghost badge-sm">optional</span>
             </h2>
@@ -3909,18 +3713,7 @@ cat ~/.codex/auth.json</pre>
     >
         <div class="card-body">
             <h2 class="card-title text-lg">
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5 text-info"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                >
-                    <polyline points="23 4 23 10 17 10" /><polyline
-                        points="1 20 1 14 7 14"
-                    />
-                </svg>
+                <MdiIcon icon={mdiSync} size={20} class="text-info" />
                 Data Sync
             </h2>
             <p class="text-sm text-base-content/50 mt-1">

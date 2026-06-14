@@ -1,5 +1,7 @@
 <script>
     import { onMount } from 'svelte';
+    import MdiIcon from "$lib/components/MdiIcon.svelte";
+    import { mdiShieldCheck, mdiContentSave, mdiChevronRight, mdiClockOutline, mdiRefresh, mdiDownload, mdiDelete, mdiAlert } from '@mdi/js';
 
     // ─── State ──────────────────────────────────────────────────────────────────
     /** @type {any[]} */
@@ -279,9 +281,7 @@
 <div class="card bg-base-200/50 border border-base-300">
     <div class="card-body">
         <h2 class="card-title text-lg">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-            </svg>
+            <MdiIcon icon={mdiShieldCheck} size={20} class="text-info" />
             Backup Settings
         </h2>
 
@@ -366,18 +366,14 @@
     <div class="card-body">
         <div class="flex items-center justify-between">
             <h2 class="card-title text-lg">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-success" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
-                </svg>
+                <MdiIcon icon={mdiContentSave} size={20} class="text-success" />
                 Quick Backup
             </h2>
             <button class="btn btn-success btn-sm gap-2" onclick={createManualBackup} disabled={backingUp}>
                 {#if backingUp}
                     <span class="loading loading-spinner loading-xs"></span>
                 {:else}
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
-                    </svg>
+                    <MdiIcon icon={mdiContentSave} size={16} />
                 {/if}
                 Backup Now
             </button>
@@ -395,12 +391,8 @@
             class="flex items-center gap-2 w-full text-left"
             onclick={() => historyExpanded = !historyExpanded}
         >
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-base-content/40 transition-transform {historyExpanded ? 'rotate-90' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="9 18 15 12 9 6"/>
-            </svg>
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-success" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-            </svg>
+            <MdiIcon icon={mdiChevronRight} size={16} class="text-base-content/40 transition-transform {historyExpanded ? 'rotate-90' : ''}" />
+            <MdiIcon icon={mdiClockOutline} size={20} class="text-success" />
             <span class="font-semibold">Backup History</span>
             {#if backups.length > 0}
                 <span class="badge badge-sm badge-ghost ml-1">{backups.length}</span>
@@ -415,9 +407,7 @@
                     </div>
                 {:else if backups.length === 0}
                     <div class="text-center py-8 text-base-content/40">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto mb-3 opacity-30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                        </svg>
+                        <MdiIcon icon={mdiShieldCheck} size={48} class="mx-auto mb-3 opacity-30" />
                         <p class="text-sm">No backups yet</p>
                         <p class="text-xs mt-1">Click "Backup Now" to create your first backup</p>
                     </div>
@@ -448,10 +438,7 @@
                                                 data-tip="Restore from this backup"
                                                 onclick={() => openRestoreModal(backup.filename, formatDate(backup.timestamp))}
                                             >
-                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                                    <path d="M21 12a9 9 0 11-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
-                                                    <polyline points="21 3 21 8 16 8"/>
-                                                </svg>
+                                                <MdiIcon icon={mdiRefresh} size={14} />
                                             </button>
                                             <a
                                                 href="/api/backups/download/{encodeURIComponent(backup.filename)}"
@@ -459,9 +446,7 @@
                                                 data-tip="Download"
                                                 download
                                             >
-                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-                                                </svg>
+                                                <MdiIcon icon={mdiDownload} size={14} />
                                             </a>
                                             {#if backup.type === 'manual'}
                                                 <button
@@ -469,9 +454,7 @@
                                                     data-tip="Delete"
                                                     onclick={() => deleteBackup(backup.filename)}
                                                 >
-                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
-                                                    </svg>
+                                                    <MdiIcon icon={mdiDelete} size={14} />
                                                 </button>
                                             {/if}
                                         </div>
@@ -490,9 +473,7 @@
                             class="flex items-center gap-2 w-full text-left"
                             onclick={() => showHidden = !showHidden}
                         >
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-base-content/40 transition-transform {showHidden ? 'rotate-90' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="9 18 15 12 9 6"/>
-                            </svg>
+                            <MdiIcon icon={mdiChevronRight} size={16} class="text-base-content/40 transition-transform {showHidden ? 'rotate-90' : ''}" />
                             <span class="text-sm text-base-content/50">
                                 Other database backups ({hiddenBackups.length})
                             </span>
@@ -537,9 +518,7 @@
 <div class="card bg-base-200/50 border border-base-300 mt-6">
     <div class="card-body">
         <h2 class="card-title text-lg">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
+            <MdiIcon icon={mdiDownload} size={20} class="text-info" />
             Import / Export Data
         </h2>
 
@@ -602,7 +581,7 @@
                 {#if exporting}
                     <span class="loading loading-spinner loading-xs"></span>
                 {:else}
-                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    <MdiIcon icon={mdiDownload} size={16} />
                 {/if}
                 Download Backup
             </button>
@@ -669,7 +648,7 @@
 
                 {#if importMode === "overwrite"}
                     <div class="alert alert-warning alert-sm">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        <MdiIcon icon={mdiAlert} size={16} class="shrink-0" />
                         <span class="text-xs">This will delete all existing data and replace it with the backup.</span>
                     </div>
                 {/if}
@@ -712,9 +691,7 @@
                     {restoreTargetName}
                 </div>
                 <div class="alert alert-warning text-xs">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-                    </svg>
+                    <MdiIcon icon={mdiAlert} size={16} class="shrink-0" />
                     <div>
                         <p><strong>This is destructive.</strong> Your current database will be replaced with the backup.</p>
                         <p class="mt-1">A pre-restore backup will be created automatically so you can undo if needed.</p>

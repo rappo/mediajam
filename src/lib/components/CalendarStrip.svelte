@@ -5,6 +5,8 @@
 -->
 <script>
     import { imgUrl } from "$lib/utils.js";
+    import MdiIcon from '$lib/components/MdiIcon.svelte';
+    import { mdiMusic, mdiTelevision, mdiChevronLeft, mdiChevronRight } from '@mdi/js';
 
     /** @type {{ days: Array<{ date: string, episodes: any[] }>, onNavigate?: (offset: number) => void, weekOffset?: number, mode?: 'tv' | 'music' }} */
     let { days, onNavigate, weekOffset = 0, mode = 'tv' } = $props();
@@ -91,7 +93,7 @@
                 {#if wi === 0}
                     <div class="cal-nav">
                         <button class="nav-btn" onclick={() => onNavigate?.(weekOffset - 3)} title="Previous 3 weeks">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                            <MdiIcon icon={mdiChevronLeft} size={14} />
                             Prev
                         </button>
                         {#if weekOffset !== 0}
@@ -99,7 +101,7 @@
                         {/if}
                         <button class="nav-btn" onclick={() => onNavigate?.(weekOffset + 3)} title="Next 3 weeks">
                             Next
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                            <MdiIcon icon={mdiChevronRight} size={14} />
                         </button>
                     </div>
                 {/if}
@@ -131,7 +133,7 @@
                                             {#if item.poster_url}
                                                 <img src={imgUrl(item.poster_url, 80)} alt="" loading="lazy" />
                                             {:else}
-                                                <div class="poster-fallback">{mode === 'music' ? '🎵' : '📺'}</div>
+                                                <div class="poster-fallback"><MdiIcon icon={mode === 'music' ? mdiMusic : mdiTelevision} size={12} /></div>
                                             {/if}
                                         </div>
                                         <!-- Info -->

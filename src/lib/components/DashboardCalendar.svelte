@@ -1,5 +1,7 @@
 <script>
     import { imgUrl } from "$lib/utils.js";
+    import MdiIcon from '$lib/components/MdiIcon.svelte';
+    import { mdiCalendar, mdiTelevision, mdiMovieOpen, mdiMusic } from '@mdi/js';
 
     let { upcoming = [], onSettingsChange = () => {} } = $props();
 
@@ -69,7 +71,7 @@
     <!-- Header row -->
     <div class="cal-header">
         <div class="cal-header-left">
-            <span class="cal-icon">📅</span>
+            <span class="cal-icon"><MdiIcon icon={mdiCalendar} size={16} /></span>
             <h3 class="cal-title">Upcoming releases · {rangeLabel}</h3>
         </div>
         <div class="cal-header-right">
@@ -123,7 +125,7 @@
                                             />
                                         {:else}
                                             <div class="cal-item-no-poster">
-                                                {item.media_type === 'movie' ? '🎬' : item.media_type === 'show' ? '📺' : '🎵'}
+                                                {#if item.media_type === 'movie'}<MdiIcon icon={mdiMovieOpen} size={16} />{:else if item.media_type === 'show'}<MdiIcon icon={mdiTelevision} size={16} />{:else}<MdiIcon icon={mdiMusic} size={16} />{/if}
                                             </div>
                                         {/if}
                                     </div>

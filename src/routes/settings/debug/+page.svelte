@@ -1,4 +1,7 @@
 <script>
+    import MdiIcon from "$lib/components/MdiIcon.svelte";
+    import { mdiDatabase, mdiAlert, mdiChevronDown, mdiChevronRight, mdiTag, mdiImage, mdiNoteText, mdiPackageVariantRemove, mdiChartBar, mdiGhost, mdiHeadphones, mdiLinkVariant, mdiTelevision, mdiMovieOpen, mdiMusic, mdiFolder } from '@mdi/js';
+
     /** @type {{ data: import('./$types').PageData }} */
     let { data } = $props();
 
@@ -15,10 +18,10 @@
     }
 
     function mediaIcon(type) {
-        if (type === "show") return "📺";
-        if (type === "movie") return "🎬";
-        if (type === "artist") return "🎵";
-        return "📁";
+        if (type === "show") return mdiTelevision;
+        if (type === "movie") return mdiMovieOpen;
+        if (type === "artist") return mdiMusic;
+        return mdiFolder;
     }
 </script>
 
@@ -27,23 +30,7 @@
     <div class="card bg-base-200/50 border border-base-300">
         <div class="card-body">
             <h2 class="card-title text-lg">
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5 text-info"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                >
-                    <path
-                        d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0022 16z"
-                    />
-                    <polyline points="7.5 4.21 12 6.81 16.5 4.21" /><polyline
-                        points="7.5 19.79 7.5 14.6 3 12"
-                    /><polyline points="21 12 16.5 14.6 16.5 19.79" /><polyline
-                        points="3.27 6.96 12 12.01 20.73 6.96"
-                    /><line x1="12" y1="22.08" x2="12" y2="12" />
-                </svg>
+                <MdiIcon icon={mdiDatabase} size={20} class="text-info" />
                 Database Overview
             </h2>
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-2">
@@ -83,18 +70,7 @@
     <div class="card bg-base-200/50 border border-base-300">
         <div class="card-body">
             <h2 class="card-title text-lg">
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5 text-warning"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                >
-                    <path
-                        d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"
-                    />
-                </svg>
+                <MdiIcon icon={mdiAlert} size={20} class="text-warning" />
                 Data Gaps
             </h2>
             <p class="text-sm text-base-content/60">
@@ -108,7 +84,7 @@
                     onclick={() => toggle("metadata")}
                 >
                     <div class="flex items-center gap-3">
-                        <span class="text-lg">🏷️</span>
+                        <MdiIcon icon={mdiTag} size={20} class="text-warning" />
                         <div>
                             <p class="font-medium text-sm">
                                 Missing External IDs
@@ -127,24 +103,14 @@
                         >
                             {data.missingMetadata.total}
                         </span>
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            class="h-4 w-4 text-base-content/30 transition-transform {expandedSections.metadata
-                                ? 'rotate-180'
-                                : ''}"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            ><polyline points="6 9 12 15 18 9" /></svg
-                        >
+                        <MdiIcon icon={mdiChevronDown} size={16} class="text-base-content/30 transition-transform {expandedSections.metadata ? 'rotate-180' : ''}" />
                     </div>
                 </button>
                 {#if expandedSections.metadata && data.missingMetadata.items.length > 0}
                     <div class="ml-10 space-y-1 pb-2">
                         {#each data.missingMetadata.items as item}
                             <div class="text-xs flex items-center gap-2 py-0.5">
-                                <span>{mediaIcon(item.media_type)}</span>
+                                <MdiIcon icon={mediaIcon(item.media_type)} size={14} />
                                 <span class="text-base-content/70"
                                     >{item.title}</span
                                 >
@@ -168,7 +134,7 @@
                     onclick={() => toggle("posters")}
                 >
                     <div class="flex items-center gap-3">
-                        <span class="text-lg">🖼️</span>
+                        <MdiIcon icon={mdiImage} size={20} class="text-warning" />
                         <div>
                             <p class="font-medium text-sm">
                                 Missing Poster Art
@@ -186,24 +152,14 @@
                         >
                             {data.missingPosters.total}
                         </span>
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            class="h-4 w-4 text-base-content/30 transition-transform {expandedSections.posters
-                                ? 'rotate-180'
-                                : ''}"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            ><polyline points="6 9 12 15 18 9" /></svg
-                        >
+                        <MdiIcon icon={mdiChevronDown} size={16} class="text-base-content/30 transition-transform {expandedSections.posters ? 'rotate-180' : ''}" />
                     </div>
                 </button>
                 {#if expandedSections.posters && data.missingPosters.items.length > 0}
                     <div class="ml-10 space-y-1 pb-2">
                         {#each data.missingPosters.items as item}
                             <div class="text-xs flex items-center gap-2 py-0.5">
-                                <span>{mediaIcon(item.media_type)}</span>
+                                <MdiIcon icon={mediaIcon(item.media_type)} size={14} />
                                 <span class="text-base-content/70"
                                     >{item.title}</span
                                 >
@@ -226,7 +182,7 @@
                     class="flex items-center justify-between p-3 bg-base-300/30 rounded-xl"
                 >
                     <div class="flex items-center gap-3">
-                        <span class="text-lg">📝</span>
+                        <MdiIcon icon={mdiNoteText} size={20} class="text-warning" />
                         <div>
                             <p class="font-medium text-sm">
                                 Missing Descriptions
@@ -251,7 +207,7 @@
                     onclick={() => toggle("uncollected")}
                 >
                     <div class="flex items-center gap-3">
-                        <span class="text-lg">📭</span>
+                        <MdiIcon icon={mdiPackageVariantRemove} size={20} class="text-info" />
                         <div>
                             <p class="font-medium text-sm">
                                 Missing from Collection
@@ -269,24 +225,14 @@
                         >
                             {data.uncollected.total}
                         </span>
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            class="h-4 w-4 text-base-content/30 transition-transform {expandedSections.uncollected
-                                ? 'rotate-180'
-                                : ''}"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            ><polyline points="6 9 12 15 18 9" /></svg
-                        >
+                        <MdiIcon icon={mdiChevronDown} size={16} class="text-base-content/30 transition-transform {expandedSections.uncollected ? 'rotate-180' : ''}" />
                     </div>
                 </button>
                 {#if expandedSections.uncollected && data.uncollected.items.length > 0}
                     <div class="ml-10 space-y-1 pb-2">
                         {#each data.uncollected.items as item}
                             <div class="text-xs flex items-center gap-2 py-0.5">
-                                <span>{mediaIcon(item.media_type)}</span>
+                                <MdiIcon icon={mediaIcon(item.media_type)} size={14} />
                                 <span class="text-base-content/70"
                                     >{item.parent_title}</span
                                 >
@@ -316,7 +262,7 @@
                     onclick={() => toggle("mismatched")}
                 >
                     <div class="flex items-center gap-3">
-                        <span class="text-lg">📊</span>
+                        <MdiIcon icon={mdiChartBar} size={20} class="text-info" />
                         <div>
                             <p class="font-medium text-sm">
                                 Incomplete Collections
@@ -334,24 +280,14 @@
                         >
                             {data.mismatchedCounts.total}
                         </span>
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            class="h-4 w-4 text-base-content/30 transition-transform {expandedSections.mismatched
-                                ? 'rotate-180'
-                                : ''}"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            ><polyline points="6 9 12 15 18 9" /></svg
-                        >
+                        <MdiIcon icon={mdiChevronDown} size={16} class="text-base-content/30 transition-transform {expandedSections.mismatched ? 'rotate-180' : ''}" />
                     </div>
                 </button>
                 {#if expandedSections.mismatched && data.mismatchedCounts.items.length > 0}
                     <div class="ml-10 space-y-1 pb-2">
                         {#each data.mismatchedCounts.items as item}
                             <div class="text-xs flex items-center gap-2 py-0.5">
-                                <span>{mediaIcon(item.media_type)}</span>
+                                <MdiIcon icon={mediaIcon(item.media_type)} size={14} />
                                 <span class="text-base-content/70"
                                     >{item.title}</span
                                 >
@@ -378,7 +314,7 @@
                     onclick={() => toggle("orphaned")}
                 >
                     <div class="flex items-center gap-3">
-                        <span class="text-lg">👻</span>
+                        <MdiIcon icon={mdiGhost} size={20} class="text-error" />
                         <div>
                             <p class="font-medium text-sm">
                                 Orphaned Play History
@@ -396,17 +332,7 @@
                         >
                             {data.orphanedHistory.total}
                         </span>
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            class="h-4 w-4 text-base-content/30 transition-transform {expandedSections.orphaned
-                                ? 'rotate-180'
-                                : ''}"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            ><polyline points="6 9 12 15 18 9" /></svg
-                        >
+                        <MdiIcon icon={mdiChevronDown} size={16} class="text-base-content/30 transition-transform {expandedSections.orphaned ? 'rotate-180' : ''}" />
                     </div>
                 </button>
                 {#if expandedSections.orphaned && data.orphanedHistory.items.length > 0}
@@ -440,7 +366,7 @@
                     class="flex items-center justify-between p-3 bg-base-300/30 rounded-xl"
                 >
                     <div class="flex items-center gap-3">
-                        <span class="text-lg">🎧</span>
+                        <MdiIcon icon={mdiHeadphones} size={20} class="text-secondary" />
                         <div>
                             <p class="font-medium text-sm">
                                 Last.fm Scrobble Coverage
@@ -469,7 +395,7 @@
                     class="flex items-center justify-between p-3 bg-base-300/30 rounded-xl hover:bg-base-300/50 transition-colors"
                 >
                     <div class="flex items-center gap-3">
-                        <span class="text-lg">🔗</span>
+                        <MdiIcon icon={mdiLinkVariant} size={20} class="text-primary" />
                         <div>
                             <p class="font-medium text-sm">Unmatched Albums</p>
                             <p class="text-xs text-base-content/50">
@@ -477,15 +403,7 @@
                             </p>
                         </div>
                     </div>
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="h-4 w-4 text-base-content/30"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        ><polyline points="9 18 15 12 9 6" /></svg
-                    >
+                    <MdiIcon icon={mdiChevronRight} size={16} class="text-base-content/30" />
                 </a>
             </div>
         </div>

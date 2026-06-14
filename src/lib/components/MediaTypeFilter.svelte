@@ -1,4 +1,6 @@
 <script>
+    import MdiIcon from '$lib/components/MdiIcon.svelte';
+    import { mdiTelevision, mdiMovieOpen, mdiMusic } from '@mdi/js';
     /**
      * Shared media-type toggle buttons (TV / Movies / Music).
      * Uses DaisyUI btn-xs checkbox toggles with oklch color vars.
@@ -8,9 +10,9 @@
     let { activeTypes = ['movie', 'show', 'artist'], onchange = () => {} } = $props();
 
     const typeLabels = [
-        { key: 'show', label: 'TV', icon: '📺', colorVar: '--color-tv' },
-        { key: 'movie', label: 'Movies', icon: '🎬', colorVar: '--color-movies' },
-        { key: 'artist', label: 'Music', icon: '🎵', colorVar: '--color-music' },
+        { key: 'show', label: 'TV', icon: mdiTelevision, colorVar: '--color-tv' },
+        { key: 'movie', label: 'Movies', icon: mdiMovieOpen, colorVar: '--color-movies' },
+        { key: 'artist', label: 'Music', icon: mdiMusic, colorVar: '--color-music' },
     ];
 
     function onToggle(key, checked) {
@@ -35,7 +37,7 @@
             class="btn btn-xs media-type-filter-btn"
             type="checkbox"
             name="media-types"
-            aria-label="{icon} {label}"
+            aria-label="{label}"
             checked={activeTypes.includes(key)}
             onchange={(e) => onToggle(key, e.target.checked)}
             style="--filter-color: oklch(var({colorVar})); {activeTypes.includes(key) ? `background: oklch(var(${colorVar}) / 0.18); color: oklch(var(${colorVar})); border-color: oklch(var(${colorVar}) / 0.5);` : `opacity: 0.35; border-color: oklch(var(${colorVar}) / 0.15);`}"

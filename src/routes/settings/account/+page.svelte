@@ -1,6 +1,8 @@
 <script>
     import ServiceIcon from "$lib/components/ServiceIcon.svelte";
     import LogConsole from "$lib/components/LogConsole.svelte";
+    import MdiIcon from "$lib/components/MdiIcon.svelte";
+    import { mdiAccount, mdiPencil, mdiUpload, mdiLinkVariant, mdiDownload, mdiInformation, mdiCheck, mdiCastConnected, mdiSync, mdiStop, mdiTelevision, mdiLaptop, mdiCellphone, mdiMonitor, mdiHome, mdiStar, mdiCheckCircle, mdiCloseCircle } from '@mdi/js';
     import { page } from "$app/stores";
     import { invalidateAll } from "$app/navigation";
 
@@ -473,20 +475,7 @@
     <div class="card bg-base-200/50 border border-base-300">
         <div class="card-body">
             <h2 class="card-title text-lg">
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5 text-primary"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                >
-                    <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle
-                        cx="12"
-                        cy="7"
-                        r="4"
-                    />
-                </svg>
+                <MdiIcon icon={mdiAccount} size={20} class="text-primary" />
                 Profile
             </h2>
 
@@ -521,21 +510,7 @@
                             onclick={() =>
                                 (showAvatarPicker = !showAvatarPicker)}
                         >
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                class="w-5 h-5 text-white"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                ><path
-                                    d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"
-                                /><path
-                                    d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"
-                                /></svg
-                            >
+                            <MdiIcon icon={mdiPencil} size={20} class="text-white" />
                         </button>
                     </div>
                     <div>
@@ -579,24 +554,7 @@
                         </div>
                         <div class="flex items-center gap-3">
                             <label class="btn btn-sm btn-outline gap-2">
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    class="w-4 h-4"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    ><path
-                                        d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"
-                                    /><polyline points="17 8 12 3 7 8" /><line
-                                        x1="12"
-                                        y1="3"
-                                        x2="12"
-                                        y2="15"
-                                    /></svg
-                                >
+                                <MdiIcon icon={mdiUpload} size={16} />
                                 Upload Image
                                 <input
                                     type="file"
@@ -631,20 +589,7 @@
     <div class="card bg-base-200/50 border border-base-300">
         <div class="card-body">
             <h2 class="card-title text-lg">
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5 text-secondary"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                >
-                    <path
-                        d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"
-                    /><path
-                        d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"
-                    />
-                </svg>
+                <MdiIcon icon={mdiLinkVariant} size={20} class="text-secondary" />
                 Connected Services
             </h2>
             <p class="text-sm text-base-content/60">
@@ -736,26 +681,7 @@
                                 disabled={importState.active}
                                 onclick={() => startImport("trakt")}
                             >
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    class="w-3.5 h-3.5"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    ><path
-                                        d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"
-                                    /><polyline
-                                        points="7 10 12 15 17 10"
-                                    /><line
-                                        x1="12"
-                                        y1="15"
-                                        x2="12"
-                                        y2="3"
-                                    /></svg
-                                >
+                                <MdiIcon icon={mdiDownload} size={14} />
                                 Import History
                             </button>
 
@@ -778,19 +704,7 @@
                                     class="tooltip tooltip-right"
                                     data-tip="When enabled, MediaJam automatically checks Trakt for new watch history every few hours and imports any new plays."
                                 >
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        class="w-3.5 h-3.5 text-base-content/30 group-hover:text-info transition-colors"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                        ><circle cx="12" cy="12" r="10" /><path
-                                            d="M12 16v-4"
-                                        /><path d="M12 8h.01" /></svg
-                                    >
+                                    <MdiIcon icon={mdiInformation} size={14} class="text-base-content/30 group-hover:text-info transition-colors" />
                                 </div>
                             </label>
 
@@ -889,26 +803,7 @@
                                 disabled={importState.active}
                                 onclick={() => startImport("lastfm")}
                             >
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    class="w-3.5 h-3.5"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    ><path
-                                        d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"
-                                    /><polyline
-                                        points="7 10 12 15 17 10"
-                                    /><line
-                                        x1="12"
-                                        y1="15"
-                                        x2="12"
-                                        y2="3"
-                                    /></svg
-                                >
+                                <MdiIcon icon={mdiDownload} size={14} />
                                 Import History
                             </button>
 
@@ -934,19 +829,7 @@
                                     class="tooltip tooltip-right"
                                     data-tip="When enabled, MediaJam automatically checks Last.fm for new scrobbles every few hours and imports any new plays."
                                 >
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        class="w-3.5 h-3.5 text-base-content/30 group-hover:text-info transition-colors"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                        ><circle cx="12" cy="12" r="10" /><path
-                                            d="M12 16v-4"
-                                        /><path d="M12 8h.01" /></svg
-                                    >
+                                    <MdiIcon icon={mdiInformation} size={14} class="text-base-content/30 group-hover:text-info transition-colors" />
                                 </div>
                             </label>
 
@@ -993,15 +876,7 @@
                             </div>
                         </div>
                         <span class="badge badge-success badge-sm gap-1">
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                class="h-3 w-3"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                ><polyline points="20 6 9 17 4 12" /></svg
-                            >
+                            <MdiIcon icon={mdiCheck} size={12} />
                             Active
                         </span>
                     </div>
@@ -1038,19 +913,7 @@
                                     class="tooltip tooltip-right"
                                     data-tip="When enabled, MediaJam automatically runs a Jellyfin library sync on a schedule to keep your collection and watch status up-to-date."
                                 >
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        class="w-3.5 h-3.5 text-base-content/30 group-hover:text-info transition-colors"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2"
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                        ><circle cx="12" cy="12" r="10" /><path
-                                            d="M12 16v-4"
-                                        /><path d="M12 8h.01" /></svg
-                                    >
+                                    <MdiIcon icon={mdiInformation} size={14} class="text-base-content/30 group-hover:text-info transition-colors" />
                                 </div>
                             </label>
                         </div>
@@ -1064,23 +927,7 @@
     <div class="card bg-base-200/50 border border-base-300">
         <div class="card-body">
             <h2 class="card-title text-lg">
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5 text-accent"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                >
-                    <rect
-                        x="2"
-                        y="7"
-                        width="20"
-                        height="15"
-                        rx="2"
-                        ry="2"
-                    /><polyline points="17 2 12 7 7 2" />
-                </svg>
+                <MdiIcon icon={mdiCastConnected} size={20} class="text-accent" />
                 Remote Playback
             </h2>
             <p class="text-xs text-base-content/50 -mt-1">
@@ -1125,7 +972,7 @@
                                     <span class="loading loading-spinner loading-xs"></span>
                                     Scanning…
                                 {:else}
-                                    🔄 Refresh
+                                    <MdiIcon icon={mdiSync} size={14} /> Refresh
                                 {/if}
                             </button>
                         </div>
@@ -1175,12 +1022,12 @@
                                         class:opacity-70={player.status ===
                                             "incompatible"}
                                     >
-                                        {#if player.client?.includes("TV")}📺
-                                        {:else if player.client?.includes("Web")}💻
-                                        {:else if player.client?.includes("Android") || player.client?.includes("iOS")}📱
-                                        {:else if player.client?.includes("Desktop")}🖥
-                                        {:else if player.client?.includes("Home Assistant")}🏠
-                                        {:else}🖥{/if}
+                                        {#if player.client?.includes("TV")}<MdiIcon icon={mdiTelevision} size={16} />
+                                        {:else if player.client?.includes("Web")}<MdiIcon icon={mdiLaptop} size={16} />
+                                        {:else if player.client?.includes("Android") || player.client?.includes("iOS")}<MdiIcon icon={mdiCellphone} size={16} />
+                                        {:else if player.client?.includes("Desktop")}<MdiIcon icon={mdiMonitor} size={16} />
+                                        {:else if player.client?.includes("Home Assistant")}<MdiIcon icon={mdiHome} size={16} />
+                                        {:else}<MdiIcon icon={mdiMonitor} size={16} />{/if}
                                         <span class="font-medium"
                                             >{player.deviceName}</span
                                         >
@@ -1217,7 +1064,7 @@
                                             {#if defaultPlayerId === player.deviceId}
                                                 <span
                                                     class="badge badge-warning badge-xs gap-1"
-                                                    >⭐ default</span
+                                                    ><MdiIcon icon={mdiStar} size={12} /> default</span
                                                 >
                                             {:else if displayPlayerList.saved.length > 1}
                                                 <button
@@ -1255,12 +1102,12 @@
                                     <div
                                         class="flex items-center gap-2 px-3 py-2 rounded-lg bg-base-300/20 text-sm border border-dashed border-base-300"
                                     >
-                                        {#if player.client?.includes("TV")}📺
-                                        {:else if player.client?.includes("Web")}💻
-                                        {:else if player.client?.includes("Android") || player.client?.includes("iOS")}📱
-                                        {:else if player.client?.includes("Desktop")}🖥
-                                        {:else if player.client?.includes("Home Assistant")}🏠
-                                        {:else}🖥{/if}
+                                        {#if player.client?.includes("TV")}<MdiIcon icon={mdiTelevision} size={16} />
+                                        {:else if player.client?.includes("Web")}<MdiIcon icon={mdiLaptop} size={16} />
+                                        {:else if player.client?.includes("Android") || player.client?.includes("iOS")}<MdiIcon icon={mdiCellphone} size={16} />
+                                        {:else if player.client?.includes("Desktop")}<MdiIcon icon={mdiMonitor} size={16} />
+                                        {:else if player.client?.includes("Home Assistant")}<MdiIcon icon={mdiHome} size={16} />
+                                        {:else}<MdiIcon icon={mdiMonitor} size={16} />{/if}
                                         <span class="font-medium"
                                             >{player.deviceName}</span
                                         >
@@ -1305,18 +1152,7 @@
             <div class="card-body">
                 <div class="flex items-center justify-between">
                     <h2 class="card-title text-lg">
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            class="h-5 w-5 text-info"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                        >
-                            <polyline points="23 4 23 10 17 10" /><polyline
-                                points="1 20 1 14 7 14"
-                            />
-                        </svg>
+                        <MdiIcon icon={mdiSync} size={20} class="text-info" />
                         {importState.tier === "trakt" ? "Trakt" : "Last.fm"} Import
                     </h2>
                     {#if importState.status === "running"}
@@ -1324,19 +1160,7 @@
                             class="btn btn-sm btn-error btn-outline gap-1"
                             onclick={stopImport}
                         >
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                class="h-3.5 w-3.5"
-                                viewBox="0 0 24 24"
-                                fill="currentColor"
-                                ><rect
-                                    x="6"
-                                    y="6"
-                                    width="12"
-                                    height="12"
-                                    rx="1"
-                                /></svg
-                            >
+                            <MdiIcon icon={mdiStop} size={14} />
                             Stop
                         </button>
                     {:else}
@@ -1402,9 +1226,9 @@
                     >
                         <span>
                             {#if importState.status === "complete"}
-                                ✅ Complete
+                                <MdiIcon icon={mdiCheckCircle} size={14} /> Complete
                             {:else if importState.status === "error"}
-                                ❌ Error
+                                <MdiIcon icon={mdiCloseCircle} size={14} /> Error
                             {:else}
                                 {importState.progressPercent}%
                             {/if}

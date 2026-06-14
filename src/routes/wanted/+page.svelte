@@ -2,6 +2,8 @@
     import { onMount, onDestroy } from 'svelte';
     import { imgUrl } from '$lib/utils.js';
     import Skeleton from '$lib/components/Skeleton.svelte';
+    import MdiIcon from '$lib/components/MdiIcon.svelte';
+    import { mdiSync, mdiCloseCircle, mdiMagnify, mdiCalendar, mdiArrowUp, mdiMovieOpen, mdiTelevision, mdiMusic, mdiRefresh, mdiPartyPopper, mdiPackageVariant, mdiChevronDown, mdiCheck } from '@mdi/js';
 
     let loading = $state(true);
     let items = $state(/** @type {any[]} */ ([]));
@@ -94,17 +96,17 @@
     }));
 
     const REASON_META = {
-        in_queue: { icon: '🔄', color: 'info', label: 'Downloading' },
-        failed: { icon: '❌', color: 'error', label: 'Failed' },
-        not_available: { icon: '🔍', color: 'warning', label: 'Missing' },
-        not_out_yet: { icon: '📅', color: 'neutral', label: 'Unreleased' },
-        cutoff_unmet: { icon: '⬆️', color: 'secondary', label: 'Upgrade' },
+        in_queue: { icon: mdiSync, color: 'info', label: 'Downloading' },
+        failed: { icon: mdiCloseCircle, color: 'error', label: 'Failed' },
+        not_available: { icon: mdiMagnify, color: 'warning', label: 'Missing' },
+        not_out_yet: { icon: mdiCalendar, color: 'neutral', label: 'Unreleased' },
+        cutoff_unmet: { icon: mdiArrowUp, color: 'secondary', label: 'Upgrade' },
     };
 
     const SERVICE_META = {
-        radarr: { icon: '🎬', label: 'Movies', color: '#ffa500' },
-        sonarr: { icon: '📺', label: 'Shows', color: '#3fc1c9' },
-        lidarr: { icon: '🎵', label: 'Music', color: '#a78bfa' },
+        radarr: { icon: mdiMovieOpen, label: 'Movies', color: '#ffa500' },
+        sonarr: { icon: mdiTelevision, label: 'Shows', color: '#3fc1c9' },
+        lidarr: { icon: mdiMusic, label: 'Music', color: '#a78bfa' },
     };
 
     /** @param {any} item */
@@ -206,7 +208,7 @@
                     <span class="loading loading-spinner loading-xs"></span>
                     {refreshing && !loading ? 'Updating…' : ''}
                 {:else}
-                    ↻ Refresh
+                    <MdiIcon icon={mdiRefresh} size={14} /> Refresh
                 {/if}
             </button>
         </div>
@@ -234,7 +236,7 @@
                         class:active={filterService === key}
                         onclick={() => filterService = filterService === key ? 'all' : key}
                     >
-                        <span class="summary-icon">{meta.icon}</span>
+                        <span class="summary-icon"><MdiIcon icon={meta.icon} size={20} /></span>
                         <span class="summary-count">{summary.byService[key]}</span>
                         <span class="summary-label">{meta.label}</span>
                     </button>
@@ -256,7 +258,7 @@
                         class:active={filterReason === key}
                         onclick={() => filterReason = filterReason === key ? 'all' : key}
                     >
-                        <span>{meta.icon}</span>
+                        <span><MdiIcon icon={meta.icon} size={12} /></span>
                         {meta.label} ({summary.byReason[key]})
                     </button>
                 {/if}
@@ -266,7 +268,7 @@
         <!-- Items List -->
         {#if filteredItems.length === 0}
             <div class="empty-state">
-                <span class="empty-icon">🎉</span>
+                <span class="empty-icon"><MdiIcon icon={mdiPartyPopper} size={40} /></span>
                 <p>Nothing wanted — everything is downloaded!</p>
             </div>
         {:else}
@@ -285,7 +287,7 @@
                                 {#if item.poster_url}
                                     <img src={imgUrl(item.poster_url)} alt={item.title} loading="lazy" />
                                 {:else}
-                                    <div class="poster-placeholder">{svc?.icon || '📦'}</div>
+                                    <div class="poster-placeholder"><MdiIcon icon={svc?.icon || mdiPackageVariant} size={20} /></div>
                                 {/if}
                             </div>
 
@@ -303,10 +305,10 @@
                                 </div>
                                 <div class="card-badges">
                                     <span class="badge badge-sm service-badge" style="--badge-color: {svc?.color}">
-                                        {svc?.icon} {svc?.label}
+                                        <MdiIcon icon={svc?.icon} size={12} /> {svc?.label}
                                     </span>
                                     <span class="badge badge-sm reason-badge {item.reason}">
-                                        {meta.icon} {item.reasonLabel}
+                                        <MdiIcon icon={meta.icon} size={12} /> {item.reasonLabel}
                                     </span>
                                 </div>
                                 <div class="card-detail">
@@ -338,7 +340,7 @@
                                 <!-- Failure info -->
                                 {#if item.reason === 'failed' && item.failureInfo}
                                     <div class="failure-info">
-                                        ❌ {item.failureInfo.message}
+                                        <MdiIcon icon={mdiCloseCircle} size={12} /> {item.failureInfo.message}
                                         {#if item.failureInfo.date}
                                             <span class="text-base-content/40">· {formatDate(item.failureInfo.date)}</span>
                                         {/if}
@@ -358,15 +360,15 @@
                                         {#if searchingIds.has(key)}
                                             <span class="loading loading-spinner" style="width: 12px; height: 12px;"></span>
                                         {:else if searchedIds.has(key)}
-                                            ✓
+                                            <MdiIcon icon={mdiCheck} size={14} />
                                         {:else}
-                                            🔍
+                                            <MdiIcon icon={mdiMagnify} size={14} />
                                         {/if}
                                     </button>
                                 {/if}
                                 {#if item.episodes?.length > 1}
                                     <button class="btn btn-xs btn-ghost expand-btn" onclick={(e) => { e.stopPropagation(); toggleExpand(key); }}>
-                                        <svg class="expand-chevron" class:expanded={isExpanded} xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                                        <MdiIcon icon={mdiChevronDown} size={14} class="expand-chevron {isExpanded ? 'expanded' : ''}" />
                                     </button>
                                 {/if}
                             </div>

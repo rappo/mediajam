@@ -8,6 +8,8 @@
      */
     import ArrAddDialog from '$lib/components/ArrAddDialog.svelte';
     import InteractiveSearchDialog from '$lib/components/InteractiveSearchDialog.svelte';
+    import MdiIcon from '$lib/components/MdiIcon.svelte';
+    import { mdiCalendarBlank, mdiHelpCircleOutline, mdiListStatus, mdiRadar, mdiMagnify, mdiAlertOutline, mdiCheckCircleOutline, mdiAlertCircleOutline } from '@mdi/js';
     import { invalidateAll } from '$app/navigation';
 
     /**
@@ -85,7 +87,7 @@
 
     const STATUS_CONFIG = {
         not_released: {
-            icon: 'calendar-blank',
+            icon: mdiCalendarBlank,
             label: 'Not Yet Released',
             description: 'This title hasn\'t been released yet.',
             color: 'border-info/30 bg-info/5',
@@ -93,7 +95,7 @@
             showActions: false,
         },
         not_tracked: {
-            icon: 'help-circle-outline',
+            icon: mdiHelpCircleOutline,
             label: 'Not in Library',
             description: 'This hasn\'t been added to your collection yet.',
             color: 'border-warning/30 bg-warning/5',
@@ -101,7 +103,7 @@
             showActions: true,
         },
         wanted: {
-            icon: 'list-status',
+            icon: mdiListStatus,
             label: 'Wanted',
             description: 'Added to your wanted list but not yet downloaded.',
             color: 'border-info/30 bg-info/5',
@@ -109,7 +111,7 @@
             showActions: true,
         },
         searching: {
-            icon: 'radar',
+            icon: mdiRadar,
             label: 'Searching',
             description: '',
             color: 'border-info/30 bg-info/5',
@@ -117,7 +119,7 @@
             showActions: true,
         },
         missing: {
-            icon: 'alert-outline',
+            icon: mdiAlertOutline,
             label: 'Missing File',
             description: 'In your *arr but the file is missing.',
             color: 'border-error/30 bg-error/5',
@@ -125,7 +127,7 @@
             showActions: true,
         },
         partial_missing: {
-            icon: 'alert-outline',
+            icon: mdiAlertOutline,
             label: 'Some Files Missing',
             description: '',
             color: 'border-warning/30 bg-warning/5',
@@ -183,9 +185,7 @@
 {#if status && config}
     <div class="collection-status-banner {config.color}">
         <div class="banner-info">
-            <svg class="banner-icon {config.textColor}" viewBox="0 0 24 24">
-                <path fill="currentColor" d={MDI_PATHS[config.icon]} />
-            </svg>
+            <MdiIcon icon={config.icon} size={16} class="{config.textColor}" />
             <span class="banner-label {config.textColor}">{config.label}</span>
             <span class="banner-desc">
                 {#if status === 'searching'}
@@ -215,11 +215,11 @@
                         {#if autoSearching}
                             <span class="loading loading-spinner loading-xs"></span>
                         {:else if autoSearchResult === 'success'}
-                            <svg class="banner-btn-icon" viewBox="0 0 24 24"><path fill="currentColor" d={MDI_PATHS['check-circle-outline']} /></svg>
+                            <MdiIcon icon={mdiCheckCircleOutline} size={13} />
                         {:else if autoSearchResult === 'error'}
-                            <svg class="banner-btn-icon" viewBox="0 0 24 24"><path fill="currentColor" d={MDI_PATHS['alert-circle-outline']} /></svg>
+                            <MdiIcon icon={mdiAlertCircleOutline} size={13} />
                         {:else}
-                            <svg class="banner-btn-icon" viewBox="0 0 24 24"><path fill="currentColor" d={MDI_PATHS['radar']} /></svg>
+                            <MdiIcon icon={mdiRadar} size={13} />
                         {/if}
                         Auto Search
                     </button>
@@ -227,7 +227,7 @@
                         class="banner-btn banner-btn-ghost"
                         onclick={handleManualSearch}
                     >
-                        <svg class="banner-btn-icon" viewBox="0 0 24 24"><path fill="currentColor" d={MDI_PATHS['magnify']} /></svg>
+                        <MdiIcon icon={mdiMagnify} size={13} />
                         Manual Search
                     </button>
                     <InteractiveSearchDialog
@@ -242,19 +242,7 @@
     </div>
 {/if}
 
-<script module>
-    /** MDI icon paths (monochrome) */
-    const MDI_PATHS = {
-        'calendar-blank': 'M19,19H5V8H19M16,1V3H8V1H6V3H5C3.89,3 3,3.89 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5C21,3.89 20.1,3 19,3H18V1',
-        'help-circle-outline': 'M11,18H13V16H11V18M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20M12,6A4,4 0 0,0 8,10H10A2,2 0 0,1 12,8A2,2 0 0,1 14,10C14,12 11,11.75 11,15H13C13,12.75 16,12.5 16,10A4,4 0 0,0 12,6Z',
-        'list-status': 'M16.5,11L13,14.5L9.5,11L8,12.5L13,17.5L18,12.5L16.5,11M5,3H19A2,2 0 0,1 21,5V19A2,2 0 0,1 19,21H5A2,2 0 0,1 3,19V5A2,2 0 0,1 5,3M7.5,7A1.5,1.5 0 0,0 6,8.5A1.5,1.5 0 0,0 7.5,10A1.5,1.5 0 0,0 9,8.5A1.5,1.5 0 0,0 7.5,7M11,7V10H18V7H11Z',
-        'radar': 'M19.07,4.93L17.66,6.34C19.1,7.79 20,9.79 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12C4,7.92 7.05,4.56 11,4.07V6.09C8.16,6.57 6,9.03 6,12A6,6 0 0,0 12,18A6,6 0 0,0 18,12C18,10.34 17.33,8.84 16.24,7.76L14.83,9.17C15.55,9.9 16,10.9 16,12A4,4 0 0,1 12,16A4,4 0 0,1 8,12C8,9.79 9.79,8 12,8V10A2,2 0 0,0 10,12A2,2 0 0,0 12,14A2,2 0 0,0 14,12C14,11.45 13.78,10.94 13.41,10.59L12,12V4A8,8 0 0,1 20,12H22C22,9.24 20.88,6.74 19.07,4.93Z',
-        'magnify': 'M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z',
-        'alert-outline': 'M12,2L1,21H23M12,6L19.53,19H4.47M11,10V14H13V10M11,16V18H13V16',
-        'check-circle-outline': 'M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4M11,16.5L6.5,12L7.91,10.59L11,13.67L16.59,8.09L18,9.5L11,16.5Z',
-        'alert-circle-outline': 'M11,15H13V17H11V15M11,7H13V13H11V7M12,2C6.47,2 2,6.5 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20Z',
-    };
-</script>
+
 
 <style>
     .collection-status-banner {

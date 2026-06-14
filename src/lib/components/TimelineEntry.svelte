@@ -1,6 +1,8 @@
 <script>
     import { imgUrl } from "$lib/utils.js";
     import ServiceIcon from "$lib/components/ServiceIcon.svelte";
+    import MdiIcon from '$lib/components/MdiIcon.svelte';
+    import { mdiTelevision, mdiMusic, mdiMovieOpen, mdiCircle, mdiCircleOutline, mdiMusicOff, mdiMovieOpenOff, mdiTelevisionOff, mdiChevronRight } from '@mdi/js';
 
     /** @type {{ entry: any, jellyfinUrl?: string, albumGroups?: Array<{albumTitle: string, albumArtUrl: string|null, albumId: number|null, tracks: any[]}> | null }} */
     let { entry, jellyfinUrl = "", albumGroups = null } = $props();
@@ -73,9 +75,9 @@
 
     /** @param {string} type */
     function getMediaIcon(type) {
-        if (type === "show") return "📺";
-        if (type === "artist") return "🎵";
-        return "🎬";
+        if (type === "show") return mdiTelevision;
+        if (type === "artist") return mdiMusic;
+        return mdiMovieOpen;
     }
 
     /** @param {string} source */
@@ -176,23 +178,9 @@
                 class="text-white"
             />
         {:else if src === "webhook"}
-            <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="w-2.5 h-2.5 text-white"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="3"><circle cx="12" cy="12" r="4" /></svg
-            >
+            <MdiIcon icon={mdiCircle} size={10} />
         {:else}
-            <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="w-2.5 h-2.5 text-white"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"><circle cx="12" cy="12" r="10" /></svg
-            >
+            <MdiIcon icon={mdiCircleOutline} size={10} />
         {/if}
     </span>
 {/snippet}
@@ -203,60 +191,14 @@
         title="Not in library"
     >
         {#if mediaType === "artist"}
-            <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="w-2.5 h-2.5 text-warning-content"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                ><line x1="2" y1="2" x2="22" y2="22" /><path
-                    d="M9 18V5l12-2v13"
-                /><circle cx="6" cy="18" r="3" /><circle
-                    cx="18"
-                    cy="16"
-                    r="3"
-                /></svg
-            >
+            <MdiIcon icon={mdiMusicOff} size={10} />
         {:else if mediaType === "movie"}
-            <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="w-2.5 h-2.5 text-warning-content"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                ><line x1="2" y1="2" x2="22" y2="22" /><rect
-                    x="2"
-                    y="4"
-                    width="20"
-                    height="16"
-                    rx="2"
-                /><path d="M7 4v4l-3-2v8l3-2v4" /></svg
-            >
+            <MdiIcon icon={mdiMovieOpenOff} size={10} />
         {:else}
-            <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="w-2.5 h-2.5 text-warning-content"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                ><line x1="2" y1="2" x2="22" y2="22" /><rect
-                    x="2"
-                    y="6"
-                    width="20"
-                    height="14"
-                    rx="2"
-                /><path d="M7 2l5 5 5-5" /></svg
-            >
+            <MdiIcon icon={mdiTelevisionOff} size={10} />
         {/if}
+
+
     </span>
 {/snippet}
 
@@ -277,7 +219,7 @@
                     class="w-10 h-10 rounded-lg object-cover shadow-sm shrink-0"
                 />
             {:else}
-                <div class="w-10 h-10 rounded-lg bg-base-300 flex items-center justify-center text-lg shrink-0">🎵</div>
+                <div class="w-10 h-10 rounded-lg bg-base-300 flex items-center justify-center text-lg shrink-0"><MdiIcon icon={mdiMusic} size={20} /></div>
             {/if}
             <div class="flex-1 min-w-0">
                 {#if artistLink}
@@ -361,7 +303,7 @@
                         ? 'text-2xl'
                         : 'text-sm'}"
                 >
-                    {getMediaIcon(entry.media_type)}
+                    <MdiIcon icon={getMediaIcon(entry.media_type)} size={isVideoMedia ? 28 : 14} />
                 </div>
             {/if}
         </div>
@@ -410,16 +352,7 @@
                 >{timeAgo(entry.timestamp)}</span
             >
             {#if link}
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-3 w-3 text-base-content/15 group-hover:text-primary/50 transition-colors"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                >
-                    <polyline points="9 18 15 12 9 6" />
-                </svg>
+                <MdiIcon icon={mdiChevronRight} size={12} />
             {/if}
         </div>
     {/snippet}

@@ -475,29 +475,9 @@
             </div>
         </div>
 
-        <!-- Arr Health Bar -->
-        {#if arrHealth.length > 0}
-            <div class="dash-stats-bar arr-health-bar">
-                {#each arrHealth as svc, i}
-                    {#if i > 0}
-                        <div class="stat-cell-divider"></div>
-                    {/if}
-                    <div class="stat-cell">
-                        <div class="stat-cell-top">
-                            <span class="arr-health-dot" class:dot-ok={svc.status === 'ok'} class:dot-warn={svc.status === 'warning'}></span>
-                            <span class="stat-cell-value" style="color: oklch({svc.color})">{svc.name}</span>
-                        </div>
-                        <span class="stat-cell-label">
-                            {svc.wanted} wanted{#if svc.queue > 0} · {svc.queue} ↓{/if}{#if svc.failed > 0} · <span class="arr-failed-count">{svc.failed} ✗</span>{/if}
-                        </span>
-                    </div>
-                {/each}
-            </div>
-        {/if}
-
         <!-- Incoming (Wanted / Missing / Downloading) -->
         {#if incomingAll.length > 0}
-            <DashSection title="Incoming" icon={mdiSatelliteUplink} glowSrc={incomingItems[0]?.poster_url}>
+            <DashSection title="Incoming" icon={mdiSatelliteUplink} glowSrc={incomingItems.slice(0, 5).map(i => i.poster_url)}>
                 {#snippet headerRight()}
                     <MediaTypeFilter activeTypes={incomingActiveTypes} onchange={(types) => incomingActiveTypes = types} />
                 {/snippet}
@@ -513,7 +493,7 @@
 
         <!-- Recently Added -->
         {#if recentlyAddedAll.length > 0}
-            <DashSection title="Recently Added" icon={mdiNewBox} glowSrc={recentlyAddedItems[0]?.poster_url}>
+            <DashSection title="Recently Added" icon={mdiNewBox} glowSrc={recentlyAddedItems.slice(0, 5).map(i => i.poster_url)}>
                 {#snippet headerRight()}
                     <div class="media-type-chips">
                         <button class="media-chip" class:active={recentlyAddedFilter === 'all'} onclick={() => recentlyAddedFilter = 'all'}>All</button>
@@ -528,7 +508,7 @@
 
         <!-- Trending Movies -->
         {#if trendingMovieItems.length > 0}
-            <DashSection title="Trending Movies" icon={mdiMovieFilter} glowSrc={trendingMovieItems[0]?.poster_url}>
+            <DashSection title="Trending Movies" icon={mdiMovieFilter} glowSrc={trendingMovieItems.slice(0, 5).map(i => i.poster_url)}>
                 <PosterRow title="" items={trendingMovieItems} />
                 {#snippet footer()}
                     {#if dash.trendingMovies?.totalPages > trendingMoviePage}
@@ -546,7 +526,7 @@
 
         <!-- Trending Shows -->
         {#if trendingShowItems.length > 0}
-            <DashSection title="Trending Shows" icon={mdiTelevisionShimmer} glowSrc={trendingShowItems[0]?.poster_url}>
+            <DashSection title="Trending Shows" icon={mdiTelevisionShimmer} glowSrc={trendingShowItems.slice(0, 5).map(i => i.poster_url)}>
                 <PosterRow title="" items={trendingShowItems} />
                 {#snippet footer()}
                     {#if dash.trendingShows?.totalPages > trendingShowPage}
@@ -564,31 +544,22 @@
 
         <!-- Recommended for You -->
         {#if recommendedItems.length > 0}
-            <DashSection title="Recommended for You" icon={mdiBullseyeArrow} glowSrc={recommendedItems[0]?.poster_url}>
+            <DashSection title="Recommended for You" icon={mdiBullseyeArrow} glowSrc={recommendedItems.slice(0, 5).map(i => i.poster_url)}>
                 <PosterRow title="" items={recommendedItems} />
             </DashSection>
         {/if}
 
         <!-- Actor Deep Dive -->
         {#if dash.actorDeepDive && actorUnwatchedItems.length > 0}
-            <DashSection icon={mdiDramaMasks} glowSrc={dash.actorDeepDive.person?.profile_url || actorUnwatchedItems[0]?.poster_url}>
-                {#snippet headerRight()}
-                    <div class="dash-actor-header">
-                        {#if dash.actorDeepDive.person?.profile_url}
-                            <img src={imgUrl(dash.actorDeepDive.person.profile_url)} alt={dash.actorDeepDive.person.name} class="actor-avatar" />
-                        {:else}
-                            <div class="actor-avatar-placeholder"><MdiIcon icon={mdiDramaMasks} size={24} /></div>
-                        {/if}
-                        <div class="actor-info">
-                            <h3 class="actor-name">{dash.actorDeepDive.person.name}</h3>
-                            <p class="actor-stats">
-                                {dash.actorDeepDive.watchedCount} of {dash.actorDeepDive.totalCount} films watched
-                            </p>
-                        </div>
-                    </div>
-                {/snippet}
+            <DashSection
+                title="Selected {dash.actorDeepDive.person.name} Works"
+                iconSrc={dash.actorDeepDive.person?.profile_url}
+                icon={mdiDramaMasks}
+                subtitle="{dash.actorDeepDive.watchedCount} of {dash.actorDeepDive.totalCount} watched"
+                glowSrc={[dash.actorDeepDive.person?.profile_url, ...actorUnwatchedItems.slice(0, 4).map(i => i.poster_url)]}
+            >
                 <PosterRow
-                    title="Unwatched Films"
+                    title=""
                     items={actorUnwatchedItems}
                 />
             </DashSection>
@@ -596,21 +567,21 @@
 
         <!-- Watchlist -->
         {#if watchlistItems.length > 0}
-            <DashSection title="Your Watchlist" icon={mdiClipboardList} glowSrc={watchlistItems[0]?.poster_url}>
+            <DashSection title="Your Watchlist" icon={mdiClipboardList} glowSrc={watchlistItems.slice(0, 5).map(i => i.poster_url)}>
                 <PosterRow title="" items={watchlistItems} />
             </DashSection>
         {/if}
 
         <!-- Recently Played Albums -->
         {#if recentlyPlayedItems.length > 0}
-            <DashSection title="Recently Played" icon={mdiMusicNote} glowSrc={recentlyPlayedItems[0]?.poster_url}>
+            <DashSection title="Recently Played" icon={mdiMusicNote} glowSrc={recentlyPlayedItems.slice(0, 5).map(i => i.poster_url)}>
                 <PosterRow title="" items={recentlyPlayedItems} square />
             </DashSection>
         {/if}
 
         <!-- New Albums -->
         {#if newAlbumItems.length > 0}
-            <DashSection title="New Albums" icon={mdiAlbum} glowSrc={newAlbumItems[0]?.poster_url}>
+            <DashSection title="New Albums" icon={mdiAlbum} glowSrc={newAlbumItems.slice(0, 5).map(i => i.poster_url)}>
                 <PosterRow title="" items={newAlbumItems} square />
             </DashSection>
         {/if}

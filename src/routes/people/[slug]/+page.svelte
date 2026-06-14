@@ -1,4 +1,6 @@
 <script>
+    import MdiIcon from "$lib/components/MdiIcon.svelte";
+    import { mdiCheckCircle, mdiCloseCircle, mdiSync, mdiMovieOpen, mdiTelevision, mdiMusic, mdiLightbulb, mdiMagnify, mdiViewList, mdiImage, mdiPalette, mdiEyeOffOutline, mdiTimerSand } from '@mdi/js';
     import ArrAddDialog from "$lib/components/ArrAddDialog.svelte";
     import ExternalLinks from "$lib/components/ExternalLinks.svelte";
     import FavoriteButton from "$lib/components/FavoriteButton.svelte";
@@ -22,9 +24,9 @@
     }
 
     function watchIcon(status) {
-        if (status === "watched") return "✅";
-        if (status === "in_progress") return "⏳";
-        return "🙈";
+        if (status === "watched") return "watched";
+        if (status === "in_progress") return "progress";
+        return "unwatched";
     }
 
     /**
@@ -66,16 +68,16 @@
     function mediaWatchIcon(credit) {
         if (credit.media_type === 'show') {
             if (credit.total_episodes > 0 && credit.watched_count === credit.total_episodes)
-                return '✅';
+                return 'watched';
             if (credit.watched_count > 0 || credit.progress_count > 0)
-                return '⏳';
-            if (credit.jellyfin_id) return '🙈';
+                return 'progress';
+            if (credit.jellyfin_id) return 'unwatched';
             return '';
         }
         const ws = credit.watch_status;
-        if (ws === 'watched' || credit.play_count > 0) return '✅';
-        if (ws === 'in_progress') return '⏳';
-        if (credit.jellyfin_id) return '🙈';
+        if (ws === 'watched' || credit.play_count > 0) return 'watched';
+        if (ws === 'in_progress') return 'progress';
+        if (credit.jellyfin_id) return 'unwatched';
         return '';
     }
 
@@ -440,11 +442,11 @@
                     {#if personSyncing}
                         <span class="loading loading-spinner loading-xs"></span> Syncing…
                     {:else if personSyncResult?.success}
-                        ✅ Synced
+                        <MdiIcon icon={mdiCheckCircle} size={14} /> Synced
                     {:else if personSyncResult && !personSyncResult.success}
-                        ❌ Failed
+                        <MdiIcon icon={mdiCloseCircle} size={14} /> Failed
                     {:else}
-                        🔄 Sync Person
+                        <MdiIcon icon={mdiSync} size={14} /> Sync Person
                     {/if}
                 </button>
             {/snippet}
@@ -530,7 +532,7 @@
         <div class="space-y-3">
             <div class="flex items-center justify-between">
                 <h2 class="text-xl font-bold flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" style="color: oklch(var(--color-movies))" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg> Movies
+                    <MdiIcon icon={mdiMovieOpen} size={20} class="text-[oklch(var(--color-movies))]" /> Movies
                     <span class="badge badge-ghost badge-sm"
                         >{libraryMovies.length}</span
                     >
@@ -541,7 +543,7 @@
                         (creditsView =
                             creditsView === "poster" ? "list" : "poster")}
                 >
-                    {creditsView === "poster" ? "📋 List" : "🖼️ Poster"}
+                    {creditsView === "poster" ? "" : ""}{#if creditsView === "poster"}<MdiIcon icon={mdiViewList} size={14} /> List{:else}<MdiIcon icon={mdiImage} size={14} /> Poster{/if}
                 </button>
             </div>
             {#if creditsView === "poster"}
@@ -564,19 +566,19 @@
                                     />
                                     {#if mediaWatchIcon(credit)}
                                         <div class="absolute top-1 left-1 text-sm">
-                                            {mediaWatchIcon(credit)}
+                                            {#if mediaWatchIcon(credit) === 'watched'}<MdiIcon icon={mdiCheckCircle} size={16} />{:else if mediaWatchIcon(credit) === 'progress'}<MdiIcon icon={mdiTimerSand} size={16} />{:else}<MdiIcon icon={mdiEyeOffOutline} size={16} />{/if}
                                         </div>
                                     {/if}
 
                                 </figure>
                             {:else}
                                 <div
-                                    class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl relative"
+                                    class="aspect-[2/3] bg-base-300 flex items-center justify-center relative"
                                 >
-                                    🎬
+                                    <MdiIcon icon={mdiMovieOpen} size={32} />
                                     {#if mediaWatchIcon(credit)}
                                         <div class="absolute top-1 left-1 text-sm">
-                                            {mediaWatchIcon(credit)}
+                                            {#if mediaWatchIcon(credit) === 'watched'}<MdiIcon icon={mdiCheckCircle} size={16} />{:else if mediaWatchIcon(credit) === 'progress'}<MdiIcon icon={mdiTimerSand} size={16} />{:else}<MdiIcon icon={mdiEyeOffOutline} size={16} />{/if}
                                         </div>
                                     {/if}
 
@@ -634,16 +636,16 @@
                                 />
                             {:else}
                                 <div
-                                    class="w-12 h-18 rounded-lg bg-base-300 flex items-center justify-center text-lg shrink-0"
+                                    class="w-12 h-18 rounded-lg bg-base-300 flex items-center justify-center shrink-0"
                                 >
-                                    🎬
+                                    <MdiIcon icon={mdiMovieOpen} size={20} />
                                 </div>
                             {/if}
                             <div class="min-w-0 flex-1">
                                 <div class="flex items-center gap-2">
-                                    <span class="text-sm"
-                                        >{watchIcon(credit.watch_status)}</span
-                                    >
+                                    <span class="text-sm">
+                                        {#if watchIcon(credit.watch_status) === 'watched'}<MdiIcon icon={mdiCheckCircle} size={14} />{:else if watchIcon(credit.watch_status) === 'progress'}<MdiIcon icon={mdiTimerSand} size={14} />{:else}<MdiIcon icon={mdiEyeOffOutline} size={14} />{/if}
+                                    </span>
                                     <span
                                         class="font-medium group-hover:text-primary transition-colors truncate"
                                         >{credit.title}</span
@@ -684,7 +686,7 @@
         {#if stubMovies.length > 0}
             <div class="space-y-3 mt-6">
                 <h3 class="text-lg font-semibold flex items-center gap-2 text-base-content/70">
-                    💡 You Might Be Interested In
+                    <MdiIcon icon={mdiLightbulb} size={18} /> You Might Be Interested In
                     <span class="badge badge-ghost badge-sm">{stubMovies.length}</span>
                 </h3>
                 {#if creditsView === "poster"}
@@ -703,7 +705,7 @@
                                         />
                                     </figure>
                                 {:else}
-                                    <div class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl">🎬</div>
+                                    <div class="aspect-[2/3] bg-base-300 flex items-center justify-center"><MdiIcon icon={mdiMovieOpen} size={32} /></div>
                                 {/if}
                                 <div class="card-body !p-2 !gap-1">
                                     <h3 class="font-medium text-xs leading-tight line-clamp-2 group-hover:text-primary transition-colors" title={credit.title}>{credit.title}</h3>
@@ -729,7 +731,7 @@
                                 {#if credit.poster_url}
                                     <img src={imgUrl(credit.poster_url, 100)} alt={credit.title} class="w-12 h-18 rounded-lg object-cover shrink-0" />
                                 {:else}
-                                    <div class="w-12 h-18 rounded-lg bg-base-300 flex items-center justify-center text-lg shrink-0">🎬</div>
+                                    <div class="w-12 h-18 rounded-lg bg-base-300 flex items-center justify-center shrink-0"><MdiIcon icon={mdiMovieOpen} size={20} /></div>
                                 {/if}
                                 <div class="min-w-0 flex-1">
                                     <span class="font-medium group-hover:text-primary transition-colors truncate">{credit.title}</span>
@@ -756,7 +758,7 @@
         {@const stubShows = data.shows.filter(c => !isInLibrary(c))}
         <div class="space-y-3">
             <h2 class="text-xl font-bold flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" style="color: oklch(var(--color-tv))" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="15" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/></svg> TV Shows
+                <MdiIcon icon={mdiTelevision} size={20} class="text-[oklch(var(--color-tv))]" /> TV Shows
                 <span class="badge badge-ghost badge-sm"
                     >{libraryShows.length}</span
                 >
@@ -781,19 +783,19 @@
                                     />
                                     {#if mediaWatchIcon(credit)}
                                         <div class="absolute top-1 left-1 text-sm">
-                                            {mediaWatchIcon(credit)}
+                                            {#if mediaWatchIcon(credit) === 'watched'}<MdiIcon icon={mdiCheckCircle} size={16} />{:else if mediaWatchIcon(credit) === 'progress'}<MdiIcon icon={mdiTimerSand} size={16} />{:else}<MdiIcon icon={mdiEyeOffOutline} size={16} />{/if}
                                         </div>
                                     {/if}
 
                                 </figure>
                             {:else}
                                 <div
-                                    class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl relative"
+                                    class="aspect-[2/3] bg-base-300 flex items-center justify-center relative"
                                 >
-                                    📺
+                                    <MdiIcon icon={mdiTelevision} size={32} />
                                     {#if mediaWatchIcon(credit)}
                                         <div class="absolute top-1 left-1 text-sm">
-                                            {mediaWatchIcon(credit)}
+                                            {#if mediaWatchIcon(credit) === 'watched'}<MdiIcon icon={mdiCheckCircle} size={16} />{:else if mediaWatchIcon(credit) === 'progress'}<MdiIcon icon={mdiTimerSand} size={16} />{:else}<MdiIcon icon={mdiEyeOffOutline} size={16} />{/if}
                                         </div>
                                     {/if}
 
@@ -857,9 +859,9 @@
                                 />
                             {:else}
                                 <div
-                                    class="w-12 h-18 rounded-lg bg-base-300 flex items-center justify-center text-lg shrink-0"
+                                    class="w-12 h-18 rounded-lg bg-base-300 flex items-center justify-center shrink-0"
                                 >
-                                    📺
+                                    <MdiIcon icon={mdiTelevision} size={20} />
                                 </div>
                             {/if}
                             <div class="min-w-0 flex-1">
@@ -910,7 +912,7 @@
         {#if stubShows.length > 0}
             <div class="space-y-3 mt-6">
                 <h3 class="text-lg font-semibold flex items-center gap-2 text-base-content/70">
-                    💡 You Might Be Interested In
+                    <MdiIcon icon={mdiLightbulb} size={18} /> You Might Be Interested In
                     <span class="badge badge-ghost badge-sm">{stubShows.length}</span>
                 </h3>
                 {#if creditsView === "poster"}
@@ -925,7 +927,7 @@
                                         <img src={imgUrl(credit.poster_url, 300)} alt={credit.title} class="w-full h-full object-cover" />
                                     </figure>
                                 {:else}
-                                    <div class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl">📺</div>
+                                    <div class="aspect-[2/3] bg-base-300 flex items-center justify-center"><MdiIcon icon={mdiTelevision} size={32} /></div>
                                 {/if}
                                 <div class="card-body !p-2 !gap-1">
                                     <h3 class="font-medium text-xs leading-tight line-clamp-2 group-hover:text-primary transition-colors" title={credit.title}>{credit.title}</h3>
@@ -951,7 +953,7 @@
                                 {#if credit.poster_url}
                                     <img src={imgUrl(credit.poster_url, 100)} alt={credit.title} class="w-12 h-18 rounded-lg object-cover shrink-0" />
                                 {:else}
-                                    <div class="w-12 h-18 rounded-lg bg-base-300 flex items-center justify-center text-lg shrink-0">📺</div>
+                                    <div class="w-12 h-18 rounded-lg bg-base-300 flex items-center justify-center shrink-0"><MdiIcon icon={mdiTelevision} size={20} /></div>
                                 {/if}
                                 <div class="min-w-0 flex-1">
                                     <span class="font-medium group-hover:text-primary transition-colors truncate">{credit.title}</span>
@@ -976,7 +978,7 @@
     {#if data.artists.length > 0}
         <div class="space-y-3">
             <h2 class="text-xl font-bold flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" style="color: oklch(var(--color-music))" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg> Music
+                <MdiIcon icon={mdiMusic} size={20} class="text-[oklch(var(--color-music))]" /> Music
                 <span class="badge badge-ghost badge-sm"
                     >{data.artists.length}</span
                 >
@@ -1001,19 +1003,19 @@
                                     />
                                     {#if mediaWatchIcon(credit)}
                                         <div class="absolute top-1 left-1 text-sm">
-                                            {mediaWatchIcon(credit)}
+                                            {#if mediaWatchIcon(credit) === 'watched'}<MdiIcon icon={mdiCheckCircle} size={16} />{:else if mediaWatchIcon(credit) === 'progress'}<MdiIcon icon={mdiTimerSand} size={16} />{:else}<MdiIcon icon={mdiEyeOffOutline} size={16} />{/if}
                                         </div>
                                     {/if}
 
                                 </figure>
                             {:else}
                                 <div
-                                    class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl relative"
+                                    class="aspect-[2/3] bg-base-300 flex items-center justify-center relative"
                                 >
-                                    🎵
+                                    <MdiIcon icon={mdiMusic} size={32} />
                                     {#if mediaWatchIcon(credit)}
                                         <div class="absolute top-1 left-1 text-sm">
-                                            {mediaWatchIcon(credit)}
+                                            {#if mediaWatchIcon(credit) === 'watched'}<MdiIcon icon={mdiCheckCircle} size={16} />{:else if mediaWatchIcon(credit) === 'progress'}<MdiIcon icon={mdiTimerSand} size={16} />{:else}<MdiIcon icon={mdiEyeOffOutline} size={16} />{/if}
                                         </div>
                                     {/if}
 
@@ -1065,9 +1067,9 @@
                                 />
                             {:else}
                                 <div
-                                    class="w-12 h-18 rounded-lg bg-base-300 flex items-center justify-center text-lg shrink-0"
+                                    class="w-12 h-18 rounded-lg bg-base-300 flex items-center justify-center shrink-0"
                                 >
-                                    🎵
+                                    <MdiIcon icon={mdiMusic} size={20} />
                                 </div>
                             {/if}
                             <div class="min-w-0 flex-1">
@@ -1107,7 +1109,7 @@
             class="btn btn-outline btn-primary w-full gap-2"
             onclick={loadDiscovery}
         >
-            🔍 Discover Full Filmography from TMDb
+            <MdiIcon icon={mdiMagnify} size={16} /> Discover Full Filmography from TMDb
         </button>
     {:else if discoveryLoading}
         <div class="flex flex-col items-center gap-3 py-8">
@@ -1123,7 +1125,7 @@
         <div class="space-y-4">
             <div class="flex items-center justify-between flex-wrap gap-2">
                 <h2 class="text-xl font-bold">
-                    🔍 Not in Your Library
+                    <MdiIcon icon={mdiMagnify} size={18} /> Not in Your Library
                     <span class="badge badge-neutral badge-sm ml-1"
                         >{filteredDiscovery.length}</span
                     >
@@ -1216,7 +1218,7 @@
                                         <div
                                             class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl"
                                         >
-                                            🎬
+                                            <MdiIcon icon={mdiMovieOpen} size={32} />
                                         </div>
                                     {/if}
                                 </a>
@@ -1248,7 +1250,7 @@
                                         <div
                                             class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl"
                                         >
-                                            🎬
+                                            <MdiIcon icon={mdiMovieOpen} size={32} />
                                         </div>
                                     {/if}
                                 </div>
@@ -1286,9 +1288,11 @@
                                         class:badge-accent={item.media_type ===
                                             "show"}
                                     >
-                                        {item.media_type === "movie"
-                                            ? "🎬"
-                                            : "📺"}
+                                        {#if item.media_type === "movie"}
+                                            <MdiIcon icon={mdiMovieOpen} size={12} />
+                                        {:else}
+                                            <MdiIcon icon={mdiTelevision} size={12} />
+                                        {/if}
                                     </span>
                                     {#if item.vote_average > 0}
                                         <span class="text-[10px] text-warning"
@@ -1318,7 +1322,7 @@
                                             : 'tv'}/{item.library_id}"
                                         class="btn btn-xs btn-success gap-1 mt-1"
                                     >
-                                        ✅ In Library
+                                        <MdiIcon icon={mdiCheckCircle} size={12} /> In Library
                                     </a>
                                 {:else}
                                     <ArrAddDialog
@@ -1362,7 +1366,7 @@
 {#if showBorderInfo}
     <div class="modal modal-open">
         <div class="modal-box max-w-lg">
-            <h3 class="font-bold text-lg mb-3">🎨 Border Guide</h3>
+            <h3 class="font-bold text-lg mb-3"><MdiIcon icon={mdiPalette} size={20} /> Border Guide</h3>
             <div class="space-y-4">
                 <div>
                     <h4 class="font-semibold text-sm text-base-content/70 mb-2">Watch Status → Border Color</h4>

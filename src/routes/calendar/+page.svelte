@@ -1,6 +1,8 @@
 <script>
     import { onMount } from 'svelte';
     import { imgUrl } from '$lib/utils.js';
+    import MdiIcon from '$lib/components/MdiIcon.svelte';
+    import { mdiChevronLeft, mdiChevronRight, mdiMovieOpen, mdiTelevision, mdiMusic } from '@mdi/js';
 
     // ── State ──────────────────────────────────────────────────────
     let loading = $state(true);
@@ -234,13 +236,13 @@
                     </form>
                     <div class="cal-nav">
                         <button class="cal-nav-btn" onclick={prevMonth} aria-label="Previous month">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+                            <MdiIcon icon={mdiChevronLeft} size={14} />
                         </button>
                         {#if !isCurrentMonth}
                             <button class="cal-nav-btn cal-today-btn" onclick={goToday}>Today</button>
                         {/if}
                         <button class="cal-nav-btn" onclick={nextMonth} aria-label="Next month">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+                            <MdiIcon icon={mdiChevronRight} size={14} />
                         </button>
                     </div>
                 </div>
@@ -300,7 +302,7 @@
                                                         />
                                                     {:else}
                                                         <div class="cal-no-poster">
-                                                            {item.media_type === 'movie' ? '🎬' : item.media_type === 'show' ? '📺' : '🎵'}
+                                                            {#if item.media_type === 'movie'}<MdiIcon icon={mdiMovieOpen} size={16} />{:else if item.media_type === 'show'}<MdiIcon icon={mdiTelevision} size={16} />{:else}<MdiIcon icon={mdiMusic} size={16} />{/if}
                                                         </div>
                                                     {/if}
                                                 </div>

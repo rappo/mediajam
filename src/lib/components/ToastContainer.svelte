@@ -1,6 +1,8 @@
 <script>
     import { toasts, removeToast } from "$lib/stores/toast.js";
     import { copyToClipboard } from "$lib/utils.js";
+    import MdiIcon from '$lib/components/MdiIcon.svelte';
+    import { mdiCloseCircle, mdiAlert, mdiCheckCircle, mdiInformation, mdiContentCopy, mdiCheck, mdiClose } from '@mdi/js';
 
     let copyFeedback = $state(/** @type {number | null} */ (null));
 
@@ -23,10 +25,10 @@
             <div class="toast-item toast-{toast.type}" role="alert">
                 <div class="toast-content">
                     <span class="toast-icon">
-                        {#if toast.type === "error"}❌
-                        {:else if toast.type === "warning"}⚠️
-                        {:else if toast.type === "success"}✅
-                        {:else}ℹ️
+                        {#if toast.type === "error"}<MdiIcon icon={mdiCloseCircle} size={16} />
+                        {:else if toast.type === "warning"}<MdiIcon icon={mdiAlert} size={16} />
+                        {:else if toast.type === "success"}<MdiIcon icon={mdiCheckCircle} size={16} />
+                        {:else}<MdiIcon icon={mdiInformation} size={16} />
                         {/if}
                     </span>
                     <div class="toast-text">
@@ -47,9 +49,9 @@
                                     )}
                             >
                                 {#if copyFeedback === toast.id}
-                                    ✓
+                                    <MdiIcon icon={mdiCheck} size={14} />
                                 {:else}
-                                    📋
+                                    <MdiIcon icon={mdiContentCopy} size={14} />
                                 {/if}
                             </button>
                         {/if}
@@ -58,7 +60,7 @@
                             title="Dismiss"
                             onclick={() => removeToast(toast.id)}
                         >
-                            ✕
+                            <MdiIcon icon={mdiClose} size={14} />
                         </button>
                     </div>
                 </div>

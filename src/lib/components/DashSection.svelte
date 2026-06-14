@@ -11,7 +11,7 @@
      *
      * @prop {string} [title] — Section title text
      * @prop {string} [icon] — MDI icon path for the title
-     * @prop {string} [glowSrc] — URL for ambient poster glow (optional)
+     * @prop {string|string[]} [glowSrc] — URL(s) for ambient poster glow; if array, tries each until one loads
      * @prop {string} [href] — "View all" link destination
      * @prop {string} [hrefLabel] — Link label text (default: "View all →")
      * @prop {boolean} [compact] — Reduce padding for inline widgets
@@ -20,45 +20,83 @@
     let {
         title = '',
         icon = undefined,
+        iconSrc = '',
+        subtitle = '',
         glowSrc = '',
         href = '',
         hrefLabel = 'View all →',
         compact = false,
         noGlow = false,
+        headerLeft,
         headerRight,
         footer,
         children,
     } = $props();
 
-    let resolvedGlow = $derived(glowSrc && !noGlow ? imgUrl(glowSrc) : '');
+    /** Validated glow URL — empty until a candidate loads successfully */
+    let validatedGlow = $state('');
+
+    // Flatten glowSrc into candidate array and probe each
+    let candidates = $derived.by(() => {
+        if (noGlow) return [];
+        const raw = Array.isArray(glowSrc) ? glowSrc : [glowSrc];
+        return raw.filter(Boolean).map(u => imgUrl(u));
+    });
+
+    $effect(() => {
+        validatedGlow = '';
+        if (candidates.length === 0) return;
+
+        let cancelled = false;
+        function tryIndex(i) {
+            if (cancelled || i >= candidates.length) return;
+            const img = new Image();
+            img.onload = () => {
+                if (!cancelled && img.naturalWidth > 0) validatedGlow = candidates[i];
+            };
+            img.onerror = () => {
+                if (!cancelled) tryIndex(i + 1);
+            };
+            img.src = candidates[i];
+        }
+        tryIndex(0);
+
+        return () => { cancelled = true; };
+    });
 </script>
 
 <div class="ds-outer">
     <!-- Ambient glow from poster -->
-    {#if resolvedGlow}
-        <div class="ds-glow" style="background-image: url('{resolvedGlow}')"></div>
+    {#if validatedGlow}
+        <div class="ds-glow" style="background-image: url('{validatedGlow}')"></div>
     {/if}
 
     <div class="ds-inner" class:ds-compact={compact}>
         <!-- Header -->
-        {#if title || headerRight}
+        {#if title || headerRight || headerLeft}
             <div class="ds-header">
                 <div class="ds-header-left">
-                    {#if icon}
-                        <MdiIcon {icon} size={16} class="ds-icon" />
+                    {#if iconSrc}
+                        <img src={imgUrl(iconSrc)} alt="" class="ds-portrait" />
+                    {:else if icon}
+                        <MdiIcon {icon} size={24} class="ds-icon" />
                     {/if}
                     {#if title}
                         <h3 class="ds-title">{title}</h3>
                     {/if}
+                    {#if subtitle}
+                        <span class="ds-subtitle">{subtitle}</span>
+                    {/if}
+                    {#if href}
+                        <a href={href} class="ds-link">{hrefLabel}</a>
+                    {/if}
+                    {#if headerLeft}
+                        {@render headerLeft()}
+                    {/if}
                 </div>
-                {#if headerRight || href}
+                {#if headerRight}
                     <div class="ds-header-right">
-                        {#if headerRight}
-                            {@render headerRight()}
-                        {/if}
-                        {#if href}
-                            <a href={href} class="ds-link">{hrefLabel}</a>
-                        {/if}
+                        {@render headerRight()}
                     </div>
                 {/if}
             </div>
@@ -137,11 +175,25 @@
     :global(.ds-icon) {
         opacity: 0.7;
     }
+    .ds-portrait {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 2px solid oklch(var(--p) / 0.3);
+        flex-shrink: 0;
+    }
     .ds-title {
         font-size: 0.9rem;
         font-weight: 700;
         color: oklch(var(--bc) / 0.9);
         margin: 0;
+    }
+    .ds-subtitle {
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: oklch(var(--bc) / 0.4);
+        white-space: nowrap;
     }
     .ds-link {
         font-size: 0.65rem;

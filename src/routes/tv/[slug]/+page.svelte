@@ -1,4 +1,6 @@
 <script>
+    import MdiIcon from "$lib/components/MdiIcon.svelte";
+    import { mdiCheckCircle, mdiCloseCircle, mdiSync, mdiEye, mdiCancel, mdiMerge, mdiDramaMasks, mdiAccount, mdiMagnify, mdiTelevision, mdiAlert, mdiBookmark, mdiBookmarkOutline, mdiViewGrid, mdiStar, mdiViewList, mdiDownload } from '@mdi/js';
     let { data } = $props();
     import { invalidateAll, goto } from "$app/navigation";
     import DataTable from "$lib/components/DataTable.svelte";
@@ -458,11 +460,11 @@
                     {#if syncing}
                         <span class="loading loading-spinner loading-xs"></span> Syncing…
                     {:else if syncStatus === 'success'}
-                        ✅ Synced
+                        <MdiIcon icon={mdiCheckCircle} size={14} /> Synced
                     {:else if syncStatus === 'failed'}
-                        ❌ {syncError || 'Failed'}
+                        <MdiIcon icon={mdiCloseCircle} size={14} /> {syncError || 'Failed'}
                     {:else}
-                        🔄 {data.show.jellyfin_id ? 'Update from Jellyfin' : 'Update from TMDb'}
+                        <MdiIcon icon={mdiSync} size={14} /> {data.show.jellyfin_id ? 'Update from Jellyfin' : 'Update from TMDb'}
                     {/if}
                 </button>
                 {#if data.show.sonarr_id}
@@ -476,7 +478,7 @@
                         onclick={toggleMonitorSonarr}
                         disabled={arrLoading === 'monitor'}
                     >
-                        {#if arrLoading === 'monitor'}<span class="loading loading-spinner loading-xs"></span>{:else if arrMonitored}<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg>{:else}<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>{/if}
+                        {#if arrLoading === 'monitor'}<span class="loading loading-spinner loading-xs"></span>{:else if arrMonitored}<MdiIcon icon={mdiBookmark} size={16} />{:else}<MdiIcon icon={mdiBookmarkOutline} size={16} />{/if}
                         {arrMonitored ? 'Unmonitor' : 'Monitor'}
                     </button>
                 {:else if data.show.tvdb_id || data.show.tmdb_id}
@@ -492,9 +494,9 @@
                     title={isDashboardHidden ? 'Show on TV dashboard' : 'Hide from TV dashboard'}
                 >
                     {#if isDashboardHidden}
-                        👁 Unignore
+                        <MdiIcon icon={mdiEye} size={14} /> Unignore
                     {:else}
-                        🚫 Ignore
+                        <MdiIcon icon={mdiCancel} size={14} /> Ignore
                     {/if}
                 </button>
                 {#if data.show.jellyfin_id}
@@ -510,7 +512,7 @@
                     onclick={() => { showMergeDialog = true; mergeSearchQuery = ''; mergeSearchResults = []; }}
                     title="Merge this show into another"
                 >
-                    🔀 Merge
+                    <MdiIcon icon={mdiMerge} size={14} /> Merge
                 </button>
             {/snippet}
         </MediaDetailHeader>
@@ -542,15 +544,15 @@
                 <button
                     class="join-item btn btn-xs gap-1 {episodeView === 'map' ? 'btn-primary' : 'btn-ghost'}"
                     onclick={() => episodeView = 'map'}
-                ><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="currentColor"><path d="M3 3h4v4H3V3m6 0h4v4H9V3m6 0h4v4h-4V3M3 9h4v4H3V9m6 0h4v4H9V9m6 0h4v4h-4V9M3 15h4v4H3v-4m6 0h4v4H9v-4m6 0h4v4h-4v-4Z"/></svg>Grid</button>
+><MdiIcon icon={mdiViewGrid} size={14} />Grid</button>
                 <button
                     class="join-item btn btn-xs gap-1 {episodeView === 'ratings' ? 'btn-primary' : 'btn-ghost'}"
                     onclick={() => episodeView = 'ratings'}
-                ><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>Ratings</button>
+><MdiIcon icon={mdiStar} size={14} />Ratings</button>
                 <button
                     class="join-item btn btn-xs gap-1 {episodeView === 'list' ? 'btn-primary' : 'btn-ghost'}"
                     onclick={() => episodeView = 'list'}
-                ><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="currentColor"><path d="M3 4h2v2H3V4m4 0h14v2H7V4M3 10h2v2H3v-2m4 0h14v2H7v-2M3 16h2v2H3v-2m4 0h14v2H7v-2Z"/></svg>List</button>
+><MdiIcon icon={mdiViewList} size={14} />List</button>
             </div>
         </div>
 
@@ -788,7 +790,7 @@
         {@const CREW_LIMIT = 16}
         <div class="card bg-base-200/50 border border-base-300">
             <div class="card-body">
-                <h2 class="card-title text-lg">🎭 Cast & Crew</h2>
+                <h2 class="card-title text-lg"><MdiIcon icon={mdiDramaMasks} size={20} class="text-accent" /> Cast & Crew</h2>
 
                 {#if data.cast.length > 0}
                     <h3 class="text-sm font-semibold text-base-content/60 mt-2">Cast</h3>
@@ -806,9 +808,9 @@
                                     />
                                 {:else}
                                     <div
-                                        class="w-20 h-20 rounded-full bg-base-300 flex items-center justify-center text-2xl"
+                                        class="w-20 h-20 rounded-full bg-base-300 flex items-center justify-center"
                                     >
-                                        👤
+                                        <MdiIcon icon={mdiAccount} size={28} />
                                     </div>
                                 {/if}
                                 <span
@@ -850,9 +852,9 @@
                                     />
                                 {:else}
                                     <div
-                                        class="w-6 h-6 rounded-full bg-base-300 flex items-center justify-center text-xs"
+                                        class="w-6 h-6 rounded-full bg-base-300 flex items-center justify-center"
                                     >
-                                        👤
+                                        <MdiIcon icon={mdiAccount} size={14} />
                                     </div>
                                 {/if}
                                 <span
@@ -885,7 +887,7 @@
         items={data.similarInLibrary}
     />
     <PosterRow
-        title="💡 You Might Like"
+        title="You Might Like"
         items={data.similarYouMightLike}
     />
 </div>
@@ -896,7 +898,7 @@
         <div class="card-body">
             {#if !discoveryLoaded && !discoveryLoading}
                 <button class="btn btn-ghost btn-sm gap-2 self-center" onclick={loadDiscovery}>
-                    🔍 Discover Related Shows
+                    <MdiIcon icon={mdiMagnify} size={16} /> Discover Related Shows
                 </button>
             {:else if discoveryLoading}
                 <div class="flex justify-center py-6">
@@ -908,7 +910,7 @@
             {:else}
                 <div class="flex items-center justify-between mb-3">
                     <h2 class="text-lg font-bold flex items-center gap-2">
-                        🔍 Related Shows
+                        <MdiIcon icon={mdiMagnify} size={18} /> Related Shows
                         <span class="badge badge-sm badge-ghost">{filteredDiscoveryItems(discoveryItems).length} not in library</span>
                     </h2>
                     <div class="flex items-center gap-2">
@@ -949,7 +951,7 @@
                                         {/if}
                                     </figure>
                                 {:else}
-                                    <div class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl">📺</div>
+                                    <div class="aspect-[2/3] bg-base-300 flex items-center justify-center"><MdiIcon icon={mdiTelevision} size={32} /></div>
                                 {/if}
                                 <div class="card-body !p-2 !gap-1">
                                     <h3 class="font-medium text-xs leading-tight line-clamp-2" title={item.title}>{item.title}</h3>
@@ -964,9 +966,9 @@
                                         {#if discAddingToArr === item.tmdb_id}
                                             <span class="loading loading-spinner loading-xs"></span>
                                         {:else if discAddedToArr.has(item.tmdb_id)}
-                                            ✅ Added
+                                            <MdiIcon icon={mdiCheckCircle} size={12} /> Added
                                         {:else}
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                            <MdiIcon icon={mdiDownload} size={12} />
                                             Download
                                         {/if}
                                     </button>
@@ -982,7 +984,7 @@
                                             <img src={imgUrl(item.poster_url)} alt={item.title} class="w-full h-full object-cover" />
                                         </figure>
                                     {:else}
-                                        <div class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl">📺</div>
+                                        <div class="aspect-[2/3] bg-base-300 flex items-center justify-center"><MdiIcon icon={mdiTelevision} size={32} /></div>
                                     {/if}
                                     <div class="card-body !p-2 !gap-1">
                                         <span class="badge badge-xs badge-success">✓ In Library</span>
@@ -1051,7 +1053,7 @@
             <p class="py-4 text-base-content/70">
                 This will remove this show and all its episodes, watch history, and ratings.
                 {#if data.show.jellyfin_id}
-                    <br /><span class="text-warning text-sm">⚠️ This item is in Jellyfin and will reappear on the next sync.</span>
+                    <br /><span class="text-warning text-sm"><MdiIcon icon={mdiAlert} size={14} /> This item is in Jellyfin and will reappear on the next sync.</span>
                 {/if}
             </p>
             <div class="modal-action">
@@ -1096,7 +1098,7 @@
                             {#if target.poster_url}
                                 <img src={imgUrl(target.poster_url, 80)} alt="" class="w-10 h-14 rounded object-cover shrink-0" />
                             {:else}
-                                <div class="w-10 h-14 bg-base-300 rounded flex items-center justify-center">📺</div>
+                                <div class="w-10 h-14 bg-base-300 rounded flex items-center justify-center"><MdiIcon icon={mdiTelevision} size={24} /></div>
                             {/if}
                             <div class="min-w-0">
                                 <div class="font-medium text-sm truncate">{target.title}</div>

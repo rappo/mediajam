@@ -62,6 +62,8 @@
     import FavoriteButton from '$lib/components/FavoriteButton.svelte';
     import HeartBorder from '$lib/components/HeartBorder.svelte';
     import ServiceIcon from '$lib/components/ServiceIcon.svelte';
+    import MdiIcon from '$lib/components/MdiIcon.svelte';
+    import { mdiMovieOpen, mdiTelevision, mdiMusic, mdiAccount, mdiChevronLeft, mdiCog } from '@mdi/js';
     import { imgUrl } from '$lib/utils.js';
 
     const isPerson = mediaType === 'person';
@@ -154,7 +156,7 @@
     <!-- Back button (top-left of hero) -->
     {#if backHref}
         <a href={backHref} class="back-btn">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+            <MdiIcon icon={mdiChevronLeft} size={16} />
             {backLabel || 'Back'}
         </a>
     {/if}
@@ -163,9 +165,7 @@
     {#if actions}
         <div class="gear-menu-wrap">
             <button class="gear-btn" onclick={() => gearOpen = !gearOpen} title="Actions">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                </svg>
+                <MdiIcon icon={mdiCog} size={20} />
             </button>
             {#if gearOpen}
                 <div class="gear-backdrop" onclick={() => gearOpen = false}></div>
@@ -187,7 +187,7 @@
                     <img src={imgUrl(posterUrl)} alt={title} class="poster-img" onerror={() => posterBroken = true} />
                 {:else}
                     <div class="poster-placeholder">
-                        {#if mediaType === 'movie'}🎬{:else if mediaType === 'show'}📺{:else if mediaType === 'artist'}🎵{:else}👤{/if}
+                        {#if mediaType === 'movie'}<MdiIcon icon={mdiMovieOpen} size={48} />{:else if mediaType === 'show'}<MdiIcon icon={mdiTelevision} size={48} />{:else if mediaType === 'artist'}<MdiIcon icon={mdiMusic} size={48} />{:else}<MdiIcon icon={mdiAccount} size={48} />{/if}
                     </div>
                 {/if}
             </HeartBorder>

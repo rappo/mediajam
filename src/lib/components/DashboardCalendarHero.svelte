@@ -84,7 +84,11 @@
     }
 </script>
 
-<DashSection title="Upcoming · {rangeLabel}" icon={mdiCalendar} glowSrc={firstGlowSrc} href="/calendar" hrefLabel="Calendar →">
+<DashSection title="Upcoming · {rangeLabel}" icon={mdiCalendar} glowSrc={firstGlowSrc}>
+    {#snippet headerLeft()}
+        <a href="/calendar" class="hcal-inline-link">Calendar →</a>
+        <button class="hcal-inline-btn" onclick={showMore}>Show more +</button>
+    {/snippet}
     {#snippet headerRight()}
         <MediaTypeFilter {activeTypes} onchange={onTypesChanged} />
     {/snippet}
@@ -157,11 +161,6 @@
             </div>
         {/each}
 
-    {#snippet footer()}
-        <button class="hcal-show-more" onclick={showMore}>
-            Show more +
-        </button>
-    {/snippet}
 </DashSection>
 
 <style>
@@ -353,29 +352,31 @@
     }
 
     /* ══════════════ SHOW MORE ══════════════ */
-    .hcal-show-more {
-        display: inline-block;
-        margin-top: 0.4rem;
-        padding: 0.2rem 0.7rem;
+    /* ══════════════ INLINE HEADER CONTROLS ══════════════ */
+    .hcal-inline-link,
+    .hcal-inline-btn {
         font-size: 0.65rem;
         font-weight: 600;
         color: oklch(var(--bc) / 0.4);
+        text-decoration: none;
         background: transparent;
-        border: 1px dashed oklch(var(--bc) / 0.1);
+        border: 1px dashed oklch(var(--bc) / 0.12);
         border-radius: 999px;
+        padding: 0.15rem 0.55rem;
         cursor: pointer;
         transition: all 0.15s;
+        white-space: nowrap;
     }
-    .hcal-show-more:hover {
+    .hcal-inline-link:hover,
+    .hcal-inline-btn:hover {
         color: oklch(var(--p));
         border-color: oklch(var(--p) / 0.3);
-        background: oklch(var(--p) / 0.04);
+        background: oklch(var(--p) / 0.05);
     }
 
     @media (max-width: 767px) {
         .hcal-day { min-width: 110px; }
         .hcal-item-poster { width: 36px; height: 36px; }
         .hcal-item-poster.tall { height: 54px; }
-        .hcal-header { flex-direction: column; align-items: flex-start; }
     }
 </style>

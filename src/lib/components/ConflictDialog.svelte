@@ -7,6 +7,8 @@
      */
     import { invalidateAll } from "$app/navigation";
     import { imgUrl } from "$lib/utils.js";
+    import MdiIcon from '$lib/components/MdiIcon.svelte';
+    import { mdiAlert, mdiCheckCircle, mdiMusic, mdiChevronRight } from '@mdi/js';
 
     let open = $state(false);
     let loading = $state(false);
@@ -90,7 +92,7 @@
     <div class="modal modal-open" onclick={close}>
         <div class="modal-box max-w-2xl" onclick={(e) => e.stopPropagation()}>
             <h3 class="font-bold text-lg flex items-center gap-2">
-                ⚠️ Artist Conflicts
+                <MdiIcon icon={mdiAlert} size={18} /> Artist Conflicts
                 {#if conflicts.length > 0}
                     <span class="badge badge-warning badge-sm"
                         >{conflicts.length}</span
@@ -113,7 +115,7 @@
                 </div>
             {:else if conflicts.length === 0}
                 <div class="text-center py-8 text-base-content/50">
-                    ✅ No conflicts to resolve
+                    <MdiIcon icon={mdiCheckCircle} size={16} /> No conflicts to resolve
                 </div>
             {:else}
                 <div class="space-y-4 mt-4 max-h-[70vh] overflow-y-auto">
@@ -150,7 +152,7 @@
                                                 <div
                                                     class="w-12 h-12 rounded bg-base-300 flex items-center justify-center text-lg shrink-0"
                                                 >
-                                                    🎵
+                                                    <MdiIcon icon={mdiMusic} size={20} />
                                                 </div>
                                             {/if}
                                             <div class="text-left min-w-0">
@@ -206,19 +208,7 @@
                                     class="btn btn-xs btn-ghost gap-1 self-start mt-1"
                                     onclick={() => toggleDetails(conflict.id)}
                                 >
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        class="h-3 w-3 transition-transform"
-                                        class:rotate-90={expandedIds.has(
-                                            conflict.id,
-                                        )}
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="2"
-                                    >
-                                        <polyline points="9 18 15 12 9 6" />
-                                    </svg>
+                                    <MdiIcon icon={mdiChevronRight} size={12} class="transition-transform {expandedIds.has(conflict.id) ? 'rotate-90' : ''}" />
                                     Compare details
                                 </button>
 

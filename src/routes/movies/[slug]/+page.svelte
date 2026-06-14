@@ -1,4 +1,6 @@
 <script>
+    import MdiIcon from "$lib/components/MdiIcon.svelte";
+    import { mdiSatelliteUplink, mdiCheckCircle, mdiCloseCircle, mdiSync, mdiChartBar, mdiAccount, mdiLightbulb, mdiMagnify, mdiMovieOpen, mdiAlert, mdiPlaylistCheck, mdiPlaylistPlus, mdiBookmark, mdiBookmarkOutline, mdiDramaMasks, mdiHistory, mdiDelete, mdiInboxOutline } from '@mdi/js';
     import FavoriteButton from "$lib/components/FavoriteButton.svelte";
     import ExternalLinks from "$lib/components/ExternalLinks.svelte";
     import ArrAddDialog from "$lib/components/ArrAddDialog.svelte";
@@ -429,7 +431,7 @@
                 mediaType: 'movie'
             }}
             extraBadges={[
-                ...(data.movie.collection_status === 'external' && !data.movie.jellyfin_id ? [{ label: '📡 Not in library', cls: 'badge-warning' }] : []),
+                ...(data.movie.collection_status === 'external' && !data.movie.jellyfin_id ? [{ label: 'Not in library', cls: 'badge-warning', icon: 'satellite-uplink' }] : []),
             ]}
         >
             {#snippet watchlistAction()}
@@ -440,9 +442,9 @@
                     title={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
                 >
                     {#if inWatchlist}
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zM2 16h8v-2H2v2zm19.5-4.5L23 13l-6.99 7-4.51-4.5L13 14l3.01 3z"/></svg>
+                        <MdiIcon icon={mdiPlaylistCheck} size={16} />
                     {:else}
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM2 16h8v-2H2v2z"/></svg>
+                        <MdiIcon icon={mdiPlaylistPlus} size={16} />
                     {/if}
                 </button>
             {/snippet}
@@ -498,11 +500,11 @@
                     {#if syncing}
                         <span class="loading loading-spinner loading-xs"></span> Syncing…
                     {:else if syncStatus === 'success'}
-                        ✅ Synced
+                        <MdiIcon icon={mdiCheckCircle} size={14} /> Synced
                     {:else if syncStatus === 'failed'}
-                        ❌ {syncError || 'Failed'}
+                        <MdiIcon icon={mdiCloseCircle} size={14} /> {syncError || 'Failed'}
                     {:else}
-                        🔄 {data.movie.jellyfin_id ? 'Update from Jellyfin' : 'Update from TMDb'}
+                        <MdiIcon icon={mdiSync} size={14} /> {data.movie.jellyfin_id ? 'Update from Jellyfin' : 'Update from TMDb'}
                     {/if}
                 </button>
                 {#if data.movie.radarr_id}
@@ -520,9 +522,9 @@
                         {#if arrLoading === 'monitor'}
                             <span class="loading loading-spinner loading-xs"></span>
                         {:else if arrMonitored}
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg>
+                            <MdiIcon icon={mdiBookmark} size={16} />
                         {:else}
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+                            <MdiIcon icon={mdiBookmarkOutline} size={16} />
                         {/if}
                         {arrMonitored ? 'Unmonitor' : 'Monitor'}
                     </button>
@@ -541,7 +543,7 @@
                     {#if ratingsLoading}
                         <span class="loading loading-spinner loading-xs"></span> Fetching…
                     {:else}
-                        📊 Fetch Ratings
+                        <MdiIcon icon={mdiChartBar} size={14} /> Fetch Ratings
                     {/if}
                 </button>
                 {#if data.movie.jellyfin_id}
@@ -653,20 +655,7 @@
         <div class="card bg-base-200/50 border border-base-300">
             <div class="card-body">
                 <h2 class="card-title text-lg">
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="h-5 w-5 text-accent"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                    >
-                        <path
-                            d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"
-                        /><circle cx="9" cy="7" r="4" /><path
-                            d="M23 21v-2a4 4 0 0 0-3-3.87"
-                        /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                    </svg>
+                    <MdiIcon icon={mdiDramaMasks} size={20} class="text-accent" />
                     Cast & Crew
                     <span class="badge badge-ghost badge-sm"
                         >{data.cast.length + data.crew.length}</span
@@ -691,9 +680,9 @@
                                     />
                                 {:else}
                                     <div
-                                        class="w-20 h-20 rounded-full bg-base-300 flex items-center justify-center text-2xl"
+                                        class="w-20 h-20 rounded-full bg-base-300 flex items-center justify-center"
                                     >
-                                        👤
+                                        <MdiIcon icon={mdiAccount} size={28} />
                                     </div>
                                 {/if}
                                 <span
@@ -737,9 +726,9 @@
                                     />
                                 {:else}
                                     <div
-                                        class="w-6 h-6 rounded-full bg-base-300 flex items-center justify-center text-xs"
+                                        class="w-6 h-6 rounded-full bg-base-300 flex items-center justify-center"
                                     >
-                                        👤
+                                        <MdiIcon icon={mdiAccount} size={14} />
                                     </div>
                                 {/if}
                                 <span
@@ -772,7 +761,7 @@
         items={data.similarInLibrary}
     />
     <PosterRow
-        title="💡 You Might Like"
+        title="You Might Like"
         items={data.similarYouMightLike}
     />
 
@@ -781,18 +770,7 @@
         <div class="card bg-base-200/50 border border-base-300">
             <div class="card-body">
                 <h2 class="card-title text-lg">
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="h-5 w-5 text-secondary"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                    >
-                        <circle cx="12" cy="12" r="10" /><polyline
-                            points="12 6 12 12 16 14"
-                        />
-                    </svg>
+                    <MdiIcon icon={mdiHistory} size={20} class="text-secondary" />
                     Watch History
                     <span class="badge badge-ghost badge-sm"
                         >{data.history.length} plays</span
@@ -881,7 +859,7 @@
                                                 } catch { /* ignore */ }
                                             }}
                                         >
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                            <MdiIcon icon={mdiDelete} size={14} />
                                         </button>
                                     </td>
                                 </tr>
@@ -894,7 +872,7 @@
     {:else}
         <div class="card bg-base-200/30 border border-base-300/50">
             <div class="card-body items-center text-center py-10">
-                <div class="text-4xl mb-2">📭</div>
+                <div class="text-4xl mb-2"><MdiIcon icon={mdiInboxOutline} size={36} /></div>
                 <p class="text-base-content/50 text-sm">
                     No watch history recorded for this movie yet.
                 </p>
@@ -909,7 +887,7 @@
         <div class="card-body">
             {#if !discoveryLoaded && !discoveryLoading}
                 <button class="btn btn-ghost btn-sm gap-2 self-center" onclick={loadDiscovery}>
-                    🔍 Discover Related Movies
+                    <MdiIcon icon={mdiMagnify} size={16} /> Discover Related Movies
                 </button>
             {:else if discoveryLoading}
                 <div class="flex justify-center py-6">
@@ -921,7 +899,7 @@
             {:else}
                 <div class="flex items-center justify-between mb-3">
                     <h2 class="text-lg font-bold flex items-center gap-2">
-                        🔍 Related Movies
+                        <MdiIcon icon={mdiMagnify} size={18} /> Related Movies
                         <span class="badge badge-sm badge-ghost">{filteredDiscoveryItems(discoveryItems).length} not in library</span>
                     </h2>
                     <div class="flex items-center gap-2">
@@ -962,7 +940,7 @@
                                         {/if}
                                     </figure>
                                 {:else}
-                                    <div class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl">🎬</div>
+                                    <div class="aspect-[2/3] bg-base-300 flex items-center justify-center"><MdiIcon icon={mdiMovieOpen} size={32} /></div>
                                 {/if}
                                 <div class="card-body !p-2 !gap-1">
                                     <h3 class="font-medium text-xs leading-tight line-clamp-2" title={item.title}>{item.title}</h3>
@@ -994,7 +972,7 @@
                                             <img src={imgUrl(item.poster_url)} alt={item.title} class="w-full h-full object-cover" />
                                         </figure>
                                     {:else}
-                                        <div class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl">🎬</div>
+                                        <div class="aspect-[2/3] bg-base-300 flex items-center justify-center"><MdiIcon icon={mdiMovieOpen} size={32} /></div>
                                     {/if}
                                     <div class="card-body !p-2 !gap-1">
                                         <span class="badge badge-xs badge-success">✓ In Library</span>
@@ -1033,7 +1011,7 @@
             </p>
             {#if data.movie.jellyfin_id}
                 <div class="alert alert-warning text-sm py-2">
-                    <span>⚠️ This movie is tracked in Jellyfin and will reappear on the next sync.</span>
+                    <span><MdiIcon icon={mdiAlert} size={16} /> This movie is tracked in Jellyfin and will reappear on the next sync.</span>
                 </div>
             {/if}
             <div class="modal-action">

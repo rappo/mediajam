@@ -8,8 +8,12 @@
 	import ConflictDialog from "$lib/components/ConflictDialog.svelte";
 	import ActivityLog from "$lib/components/ActivityLog.svelte";
 	import ChatWidget from "$lib/components/ChatWidget.svelte";
+	import SidebarHealth from "$lib/components/SidebarHealth.svelte";
+	import MdiIcon from "$lib/components/MdiIcon.svelte";
+	import { mdiHome, mdiFormatListBulleted, mdiTelevision, mdiMovie, mdiMusic, mdiMagnify, mdiCalendar, mdiChartBar, mdiGraphOutline, mdiAccount, mdiKey, mdiDatabase, mdiWhiteBalanceSunny, mdiLogout, mdiHandWave, mdiEmoticonCoolOutline, mdiBell, mdiArrowLeft } from '@mdi/js';
 	import { addToast } from "$lib/stores/toast.js";
 	import { jellyfinAuthInvalid } from "$lib/stores/auth.js";
+	import { notificationCount } from "$lib/stores/notifications.js";
 	import { page, navigating } from "$app/stores";
 	import { afterNavigate } from "$app/navigation";
 
@@ -142,6 +146,19 @@
 	/** @type {ConflictDialog} */
 	let conflictDialog = $state();
 
+	// User menu popup state
+	let userMenuOpen = $state(false);
+	let userMenuView = $state('main'); // 'main' | 'notifications'
+	let userMenuPos = $state({ bottom: 8, left: 208 });
+	function openUserMenu(/** @type {HTMLElement} */ btn) {
+		const rect = btn.closest('.sidebar-user-wrap')?.getBoundingClientRect();
+		if (rect) {
+			userMenuPos = { bottom: window.innerHeight - rect.top + 4, left: rect.left };
+		}
+		if (!userMenuOpen) userMenuView = 'main';
+		userMenuOpen = !userMenuOpen;
+	}
+
 	// Allow any child page to open the conflict dialog via a custom event
 	$effect(() => {
 		/** @param {Event} e */
@@ -190,465 +207,432 @@
 </svelte:head>
 
 {#if data.isSetupComplete}
-	<div class="min-h-screen bg-base-100 flex flex-col">
-		<!-- Navbar -->
-		<nav
-			class="navbar bg-base-200/80 backdrop-blur-lg border-b border-base-300 sticky top-0 z-50 px-6"
-		>
-			<div class="flex-1 gap-3">
-				<div class="flex items-center gap-3">
-					<img
-						src="/favicon.png"
-						alt="Mediajam"
-						class="w-9 h-9 rounded-lg"
-					/>
-					<span
-						class="text-xl font-bold tracking-tight bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent"
-					>
-						Mediajam
-					</span>
-				</div>
+	<div class="app-shell">
+		<!-- Left Sidebar -->
+		<nav class="sidebar">
+			<!-- Logo -->
+			<a href="/" class="sidebar-logo">
+				<img src="/favicon.png" alt="Mediajam" class="sidebar-logo-img" />
+				<span class="sidebar-logo-text">Mediajam</span>
+			</a>
+
+			<!-- Primary Nav -->
+			<div class="sidebar-nav">
+				{#if data.showWelcome}
+					<a href="/welcome" class="sidebar-link" class:active={currentPath === '/welcome'}>
+						<MdiIcon icon={mdiHandWave} size={18} />
+						<span class="sidebar-label">Welcome</span>
+					</a>
+				{/if}
+				<a href="/" class="sidebar-link" class:active={currentPath === '/'}>
+					<MdiIcon icon={mdiHome} size={18} />
+					<span class="sidebar-label">Dashboard</span>
+				</a>
+				<a href="/history" class="sidebar-link" class:active={currentPath === '/history'}>
+					<MdiIcon icon={mdiFormatListBulleted} size={18} />
+					<span class="sidebar-label">History</span>
+				</a>
+
+				<div class="sidebar-divider"></div>
+
+				<a href="/tv" class="sidebar-link" class:active={currentPath.startsWith('/tv')}>
+					<MdiIcon icon={mdiTelevision} size={18} style="color: oklch(var(--color-tv))" />
+					<span class="sidebar-label">TV</span>
+				</a>
+				<a href="/movies" class="sidebar-link" class:active={currentPath.startsWith('/movies')}>
+					<MdiIcon icon={mdiMovie} size={18} style="color: oklch(var(--color-movies))" />
+					<span class="sidebar-label">Movies</span>
+				</a>
+				<a href="/music" class="sidebar-link" class:active={currentPath.startsWith('/music')}>
+					<MdiIcon icon={mdiMusic} size={18} style="color: oklch(var(--color-music))" />
+					<span class="sidebar-label">Music</span>
+				</a>
+
+				<div class="sidebar-divider"></div>
+
+				<a href="/wanted" class="sidebar-link" class:active={currentPath === '/wanted'}>
+					<MdiIcon icon={mdiMagnify} size={18} />
+					<span class="sidebar-label">Wanted</span>
+				</a>
+				<a href="/calendar" class="sidebar-link" class:active={currentPath === '/calendar'}>
+					<MdiIcon icon={mdiCalendar} size={18} />
+					<span class="sidebar-label">Calendar</span>
+				</a>
+				<a href="/stats" class="sidebar-link" class:active={currentPath === '/stats'}>
+					<MdiIcon icon={mdiChartBar} size={18} />
+					<span class="sidebar-label">Stats</span>
+				</a>
+				<a href="/connections" class="sidebar-link" class:active={currentPath === '/connections'}>
+					<MdiIcon icon={mdiGraphOutline} size={18} />
+					<span class="sidebar-label">6°</span>
+				</a>
 			</div>
 
-			<!-- Tab Navigation -->
-			<div class="flex-1 flex justify-center">
-				<div
-					role="tablist"
-					class="tabs tabs-boxed bg-base-300/50 flex-nowrap"
-				>
-					{#if data.showWelcome}
-					<a
-						href="/welcome"
-						role="tab"
-						class="tab tab-sm font-medium"
-					>
-						<span class="mr-1.5">👋</span>
-						Welcome
-					</a>
-					{/if}
-					<a
-						href="/"
-						role="tab"
-						class="tab tab-sm font-medium {currentPath === '/' ? 'tab-active' : ''}"
-					>
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							class="h-4 w-4 mr-1.5"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-						>
-							<path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />
-						</svg>
-						Dashboard
-					</a>
-					<a
-						href="/history"
-						role="tab"
-						class="tab tab-sm font-medium {currentPath === '/history' ? 'tab-active' : ''}"
-					>
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							class="h-4 w-4 mr-1.5"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-							stroke-linecap="round"
-						>
-							<line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" />
-							<circle cx="4" cy="6" r="1" fill="currentColor" /><circle cx="4" cy="12" r="1" fill="currentColor" /><circle cx="4" cy="18" r="1" fill="currentColor" />
-						</svg>
-						History
-					</a>
-					<a href="/tv" role="tab" class="tab tab-sm font-medium {currentPath.startsWith('/tv') ? 'tab-active' : ''}">
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							class="h-4 w-4 mr-1.5"
-							style="color: oklch(var(--color-tv))"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-						>
-							<rect
-								x="2"
-								y="7"
-								width="20"
-								height="15"
-								rx="2"
-								ry="2"
-							/><polyline points="17 2 12 7 7 2" />
-						</svg>
-						TV
-					</a>
-					<a href="/movies" role="tab" class="tab tab-sm font-medium {currentPath.startsWith('/movies') ? 'tab-active' : ''}">
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							class="h-4 w-4 mr-1.5"
-							style="color: oklch(var(--color-movies))"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-						>
-							<rect
-								x="2"
-								y="2"
-								width="20"
-								height="20"
-								rx="2.18"
-								ry="2.18"
-							/><line x1="7" y1="2" x2="7" y2="22" /><line
-								x1="17"
-								y1="2"
-								x2="17"
-								y2="22"
-							/><line x1="2" y1="12" x2="22" y2="12" /><line
-								x1="2"
-								y1="7"
-								x2="7"
-								y2="7"
-							/><line x1="2" y1="17" x2="7" y2="17" /><line
-								x1="17"
-								y1="7"
-								x2="22"
-								y2="7"
-							/><line x1="17" y1="17" x2="22" y2="17" />
-						</svg>
-						Movies
-					</a>
-					<a href="/music" role="tab" class="tab tab-sm font-medium {currentPath.startsWith('/music') ? 'tab-active' : ''}">
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							class="h-4 w-4 mr-1.5"
-							style="color: oklch(var(--color-music))"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-						>
-							<path d="M9 18V5l12-2v13" /><circle
-								cx="6"
-								cy="18"
-								r="3"
-							/><circle cx="18" cy="16" r="3" />
-						</svg>
-						Music
-					</a>
-				<div class="dropdown dropdown-end">
-					<div tabindex="0" role="button" class="tab tab-sm font-medium {['/stats', '/calendar', '/connections', '/wanted'].some(p => currentPath.startsWith(p)) ? 'tab-active' : ''}">
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							class="h-4 w-4 mr-1.5"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-						>
-							<path d="M9 2v6l-2 4v1a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-1l-2-4V2" />
-							<path d="M8 2h8" />
-							<path d="M7 16v2a4 4 0 0 0 4 4h2a4 4 0 0 0 4-4v-2" />
-						</svg>
-						Experimental
-						<svg class="h-3 w-3 ml-0.5 opacity-50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
-					</div>
-					<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-					<ul tabindex="0" class="dropdown-content menu bg-base-200 rounded-box z-[60] w-48 p-2 shadow-xl border border-base-content/10 mt-2">
-						<li>
-							<a href="/wanted" class="{currentPath === '/wanted' ? 'active' : ''}">
-								<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-									<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-								</svg>
-								Wanted
-							</a>
-						</li>
-						<li>
-							<a href="/calendar" class="{currentPath === '/calendar' ? 'active' : ''}">
-								<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-									<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-								</svg>
-								Calendar
-							</a>
-						</li>
-						<li>
-							<a href="/stats" class="{currentPath === '/stats' ? 'active' : ''}">
-								<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-									<path d="M18 20V10" /><path d="M12 20V4" /><path d="M6 20v-6" />
-								</svg>
-								Stats
-							</a>
-						</li>
-						<li>
-							<a href="/connections" class="{currentPath === '/connections' ? 'active' : ''}">
-								<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-									<circle cx="5" cy="6" r="3" /><circle cx="19" cy="6" r="3" /><circle cx="12" cy="18" r="3" />
-									<path d="M7.5 8 12 15.5 16.5 8" />
-								</svg>
-								6° of Separation
-							</a>
-						</li>
-					</ul>
-				</div>
-			</div>
-			</div>
+			<!-- Service Health -->
+			<SidebarHealth />
 
-			<!-- Search & Profile -->
-			<div class="flex-1 flex items-center justify-end gap-2">
-				<SearchBar />
-				<ActivityLog initialUnread={data.activityUnread} {conflictDialog} />
-				<div class="dropdown dropdown-end">
+			<!-- Bottom section -->
+			<div class="sidebar-bottom">
+				<!-- User menu -->
+				<div class="sidebar-user-wrap">
 					<div
 						tabindex="0"
 						role="button"
-						class="btn btn-ghost btn-sm btn-circle avatar placeholder"
+						class="sidebar-user-btn"
+						onclick={(e) => openUserMenu(e.currentTarget)}
+						onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') openUserMenu(e.currentTarget); }}
 					>
-						{#if data.user?.avatarUrl?.startsWith("/api/")}
-							<img
-								src={data.user.avatarUrl}
-								alt=""
-								class="w-8 h-8 rounded-full object-cover"
-							/>
-						{:else}
-							<div
-								class="bg-primary text-primary-content w-8 h-8 rounded-full flex items-center justify-center"
-							>
-								{#if data.user?.avatarUrl?.startsWith("icon:")}
-									<span class="text-base"
-										>{data.user.avatarUrl.split(
-											":",
-										)[1]}</span
-									>
-								{:else}
-									<span class="text-base">🤩</span>
-								{/if}
-							</div>
-						{/if}
+						<div class="sidebar-avatar-wrap">
+							{#if data.user?.avatarUrl?.startsWith("/api/")}
+								<img
+									src={data.user.avatarUrl}
+									alt=""
+									class="sidebar-avatar"
+								/>
+							{:else}
+								<div class="sidebar-avatar-placeholder">
+									{#if data.user?.avatarUrl?.startsWith("icon:")}
+										<span class="text-xs">{data.user.avatarUrl.split(":")[1]}</span>
+									{:else}
+										<MdiIcon icon={mdiEmoticonCoolOutline} size={14} />
+									{/if}
+								</div>
+							{/if}
+							<ActivityLog initialUnread={data.activityUnread} {conflictDialog} badgeOnly />
+						</div>
+						<span class="sidebar-label sidebar-username">{data.user?.username || "User"}</span>
 					</div>
-					<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-					<ul
-						tabindex="0"
-						class="dropdown-content menu bg-base-200 rounded-box z-[100] w-56 p-2 shadow-xl border border-base-300 mt-2"
-					>
-						<li class="menu-title px-3 py-2">
-							<div class="flex items-center gap-2">
-								{#if data.user?.avatarUrl?.startsWith("/api/")}
-									<img
-										src={data.user.avatarUrl}
-										alt=""
-										class="w-6 h-6 rounded-full object-cover"
-									/>
-								{:else}
-									<div
-										class="bg-primary text-primary-content w-6 h-6 rounded-full flex items-center justify-center text-xs"
-									>
-										{#if data.user?.avatarUrl?.startsWith("icon:")}
-											{data.user.avatarUrl.split(":")[1]}
-										{:else}
-											🤩
-										{/if}
-									</div>
-								{/if}
-								<span class="text-base-content font-medium"
-									>{data.user?.username || "User"}</span
-								>
-							</div>
-						</li>
+			</div>
+		</nav>
+
+		<!-- User menu popup (outside sidebar to escape backdrop-filter containment) -->
+		{#if userMenuOpen}
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<!-- svelte-ignore a11y_click_events_have_key_events -->
+			<div class="user-menu-backdrop" onclick={() => { userMenuOpen = false; }}></div>
+			<div class="user-menu-popup" style="bottom: {userMenuPos.bottom}px; left: {userMenuPos.left}px;">
+				{#if userMenuView === 'main'}
+					<ul class="menu bg-base-200 rounded-box w-56 p-2 shadow-xl border border-base-300">
+						<li><a href="/settings/account" onclick={() => { userMenuOpen = false; }}><MdiIcon icon={mdiAccount} size={16} /> Account</a></li>
+						<li><a href="/settings/admin?tab=creds-local" onclick={() => { userMenuOpen = false; }}><MdiIcon icon={mdiKey} size={16} /> Credentials</a></li>
+						<li><a href="/settings/admin?tab=sync" onclick={() => { userMenuOpen = false; }}><MdiIcon icon={mdiDatabase} size={16} /> Data</a></li>
+						<li><a href="/settings/display" onclick={() => { userMenuOpen = false; }}><MdiIcon icon={mdiWhiteBalanceSunny} size={16} /> Display</a></li>
 						<div class="divider my-0"></div>
 						<li>
-							<a href="/settings/account">
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									class="h-4 w-4"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-								>
-									<path
-										d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"
-									/><circle cx="12" cy="7" r="4" />
-								</svg>
-								Account
-							</a>
-						</li>
-						<li>
-							<a href="/settings/admin?tab=creds-local">
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									class="h-4 w-4"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-								>
-									<path d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-								</svg>
-								Credentials
-							</a>
-						</li>
-						<li>
-							<a href="/settings/admin?tab=sync">
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									class="h-4 w-4"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-								>
-									<path d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
-								</svg>
-								Data
-							</a>
-						</li>
-						<li>
-							<a href="/settings/display">
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									class="h-4 w-4"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-								>
-									<circle cx="12" cy="12" r="5" /><line
-										x1="12"
-										y1="1"
-										x2="12"
-										y2="3"
-									/><line
-										x1="12"
-										y1="21"
-										x2="12"
-										y2="23"
-									/><line
-										x1="4.22"
-										y1="4.22"
-										x2="5.64"
-										y2="5.64"
-									/><line
-										x1="18.36"
-										y1="18.36"
-										x2="19.78"
-										y2="19.78"
-									/><line
-										x1="1"
-										y1="12"
-										x2="3"
-										y2="12"
-									/><line
-										x1="21"
-										y1="12"
-										x2="23"
-										y2="12"
-									/><line
-										x1="4.22"
-										y1="19.78"
-										x2="5.64"
-										y2="18.36"
-									/><line
-										x1="18.36"
-										y1="5.64"
-										x2="19.78"
-										y2="4.22"
-									/>
-								</svg>
-								Display
-							</a>
+							<button onclick={() => { userMenuView = 'notifications'; }}>
+								<MdiIcon icon={mdiBell} size={16} />
+								{$notificationCount > 0 ? `${$notificationCount} Notification${$notificationCount !== 1 ? 's' : ''}` : 'Notifications'}
+							</button>
 						</li>
 						<div class="divider my-0"></div>
 						<li>
 							<a
-							href="/login"
-							role="button"
-							class="text-error/70 hover:text-error whitespace-nowrap flex items-center gap-2"
-							onclick={async (e) => { e.preventDefault(); await fetch('/api/auth/logout', { method: 'POST' }); window.location.href = '/login'; }}
-						>
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								class="h-4 w-4"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
+								href="/login"
+								role="button"
+								class="text-error/70 hover:text-error"
+								onclick={async (e) => { e.preventDefault(); userMenuOpen = false; await fetch('/api/auth/logout', { method: 'POST' }); window.location.href = '/login'; }}
 							>
-								<path
-									d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"
-								/><polyline
-									points="16 17 21 12 16 7"
-								/><line
-									x1="21"
-									y1="12"
-									x2="9"
-									y2="12"
-								/>
-							</svg>
-							Logout
-						</a>
+								<MdiIcon icon={mdiLogout} size={16} /> Logout
+							</a>
 						</li>
 					</ul>
-				</div>
-			</div>
-		</nav>
-
-		<!-- Global loading bar -->
-		{#if $navigating}
-			<div class="nav-loading-bar"></div>
-		{/if}
-
-		<!-- Jellyfin Re-auth Banner -->
-		{#if $jellyfinAuthInvalid && !reauthDismissed}
-			<div class="bg-warning/10 border-b border-warning/30 px-6 py-3">
-				<div class="flex items-center gap-3 max-w-4xl mx-auto">
-					<span class="text-warning text-lg">🔑</span>
-					<div class="flex-1 min-w-0">
-						<p class="text-sm font-medium">Jellyfin session expired</p>
-						<p class="text-xs text-base-content/50">Enter your Jellyfin password to reconnect</p>
-					</div>
-					<form class="flex items-center gap-2" onsubmit={(e) => { e.preventDefault(); reauthJellyfin(); }}>
-						<input
-							type="password"
-							class="input input-sm input-bordered w-48"
-							placeholder="Jellyfin password"
-							autocomplete="current-password"
-							bind:value={reauthPassword}
-						/>
-						<button
-							type="submit"
-							class="btn btn-sm btn-warning"
-							disabled={!reauthPassword || reauthLoading}
-						>
-							{#if reauthLoading}
-								<span class="loading loading-spinner loading-xs"></span>
-							{:else}
-								Reconnect
-							{/if}
+				{:else}
+					<div class="bg-base-200 rounded-box w-80 shadow-xl border border-base-300 overflow-hidden">
+						<button class="flex items-center gap-2 px-4 py-2.5 text-sm text-base-content/60 hover:text-base-content w-full border-b border-base-300 transition-colors" onclick={() => { userMenuView = 'main'; }}>
+							<MdiIcon icon={mdiArrowLeft} size={16} /> Back
 						</button>
-					</form>
-					{#if reauthError}
-						<span class="text-xs text-error">{reauthError}</span>
-					{/if}
-				</div>
+						<ActivityLog initialUnread={data.activityUnread} {conflictDialog} inline />
+					</div>
+				{/if}
 			</div>
 		{/if}
 
-		<!-- Main Content -->
-		<main class="flex-1">
-			{@render children()}
-		</main>
+		<!-- Main area -->
+		<div class="main-area">
+			<!-- Top bar: search -->
+			<div class="main-topbar">
+				<SearchBar />
+			</div>
 
-		<SyncFooter />
-		<NowPlayingBar remoteControlEnabled={$page.data.remoteControlEnabled} />
-		<ToastContainer />
-		<ChatWidget llmConfigured={data.llmConfigured} />
-		<ConflictDialog bind:this={conflictDialog} />
+			<!-- Global loading bar -->
+			{#if $navigating}
+				<div class="nav-loading-bar"></div>
+			{/if}
+
+			<!-- Jellyfin Re-auth Banner -->
+			{#if $jellyfinAuthInvalid && !reauthDismissed}
+				<div class="bg-warning/10 border-b border-warning/30 px-6 py-3">
+					<div class="flex items-center gap-3 max-w-4xl mx-auto">
+						<MdiIcon icon={mdiKey} size={20} class="text-warning" />
+						<div class="flex-1 min-w-0">
+							<p class="text-sm font-medium">Jellyfin session expired</p>
+							<p class="text-xs text-base-content/50">Enter your Jellyfin password to reconnect</p>
+						</div>
+						<form class="flex items-center gap-2" onsubmit={(e) => { e.preventDefault(); reauthJellyfin(); }}>
+							<input
+								type="password"
+								class="input input-sm input-bordered w-48"
+								placeholder="Jellyfin password"
+								autocomplete="current-password"
+								bind:value={reauthPassword}
+							/>
+							<button
+								type="submit"
+								class="btn btn-sm btn-warning"
+								disabled={!reauthPassword || reauthLoading}
+							>
+								{#if reauthLoading}
+									<span class="loading loading-spinner loading-xs"></span>
+								{:else}
+									Reconnect
+								{/if}
+							</button>
+						</form>
+						{#if reauthError}
+							<span class="text-xs text-error">{reauthError}</span>
+						{/if}
+					</div>
+				</div>
+			{/if}
+
+			<!-- Main Content -->
+			<main class="main-content">
+				{@render children()}
+			</main>
+
+			<SyncFooter />
+			<NowPlayingBar remoteControlEnabled={$page.data.remoteControlEnabled} />
+			<ToastContainer />
+			<ChatWidget llmConfigured={data.llmConfigured} />
+			<ConflictDialog bind:this={conflictDialog} />
+		</div>
 	</div>
 {:else}
 	{@render children()}
 {/if}
+
+<style>
+	/* ══════════════ APP SHELL ══════════════ */
+	.app-shell {
+		display: flex;
+		min-height: 100vh;
+	}
+
+	/* ══════════════ SIDEBAR ══════════════ */
+	.sidebar {
+		position: fixed;
+		top: 0;
+		left: 0;
+		bottom: 0;
+		width: 200px;
+		display: flex;
+		flex-direction: column;
+		background: oklch(var(--b2) / 0.9);
+		backdrop-filter: blur(20px);
+		-webkit-backdrop-filter: blur(20px);
+		border-right: 1px solid oklch(var(--bc) / 0.08);
+		z-index: 50;
+		padding: 0.75rem 0.5rem;
+		overflow-y: auto;
+		scrollbar-width: none;
+	}
+	.sidebar::-webkit-scrollbar { display: none; }
+
+	/* ── Logo ── */
+	.sidebar-logo {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.5rem 0.6rem;
+		margin-bottom: 0.75rem;
+		text-decoration: none;
+	}
+	.sidebar-logo-img {
+		width: 28px;
+		height: 28px;
+		border-radius: 0.4rem;
+		flex-shrink: 0;
+	}
+	.sidebar-logo-text {
+		font-size: 1rem;
+		font-weight: 800;
+		letter-spacing: -0.02em;
+		color: oklch(var(--bc));
+	}
+
+	/* ── Nav Links ── */
+	.sidebar-nav {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+	}
+	.sidebar-link {
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		padding: 0.45rem 0.6rem;
+		border-radius: 0.5rem;
+		font-size: 0.8rem;
+		font-weight: 500;
+		color: oklch(var(--bc) / 0.6);
+		text-decoration: none;
+		transition: all 0.15s;
+		white-space: nowrap;
+	}
+	.sidebar-link:hover {
+		background: oklch(var(--bc) / 0.06);
+		color: oklch(var(--bc) / 0.9);
+	}
+	.sidebar-link.active {
+		background: oklch(var(--p) / 0.15);
+		color: oklch(var(--p));
+		font-weight: 600;
+		border-left: 3px solid oklch(var(--p));
+		padding-left: calc(0.6rem - 3px);
+	}
+	.sidebar-label {
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.sidebar-divider {
+		height: 1px;
+		background: oklch(var(--bc) / 0.08);
+		margin: 0.4rem 0.6rem;
+	}
+
+	/* ── Bottom ── */
+	.sidebar-bottom {
+		position: relative;
+		padding-top: 0.5rem;
+		border-top: 1px solid oklch(var(--bc) / 0.08);
+		display: flex;
+		flex-direction: column;
+		gap: 0.4rem;
+	}
+
+	/* ── User ── */
+	.sidebar-user-wrap {
+		width: 100%;
+	}
+	.sidebar-user-btn {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.4rem 0.6rem;
+		border-radius: 0.5rem;
+		cursor: pointer;
+		transition: background 0.15s;
+		width: 100%;
+	}
+	.sidebar-user-btn:hover {
+		background: oklch(var(--bc) / 0.06);
+	}
+	.sidebar-avatar {
+		width: 26px;
+		height: 26px;
+		border-radius: 50%;
+		object-fit: cover;
+		flex-shrink: 0;
+	}
+	.sidebar-avatar-placeholder {
+		width: 26px;
+		height: 26px;
+		border-radius: 50%;
+		background: oklch(var(--p));
+		color: oklch(var(--pc));
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+	}
+	.sidebar-username {
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: oklch(var(--bc) / 0.7);
+	}
+	.sidebar-avatar-wrap {
+		position: relative;
+		flex-shrink: 0;
+	}
+
+	/* ── User Menu Popup ── */
+	.user-menu-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 999;
+	}
+	.user-menu-popup {
+		position: fixed;
+		z-index: 1000;
+	}
+	.user-menu-notif-item {
+		padding: 0;
+	}
+	.user-menu-notif-item :global(.relative) {
+		width: 100%;
+	}
+	.user-menu-notif-item :global(.btn) {
+		width: 100%;
+		justify-content: flex-start;
+		border-radius: 0.5rem;
+	}
+	/* ══════════════ MAIN AREA ══════════════ */
+	.main-area {
+		margin-left: 200px;
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		min-height: 100vh;
+	}
+	.main-topbar {
+		position: sticky;
+		top: 0;
+		z-index: 40;
+		padding: 0.6rem 1.5rem;
+		background: oklch(var(--b1) / 0.85);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		border-bottom: 1px solid oklch(var(--bc) / 0.06);
+	}
+	.main-content {
+		flex: 1;
+		padding-top: 1rem;
+	}
+
+	/* ══════════════ MOBILE: sidebar collapses to icons ══════════════ */
+	@media (max-width: 767px) {
+		.sidebar {
+			width: 52px;
+			padding: 0.5rem 0.25rem;
+		}
+		.sidebar-logo-text,
+		.sidebar-label {
+			display: none;
+		}
+		.sidebar-logo {
+			justify-content: center;
+			padding: 0.4rem;
+		}
+		.sidebar-logo-img {
+			width: 24px;
+			height: 24px;
+		}
+		.sidebar-link {
+			justify-content: center;
+			padding: 0.5rem;
+		}
+		.sidebar-user-btn {
+			justify-content: center;
+			padding: 0.4rem;
+		}
+		.sidebar-bottom-row {
+			flex-direction: column;
+			padding: 0;
+		}
+		.main-area {
+			margin-left: 52px;
+		}
+	}
+</style>
+
