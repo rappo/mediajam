@@ -166,6 +166,8 @@
         display: flex;
         align-items: center;
         gap: 0.4rem;
+        flex: 1;
+        min-width: 0;
     }
     .ds-header-right {
         display: flex;

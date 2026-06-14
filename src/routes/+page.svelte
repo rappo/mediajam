@@ -184,10 +184,26 @@
     );
 
     // Incoming (wanted/missing) items
+    /** Simple client-side slugify to match server slug format */
+    function clientSlugify(title, year) {
+        let s = title
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/&/g, 'and')
+            .toLowerCase()
+            .replace(/[^a-z0-9\s-]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-')
+            .replace(/^-+|-+$/g, '');
+        if (!s) s = 'untitled';
+        if (year) s += `-${year}`;
+        return s;
+    }
+
     let incomingActiveTypes = $state(['movie', 'show', 'artist']);
     let incomingAll = $derived(
         (incomingRaw?.items || []).map(item => {
             const mediaType = item.type === 'movie' ? 'movies' : item.type === 'show' ? 'tv' : 'music';
+            const slug = item.slug || clientSlugify(item.title, item.year);
             // Build badge
             let badge = item.reasonLabel || '';
             let badgeClass = 'badge-missing';
@@ -217,7 +233,7 @@
                 subtitle = item.year ? String(item.year) : '';
             }
             return {
-                href: item.slug ? `/${mediaType}/${item.slug}` : `/search?q=${encodeURIComponent(item.title)}`,
+                href: `/${mediaType}/${slug}`,
                 title: item.title,
                 subtitle,
                 poster_url: item.poster_url,
@@ -225,6 +241,11 @@
                 badgeClass,
                 media_type: item.type,
                 icon: item.type === 'movie' ? '🎬' : item.type === 'show' ? '📺' : '🎵',
+                // Action fields for hover buttons
+                service: item.service,
+                mediaParentId: item.mediaParentId,
+                arrId: item.arrId,
+                year: item.year,
             };
         })
     );

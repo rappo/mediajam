@@ -85,6 +85,13 @@
     let inWatchlist = $state(data.inWatchlist);
     let watchlistLoading = $state(false);
 
+    // Reset watchlist state when navigating to a different movie
+    $effect(() => {
+        // Access data.movie.id to track changes
+        data.movie.id;
+        inWatchlist = data.inWatchlist;
+    });
+
     async function toggleWatchlist() {
         watchlistLoading = true;
         const prev = inWatchlist;

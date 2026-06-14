@@ -367,6 +367,9 @@
         transition: all 0.15s;
         white-space: nowrap;
     }
+    .hcal-inline-btn {
+        margin-left: auto;
+    }
     .hcal-inline-link:hover,
     .hcal-inline-btn:hover {
         color: oklch(var(--p));

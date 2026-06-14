@@ -183,7 +183,7 @@
 </script>
 
 {#if status && config}
-    <div class="collection-status-banner {config.color}">
+    <div class="collection-status-banner">
         <div class="banner-info">
             <MdiIcon icon={config.icon} size={16} class="{config.textColor}" />
             <span class="banner-label {config.textColor}">{config.label}</span>
@@ -235,6 +235,7 @@
                         {mediaParentId}
                         title="{title} ({releaseYear || ''})"
                         bind:this={searchDialog}
+                        hidden
                     />
                 {/if}
             </div>
@@ -251,13 +252,14 @@
         justify-content: space-between;
         gap: 0.75rem;
         flex-wrap: wrap;
-        border: 1px solid;
+        border: 1px solid oklch(var(--bc) / 0.1);
         border-radius: 0.6rem;
         padding: 0.4rem 0.75rem;
         margin-top: 0.5rem;
         background: oklch(var(--b1) / 0.65);
         backdrop-filter: blur(16px) brightness(0.85);
         -webkit-backdrop-filter: blur(16px) brightness(0.85);
+        overflow: hidden;
     }
 
     .banner-info {

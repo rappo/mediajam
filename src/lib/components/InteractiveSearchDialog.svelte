@@ -11,8 +11,8 @@
      * @prop {string} title — media title for the dialog header
      */
 
-    /** @type {{ service: string, mediaParentId: number, title: string, episodeId?: number | null }} */
-    let { service, mediaParentId, title, episodeId = null } = $props();
+    /** @type {{ service: string, mediaParentId: number, title: string, episodeId?: number | null, hidden?: boolean }} */
+    let { service, mediaParentId, title, episodeId = null, hidden = false } = $props();
 
     let loading = $state(false);
     let error = $state('');
@@ -179,6 +179,7 @@
     }
 </script>
 
+{#if !hidden}
 <button
     class="btn btn-xs btn-ghost gap-1"
     onclick={show}
@@ -187,6 +188,7 @@
     <MdiIcon icon={mdiMagnify} size={16} />
     Search Downloads
 </button>
+{/if}
 
 <!-- Native <dialog> renders in the top-layer, immune to parent overflow:hidden -->
 <dialog

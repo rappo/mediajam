@@ -8,13 +8,24 @@
     /** @type {HTMLDivElement|null} */
     let scrollContainer = $state(null);
     let canScrollLeft = $state(false);
-    let canScrollRight = $state(true);
+    let canScrollRight = $state(false);
+    let needsScroll = $state(false);
 
     function updateScrollState() {
         if (!scrollContainer) return;
         canScrollLeft = scrollContainer.scrollLeft > 0;
         canScrollRight = scrollContainer.scrollLeft < scrollContainer.scrollWidth - scrollContainer.clientWidth - 2;
+        needsScroll = scrollContainer.scrollWidth > scrollContainer.clientWidth + 2;
     }
+
+    // Check scroll state on mount and when items change
+    $effect(() => {
+        items; // track
+        if (scrollContainer) {
+            // Wait for layout
+            requestAnimationFrame(updateScrollState);
+        }
+    });
 
     function scrollBy(dir) {
         scrollContainer?.scrollBy({ left: dir * 400, behavior: 'smooth' });
@@ -41,7 +52,7 @@
             {/if}
         </div>
         {/if}
-        <div class="poster-row-wrapper">
+        <div class="poster-row-wrapper" class:fade-right={canScrollRight}>
             {#if canScrollLeft}
                 <button class="poster-scroll-btn left" onclick={() => scrollBy(-1)}><MdiIcon icon={mdiChevronLeft} size={20} /></button>
             {/if}
@@ -121,6 +132,11 @@
     }
     .poster-row-wrapper {
         position: relative;
+    }
+    /* Right-edge fade via CSS mask — works over any background */
+    .poster-row-wrapper.fade-right .poster-row {
+        -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
+        mask-image: linear-gradient(to right, black 85%, transparent 100%);
     }
     .poster-row {
         display: flex;
