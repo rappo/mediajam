@@ -1,4 +1,6 @@
 <script>
+    import MdiIcon from '$lib/components/MdiIcon.svelte';
+    import { mdiMovieOpen, mdiChevronLeft, mdiChevronRight } from '@mdi/js';
     import { imgUrl } from "$lib/utils.js";
     import { goto } from "$app/navigation";
     /** @type {{ title: string, items: any[], emptyText?: string, square?: boolean, timeFilter?: { paramName: string, value: string, options: {label: string, value: string}[] } }} */
@@ -41,7 +43,7 @@
         {/if}
         <div class="poster-row-wrapper">
             {#if canScrollLeft}
-                <button class="poster-scroll-btn left" onclick={() => scrollBy(-1)}>‹</button>
+                <button class="poster-scroll-btn left" onclick={() => scrollBy(-1)}><MdiIcon icon={mdiChevronLeft} size={20} /></button>
             {/if}
             <div
                 class="poster-row"
@@ -55,7 +57,7 @@
                             <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img" loading="lazy" />
                         {:else}
                             <div class="poster-placeholder">
-                                <span>{item.icon || '🎬'}</span>
+                                <span><MdiIcon icon={mdiMovieOpen} size={32} /></span>
                             </div>
                         {/if}
                         <div class="poster-overlay">
@@ -71,7 +73,7 @@
                 {/each}
             </div>
             {#if canScrollRight}
-                <button class="poster-scroll-btn right" onclick={() => scrollBy(1)}>›</button>
+                <button class="poster-scroll-btn right" onclick={() => scrollBy(1)}><MdiIcon icon={mdiChevronRight} size={20} /></button>
             {/if}
         </div>
     </div>
@@ -81,7 +83,7 @@
 
 <style>
     .poster-section {
-        margin-bottom: 1.5rem;
+        margin-bottom: 0;
     }
     .poster-title-row {
         display: flex;
