@@ -646,6 +646,14 @@ export async function startSync(libraryId = null, force = false) {
                 try {
                     const providerIds = item.ProviderIds || {};
 
+                    // ── Capture pre-upsert values for skip detection ────────────
+                    // IMPORTANT: Must read BEFORE upsertParent overwrites these fields,
+                    // otherwise the comparison is always equal and children never re-sync.
+                    const preUpsertRow = /** @type {any} */ (getParentId.get(item.Id));
+                    const preStoredDateModified = preUpsertRow?.date_last_modified || null;
+                    const preStoredChildCount = preUpsertRow?.jellyfin_child_count || 0;
+                    const preStoredUnplayed = preUpsertRow?.unplayed_count ?? -1;
+
                     const parentParams = {
                         jellyfinId: item.Id,
                         libraryId: lib.jellyfin_id,
@@ -1074,18 +1082,18 @@ export async function startSync(libraryId = null, force = false) {
                     totalSynced++;
                     const parentRow = /** @type {any} */ (getParentId.get(item.Id));
                     const parentId = parentRow?.id;
-                    const storedDateModified = parentRow?.date_last_modified;
-                    const storedChildCount = parentRow?.jellyfin_child_count || 0;
                     const jellyfinDateModified = item.DateLastMediaAdded || item.DateModified || null;
                     const jellyfinChildCount = item.ChildCount || 0;
                     let childCount = 0;
 
-                    // Smart skip: only re-fetch children if date, count, or watch status changed
+                    // Smart skip: compare Jellyfin values against PRE-UPSERT DB values
+                    // (preUpsertRow was captured BEFORE the upsert overwrote date_last_modified etc.)
                     const jellyfinUnplayed = item.UserData?.UnplayedItemCount ?? -1;
                     const needsChildSync = force ||
-                        storedDateModified !== jellyfinDateModified ||
-                        storedChildCount !== jellyfinChildCount ||
-                        jellyfinUnplayed !== (parentRow?.unplayed_count ?? -1);
+                        !preUpsertRow ||
+                        preStoredDateModified !== jellyfinDateModified ||
+                        preStoredChildCount !== jellyfinChildCount ||
+                        jellyfinUnplayed !== preStoredUnplayed;
 
                     // Sync children (skip if nothing changed)
                     if (lib.media_type === 'tvshows' && parentId) {
