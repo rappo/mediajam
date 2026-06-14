@@ -214,7 +214,7 @@
                 subtitle = item.year ? String(item.year) : '';
             }
             return {
-                href: item.slug ? `/${mediaType}/${item.slug}` : null,
+                href: item.slug ? `/${mediaType}/${item.slug}` : `/search?q=${encodeURIComponent(item.title)}`,
                 title: item.title,
                 subtitle,
                 poster_url: item.poster_url,
