@@ -6,8 +6,8 @@
      * @component
      */
 
-    /** @type {{ icon: string, size?: number, class?: string }} */
-    let { icon, size = 24, class: className = '' } = $props();
+    /** @type {{ icon: string, size?: number, class?: string, style?: string }} */
+    let { icon, size = 24, class: className = '', style = '' } = $props();
 </script>
 
 <svg
@@ -16,6 +16,7 @@
     width={size}
     height={size}
     aria-hidden="true"
+    style={style || undefined}
 >
     <path fill="currentColor" d={icon} />
 </svg>

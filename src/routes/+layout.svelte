@@ -485,11 +485,13 @@
 		color: oklch(var(--bc) / 0.9);
 	}
 	.sidebar-link.active {
-		background: oklch(var(--p) / 0.15);
 		color: oklch(var(--p));
 		font-weight: 600;
-		border-left: 3px solid oklch(var(--p));
-		padding-left: calc(0.6rem - 3px);
+	}
+	.sidebar-link.active .sidebar-label {
+		text-decoration: underline;
+		text-underline-offset: 3px;
+		text-decoration-thickness: 2px;
 	}
 	.sidebar-label {
 		overflow: hidden;
