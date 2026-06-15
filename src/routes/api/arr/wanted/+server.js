@@ -234,6 +234,48 @@ async function fetchWantedData(includeCutoff) {
             items.push(entry);
         }
 
+        // Add queue-only items (downloading but not in wanted/missing)
+        const processedEpisodeIds = new Set();
+        for (const [, entry] of seriesMap) {
+            for (const ep of entry.episodes) processedEpisodeIds.add(ep.episodeId);
+        }
+        const queueOnlySeries = new Map();
+        for (const q of (queue?.records || [])) {
+            if (!q.episodeId || processedEpisodeIds.has(q.episodeId)) continue;
+            const seriesId = q.seriesId || q.series?.id;
+            if (!seriesId) continue;
+            if (!queueOnlySeries.has(seriesId)) {
+                const series = q.series || {};
+                const local = localByArr.sonarr.get(seriesId);
+                queueOnlySeries.set(seriesId, {
+                    service: 'sonarr', type: 'show',
+                    title: series.title || 'Unknown', year: series.year,
+                    arrId: seriesId, mediaParentId: local?.id || null,
+                    slug: local?.slug || null,
+                    poster_url: local?.poster_url || (series.images?.find(i => i.coverType === 'poster')?.remoteUrl) || null,
+                    reason: 'in_queue', reasonLabel: 'Downloading',
+                    episodes: [], missingCount: 0,
+                });
+            }
+            const ep = q.episode || {};
+            queueOnlySeries.get(seriesId).episodes.push({
+                episodeId: q.episodeId,
+                label: ep.seasonNumber != null ? `S${String(ep.seasonNumber).padStart(2, '0')}E${String(ep.episodeNumber).padStart(2, '0')}` : '',
+                title: ep.title || q.title || 'Downloading',
+                isAired: true,
+                queue: {
+                    status: q.status,
+                    progress: q.size > 0 ? Math.round(((q.size - q.sizeleft) / q.size) * 100) : 0,
+                    timeleft: q.timeleft,
+                    downloadClient: q.downloadClient,
+                    trackedStatus: q.trackedDownloadStatus,
+                    statusMessages: q.statusMessages,
+                },
+            });
+            queueOnlySeries.get(seriesId).missingCount++;
+        }
+        for (const [, entry] of queueOnlySeries) items.push(entry);
+
         // Cutoff unmet
         if (includeCutoff && cutoff?.length) {
             const cutoffSeriesMap = new Map();
@@ -358,6 +400,33 @@ async function fetchWantedData(includeCutoff) {
             }
 
             items.push(entry);
+        }
+
+        // Add queue-only movies (downloading but not in missing list — e.g. upgrades)
+        const processedMovieIds = new Set(missingMovies.map(m => m.id));
+        for (const q of (queue?.records || [])) {
+            const movieId = q.movieId || q.movie?.id;
+            if (!movieId || processedMovieIds.has(movieId)) continue;
+            const movie = q.movie || {};
+            const local = localByArr.radarr.get(movieId);
+            const posterImg = movie.images?.find(i => i.coverType === 'poster');
+            items.push({
+                service: 'radarr', type: 'movie',
+                title: movie.title || q.title || 'Unknown', year: movie.year,
+                arrId: movieId, mediaParentId: local?.id || null,
+                slug: local?.slug || null,
+                poster_url: local?.poster_url || posterImg?.remoteUrl || null,
+                reason: 'in_queue', reasonLabel: 'Downloading',
+                missingCount: 1, episodes: [],
+                queueInfo: {
+                    status: q.status,
+                    progress: q.size > 0 ? Math.round(((q.size - q.sizeleft) / q.size) * 100) : 0,
+                    timeleft: q.timeleft,
+                    downloadClient: q.downloadClient,
+                    trackedStatus: q.trackedDownloadStatus,
+                    statusMessages: q.statusMessages,
+                },
+            });
         }
 
         // Cutoff unmet movies

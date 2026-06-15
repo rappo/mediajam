@@ -1,15 +1,20 @@
 <script>
     import MdiIcon from '$lib/components/MdiIcon.svelte';
-    import { mdiMovieOpen, mdiChevronLeft, mdiChevronRight } from '@mdi/js';
+    import { mdiMovieOpen, mdiChevronLeft, mdiChevronRight, mdiDownload, mdiCheck } from '@mdi/js';
     import { imgUrl } from "$lib/utils.js";
     import { goto } from "$app/navigation";
-    /** @type {{ title: string, items: any[], emptyText?: string, square?: boolean, timeFilter?: { paramName: string, value: string, options: {label: string, value: string}[] } }} */
-    let { title, items, emptyText = '', square = false, timeFilter = undefined } = $props();
+    /** @type {{ title: string, items: any[], emptyText?: string, square?: boolean, timeFilter?: { paramName: string, value: string, options: {label: string, value: string}[] }, onAutoSearch?: (item: any) => void }} */
+    let { title, items, emptyText = '', square = false, timeFilter = undefined, onAutoSearch = undefined } = $props();
     /** @type {HTMLDivElement|null} */
     let scrollContainer = $state(null);
     let canScrollLeft = $state(false);
     let canScrollRight = $state(false);
     let needsScroll = $state(false);
+
+    /** @type {Set<string>} */
+    let searching = $state(new Set());
+    /** @type {Set<string>} */
+    let searched = $state(new Set());
 
     function updateScrollState() {
         if (!scrollContainer) return;
@@ -75,6 +80,38 @@
                             <div class="poster-title">{item.title}</div>
                             {#if item.subtitle}
                                 <div class="poster-subtitle">{item.subtitle}</div>
+                            {/if}
+                            {#if onAutoSearch && item.service}
+                                <button
+                                    class="poster-search-btn"
+                                    title="Auto-search downloads"
+                                    onclick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        const key = item.arrId || item.title;
+                                        if (searching.has(key) || searched.has(key)) return;
+                                        const next = new Set(searching);
+                                        next.add(key);
+                                        searching = next;
+                                        Promise.resolve(onAutoSearch(item)).then(() => {
+                                            const done = new Set(searched);
+                                            done.add(key);
+                                            searched = done;
+                                        }).finally(() => {
+                                            const rm = new Set(searching);
+                                            rm.delete(key);
+                                            searching = rm;
+                                        });
+                                    }}
+                                >
+                                    {#if searching.has(item.arrId || item.title)}
+                                        <span class="loading loading-spinner" style="width:14px;height:14px"></span>
+                                    {:else if searched.has(item.arrId || item.title)}
+                                        <MdiIcon icon={mdiCheck} size={16} />
+                                    {:else}
+                                        <MdiIcon icon={mdiDownload} size={16} />
+                                    {/if}
+                                </button>
                             {/if}
                         </div>
                         {#if item.badge}
@@ -196,6 +233,28 @@
     }
     .poster-card:hover .poster-overlay {
         opacity: 1;
+    }
+    .poster-search-btn {
+        position: absolute;
+        top: 0.35rem;
+        left: 0.35rem;
+        width: 1.75rem;
+        height: 1.75rem;
+        border-radius: 50%;
+        border: none;
+        background: oklch(var(--p) / 0.9);
+        color: oklch(var(--pc));
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        backdrop-filter: blur(4px);
+        transition: transform 0.1s, background 0.15s;
+        z-index: 2;
+    }
+    .poster-search-btn:hover {
+        transform: scale(1.15);
+        background: oklch(var(--p));
     }
     .poster-title {
         font-size: 0.75rem;

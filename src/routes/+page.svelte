@@ -1,6 +1,7 @@
 <script>
     import { onMount, onDestroy } from "svelte";
     import { imgUrl } from "$lib/utils.js";
+    import { addToast } from '$lib/stores/toast.js';
     import Skeleton from "$lib/components/Skeleton.svelte";
     import PosterRow from "$lib/components/PosterRow.svelte";
     import DashSection from "$lib/components/DashSection.svelte";
@@ -200,6 +201,33 @@
     }
 
     let incomingActiveTypes = $state(['movie', 'show', 'artist']);
+
+    /**
+     * Auto-search handler for Incoming items — triggers *arr search command.
+     * @param {any} item
+     */
+    async function handleIncomingAutoSearch(item) {
+        if (!item.service || (!item.mediaParentId && !item.arrId)) return;
+        try {
+            const res = await fetch(`/api/arr/${item.service}/search`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mediaParentId: item.mediaParentId || undefined,
+                    arrId: item.arrId || undefined,
+                }),
+            });
+            if (!res.ok) {
+                const r = await res.json();
+                throw new Error(r.error || `HTTP ${res.status}`);
+            }
+            addToast({ type: 'success', message: `Started search for ${item.title}`, detail: item.year ? String(item.year) : '' });
+        } catch (e) {
+            addToast({ type: 'error', message: `Search failed for ${item.title}`, detail: e instanceof Error ? e.message : String(e) });
+            throw e; // re-throw so PosterRow shows error state
+        }
+    }
+
     let incomingAll = $derived(
         (incomingRaw?.items || []).map(item => {
             const mediaType = item.type === 'movie' ? 'movies' : item.type === 'show' ? 'tv' : 'music';
@@ -504,7 +532,7 @@
                 {#snippet headerRight()}
                     <MediaTypeFilter activeTypes={incomingActiveTypes} onchange={(types) => incomingActiveTypes = types} />
                 {/snippet}
-                <PosterRow title="" items={incomingItems} />
+                <PosterRow title="" items={incomingItems} onAutoSearch={handleIncomingAutoSearch} />
             </DashSection>
         {/if}
 

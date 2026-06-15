@@ -1174,16 +1174,20 @@ export async function getSmartRecommendations(userId, limit = 20) {
         if (seedMovies.length === 0) return [];
 
         // Step 2: Get all unwatched movie TMDB IDs in library for fast lookup
+        // A movie is "watched" if ANY of its children have been watched (via playback_history or watch_status)
         const unwatchedInLibrary = new Map();
         /** @type {any[]} */ (db.prepare(`
             SELECT mp.id, mp.title, mp.tmdb_id, mp.poster_url, mp.slug, mp.release_year
             FROM media_parents mp
-            JOIN media_children mc ON mc.parent_id = mp.id
             WHERE mp.media_type = 'movie'
               AND mp.tmdb_id IS NOT NULL AND mp.tmdb_id != ''
               AND mp.poster_url IS NOT NULL
               AND mp.collection_status != 'wanted'
-              AND NOT EXISTS (SELECT 1 FROM all_plays ap WHERE ap.media_id = mc.id AND ap.user_id = ?)
+              AND NOT EXISTS (
+                SELECT 1 FROM media_children mc2
+                JOIN all_plays ap ON ap.media_id = mc2.id AND ap.user_id = ?
+                WHERE mc2.parent_id = mp.id
+              )
         `).all(userId)).forEach(m => {
             unwatchedInLibrary.set(String(m.tmdb_id), m);
         });

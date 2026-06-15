@@ -459,17 +459,20 @@ export function getRecommendedMovies(userId, limit = 12) {
                COUNT(DISTINCT mt.tag_value) as tag_matches,
                GROUP_CONCAT(DISTINCT mt.tag_value) as matched_tags
         FROM media_parents mp
-        JOIN media_children mc ON mc.parent_id = mp.id
         JOIN media_tags mt ON mt.media_parent_id = mp.id
         WHERE mp.media_type = 'movie'
           AND mp.poster_url IS NOT NULL
           AND mp.collection_status != 'wanted'
           AND mt.tag_value IN (${placeholders})
-          AND NOT EXISTS (SELECT 1 FROM all_plays ap WHERE ap.media_id = mc.id)
+          AND NOT EXISTS (
+            SELECT 1 FROM media_children mc2
+            JOIN all_plays ap ON ap.media_id = mc2.id AND ap.user_id = ?
+            WHERE mc2.parent_id = mp.id
+          )
         GROUP BY mp.id
         ORDER BY tag_matches DESC
         LIMIT ?
-    `).all(...tagValues, limit * 3));
+    `).all(...tagValues, userId, limit * 3));
 
     if (candidates.length === 0) return [];
 
