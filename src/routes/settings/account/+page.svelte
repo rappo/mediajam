@@ -11,6 +11,7 @@
 
     // ─── Avatar State ─────────────────────────────────────────────────────────────
     let showAvatarPicker = $state(false);
+    // svelte-ignore state_referenced_locally
     let avatarUrl = $state(data.user?.avatarUrl || null);
     let avatarSaving = $state(false);
 
@@ -126,8 +127,11 @@
     }
 
     // ─── Auto-sync state ─────────────────────────────────────────────────────
+    // svelte-ignore state_referenced_locally
     let autoSyncTrakt = $state(data.connectedServices.trakt?.auto_sync === 1);
+    // svelte-ignore state_referenced_locally
     let autoSyncLastfm = $state(data.connectedServices.lastfm?.auto_sync === 1);
+    // svelte-ignore state_referenced_locally
     let autoSyncJellyfin = $state(
         data.connectedServices.jellyfin?.auto_sync === 1,
     );

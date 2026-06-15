@@ -9,9 +9,9 @@
     import InteractiveSearchDialog from "$lib/components/InteractiveSearchDialog.svelte";
     import { invalidateAll } from '$app/navigation';
 
-    const ep = data.episode;
-    const show = data.show;
-    const jf = data.jellyfinData;
+    const ep = $derived(data.episode);
+    const show = $derived(data.show);
+    const jf = $derived(data.jellyfinData);
 
     function formatRuntime(/** @type {number|null} */ minutes) {
         if (!minutes) return null;
@@ -45,9 +45,9 @@
         in_progress: { icon: "►", label: "In Progress", cls: "badge-warning" },
         unwatched: { icon: "", label: "Unwatched", cls: "badge-ghost" },
     };
-    const status = statusConfig[ep.watch_status] || statusConfig.unwatched;
+    const status = $derived(statusConfig[ep.watch_status] || statusConfig.unwatched);
 
-    const epCode = `S${String(ep.season_number).padStart(2, '0')}E${String(ep.item_number).padStart(2, '0')}`;
+    const epCode = $derived(`S${String(ep.season_number).padStart(2, '0')}E${String(ep.item_number).padStart(2, '0')}`);
 </script>
 
 <svelte:head>

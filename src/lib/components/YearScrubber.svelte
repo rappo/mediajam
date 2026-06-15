@@ -12,7 +12,7 @@
     const maxCount = $derived(Math.max(...yearMap.map((y) => y.count), 1));
 
     // Current active year from URL
-    const activeYear = $derived(() => {
+    const activeYear = $derived.by(() => {
         const from = $page.url.searchParams.get("from");
         if (from) return from.substring(0, 4);
         return null;
@@ -85,6 +85,7 @@
         aria-label="Timeline year scrubber"
         aria-valuemin={parseInt(yearMap[yearMap.length - 1]?.year || "0")}
         aria-valuemax={parseInt(yearMap[0]?.year || "0")}
+        aria-valuenow={parseInt(activeYear || yearMap[0]?.year || "0")}
         onmousedown={onMouseDown}
         ontouchstart={(e) => {
             isDragging = true;
@@ -95,7 +96,7 @@
     >
         {#each yearMap as item (item.year)}
             {@const density = Math.max(0.3, item.count / maxCount)}
-            {@const isActive = activeYear() === item.year}
+            {@const isActive = activeYear === item.year}
             <button
                 class="year-item"
                 class:active={isActive}

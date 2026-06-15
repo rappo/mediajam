@@ -11,7 +11,7 @@
     let activeTypes = $state(['movie', 'show', 'artist']);
     /** @type {Set<string>} */
     let expandedDays = $state(new Set());
-    const MAX_VISIBLE = maxPerDay;
+    const MAX_VISIBLE = $derived(maxPerDay);
 
     let filteredDays = $derived(
         upcoming.map(day => ({

@@ -132,6 +132,7 @@
 		"sunset",
 	];
 
+	// svelte-ignore state_referenced_locally
 	let currentTheme = $state(data.theme);
 
 	async function setTheme(theme) {
@@ -303,6 +304,7 @@
 						</div>
 						<span class="sidebar-label sidebar-username">{data.user?.username || "User"}</span>
 					</div>
+			</div>
 			</div>
 		</nav>
 

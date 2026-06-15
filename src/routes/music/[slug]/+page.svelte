@@ -71,6 +71,7 @@
     // *arr state
     let arrLoading = $state("");
     let arrError = $state("");
+    // svelte-ignore state_referenced_locally
     let arrMonitored = $state(!!data.artist.arr_monitored);
 
     async function onArrAdded() {
@@ -527,7 +528,7 @@
                     <InteractiveSearchDialog
                         service="lidarr"
                         mediaParentId={data.artist.id}
-                        title="{data.artist.title}"
+                        title={data.artist.title}
                     />
                     <button
                         class="btn btn-xs btn-ghost gap-1"
@@ -1324,6 +1325,8 @@
                 </button>
             </div>
         </div>
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
         <div class="modal-backdrop" onclick={() => (showDeleteConfirm = false)}></div>
     </div>
 {/if}

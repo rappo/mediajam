@@ -4,8 +4,11 @@
 
     let { data } = $props();
 
+    // svelte-ignore state_referenced_locally
     let suggestions = $state(data.suggestions);
+    // svelte-ignore state_referenced_locally
     let stats = $state(data.stats);
+    // svelte-ignore state_referenced_locally
     let totalSuggestions = $state(data.totalSuggestions);
 
     let merging = $state(new Set());

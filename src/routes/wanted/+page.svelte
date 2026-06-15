@@ -281,7 +281,8 @@
                     {@const link = getItemLink(item)}
 
                     <div class="wanted-card {item.reason}">
-                        <div class="card-main" onclick={() => item.episodes?.length > 1 && toggleExpand(key)}>
+                        <!-- svelte-ignore a11y_no_static_element_interactions -->
+                        <div class="card-main" role="button" tabindex="0" onclick={() => item.episodes?.length > 1 && toggleExpand(key)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); item.episodes?.length > 1 && toggleExpand(key); } }}>
                             <!-- Poster -->
                             <div class="card-poster">
                                 {#if item.poster_url}

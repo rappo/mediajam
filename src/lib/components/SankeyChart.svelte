@@ -229,12 +229,14 @@
         <!-- Links -->
         <g class="sankey-links">
             {#each layout.linkPaths as link}
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
                 <path
                     d={link.path}
                     fill={link.color}
                     fill-opacity={isLinkHighlighted(link) ? 0.35 : 0.06}
                     class="sankey-link"
-                    role="graphics-datalink"
+                    role="img"
+                    aria-label={link.label}
                     onmouseenter={() => hoveredLink = `${link.sourceId}-${link.targetId}`}
                     onmouseleave={() => hoveredLink = null}
                 >

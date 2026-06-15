@@ -66,7 +66,7 @@
     import { mdiMovieOpen, mdiTelevision, mdiMusic, mdiAccount, mdiChevronLeft, mdiCog } from '@mdi/js';
     import { imgUrl } from '$lib/utils.js';
 
-    const isPerson = mediaType === 'person';
+    const isPerson = $derived(mediaType === 'person');
     // Use poster as backdrop fallback for pages without explicit backdrops (e.g. music)
     const effectiveBackdrop = $derived((backdropUrl || posterUrl) ? imgUrl(backdropUrl || posterUrl) : null);
     let backdropBroken = $state(false);
@@ -135,8 +135,7 @@
     const hasVisibleStats = $derived(visibleStats.length > 0);
 </script>
 
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<!-- svelte-ignore a11y_no_static_element_interactions -->
+
 
 <!-- Ambient glow container -->
 <div class="ambient-glow-wrap">
@@ -168,7 +167,7 @@
                 <MdiIcon icon={mdiCog} size={20} />
             </button>
             {#if gearOpen}
-                <div class="gear-backdrop" onclick={() => gearOpen = false}></div>
+                <button class="gear-backdrop" onclick={() => gearOpen = false} aria-label="Close actions menu"></button>
                 <div class="gear-dropdown">
                     <div class="gear-dropdown-label">Actions</div>
                     <div class="gear-dropdown-items">
@@ -242,9 +241,8 @@
                 </div>
             {/if}
             {#if hasVisibleStats || hasFileInfo}
-                <!-- svelte-ignore a11y_click_events_have_key_events -->
-                <!-- svelte-ignore a11y_no_static_element_interactions -->
-                <div class="hero-stats-bar" class:clickable-bar={hasFileInfo && !!onFileInfoClick} onclick={hasFileInfo && onFileInfoClick ? onFileInfoClick : undefined}>
+                <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+                <div class="hero-stats-bar" class:clickable-bar={hasFileInfo && !!onFileInfoClick} onclick={hasFileInfo && onFileInfoClick ? onFileInfoClick : undefined} onkeydown={hasFileInfo && onFileInfoClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') onFileInfoClick(); } : undefined} role={hasFileInfo && onFileInfoClick ? 'button' : undefined} tabindex={hasFileInfo && onFileInfoClick ? 0 : undefined}>
                     {#if hasVisibleStats}
                         {#each visibleStats as stat}
                             <span class="hero-stat-item">
@@ -357,6 +355,9 @@
         position: fixed;
         inset: 0;
         z-index: 9;
+        background: transparent;
+        border: none;
+        cursor: default;
     }
     .gear-dropdown {
         position: absolute;
@@ -453,6 +454,21 @@
         background-color: #16a34a !important;
         color: #fff !important;
         border-color: #16a34a !important;
+        text-shadow: none !important;
+        opacity: 1 !important;
+    }
+
+    /* Extra badges in hero (e.g. "Not downloaded") — solid opaque for legibility */
+    .meta-row :global(.badge-warning) {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        text-shadow: none !important;
+        opacity: 1 !important;
+        font-weight: 600;
+    }
+    .meta-row :global(.badge-ghost) {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
         text-shadow: none !important;
         opacity: 1 !important;
     }

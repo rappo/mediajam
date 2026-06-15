@@ -17,11 +17,12 @@
     import { imgUrl } from "$lib/utils.js";
     import { page } from "$app/stores";
 
-    let isDashboardHidden = $state(!!data.show.is_dashboard_hidden);
+    let isDashboardHiddenLocal = $state(/** @type {boolean|null} */ (null));
+    let isDashboardHidden = $derived(isDashboardHiddenLocal !== null ? isDashboardHiddenLocal : !!data.show.is_dashboard_hidden);
 
     async function toggleDashboardHidden() {
         const newVal = !isDashboardHidden;
-        isDashboardHidden = newVal;
+        isDashboardHiddenLocal = newVal;
         try {
             await fetch(`/api/media/${data.show.id}/dashboard-hide`, {
                 method: 'PATCH',
@@ -30,7 +31,7 @@
             });
         } catch (e) {
             console.error('Failed to toggle dashboard hidden:', e);
-            isDashboardHidden = !newVal; // revert on error
+            isDashboardHiddenLocal = !newVal; // revert on error
         }
     }
 
@@ -71,7 +72,8 @@
     // *arr state
     let arrLoading = $state("");
     let arrError = $state("");
-    let arrMonitored = $state(!!data.show.arr_monitored);
+    let arrMonitoredLocal = $state(/** @type {boolean|null} */ (null));
+    let arrMonitored = $derived(arrMonitoredLocal !== null ? arrMonitoredLocal : !!data.show.arr_monitored);
 
     /** @type {'map' | 'list' | 'ratings'} */
     let episodeView = $state('map');
@@ -201,7 +203,7 @@
                 const r = await res.json();
                 throw new Error(r.error || "Failed");
             }
-            arrMonitored = newState;
+            arrMonitoredLocal = newState;
         } catch (e) {
             arrError = e instanceof Error ? e.message : "Failed";
             setTimeout(() => (arrError = ""), 5000);
@@ -1139,7 +1141,7 @@
                 <button class="btn btn-sm btn-primary" onclick={confirmDiscoveryAdd} disabled={!discSelectedProfileId}>Add</button>
             </div>
         </div>
-        <div class="modal-backdrop" onclick={() => { discShowProfileDialog = false; discPendingItem = null; }}></div>
+        <button class="modal-backdrop" aria-label="Close dialog" onclick={() => { discShowProfileDialog = false; discPendingItem = null; }}></button>
     </div>
 {/if}
 
@@ -1164,7 +1166,7 @@
                 </button>
             </div>
         </div>
-        <div class="modal-backdrop" onclick={() => (showDeleteConfirm = false)}></div>
+        <button class="modal-backdrop" aria-label="Close dialog" onclick={() => (showDeleteConfirm = false)}></button>
     </div>
 {/if}
 
@@ -1212,7 +1214,7 @@
                 <button class="btn btn-sm" onclick={() => (showMergeDialog = false)}>Cancel</button>
             </div>
         </div>
-        <div class="modal-backdrop" onclick={() => (showMergeDialog = false)}></div>
+        <button class="modal-backdrop" aria-label="Close dialog" onclick={() => (showMergeDialog = false)}></button>
     </div>
 {/if}
 

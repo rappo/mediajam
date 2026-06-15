@@ -40,7 +40,9 @@
         "sunset",
     ];
 
+    // svelte-ignore state_referenced_locally
     let currentTheme = $state(data.settings.theme || "dark");
+    // svelte-ignore state_referenced_locally
     let includeSpecials = $state(data.settings.includeSpecials || false);
     let savingSpecials = $state(false);
 
@@ -64,6 +66,7 @@
         'UTC',
     ];
     const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    // svelte-ignore state_referenced_locally
     let timezone = $state(data.userPreferences?.timezone || browserTz || 'UTC');
     let savingTimezone = $state(false);
     let tzSaved = $state(false);
@@ -82,9 +85,13 @@
     }
 
     // Heart border toggles
+    // svelte-ignore state_referenced_locally
     let heartBorderMovies = $state(data.settings.heartBorderMovies ?? true);
+    // svelte-ignore state_referenced_locally
     let heartBorderShows = $state(data.settings.heartBorderShows ?? true);
+    // svelte-ignore state_referenced_locally
     let heartBorderMusic = $state(data.settings.heartBorderMusic ?? true);
+    // svelte-ignore state_referenced_locally
     let heartBorderPeople = $state(data.settings.heartBorderPeople ?? true);
     let savingHeartBorder = $state(false);
 
@@ -123,9 +130,13 @@
         savingHeartBorder = false;
     }
     // Calendar display settings
+    // svelte-ignore state_referenced_locally
     let calendarShowMovies = $state(data.settings.calendarShowMovies ?? true);
+    // svelte-ignore state_referenced_locally
     let calendarShowShows = $state(data.settings.calendarShowShows ?? true);
+    // svelte-ignore state_referenced_locally
     let calendarShowMusic = $state(data.settings.calendarShowMusic ?? true);
+    // svelte-ignore state_referenced_locally
     let calendarMaxPerDay = $state(data.settings.calendarMaxPerDay ?? 2);
     let savingCalendar = $state(false);
 

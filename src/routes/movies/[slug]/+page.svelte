@@ -79,9 +79,10 @@
         return null;
     }
 
-    const badge = watchStatusBadge(data.movie.watch_status);
+    const badge = $derived(watchStatusBadge(data.movie.watch_status));
 
     // Watchlist toggle
+    // svelte-ignore state_referenced_locally
     let inWatchlist = $state(data.inWatchlist);
     let watchlistLoading = $state(false);
 
@@ -155,6 +156,7 @@
     }
 
     // External ratings
+    // svelte-ignore state_referenced_locally
     let externalRatings = $state(data.externalRatings || []);
     let ratingsLoading = $state(false);
 
@@ -200,6 +202,7 @@
     // *arr state
     let arrLoading = $state("");
     let arrError = $state("");
+    // svelte-ignore state_referenced_locally
     let arrMonitored = $state(!!data.movie.arr_monitored);
     let searchDialog = $state(/** @type {any} */ (null));
 
@@ -1037,6 +1040,8 @@
                 </button>
             </div>
         </div>
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
         <div class="modal-backdrop" onclick={() => showDeleteConfirm = false}></div>
     </div>
 {/if}

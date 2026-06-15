@@ -2,6 +2,7 @@
 	/** @type {{ wizardData: any, onStepComplete: (data: any) => void }} */
 	let { wizardData, onStepComplete } = $props();
 
+	// svelte-ignore state_referenced_locally
 	let jellyfinUrl = $state(wizardData.jellyfinUrl || "");
 	let isProbing = $state(true);
 	let probeResults = $state([]);

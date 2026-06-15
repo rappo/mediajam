@@ -11,13 +11,17 @@
         { value: 'litellm', label: 'LiteLLM', sub: 'proxy / gateway', icon: '🔀' },
     ];
 
+    // svelte-ignore state_referenced_locally
     let provider = $state(wizardData.llmProvider || 'ollama');
     let saving = $state(false);
     let error = $state('');
 
     // Ollama-specific
+    // svelte-ignore state_referenced_locally
     let ollamaUrl = $state(wizardData.ollamaUrl || '');
+    // svelte-ignore state_referenced_locally
     let ollamaEmbedModel = $state(wizardData.ollamaEmbedModel || 'nomic-embed-text');
+    // svelte-ignore state_referenced_locally
     let ollamaChatModel = $state(wizardData.ollamaChatModel || 'llama3.2:3b');
     let healthStatus = $state('idle');
     let healthModels = $state(/** @type {string[]} */ ([]));

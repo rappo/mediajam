@@ -32,7 +32,9 @@
     let { data } = $props();
 
     // ─── Form State ──────────────────────────────────────────────────────────────
+    // svelte-ignore state_referenced_locally
     let jellyfinUrl = $state(data.settings.jellyfinUrl || "");
+    // svelte-ignore state_referenced_locally
     let jellyfinExternalUrl = $state(data.settings.jellyfinExternalUrl || "");
     let tvdbApiKey = $state("");
     let tmdbApiKey = $state("");
@@ -41,8 +43,11 @@
     let traktClientSecret = $state("");
     let lastfmApiKey = $state("");
     let lastfmSharedSecret = $state("");
+    // svelte-ignore state_referenced_locally
     let jellyfinPrDbPath = $state(data.settings.jellyfinPrDbPath || "/app/jellyfin/playback_reporting.db");
+    // svelte-ignore state_referenced_locally
     let jellyfinTimezone = $state(data.settings.jellyfinTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
+    // svelte-ignore state_referenced_locally
     let jellyfinSyncCheck = $state(!!data.settings.jellyfinSyncCheck);
 
     // Jellyfin PR DB Validation
@@ -93,19 +98,28 @@
 
 
     // LLM Integration
+    // svelte-ignore state_referenced_locally
     let ollamaUrl = $state(data.settings.ollamaUrl || "");
+    // svelte-ignore state_referenced_locally
     let ollamaEmbedModel = $state(
         data.settings.ollamaEmbedModel || "nomic-embed-text",
     );
+    // svelte-ignore state_referenced_locally
     let ollamaChatModel = $state(
         data.settings.ollamaChatModel || "llama3.2:3b",
     );
     // Multi-provider LLM
+    // svelte-ignore state_referenced_locally
     let llmProvider = $state(data.settings.llmProvider || 'ollama');
+    // svelte-ignore state_referenced_locally
     let llmApiKey = $state(data.settings.llmApiKey || '');
+    // svelte-ignore state_referenced_locally
     let llmApiUrl = $state(data.settings.llmApiUrl || '');
+    // svelte-ignore state_referenced_locally
     let llmChatModel = $state(data.settings.llmChatModel || '');
+    // svelte-ignore state_referenced_locally
     let llmEmbedProvider = $state(data.settings.llmEmbedProvider || 'ollama');
+    // svelte-ignore state_referenced_locally
     let llmEmbedModel = $state(data.settings.llmEmbedModel || '');
     // LiteLLM-specific
     /** @type {string} */
@@ -115,7 +129,9 @@
     let litellmTestError = $state('');
 
     // MCP Server
+    // svelte-ignore state_referenced_locally
     let mcpEnabled = $state(!!data.settings.mcpEnabled);
+    // svelte-ignore state_referenced_locally
     let mcpPort = $state(data.settings.mcpPort || 7332);
     /** @type {{ running: boolean, port: number|null, pid: number|null } | null} */
     let mcpStatus = $state(null);
@@ -157,14 +173,20 @@
         { service: "sonarr", label: "Sonarr (TV)", defaultPort: 8989 },
         { service: "lidarr", label: "Lidarr (music)", defaultPort: 8686 },
     ];
+    // svelte-ignore state_referenced_locally
     let radarrUrl = $state(data.settings.radarrUrl || "");
     let radarrApiKey = $state("");
+    // svelte-ignore state_referenced_locally
     let radarrExternalUrl = $state(data.settings.radarrExternalUrl || "");
+    // svelte-ignore state_referenced_locally
     let sonarrUrl = $state(data.settings.sonarrUrl || "");
     let sonarrApiKey = $state("");
+    // svelte-ignore state_referenced_locally
     let sonarrExternalUrl = $state(data.settings.sonarrExternalUrl || "");
+    // svelte-ignore state_referenced_locally
     let lidarrUrl = $state(data.settings.lidarrUrl || "");
     let lidarrApiKey = $state("");
+    // svelte-ignore state_referenced_locally
     let lidarrExternalUrl = $state(data.settings.lidarrExternalUrl || "");
     /** @type {Record<string, string>} */
     let arrTestStatus = $state({
@@ -213,6 +235,7 @@
     const TABS = [];
 
     // ─── API Keys State ──────────────────────────────────────────────────────────
+    // svelte-ignore state_referenced_locally
     let apiKeysList = $state(data.apiKeys || []);
     let newKeyName = $state('');
     let newKeyPermissions = $state({ 'read:media': true, 'write:media': false, 'read:sync': true, 'write:sync': false, 'admin': false });
@@ -293,9 +316,11 @@
     }
 
     // Snapshot initial values for dirty detection and undo
+    // svelte-ignore state_referenced_locally
+    const s = data.settings;
     let initialValues = $state({
-        jellyfinUrl: data.settings.jellyfinUrl || "",
-        jellyfinExternalUrl: data.settings.jellyfinExternalUrl || "",
+        jellyfinUrl: s.jellyfinUrl || "",
+        jellyfinExternalUrl: s.jellyfinExternalUrl || "",
         tvdbApiKey: "",
         tmdbApiKey: "",
         musicbrainzApiKey: "",
@@ -303,38 +328,38 @@
         traktClientSecret: "",
         lastfmApiKey: "",
         lastfmSharedSecret: "",
-        jellyfinPrDbPath: data.settings.jellyfinPrDbPath || "/app/jellyfin/playback_reporting.db",
-        jellyfinSyncCheck: !!data.settings.jellyfinSyncCheck,
-        ollamaUrl: data.settings.ollamaUrl || "",
-        ollamaEmbedModel: data.settings.ollamaEmbedModel || "nomic-embed-text",
-        ollamaChatModel: data.settings.ollamaChatModel || "llama3.2:3b",
-        llmProvider: data.settings.llmProvider || 'ollama',
-        llmApiKey: data.settings.llmApiKey || '',
-        llmApiUrl: data.settings.llmApiUrl || '',
-        llmChatModel: data.settings.llmChatModel || '',
-        llmEmbedProvider: data.settings.llmEmbedProvider || 'ollama',
-        llmEmbedModel: data.settings.llmEmbedModel || '',
+        jellyfinPrDbPath: s.jellyfinPrDbPath || "/app/jellyfin/playback_reporting.db",
+        jellyfinSyncCheck: !!s.jellyfinSyncCheck,
+        ollamaUrl: s.ollamaUrl || "",
+        ollamaEmbedModel: s.ollamaEmbedModel || "nomic-embed-text",
+        ollamaChatModel: s.ollamaChatModel || "llama3.2:3b",
+        llmProvider: s.llmProvider || 'ollama',
+        llmApiKey: s.llmApiKey || '',
+        llmApiUrl: s.llmApiUrl || '',
+        llmChatModel: s.llmChatModel || '',
+        llmEmbedProvider: s.llmEmbedProvider || 'ollama',
+        llmEmbedModel: s.llmEmbedModel || '',
         omdbApiKey: "",
         discogsToken: "",
         fanartApiKey: "",
         // *arr settings
-        radarrUrl: data.settings.radarrUrl || "",
+        radarrUrl: s.radarrUrl || "",
         radarrApiKey: "",
-        radarrExternalUrl: data.settings.radarrExternalUrl || "",
-        sonarrUrl: data.settings.sonarrUrl || "",
+        radarrExternalUrl: s.radarrExternalUrl || "",
+        sonarrUrl: s.sonarrUrl || "",
         sonarrApiKey: "",
-        sonarrExternalUrl: data.settings.sonarrExternalUrl || "",
-        lidarrUrl: data.settings.lidarrUrl || "",
+        sonarrExternalUrl: s.sonarrExternalUrl || "",
+        lidarrUrl: s.lidarrUrl || "",
         lidarrApiKey: "",
-        lidarrExternalUrl: data.settings.lidarrExternalUrl || "",
+        lidarrExternalUrl: s.lidarrExternalUrl || "",
         // Download defaults (updated after async fetch)
         arrDefaultQualityProfileId: { radarr: 0, sonarr: 0, lidarr: 0 },
         arrDefaultRootFolder: { radarr: '', sonarr: '', lidarr: '' },
         arrDefaultMonitor: { radarr: 'movieOnly', sonarr: 'all', lidarr: 'all' },
         arrSkipDialog: { radarr: false, sonarr: false, lidarr: false },
         // MCP
-        mcpEnabled: !!data.settings.mcpEnabled,
-        mcpPort: data.settings.mcpPort || 7332,
+        mcpEnabled: !!s.mcpEnabled,
+        mcpPort: s.mcpPort || 7332,
     });
 
     let saving = $state(false);
@@ -744,6 +769,7 @@
 
     // Reactive local sync history — seeded from server data, updated on completion
     /** @type {Record<string, {status: string, finishedAt: string|null, summary: string|null}>} */
+    // svelte-ignore state_referenced_locally
     let syncHistoryLocal = $state({
         ...data.syncHistory,
         // Fallback: if no jellyfin history exists but legacy lastSync does, seed it

@@ -40,6 +40,7 @@
         return `${mins}:${String(secs).padStart(2, "0")}`;
     }
 
+    // svelte-ignore state_referenced_locally
     let isHidden = $state(!!data.album.is_hidden);
     let toggling = $state(false);
 
@@ -195,7 +196,7 @@
                     <InteractiveSearchDialog
                         service="lidarr"
                         mediaParentId={data.artist.id}
-                        title="{data.album.title}"
+                        title={data.album.title}
                     />
                 </div>
                 {#if downloadError}

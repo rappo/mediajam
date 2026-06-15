@@ -341,13 +341,14 @@
 
 <!-- Modal overlay - portaled to body to escape navbar stacking context -->
 {#if open}
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
         class="search-overlay"
         use:portal
         onclick={(e) => {
             if (e.target === e.currentTarget) close();
         }}
+        onkeydown={(e) => { if (e.key === 'Escape') close(); }}
+        role="presentation"
     >
         <div class="search-dialog">
             <!-- Search input -->

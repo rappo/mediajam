@@ -32,45 +32,50 @@
     let expandedSection = $state(SECTIONS.find(s => !completed[s]) || null);
 
     // ─── Form State ──────────────────────────────────────────────────────────────
+    // Destructure initial settings to avoid state_referenced_locally warnings
+    // (these are form fields that intentionally capture initial values)
+    // svelte-ignore state_referenced_locally
+    const initialSettings = data.settings;
+
     // API Keys
-    let tvdbApiKey = $state(data.settings.tvdbApiKey || '');
-    let tmdbApiKey = $state(data.settings.tmdbApiKey || '');
-    let musicbrainzApiKey = $state(data.settings.musicbrainzApiKey || '');
-    let omdbApiKey = $state(data.settings.omdbApiKey || '');
-    let discogsToken = $state(data.settings.discogsToken || '');
+    let tvdbApiKey = $state(initialSettings.tvdbApiKey || '');
+    let tmdbApiKey = $state(initialSettings.tmdbApiKey || '');
+    let musicbrainzApiKey = $state(initialSettings.musicbrainzApiKey || '');
+    let omdbApiKey = $state(initialSettings.omdbApiKey || '');
+    let discogsToken = $state(initialSettings.discogsToken || '');
 
     // Integrations
-    let traktClientId = $state(data.settings.traktClientId || '');
-    let traktClientSecret = $state(data.settings.traktClientSecret || '');
-    let lastfmApiKey = $state(data.settings.lastfmApiKey || '');
-    let lastfmSharedSecret = $state(data.settings.lastfmSharedSecret || '');
+    let traktClientId = $state(initialSettings.traktClientId || '');
+    let traktClientSecret = $state(initialSettings.traktClientSecret || '');
+    let lastfmApiKey = $state(initialSettings.lastfmApiKey || '');
+    let lastfmSharedSecret = $state(initialSettings.lastfmSharedSecret || '');
 
     // *arr
-    let radarrUrl = $state(data.settings.radarrUrl || '');
-    let radarrApiKey = $state(data.settings.radarrApiKey || '');
-    let radarrExternalUrl = $state(data.settings.radarrExternalUrl || '');
-    let sonarrUrl = $state(data.settings.sonarrUrl || '');
-    let sonarrApiKey = $state(data.settings.sonarrApiKey || '');
-    let sonarrExternalUrl = $state(data.settings.sonarrExternalUrl || '');
-    let lidarrUrl = $state(data.settings.lidarrUrl || '');
-    let lidarrApiKey = $state(data.settings.lidarrApiKey || '');
-    let lidarrExternalUrl = $state(data.settings.lidarrExternalUrl || '');
+    let radarrUrl = $state(initialSettings.radarrUrl || '');
+    let radarrApiKey = $state(initialSettings.radarrApiKey || '');
+    let radarrExternalUrl = $state(initialSettings.radarrExternalUrl || '');
+    let sonarrUrl = $state(initialSettings.sonarrUrl || '');
+    let sonarrApiKey = $state(initialSettings.sonarrApiKey || '');
+    let sonarrExternalUrl = $state(initialSettings.sonarrExternalUrl || '');
+    let lidarrUrl = $state(initialSettings.lidarrUrl || '');
+    let lidarrApiKey = $state(initialSettings.lidarrApiKey || '');
+    let lidarrExternalUrl = $state(initialSettings.lidarrExternalUrl || '');
 
     // LLM
-    let ollamaUrl = $state(data.settings.ollamaUrl || '');
-    let ollamaEmbedModel = $state(data.settings.ollamaEmbedModel || 'nomic-embed-text');
-    let ollamaChatModel = $state(data.settings.ollamaChatModel || 'llama3.2:3b');
+    let ollamaUrl = $state(initialSettings.ollamaUrl || '');
+    let ollamaEmbedModel = $state(initialSettings.ollamaEmbedModel || 'nomic-embed-text');
+    let ollamaChatModel = $state(initialSettings.ollamaChatModel || 'llama3.2:3b');
 
     // ─── Inline Validation ──────────────────────────────────────────────────────
     /** @type {Record<string, 'idle'|'checking'|'valid'|'error'>} */
     let validationStatus = $state({
-        tmdb: data.settings.tmdbApiKey ? 'valid' : 'idle',
-        tvdb: data.settings.tvdbApiKey ? 'valid' : 'idle',
-        omdb: data.settings.omdbApiKey ? 'valid' : 'idle',
-        discogs: data.settings.discogsToken ? 'valid' : 'idle',
-        musicbrainz: data.settings.musicbrainzApiKey ? 'valid' : 'idle',
-        trakt: (data.settings.traktClientId && data.settings.traktClientSecret) ? 'valid' : 'idle',
-        lastfm: (data.settings.lastfmApiKey && data.settings.lastfmSharedSecret) ? 'valid' : 'idle',
+        tmdb: initialSettings.tmdbApiKey ? 'valid' : 'idle',
+        tvdb: initialSettings.tvdbApiKey ? 'valid' : 'idle',
+        omdb: initialSettings.omdbApiKey ? 'valid' : 'idle',
+        discogs: initialSettings.discogsToken ? 'valid' : 'idle',
+        musicbrainz: initialSettings.musicbrainzApiKey ? 'valid' : 'idle',
+        trakt: (initialSettings.traktClientId && initialSettings.traktClientSecret) ? 'valid' : 'idle',
+        lastfm: (initialSettings.lastfmApiKey && initialSettings.lastfmSharedSecret) ? 'valid' : 'idle',
     });
     /** @type {Record<string, string>} */
     let validationMsg = $state({});
@@ -243,8 +248,10 @@
     let importState = $state({ active: false, tier: '', status: 'idle', logs: [], progressPercent: 0, totalImported: 0, totalSkipped: 0, eventSource: null });
 
     // Auto-sync toggle state
-    let traktAutoSync = $state(data.autoSync?.trakt || false);
-    let lastfmAutoSync = $state(data.autoSync?.lastfm || false);
+    // svelte-ignore state_referenced_locally
+    const initialAutoSync = data.autoSync;
+    let traktAutoSync = $state(initialAutoSync?.trakt || false);
+    let lastfmAutoSync = $state(initialAutoSync?.lastfm || false);
 
     async function toggleAutoSync(provider, enabled) {
         try {

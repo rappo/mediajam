@@ -152,16 +152,16 @@
         return "";
     }
 
-    const posterUrl = getPosterUrl(entry);
-    const link = getLink(entry);
-    const title = getTitle(entry);
-    const isExternal = entry.collection_status === "external";
+    const posterUrl = $derived(getPosterUrl(entry));
+    const link = $derived(getLink(entry));
+    const title = $derived(getTitle(entry));
+    const isExternal = $derived(entry.collection_status === "external");
 
     // Is this a movie or TV entry? -> larger poster
-    const isVideoMedia =
-        entry.media_type === "movie" || entry.media_type === "show";
+    const isVideoMedia = $derived(
+        entry.media_type === "movie" || entry.media_type === "show");
     // Is this an artist group with album sub-groups?
-    const isGroup = albumGroups && albumGroups.length > 0;
+    const isGroup = $derived(albumGroups && albumGroups.length > 0);
 </script>
 
 {#snippet sourceBadge(src)}

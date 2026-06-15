@@ -8,7 +8,7 @@
     /** @type {{ title: string, watched: number, total: number, posterUrl?: string|null, link?: string|null, reason?: string|null }} */
     let { title, watched, total, posterUrl = null, link = null, reason = null } = $props();
 
-    const pct = total > 0 ? Math.round((watched / total) * 100) : 0;
+    const pct = $derived(total > 0 ? Math.round((watched / total) * 100) : 0);
 </script>
 
 {#if link}

@@ -613,10 +613,10 @@
             {#if importFile}
                 <div class="flex flex-wrap gap-3 items-center">
                     <div class="form-control">
-                        <label class="label py-0">
+                        <label class="label py-0" for="import-mode">
                             <span class="label-text text-xs">Mode</span>
                         </label>
-                        <select class="select select-sm select-bordered" bind:value={importMode}>
+                        <select id="import-mode" class="select select-sm select-bordered" bind:value={importMode}>
                             <option value="overwrite">Overwrite all</option>
                             <option value="merge">Merge data</option>
                         </select>
@@ -624,10 +624,10 @@
 
                     {#if importMode === "merge"}
                         <div class="form-control">
-                            <label class="label py-0">
+                            <label class="label py-0" for="import-prefer">
                                 <span class="label-text text-xs">Prefer</span>
                             </label>
-                            <select class="select select-sm select-bordered" bind:value={importPrefer}>
+                            <select id="import-prefer" class="select select-sm select-bordered" bind:value={importPrefer}>
                                 <option value="new">New data wins</option>
                                 <option value="old">Existing data wins</option>
                             </select>
@@ -724,6 +724,8 @@
                 </button>
             </div>
         </div>
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
         <div class="modal-backdrop" onclick={() => showRestoreModal = false}></div>
     </div>
 {/if}

@@ -209,6 +209,7 @@
     /** @type {any[]} */
     let discoveryItems = $state([]);
     // Default discovery filter: whichever type the person has more local credits for
+    // svelte-ignore state_referenced_locally
     let discoveryFilter = $state(
         data.movies.length > data.shows.length
             ? "movie"
@@ -1449,6 +1450,8 @@
                 <button class="btn btn-sm" onclick={() => (showBorderInfo = false)}>Close</button>
             </div>
         </div>
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
         <div class="modal-backdrop" onclick={() => (showBorderInfo = false)}></div>
     </div>
 {/if}

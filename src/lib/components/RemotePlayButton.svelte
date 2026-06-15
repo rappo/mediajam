@@ -215,11 +215,11 @@
                 <MdiIcon icon={mdiChevronDown} size={12} />
             </button>
             {#if showDropdown}
-                <!-- svelte-ignore a11y_no_static_element_interactions -->
-                <div
-                    class="fixed inset-0 z-[90]"
+                <button
+                    class="fixed inset-0 z-[90] bg-transparent border-none cursor-default"
+                    aria-label="Close dropdown"
                     onclick={() => (showDropdown = false)}
-                ></div>
+                ></button>
                 <ul
                     class="fixed menu bg-base-200 rounded-box z-[100] w-56 p-2 shadow-xl border border-base-300"
                     style="top: {dropdownPos.top}px; left: {dropdownPos.left}px"

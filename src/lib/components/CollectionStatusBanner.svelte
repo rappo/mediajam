@@ -197,7 +197,7 @@
 {#if status && config}
     <div class="collection-status-banner">
         <div class="banner-info">
-            <MdiIcon icon={config.icon} size={16} class="{config.textColor}" />
+            <MdiIcon icon={config.icon} size={16} class={config.textColor} />
             <span class="banner-label {config.textColor}">{config.label}</span>
             <span class="banner-desc">
                 {#if status === 'searching'}

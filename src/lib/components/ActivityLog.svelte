@@ -22,6 +22,7 @@
     let { initialUnread = 0, conflictDialog, badgeOnly = false, inline = false } = $props();
 
     let open = $state(false);
+    // svelte-ignore state_referenced_locally
     let unreadCount = $state(initialUnread);
     /** @type {any[]} */
     let activities = $state([]);

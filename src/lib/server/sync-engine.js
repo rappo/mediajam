@@ -382,7 +382,7 @@ export async function startSync(libraryId = null, force = false) {
 			is_special = @isSpecial, is_collected = 0, premiere_date = @premiereDate
 	`);
 
-    const getParentId = db.prepare('SELECT id, date_last_modified, jellyfin_child_count, unplayed_count FROM media_parents WHERE jellyfin_id = ?');
+    const getParentId = db.prepare('SELECT id, date_last_modified, jellyfin_child_count, unplayed_count, total_released_children FROM media_parents WHERE jellyfin_id = ?');
     const getChildId = db.prepare('SELECT id FROM media_children WHERE jellyfin_id = ?');
     const countChildren = db.prepare('SELECT COUNT(*) as c FROM media_children WHERE parent_id = ? AND is_special = 0');
 
@@ -653,6 +653,7 @@ export async function startSync(libraryId = null, force = false) {
                     const preStoredDateModified = preUpsertRow?.date_last_modified || null;
                     const preStoredChildCount = preUpsertRow?.jellyfin_child_count || 0;
                     const preStoredUnplayed = preUpsertRow?.unplayed_count ?? -1;
+                    const preStoredTotalReleased = preUpsertRow?.total_released_children || 0;
 
                     const parentParams = {
                         jellyfinId: item.Id,
@@ -1089,11 +1090,13 @@ export async function startSync(libraryId = null, force = false) {
                     // Smart skip: compare Jellyfin values against PRE-UPSERT DB values
                     // (preUpsertRow was captured BEFORE the upsert overwrote date_last_modified etc.)
                     const jellyfinUnplayed = item.UserData?.UnplayedItemCount ?? -1;
+                    const jellyfinTotalEpisodes = item.RecursiveItemCount || 0;
                     const needsChildSync = force ||
                         !preUpsertRow ||
                         preStoredDateModified !== jellyfinDateModified ||
                         preStoredChildCount !== jellyfinChildCount ||
-                        jellyfinUnplayed !== preStoredUnplayed;
+                        jellyfinUnplayed !== preStoredUnplayed ||
+                        jellyfinTotalEpisodes !== preStoredTotalReleased;
 
                     // Sync children (skip if nothing changed)
                     if (lib.media_type === 'tvshows' && parentId) {
