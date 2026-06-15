@@ -1,6 +1,7 @@
 <script>
     import MdiIcon from "$lib/components/MdiIcon.svelte";
-    import { mdiCheckCircle, mdiCloseCircle, mdiSync, mdiEye, mdiCancel, mdiMerge, mdiDramaMasks, mdiAccount, mdiMagnify, mdiTelevision, mdiAlert, mdiBookmark, mdiBookmarkOutline, mdiViewGrid, mdiStar, mdiViewList, mdiDownload } from '@mdi/js';
+    import { mdiCheckCircle, mdiCloseCircle, mdiSync, mdiEye, mdiCancel, mdiMerge, mdiDramaMasks, mdiAccount, mdiMagnify, mdiTelevision, mdiAlert, mdiBookmark, mdiBookmarkOutline, mdiViewGrid, mdiStar, mdiViewList, mdiDownload, mdiMagnifyPlusOutline } from '@mdi/js';
+    import { addToast } from '$lib/stores/toast.js';
     let { data } = $props();
     import { invalidateAll, goto } from "$app/navigation";
     import DataTable from "$lib/components/DataTable.svelte";
@@ -75,6 +76,62 @@
     /** @type {'map' | 'list' | 'ratings'} */
     let episodeView = $state('map');
     let showWatchStatus = $state(false);
+
+    // ─── Episode-level download search ──────────────────────────────────────────
+    /** @type {Set<number>} */
+    let epSearching = $state(new Set());
+    /** @type {Set<number>} */
+    let epSearchDone = $state(new Set());
+    /** @type {number | null} */
+    let epInteractiveSearchId = $state(null);
+    let epInteractiveSearchTitle = $state('');
+    /** @type {import('$lib/components/InteractiveSearchDialog.svelte').default | null} */
+    let epSearchDialog = $state(null);
+
+    /**
+     * Trigger an auto-search for a single episode via Sonarr.
+     * @param {any} ep
+     */
+    async function autoSearchEpisode(ep) {
+        const next = new Set(epSearching);
+        next.add(ep.id);
+        epSearching = next;
+        try {
+            const res = await fetch('/api/arr/sonarr/episode-search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mediaParentId: data.show.id,
+                    seasonNumber: ep.season_number,
+                    episodeNumber: ep.item_number,
+                }),
+            });
+            if (!res.ok) {
+                const r = await res.json();
+                throw new Error(r.error || 'Search failed');
+            }
+            const done = new Set(epSearchDone);
+            done.add(ep.id);
+            epSearchDone = done;
+            addToast({ type: 'success', message: `Started search for S${String(ep.season_number).padStart(2,'0')}E${String(ep.item_number).padStart(2,'0')}`, detail: ep.title });
+        } catch (e) {
+            addToast({ type: 'error', message: `Episode search failed`, detail: e instanceof Error ? e.message : String(e) });
+        }
+        const rm = new Set(epSearching);
+        rm.delete(ep.id);
+        epSearching = rm;
+    }
+
+    /**
+     * Open the interactive search dialog for a specific episode.
+     * @param {any} ep
+     */
+    function browseEpisodeReleases(ep) {
+        epInteractiveSearchId = ep.id;
+        epInteractiveSearchTitle = `${data.show.title} — S${String(ep.season_number).padStart(2,'0')}E${String(ep.item_number).padStart(2,'0')}: ${ep.title || 'TBA'}`;
+        // Wait for reactivity to update the dialog props, then show
+        setTimeout(() => epSearchDialog?.show(), 0);
+    }
 
     /**
      * Get watch-status border class for rating cells
@@ -711,6 +768,9 @@
                                             <th class="w-24">Status</th>
                                             <th class="w-16">Plays</th>
                                             <th class="w-16">Duration</th>
+                                            {#if data.show.sonarr_id}
+                                                <th class="w-24">Search</th>
+                                            {/if}
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -767,11 +827,38 @@
                                                 >
                                                 <td class="text-base-content/50"
                                                     >{ep.is_collected
-                                                        ? formatRuntime(
+                                                    ? formatRuntime(
                                                               ep.runtime_ticks,
                                                           )
                                                         : ""}</td
                                                 >
+                                                {#if data.show.sonarr_id}
+                                                    <td>
+                                                        <div class="flex items-center gap-1">
+                                                            <button
+                                                                class="btn btn-xs btn-ghost btn-square"
+                                                                title="Auto-search for this episode"
+                                                                disabled={epSearching.has(ep.id)}
+                                                                onclick={() => autoSearchEpisode(ep)}
+                                                            >
+                                                                {#if epSearching.has(ep.id)}
+                                                                    <span class="loading loading-spinner loading-xs"></span>
+                                                                {:else if epSearchDone.has(ep.id)}
+                                                                    <MdiIcon icon={mdiCheckCircle} size={14} class="text-success" />
+                                                                {:else}
+                                                                    <MdiIcon icon={mdiDownload} size={14} />
+                                                                {/if}
+                                                            </button>
+                                                            <button
+                                                                class="btn btn-xs btn-ghost btn-square"
+                                                                title="Browse available releases"
+                                                                onclick={() => browseEpisodeReleases(ep)}
+                                                            >
+                                                                <MdiIcon icon={mdiMagnifyPlusOutline} size={14} />
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                {/if}
                                             </tr>
                                         {/each}
                                     </tbody>
@@ -783,6 +870,17 @@
             </div>
         {/if}
     </div>
+
+    {#if data.show.sonarr_id}
+        <InteractiveSearchDialog
+            bind:this={epSearchDialog}
+            service="sonarr"
+            mediaParentId={data.show.id}
+            title={epInteractiveSearchTitle}
+            episodeId={epInteractiveSearchId}
+            hidden={true}
+        />
+    {/if}
 
     <!-- Cast & Crew -->
     {#if data.cast.length > 0 || data.crew.length > 0}
