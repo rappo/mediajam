@@ -33,6 +33,7 @@
 
     // ─── Form State ──────────────────────────────────────────────────────────────
     let jellyfinUrl = $state(data.settings.jellyfinUrl || "");
+    let jellyfinExternalUrl = $state(data.settings.jellyfinExternalUrl || "");
     let tvdbApiKey = $state("");
     let tmdbApiKey = $state("");
     let musicbrainzApiKey = $state("");
@@ -294,6 +295,7 @@
     // Snapshot initial values for dirty detection and undo
     let initialValues = $state({
         jellyfinUrl: data.settings.jellyfinUrl || "",
+        jellyfinExternalUrl: data.settings.jellyfinExternalUrl || "",
         tvdbApiKey: "",
         tmdbApiKey: "",
         musicbrainzApiKey: "",
@@ -341,6 +343,7 @@
     // ─── Dirty Detection ─────────────────────────────────────────────────────────
     let isDirty = $derived(
         jellyfinUrl !== initialValues.jellyfinUrl ||
+        jellyfinExternalUrl !== initialValues.jellyfinExternalUrl ||
             tvdbApiKey !== initialValues.tvdbApiKey ||
             tmdbApiKey !== initialValues.tmdbApiKey ||
             musicbrainzApiKey !== initialValues.musicbrainzApiKey ||
@@ -419,6 +422,7 @@
     function snapshotCurrentValues() {
         return {
             jellyfinUrl,
+            jellyfinExternalUrl,
             tvdbApiKey,
             tmdbApiKey,
             musicbrainzApiKey,
@@ -460,6 +464,7 @@
 
     function restoreValues(snapshot) {
         jellyfinUrl = snapshot.jellyfinUrl;
+        jellyfinExternalUrl = snapshot.jellyfinExternalUrl;
         tvdbApiKey = snapshot.tvdbApiKey;
         tmdbApiKey = snapshot.tmdbApiKey;
         musicbrainzApiKey = snapshot.musicbrainzApiKey;
@@ -571,7 +576,7 @@
         const preSnapshot = snapshotCurrentValues();
 
         try {
-            const payload = { jellyfin_url: jellyfinUrl };
+            const payload = { jellyfin_url: jellyfinUrl, jellyfin_external_url: jellyfinExternalUrl };
 
             if (tvdbApiKey && tvdbApiKey !== "••••••••")
                 payload.tvdb_api_key = tvdbApiKey;
@@ -2319,6 +2324,18 @@
                     class="input input-bordered"
                     bind:value={jellyfinUrl}
                     placeholder="http://localhost:8096"
+                />
+            </div>
+            <div class="form-control">
+                <label class="label" for="settings-jellyfin-external-url"
+                    ><span class="label-text">External URL <span class="text-xs opacity-50">(optional, for sidebar link)</span></span></label
+                >
+                <input
+                    id="settings-jellyfin-external-url"
+                    type="url"
+                    class="input input-bordered"
+                    bind:value={jellyfinExternalUrl}
+                    placeholder="https://jellyfin.example.com"
                 />
             </div>
 

@@ -92,6 +92,7 @@ export function load() {
         },
         settings: {
             jellyfinUrl: settings?.jellyfin_url || '',
+            jellyfinExternalUrl: settings?.jellyfin_external_url || '',
             hasTvdbKey: !!settings?.tvdb_api_key,
             hasTmdbKey: !!settings?.tmdb_api_key,
             hasMusicbrainzKey: !!settings?.musicbrainz_api_key,

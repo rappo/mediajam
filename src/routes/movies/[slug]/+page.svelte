@@ -438,7 +438,7 @@
                 mediaType: 'movie'
             }}
             extraBadges={[
-                ...(data.movie.collection_status === 'external' && !data.movie.jellyfin_id ? [{ label: 'Not in library', cls: 'badge-warning', icon: 'satellite-uplink' }] : []),
+                ...(data.movie.collection_status === 'external' && !data.movie.jellyfin_id ? [{ label: 'Not downloaded', cls: 'badge-warning', icon: 'satellite-uplink' }] : []),
             ]}
         >
             {#snippet watchlistAction()}

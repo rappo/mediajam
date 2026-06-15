@@ -2,6 +2,7 @@
     import { onMount } from 'svelte';
     import { jellyfinAuthInvalid } from '$lib/stores/auth.js';
     import MdiIcon from '$lib/components/MdiIcon.svelte';
+    import ServiceIcon from '$lib/components/ServiceIcon.svelte';
     import { mdiServerNetwork } from '@mdi/js';
 
     const SERVICES = [
@@ -11,6 +12,8 @@
     ];
 
     let arrData = $state(null);
+    /** @type {Record<string, string|null>} */
+    let serviceUrls = $state({});
 
     async function refresh() {
         try {
@@ -19,8 +22,16 @@
         } catch { /* silent */ }
     }
 
+    async function loadUrls() {
+        try {
+            const res = await fetch('/api/service-urls');
+            if (res.ok) serviceUrls = await res.json();
+        } catch { /* silent */ }
+    }
+
     onMount(() => {
         refresh();
+        loadUrls();
         const timer = setInterval(refresh, 60_000);
         return () => clearInterval(timer);
     });
@@ -43,11 +54,12 @@
                 } else if (queueCount > 0) {
                     label = 'Downloading';
                 }
-                return { ...svc, status, label };
+                return { ...svc, status, label, url: serviceUrls[svc.key] || null };
             });
     });
 
     let jellyfinOk = $derived(!$jellyfinAuthInvalid);
+    let jellyfinUrl = $derived(serviceUrls.jellyfin || null);
 </script>
 
 <div class="sh-wrap">
@@ -59,7 +71,12 @@
     <!-- Jellyfin -->
     <div class="sh-row">
         <span class="sh-dot" class:dot-ok={jellyfinOk} class:dot-err={!jellyfinOk}></span>
-        <span class="sh-name">Jellyfin</span>
+        <ServiceIcon service="jellyfin" size="w-3.5 h-3.5" />
+        {#if jellyfinUrl}
+            <a href={jellyfinUrl} target="_blank" rel="noopener noreferrer" class="sh-name sh-link">Jellyfin</a>
+        {:else}
+            <span class="sh-name">Jellyfin</span>
+        {/if}
         <span class="sh-detail">{jellyfinOk ? 'Healthy' : 'Auth Error'}</span>
     </div>
 
@@ -67,7 +84,12 @@
     {#each services as svc}
         <div class="sh-row">
             <span class="sh-dot" class:dot-ok={svc.status === 'ok'} class:dot-warn={svc.status === 'warning'}></span>
-            <span class="sh-name" style="color: oklch({svc.color} / 0.5)">{svc.name}</span>
+            <ServiceIcon service={svc.key} size="w-3.5 h-3.5" />
+            {#if svc.url}
+                <a href={svc.url} target="_blank" rel="noopener noreferrer" class="sh-name sh-link" style="color: oklch({svc.color} / 0.5)">{svc.name}</a>
+            {:else}
+                <span class="sh-name" style="color: oklch({svc.color} / 0.5)">{svc.name}</span>
+            {/if}
             <span class="sh-detail" class:sh-warn={svc.status === 'warning'}>{svc.label}</span>
         </div>
     {/each}
@@ -124,6 +146,14 @@
         font-weight: 500;
         color: oklch(0.65 0 0);
         white-space: nowrap;
+    }
+    .sh-link {
+        text-decoration: none;
+        transition: opacity 0.15s;
+    }
+    .sh-link:hover {
+        opacity: 0.8;
+        text-decoration: underline;
     }
     .sh-detail {
         font-size: 0.6rem;

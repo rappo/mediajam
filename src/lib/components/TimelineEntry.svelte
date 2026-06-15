@@ -188,7 +188,7 @@
 {#snippet externalBadge(mediaType)}
     <span
         class="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full bg-warning/80"
-        title="Not in library"
+        title="Not downloaded"
     >
         {#if mediaType === "artist"}
             <MdiIcon icon={mdiMusicOff} size={10} />

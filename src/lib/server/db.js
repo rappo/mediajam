@@ -425,6 +425,7 @@ const newAppCols = [
     ['ollama_embed_model', "TEXT DEFAULT 'nomic-embed-text'"],
     ['ollama_chat_model', "TEXT DEFAULT 'llama3.2:3b'"],
     // *arr integration
+    ['jellyfin_external_url', 'TEXT'],
     ['radarr_url', 'TEXT'],
     ['radarr_api_key', 'TEXT'],
     ['radarr_external_url', 'TEXT'],

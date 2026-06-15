@@ -157,7 +157,7 @@
                 {#if data.artist.collection_status === "external"}
                     <div class="badge badge-lg badge-warning gap-1">
                         <MdiIcon icon={mdiMusicOff} size={16} />
-                        Not in library
+                        Not downloaded
                     </div>
                 {/if}
                 {#if data.isInLidarr}
