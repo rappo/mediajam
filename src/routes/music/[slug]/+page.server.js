@@ -2,7 +2,7 @@ import db from '$lib/server/db.js';
 import { error, redirect } from '@sveltejs/kit';
 import { checkJellyfinFavorite } from '$lib/server/jellyfin-favorites.js';
 import { resolveBackdrop, resolvePoster } from '$lib/server/backdrop.js';
-import { slugify, ensureUniqueSlug } from '$lib/server/slugify.js';
+import { slugify, ensureUniqueSlug, resolveSlug } from '$lib/server/slugify.js';
 
 export async function load({ params, locals }) {
     const paramSlug = params.slug;
@@ -23,8 +23,14 @@ export async function load({ params, locals }) {
         throw redirect(301, `/music/${slug}`);
     } else {
         const row = /** @type {any} */ (db.prepare('SELECT id FROM media_parents WHERE slug = ? AND media_type = \'artist\'').get(paramSlug));
-        if (!row) throw error(404, 'Artist not found');
-        artistId = row.id;
+        if (row) {
+            artistId = row.id;
+        } else {
+            const resolved = resolveSlug(db, paramSlug, 'artist', '/music');
+            if (resolved?.redirect) throw redirect(301, resolved.redirect);
+            if (resolved) artistId = resolved.id;
+            else throw error(404, 'Artist not found');
+        }
     }
 
     const artist = db.prepare(`

@@ -3,7 +3,7 @@ import { error, redirect } from '@sveltejs/kit';
 import { checkJellyfinFavorite } from '$lib/server/jellyfin-favorites.js';
 import { resolveBackdrop } from '$lib/server/backdrop.js';
 import { tmdbFetch, getTmdbKey } from '$lib/server/tmdb.js';
-import { slugify, ensureUniqueSlug } from '$lib/server/slugify.js';
+import { slugify, ensureUniqueSlug, resolveSlug } from '$lib/server/slugify.js';
 
 export async function load({ params }) {
     const paramSlug = params.slug;
@@ -24,8 +24,14 @@ export async function load({ params }) {
         throw redirect(301, `/tv/${slug}`);
     } else {
         const row = /** @type {any} */ (db.prepare('SELECT id FROM media_parents WHERE slug = ? AND media_type = \'show\'').get(paramSlug));
-        if (!row) throw error(404, 'Show not found');
-        showId = row.id;
+        if (row) {
+            showId = row.id;
+        } else {
+            const resolved = resolveSlug(db, paramSlug, 'show', '/tv');
+            if (resolved?.redirect) throw redirect(301, resolved.redirect);
+            if (resolved) showId = resolved.id;
+            else throw error(404, 'Show not found');
+        }
     }
 
     const show = /** @type {any} */ (db.prepare(`

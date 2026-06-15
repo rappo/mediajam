@@ -203,7 +203,9 @@
     let incomingAll = $derived(
         (incomingRaw?.items || []).map(item => {
             const mediaType = item.type === 'movie' ? 'movies' : item.type === 'show' ? 'tv' : 'music';
-            const slug = item.slug || clientSlugify(item.title, item.year);
+            // Prefer DB slug → numeric ID (auto-redirects) → client-generated slug (last resort)
+            const linkId = item.slug || (item.mediaParentId ? String(item.mediaParentId) : clientSlugify(item.title, item.year));
+
             // Build badge
             let badge = item.reasonLabel || '';
             let badgeClass = 'badge-missing';
@@ -233,7 +235,7 @@
                 subtitle = item.year ? String(item.year) : '';
             }
             return {
-                href: `/${mediaType}/${slug}`,
+                href: `/${mediaType}/${linkId}`,
                 title: item.title,
                 subtitle,
                 poster_url: item.poster_url,
