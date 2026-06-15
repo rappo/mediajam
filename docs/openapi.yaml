@@ -2386,6 +2386,78 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /api/arr/webhook:
+    post:
+      tags: [Arr Integration]
+      summary: Receive *arr webhook events
+      description: Endpoint for Radarr/Sonarr/Lidarr webhooks. Public endpoint.
+      parameters:
+        - name: service
+          in: query
+          schema: { type: string, enum: [radarr, sonarr, lidarr] }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                eventType: { type: string }
+      responses:
+        '200':
+          description: Event processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  service: { type: string }
+                  eventType: { type: string }
+                  title: { type: string }
+                  detail: { type: string, nullable: true }
+    get:
+      tags: [Arr Integration]
+      summary: SSE stream for *arr events
+      description: Server-Sent Events stream for real-time *arr webhook events.
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream: {}
+
+  /api/arr/webhook/setup:
+    post:
+      tags: [Arr Integration]
+      summary: Auto-configure *arr webhooks
+      description: Creates MediaJam webhook in each configured *arr service.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                webhookUrl: { type: string }
+      responses:
+        '200':
+          description: Setup results per service
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  results:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        status: { type: string, enum: [created, exists, error] }
+                        id: { type: integer }
+                        error: { type: string }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   # ── Page Data ───────────────────────────────────────────────────
   /api/pages/dashboard:
     get:

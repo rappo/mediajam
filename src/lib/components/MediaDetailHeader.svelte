@@ -207,6 +207,9 @@
                     <span class="badge badge-sm {hb.cls || 'badge-outline'}">{hb.label}</span>
                 {/each}
                 {#if watchStatusBadge}<span class="badge {watchStatusBadge.cls} badge-sm watch-badge">{watchStatusBadge.label}</span>{/if}
+                {#each extraBadges as badge}
+                    <span class="badge badge-sm {badge.cls || 'badge-ghost'}">{badge.label}</span>
+                {/each}
                 {#if watchlistAction}{@render watchlistAction()}{/if}
             </div>
             {#if ratingsBar}{@render ratingsBar()}{/if}
@@ -264,16 +267,7 @@
     </div>
 </div>
 
-<!-- ═══ TOOLBAR RIBBON (extra badges only) ═══ -->
-{#if extraBadges.length > 0}
-<div class="toolbar-ribbon">
-    <div class="ribbon-badges">
-        {#each extraBadges as badge}
-            <span class="badge badge-sm {badge.cls || 'badge-ghost'}">{badge.label}</span>
-        {/each}
-    </div>
-</div>
-{/if}
+
 
 {#if children}{@render children()}{/if}
 </div> <!-- end ambient-glow-wrap -->

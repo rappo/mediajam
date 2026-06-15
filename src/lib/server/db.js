@@ -1332,6 +1332,19 @@ db.exec(`
 `);
 db.exec('CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash)');
 
+// ── *arr webhook events ───────────────────────────────────────────────────────
+db.exec(`
+    CREATE TABLE IF NOT EXISTS arr_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        service TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        detail TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+    )
+`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_arr_events_created ON arr_events(created_at DESC)');
+
 // -- One-time: fix jellyfin_sync timestamps that used premiere_date (movie release date) --
 // These entries had timestamps like "2000-08-30" which is the movie's release date, not the play date.
 // Note: timestamp column is NOT NULL, so we use '' as a sentinel for "unknown date".

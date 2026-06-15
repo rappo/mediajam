@@ -3,6 +3,7 @@
 	import ThemeSwitcher from "$lib/components/ThemeSwitcher.svelte";
 	import SearchBar from "$lib/components/SearchBar.svelte";
 	import SyncFooter from "$lib/components/SyncFooter.svelte";
+	import ArrEventListener from "$lib/components/ArrEventListener.svelte";
 	import NowPlayingBar from "$lib/components/NowPlayingBar.svelte";
 	import ToastContainer from "$lib/components/ToastContainer.svelte";
 	import ConflictDialog from "$lib/components/ConflictDialog.svelte";
@@ -401,6 +402,7 @@
 			</main>
 
 			<SyncFooter />
+			<ArrEventListener />
 			<NowPlayingBar remoteControlEnabled={$page.data.remoteControlEnabled} />
 			<ToastContainer />
 			<ChatWidget llmConfigured={data.llmConfigured} />

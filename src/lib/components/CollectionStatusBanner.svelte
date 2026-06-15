@@ -143,6 +143,8 @@
     let autoSearching = $state(false);
     let autoSearchResult = $state(/** @type {'idle'|'success'|'error'} */ ('idle'));
 
+    import { addToast } from '$lib/stores/toast.js';
+
     /** @type {any} */
     let searchDialog = $state(null);
 
@@ -160,11 +162,21 @@
                 throw new Error(r.error || 'Search failed');
             }
             autoSearchResult = 'success';
+            addToast({
+                type: 'success',
+                message: `Started search for ${title}`,
+                detail: `Searching via ${service}`,
+            });
             onStatusChange?.();
             setTimeout(() => { autoSearchResult = 'idle'; }, 3000);
         } catch (e) {
             console.error('[banner] Auto search failed:', e);
             autoSearchResult = 'error';
+            addToast({
+                type: 'error',
+                message: `Search failed for ${title}`,
+                detail: e instanceof Error ? e.message : String(e),
+            });
             setTimeout(() => { autoSearchResult = 'idle'; }, 5000);
         }
         autoSearching = false;

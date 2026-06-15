@@ -121,3 +121,11 @@ The MCP (Model Context Protocol) server lives in `src/mcp/` and exposes the Medi
 - **Testing**: `cd src/mcp && npx @modelcontextprotocol/inspector node server.js`
 - **SSE testing**: `cd src/mcp && MEDIAJAM_URL=... MEDIAJAM_API_KEY=... node server.js --sse` then connect to `http://host:7332/sse`
 - **Dependencies**: The MCP server has its own `package.json` in `src/mcp/`. Run `npm install` there separately.
+
+---
+
+## 12. Icons
+
+- **Prefer MDI (Material Design Icons)** for all UI elements — buttons, badges, toasts, status indicators, etc.
+- Import icons from `@mdi/js` (e.g., `import { mdiDownload } from '@mdi/js'`) and render via the `<MdiIcon>` component.
+- **Do NOT use emoji** in the UI. Emoji is acceptable only in server-side console/log output.

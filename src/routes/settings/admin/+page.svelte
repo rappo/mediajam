@@ -3,7 +3,8 @@
     import LogConsole from "$lib/components/LogConsole.svelte";
     import ReconciliationPanel from "$lib/components/ReconciliationPanel.svelte";
     import MdiIcon from "$lib/components/MdiIcon.svelte";
-    import { mdiMagnify, mdiAlert, mdiRocketLaunch, mdiCheckCircle, mdiCloseCircle, mdiTelevision, mdiMovieOpen, mdiMusic, mdiFolder, mdiStar, mdiSync, mdiSatelliteUplink, mdiTrayArrowDown, mdiImage, mdiKey, mdiAccountGroup, mdiChevronDown, mdiCheck, mdiClose, mdiInformation, mdiLock, mdiShieldStarOutline, mdiLinkVariant, mdiBrain, mdiServerNetwork, mdiDatabase, mdiTag, mdiViewGrid, mdiMapMarkerRadius, mdiConnection, mdiDelete, mdiContentCopy, mdiBookOpenPageVariant, mdiPlusCircleOutline, mdiPause } from '@mdi/js';
+    import { mdiMagnify, mdiAlert, mdiRocketLaunch, mdiCheckCircle, mdiCloseCircle, mdiTelevision, mdiMovieOpen, mdiMusic, mdiFolder, mdiStar, mdiSync, mdiSatelliteUplink, mdiTrayArrowDown, mdiImage, mdiKey, mdiAccountGroup, mdiChevronDown, mdiCheck, mdiClose, mdiInformation, mdiLock, mdiShieldStarOutline, mdiLinkVariant, mdiBrain, mdiServerNetwork, mdiDatabase, mdiTag, mdiViewGrid, mdiMapMarkerRadius, mdiConnection, mdiDelete, mdiContentCopy, mdiBookOpenPageVariant, mdiPlusCircleOutline, mdiPause, mdiWebhook } from '@mdi/js';
+    import { addToast } from '$lib/stores/toast.js';
     import { copyToClipboard } from "$lib/utils.js";
     import { page } from "$app/stores";
     import { goto } from "$app/navigation";
@@ -173,6 +174,7 @@
     /** @type {Record<string, string>} */
     let arrTestInfo = $state({ radarr: "", sonarr: "", lidarr: "" });
     let arrScanStatus = $state("idle"); // idle | scanning | done
+    let arrWebhookStatus = $state("idle"); // idle | setting-up | done
     let arrSyncRunning = $state(false);
     /** @type {{ time: string, message: string, type: string }[]} */
     let arrSyncLogs = $state([]);
@@ -1920,6 +1922,40 @@
         }
     }
 
+    async function setupArrWebhooks() {
+        arrWebhookStatus = 'setting-up';
+        try {
+            const webhookUrl = window.location.origin;
+            const res = await fetch('/api/arr/webhook/setup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ webhookUrl }),
+            });
+            const d = await res.json();
+            if (!res.ok) throw new Error(d.error || 'Setup failed');
+
+            const results = d.results || {};
+            const services = Object.keys(results);
+            if (services.length === 0) {
+                addToast({ type: 'warning', message: 'No *arr services configured' });
+            } else {
+                for (const svc of services) {
+                    const r = results[svc];
+                    if (r.status === 'created') {
+                        addToast({ type: 'success', message: `Webhook configured in ${svc}` });
+                    } else if (r.status === 'exists') {
+                        addToast({ type: 'info', message: `Webhook already exists in ${svc}` });
+                    } else if (r.status === 'error') {
+                        addToast({ type: 'error', message: `Failed to setup ${svc}`, detail: r.error });
+                    }
+                }
+            }
+        } catch (e) {
+            addToast({ type: 'error', message: 'Webhook setup failed', detail: e instanceof Error ? e.message : String(e) });
+        }
+        arrWebhookStatus = 'idle';
+    }
+
     /**
      * @param {string} service
      */
@@ -2776,6 +2812,25 @@
                 </button>
                 <span class="text-xs text-base-content/50"
                     >Scan local network for *arr instances</span
+                >
+            </div>
+
+            <!-- Setup Webhooks button -->
+            <div class="flex items-center gap-2">
+                <button
+                    class="btn btn-xs btn-outline gap-1"
+                    disabled={arrWebhookStatus === "setting-up"}
+                    onclick={setupArrWebhooks}
+                >
+                    {#if arrWebhookStatus === "setting-up"}
+                        <span class="loading loading-spinner loading-xs"></span>
+                        Setting up...
+                    {:else}
+                        <MdiIcon icon={mdiWebhook} size={14} /> Setup Webhooks
+                    {/if}
+                </button>
+                <span class="text-xs text-base-content/50"
+                    >Auto-configure *arr to push download events</span
                 >
             </div>
 
