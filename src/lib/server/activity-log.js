@@ -1,4 +1,5 @@
 import db from './db.js';
+import { broadcastActivity } from './arr-events.js';
 
 /**
  * Log an activity event.
@@ -34,6 +35,20 @@ export function logActivity({ category, action, title, detail, icon, status = 'i
 
     // Auto-cleanup: keep last 500 rows
     db.prepare('DELETE FROM activity_log WHERE id NOT IN (SELECT id FROM activity_log ORDER BY id DESC LIMIT 500)').run();
+
+    try {
+        broadcastActivity({
+            category,
+            action,
+            title,
+            detail: typeof detail === 'object' ? JSON.stringify(detail) : detail,
+            icon,
+            status,
+            created_at: new Date().toISOString()
+        });
+    } catch (e) {
+        console.error('[activity-log] broadcast failed:', e);
+    }
 
     return /** @type {number} */ (result.lastInsertRowid);
 }

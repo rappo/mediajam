@@ -244,3 +244,14 @@ export function processArrWebhook(payload, service) {
 export function getRecentEvents(limit = 20) {
     return /** @type {any[]} */ (selectRecentEvents.all(limit));
 }
+
+/**
+ * Broadcast a general activity log event to all connected SSE clients.
+ * @param {any} activity
+ */
+export function broadcastActivity(activity) {
+    broadcast({
+        type: 'activity_log',
+        ...activity,
+    });
+}

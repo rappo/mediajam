@@ -26,6 +26,23 @@
         Test: 'info',
     });
 
+    function formatDetail(detail) {
+        if (!detail) return undefined;
+        if (typeof detail === 'string' && detail.startsWith('{')) {
+            try {
+                const d = JSON.parse(detail);
+                if (d.summary) return d.summary;
+                if (d.error) return d.error;
+                return Object.entries(d)
+                    .map(([k, v]) => `${k.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').trim()}: ${v}`)
+                    .join(' · ');
+            } catch {
+                return detail;
+            }
+        }
+        return detail;
+    }
+
     onMount(() => {
         /** @type {EventSource | null} */
         let es = null;
@@ -44,7 +61,19 @@
                     // Skip the initial connected message
                     if (data.type === 'connected') return;
 
-                    // Show toast for the event
+                    // Handle general activities (non-sync)
+                    if (data.type === 'activity_log') {
+                        if (data.category === 'sync') return;
+                        addToast({
+                            type: data.status || 'info',
+                            message: data.title,
+                            detail: formatDetail(data.detail),
+                            duration: data.status === 'success' ? 8000 : 6000,
+                        });
+                        return;
+                    }
+
+                    // Show toast for webhook events
                     const toastType = TOAST_TYPE_MAP[data.eventType] || 'info';
                     addToast({
                         type: toastType,
