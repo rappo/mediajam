@@ -4,6 +4,7 @@ import { json } from '@sveltejs/kit';
 // ── In-memory cache (stale-while-revalidate) ─────────────────────────
 const CACHE_TTL = 2 * 60 * 1000;   // 2 min — serve fresh
 const cache = { data: null, ts: 0, refreshing: false, cutoff: false };
+const RECENT_FAILURE_THRESHOLD = 24 * 60 * 60 * 1000; // 24 hours
 
 /** Kick off a background refresh (non-blocking). */
 function backgroundRefresh(includeCutoff) {
@@ -151,8 +152,11 @@ async function fetchWantedData(includeCutoff) {
         const failedByEpisode = new Map();
         for (const h of (failedHistory?.records || [])) {
             if (h.episodeId) {
-                failedEpisodeIds.add(h.episodeId);
-                failedByEpisode.set(h.episodeId, h);
+                const age = h.date ? (Date.now() - new Date(h.date).getTime()) : Infinity;
+                if (age < RECENT_FAILURE_THRESHOLD) {
+                    failedEpisodeIds.add(h.episodeId);
+                    failedByEpisode.set(h.episodeId, h);
+                }
             }
         }
 
@@ -334,8 +338,11 @@ async function fetchWantedData(includeCutoff) {
         const failedByMovie = new Map();
         for (const h of (failedHistory?.records || [])) {
             if (h.movieId) {
-                failedMovieIds.add(h.movieId);
-                failedByMovie.set(h.movieId, h);
+                const age = h.date ? (Date.now() - new Date(h.date).getTime()) : Infinity;
+                if (age < RECENT_FAILURE_THRESHOLD) {
+                    failedMovieIds.add(h.movieId);
+                    failedByMovie.set(h.movieId, h);
+                }
             }
         }
 
@@ -476,8 +483,11 @@ async function fetchWantedData(includeCutoff) {
         const failedByAlbum = new Map();
         for (const h of (failedHistory?.records || [])) {
             if (h.albumId) {
-                failedAlbumIds.add(h.albumId);
-                failedByAlbum.set(h.albumId, h);
+                const age = h.date ? (Date.now() - new Date(h.date).getTime()) : Infinity;
+                if (age < RECENT_FAILURE_THRESHOLD) {
+                    failedAlbumIds.add(h.albumId);
+                    failedByAlbum.set(h.albumId, h);
+                }
             }
         }
 
