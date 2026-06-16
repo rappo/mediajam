@@ -156,7 +156,9 @@
         /** @type {Array<typeof cells>} */
         const weeks = [];
         for (let i = 0; i < cells.length; i += 7) {
-            weeks.push(cells.slice(i, i + 7));
+            const weekCells = cells.slice(i, i + 7);
+            const isPriorWeek = weekCells.every(c => c.isPast);
+            weeks.push(weekCells.map(c => ({ ...c, isPriorWeek })));
         }
         return weeks;
     });
@@ -265,12 +267,14 @@
                     {#each calendarWeeks as week}
                         {#each week as cell}
                             {@const heroSrc = dayHeroImage(cell.items)}
+                            {@const cellLimit = cell.isPriorWeek ? 2 : MAX_VISIBLE}
                             <div
                                 class="cal-cell"
                                 class:is-today={cell.isToday}
                                 class:is-past={cell.isPast && !cell.isToday}
                                 class:is-weekend={cell.dayName === 'Sun' || cell.dayName === 'Sat'}
                                 class:is-other-month={!cell.isCurrentMonth}
+                                class:is-prior-week={cell.isPriorWeek}
                             >
                                 <!-- Day backdrop glow -->
                                 {#if heroSrc}
@@ -287,7 +291,7 @@
                                     {#if cell.items.length === 0}
                                         <div class="cal-cell-empty"></div>
                                     {:else}
-                                        {#each (expandedDays.has(cell.date) ? cell.items : cell.items.slice(0, MAX_VISIBLE)) as item}
+                                        {#each (expandedDays.has(cell.date) ? cell.items : cell.items.slice(0, cellLimit)) as item}
                                             <a
                                                 href={item.href || '/calendar'}
                                                 class="cal-item"
@@ -318,12 +322,12 @@
                                                 </div>
                                             </a>
                                         {/each}
-                                        {#if cell.items.length > MAX_VISIBLE && !expandedDays.has(cell.date)}
+                                        {#if cell.items.length > cellLimit && !expandedDays.has(cell.date)}
                                             <button
                                                 class="cal-cell-expand"
                                                 onclick={() => { expandedDays = new Set([...expandedDays, cell.date]); }}
                                             >
-                                                +{cell.items.length - MAX_VISIBLE} more
+                                                +{cell.items.length - cellLimit} more
                                             </button>
                                         {/if}
                                     {/if}
@@ -358,21 +362,20 @@
         background-size: cover;
         background-position: center;
         filter: blur(60px) saturate(1.5);
-        opacity: 0.12;
+        opacity: 0.08;
         z-index: 0;
         pointer-events: none;
     }
     .cal-inner {
         position: relative;
         z-index: 1;
-        background: oklch(var(--b1) / 0.7);
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
-        border: 1px solid oklch(var(--bc) / 0.08);
+        background: oklch(var(--b1) / 0.92);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid oklch(var(--bc) / 0.12);
         border-radius: 1rem;
         padding: 1.25rem 1.5rem 1rem;
     }
-
     /* ══════════════ HEADER ══════════════ */
     .cal-header {
         display: flex;
@@ -396,13 +399,13 @@
         font-size: 1.4rem;
         font-weight: 800;
         letter-spacing: -0.02em;
-        color: oklch(var(--bc) / 0.95);
+        color: oklch(var(--bc));
         margin: 0;
     }
     .cal-count {
         font-size: 0.7rem;
         font-weight: 600;
-        color: oklch(var(--bc) / 0.35);
+        color: oklch(var(--bc) / 0.6);
     }
 
     /* ══════════════ FILTER ══════════════ */
@@ -464,7 +467,7 @@
         font-weight: 700;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        color: oklch(var(--bc) / 0.35);
+        color: oklch(var(--bc) / 0.6);
         padding: 0.3rem 0;
     }
     .cal-day-header.is-weekend {
@@ -492,28 +495,31 @@
         overflow: hidden;
         position: relative;
         isolation: isolate;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        background: oklch(var(--b1) / 0.5);
+        border: 1px solid oklch(var(--bc) / 0.08);
+        background: oklch(var(--b2) / 0.75);
         transition: border-color 0.25s, box-shadow 0.25s;
     }
+    .cal-cell.is-prior-week {
+        min-height: 80px;
+    }
     .cal-cell.is-weekend {
-        border-color: rgba(251, 191, 36, 0.2);
+        border-color: rgba(251, 191, 36, 0.25);
     }
     .cal-cell.is-today {
         border-color: oklch(var(--p) / 0.5);
         box-shadow: 0 0 16px oklch(var(--p) / 0.12);
     }
     .cal-cell.is-past {
-        opacity: 0.55;
+        opacity: 0.75;
     }
     .cal-cell.is-past:hover {
-        opacity: 0.85;
+        opacity: 0.95;
     }
     .cal-cell.is-other-month {
-        opacity: 0.3;
+        opacity: 0.45;
     }
     .cal-cell.is-other-month:hover {
-        opacity: 0.6;
+        opacity: 0.8;
     }
 
     .cal-cell-bg {
@@ -522,7 +528,7 @@
         background-size: cover;
         background-position: center;
         filter: blur(30px) saturate(1.3);
-        opacity: 0.12;
+        opacity: 0.06;
         z-index: 0;
         pointer-events: none;
     }
@@ -541,7 +547,7 @@
     .cal-cell-num {
         font-size: 0.75rem;
         font-weight: 700;
-        color: oklch(var(--bc) / 0.5);
+        color: oklch(var(--bc) / 0.75);
     }
     .cal-cell-head.today .cal-cell-num {
         background: oklch(var(--p));
@@ -654,7 +660,7 @@
     .cal-item-title {
         font-size: 0.62rem;
         font-weight: 700;
-        color: oklch(var(--bc) / 0.9);
+        color: oklch(var(--bc));
         line-height: 1.25;
         display: -webkit-box;
         -webkit-line-clamp: 2;
@@ -663,7 +669,7 @@
     }
     .cal-item-sub {
         font-size: 0.5rem;
-        color: oklch(var(--bc) / 0.4);
+        color: oklch(var(--bc) / 0.65);
         display: -webkit-box;
         -webkit-line-clamp: 1;
         -webkit-box-orient: vertical;
@@ -673,6 +679,7 @@
     /* ══════════════ RESPONSIVE ══════════════ */
     @media (max-width: 1000px) {
         .cal-cell { min-height: 100px; }
+        .cal-cell.is-prior-week { min-height: 65px; }
         .cal-item-poster { width: 30px; height: 30px; }
         .cal-item-poster.tall { height: 44px; }
         .cal-item-title { font-size: 0.55rem; }
@@ -685,6 +692,7 @@
         .cal-header { flex-direction: column; align-items: flex-start; }
         .cal-month-title { font-size: 1.1rem; }
         .cal-cell { min-height: 70px; }
+        .cal-cell.is-prior-week { min-height: 50px; }
         .cal-cell-head { padding: 0.25rem 0.3rem 0.15rem; }
         .cal-cell-num { font-size: 0.6rem; }
         .cal-cell-head.today .cal-cell-num { width: 18px; height: 18px; font-size: 0.55rem; }

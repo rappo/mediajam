@@ -1297,10 +1297,20 @@
 
     .ep-watched {
         background: oklch(var(--su, 0.75 0.18 140));
+        color: oklch(var(--suc, 0.2 0.05 140));
+    }
+
+    .ep-watched .ep-num {
+        opacity: 0.9;
     }
 
     .ep-progress {
         background: oklch(var(--wa, 0.8 0.15 75));
+        color: oklch(var(--wac, 0.2 0.04 75));
+    }
+
+    .ep-progress .ep-num {
+        opacity: 0.9;
     }
 
     .ep-unwatched {
