@@ -12,6 +12,21 @@ import { prefetchIcons } from '$lib/server/icon-cache.js';
 // Prefetch service icons from CDN on boot (non-blocking)
 prefetchIcons().catch(err => console.warn('[icon-cache] Prefetch failed:', err.message));
 
+// Start background schedulers immediately on boot if setup is complete
+try {
+    const settings = db.prepare('SELECT setup_complete FROM app_settings WHERE id = 1').get();
+    if (settings?.setup_complete === 1) {
+        console.log('[boot] Starting background schedulers...');
+        startAutoSyncScheduler();
+        startPrPoller();
+        startBackupScheduler();
+        startPipelineScheduler();
+        startMcpServer();
+    }
+} catch (err) {
+    console.error('[boot] Failed to initialize background schedulers on boot:', err);
+}
+
 // Prevent unhandled errors from crashing the entire process
 process.on('unhandledRejection', (reason) => {
     const msg = reason instanceof Error ? reason.stack || reason.message : String(reason);
@@ -31,7 +46,7 @@ export async function handle({ event, resolve }) {
     const isSetupComplete = settings?.setup_complete === 1;
     const theme = settings?.theme || 'dark';
 
-    // Start auto-sync scheduler once setup is complete
+    // Start auto-sync scheduler once setup is complete (fallback / after wizard completion)
     if (isSetupComplete) {
         startAutoSyncScheduler();
         startPrPoller();
