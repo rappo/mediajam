@@ -5,6 +5,7 @@ import { getTmdbKey } from '$lib/server/tmdb.js';
 /** @type {import('./$types').RequestHandler} */
 export async function POST() {
     const encoder = new TextEncoder();
+    let cancelled = false;
     const stream = new ReadableStream({
         async start(controller) {
             /** @param {string} data */
@@ -48,6 +49,7 @@ export async function POST() {
                 let errors = 0;
 
                 for (let i = 0; i < items.length; i++) {
+                    if (cancelled) break;
                     const item = items[i];
                     let url = null;
 
@@ -86,6 +88,9 @@ export async function POST() {
             }
 
             controller.close();
+        },
+        cancel() {
+            cancelled = true;
         }
     });
 

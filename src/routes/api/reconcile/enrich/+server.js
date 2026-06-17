@@ -214,6 +214,9 @@ export async function POST({ locals }) {
                 enrichState.running = false;
                 try { controller.close(); } catch { /* */ }
             }
+        },
+        cancel() {
+            enrichState.running = false;
         }
     });
 

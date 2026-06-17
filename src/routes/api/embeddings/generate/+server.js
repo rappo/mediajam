@@ -57,6 +57,7 @@ export async function POST({ locals }) {
     }
 
     const encoder = new TextEncoder();
+    let cancelled = false;
     const stream = new ReadableStream({
         async start(controller) {
             const send = (/** @type {any} */ data) => {
@@ -99,6 +100,7 @@ export async function POST({ locals }) {
                 let failCount = 0;
                 let lastError = '';
                 for (const parent of needsEmbedding) {
+                    if (cancelled) break;
                     const text = truncateForEmbed(`${parent.title}. ${parent.overview}`, EMBED_CHAR_LIMIT);
                     const embedding = await embed(text);
                     if (embedding) {
@@ -165,6 +167,7 @@ export async function POST({ locals }) {
 
                 done = 0;
                 for (const child of children) {
+                    if (cancelled) break;
                     const text = truncateForEmbed(`${child.parent_title} - ${child.title}`, TITLE_CHAR_LIMIT);
                     const embedding = await embed(text);
                     if (embedding) {
@@ -197,6 +200,9 @@ export async function POST({ locals }) {
 
             controller.close();
         },
+        cancel() {
+            cancelled = true;
+        }
     });
 
     return new Response(stream, {

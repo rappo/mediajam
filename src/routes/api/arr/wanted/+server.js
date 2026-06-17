@@ -3,8 +3,19 @@ import { json } from '@sveltejs/kit';
 
 // ── In-memory cache (stale-while-revalidate) ─────────────────────────
 const CACHE_TTL = 2 * 60 * 1000;   // 2 min — serve fresh
-const cache = { data: null, ts: 0, refreshing: false, cutoff: false };
+const CACHE_EVICT_MS = 10 * 60 * 1000; // 10 min — evict if nobody is requesting
+const cache = { data: null, ts: 0, refreshing: false, cutoff: false, lastAccess: 0 };
 const RECENT_FAILURE_THRESHOLD = 24 * 60 * 60 * 1000; // 24 hours
+
+// Periodically evict stale cache to free memory (the full Radarr library can be several MB)
+const _evictInterval = setInterval(() => {
+    if (cache.data && Date.now() - cache.lastAccess > CACHE_EVICT_MS) {
+        cache.data = null;
+        cache.ts = 0;
+    }
+}, 5 * 60 * 1000); // check every 5 min
+// Allow Node to exit without waiting for this timer
+if (_evictInterval.unref) _evictInterval.unref();
 
 /** Kick off a background refresh (non-blocking). */
 function backgroundRefresh(includeCutoff) {
@@ -31,6 +42,7 @@ export async function GET({ url, locals }) {
 
     const includeCutoff = url.searchParams.get('includeCutoff') === '1';
     const forceRefresh = url.searchParams.get('refresh') === '1';
+    cache.lastAccess = Date.now();
     const stale = Date.now() - cache.ts > CACHE_TTL;
     const cutoffChanged = cache.cutoff !== includeCutoff;
 
@@ -64,11 +76,6 @@ async function fetchWantedData(includeCutoff) {
          FROM app_settings WHERE id = 1`
     ).get());
 
-    console.log('[wanted] settings:', {
-        sonarr: settings?.sonarr_url ? `${settings.sonarr_url} / ext: ${settings.sonarr_external_url || 'none'}` : 'not configured',
-        radarr: settings?.radarr_url ? `${settings.radarr_url} / ext: ${settings.radarr_external_url || 'none'}` : 'not configured',
-        lidarr: settings?.lidarr_url ? `${settings.lidarr_url} / ext: ${settings.lidarr_external_url || 'none'}` : 'not configured',
-    });
 
     // Build local slug+poster lookup maps for linking back to MediaJam
     const localByArr = { sonarr: new Map(), radarr: new Map(), lidarr: new Map() };

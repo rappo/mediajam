@@ -39,6 +39,7 @@ export async function POST({ locals, url }) {
 
     const encoder = new TextEncoder();
 
+    let cancelled = false;
     const stream = new ReadableStream({
         async start(controller) {
             /** @param {any} data */
@@ -57,6 +58,7 @@ export async function POST({ locals, url }) {
 
 
             for (const { service, url: svcUrl, apiKey } of services) {
+                if (cancelled) break;
                 send({ log: `[${time()}] 📡 Syncing ${service}...`, type: 'info', service });
 
                 try {
@@ -92,6 +94,9 @@ export async function POST({ locals, url }) {
             logActivity({ category: 'sync', action: 'arr_sync_completed', title: `*arr sync completed`, icon: '✅', status: 'success' });
 
             try { controller.close(); } catch { /* */ }
+        },
+        cancel() {
+            cancelled = true;
         }
     });
 

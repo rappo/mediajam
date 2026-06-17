@@ -20,6 +20,7 @@ export async function POST({ request, locals }) {
     const userId = locals.user.id;
     const encoder = new TextEncoder();
 
+    let cleanupFn;
     const stream = new ReadableStream({
         start(controller) {
             /** @param {any} data */
@@ -30,6 +31,7 @@ export async function POST({ request, locals }) {
             };
 
             const removeListener = addReconcileListener(send);
+            cleanupFn = () => { removeListener(); };
 
             // Run in background — don't await in the stream start
             runFullReconciliation(userId, { skipPhases })
@@ -44,6 +46,9 @@ export async function POST({ request, locals }) {
                 .finally(() => {
                     removeListener();
                 });
+        },
+        cancel() {
+            if (cleanupFn) cleanupFn();
         }
     });
 

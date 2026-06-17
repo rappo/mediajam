@@ -33,6 +33,7 @@ export async function POST({ request, locals }) {
  * @type {import('./$types').RequestHandler}
  */
 export async function GET() {
+    let cleanupFn;
     const stream = new ReadableStream({
         start(controller) {
             const encoder = new TextEncoder();
@@ -54,8 +55,15 @@ export async function GET() {
                 try { controller.enqueue(encoder.encode(`: keepalive\n\n`)); }
                 catch { clearInterval(keepAlive); }
             }, 15000);
+
+            cleanupFn = () => {
+                removeListener();
+                clearInterval(keepAlive);
+            };
         },
-        cancel() { }
+        cancel() {
+            if (cleanupFn) cleanupFn();
+        }
     });
 
     return new Response(stream, {

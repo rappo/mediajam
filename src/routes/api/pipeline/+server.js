@@ -39,6 +39,7 @@ export async function POST({ request, locals }) {
     const mode = body.mode === 'weekly' ? 'weekly' : 'nightly';
 
     // SSE stream
+    let cleanupFn;
     const stream = new ReadableStream({
         start(controller) {
             const encoder = new TextEncoder();
@@ -56,6 +57,7 @@ export async function POST({ request, locals }) {
                     try { controller.close(); } catch { /* already closed */ }
                 }
             });
+            cleanupFn = () => { removeListener(); };
 
             // Start pipeline in background
             runPipeline(mode).then((result) => {
@@ -67,6 +69,9 @@ export async function POST({ request, locals }) {
                 removeListener();
                 try { controller.close(); } catch { /* already closed */ }
             });
+        },
+        cancel() {
+            if (cleanupFn) cleanupFn();
         }
     });
 
