@@ -1,8 +1,13 @@
 <script>
-    import { onMount } from 'svelte';
-    import { imgUrl } from '$lib/utils.js';
+    import { onMount, tick } from 'svelte';
+    import { page } from '$app/stores';
+    import { imgUrl, getTodayISO } from '$lib/utils.js';
     import MdiIcon from '$lib/components/MdiIcon.svelte';
     import { mdiChevronLeft, mdiChevronRight, mdiMovieOpen, mdiTelevision, mdiMusic } from '@mdi/js';
+
+    // ── Timezone-aware local today initialization ───────────────────
+    const initialToday = getTodayISO($page.data.userPreferences?.timezone);
+    const [initY, initM] = initialToday.split('-').map(Number);
 
     // ── State ──────────────────────────────────────────────────────
     let loading = $state(true);
@@ -11,8 +16,8 @@
     let activeTypes = $state(['movie', 'show', 'artist']);
 
     // Current month view
-    let viewYear = $state(new Date().getFullYear());
-    let viewMonth = $state(new Date().getMonth()); // 0-indexed
+    let viewYear = $state(initY);
+    let viewMonth = $state(initM - 1); // 0-indexed
 
     const typeLabels = [
         { key: 'show', label: 'TV', icon: '📺', colorVar: '--color-tv' },
@@ -40,6 +45,19 @@
             console.error('[calendar] fetch error:', e);
         }
         loading = false;
+
+        // Scroll today into view/above the fold if present, keeping headers visible
+        await tick();
+        setTimeout(() => {
+            const todayEl = document.getElementById('cal-today');
+            if (todayEl) {
+                const rect = todayEl.getBoundingClientRect();
+                const scrollTop = window.scrollY || document.documentElement.scrollTop;
+                // Offset by 120px to keep month and weekday headers visible
+                const targetY = Math.max(0, rect.top + scrollTop - 120);
+                window.scrollTo({ top: targetY, behavior: 'smooth' });
+            }
+        }, 100);
     }
 
     onMount(fetchMonth);
@@ -56,9 +74,10 @@
         fetchMonth();
     }
     function goToday() {
-        const now = new Date();
-        viewYear = now.getFullYear();
-        viewMonth = now.getMonth();
+        const todayStr = getTodayISO($page.data.userPreferences?.timezone);
+        const [y, m] = todayStr.split('-').map(Number);
+        viewYear = y;
+        viewMonth = m - 1;
         fetchMonth();
     }
 
@@ -98,7 +117,7 @@
         const firstOfMonth = new Date(viewYear, viewMonth, 1);
         const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
         const startDow = firstOfMonth.getDay(); // 0=Sun
-        const todayISO = new Date().toISOString().split('T')[0];
+        const todayISO = getTodayISO($page.data.userPreferences?.timezone);
 
         /** @type {Array<{date: string, dayNum: number, dayName: string, isToday: boolean, isPast: boolean, isCurrentMonth: boolean, items: any[]}>} */
         const cells = [];
@@ -195,9 +214,11 @@
     }
 
     // Check if current month is "now"
-    let isCurrentMonth = $derived(
-        viewYear === new Date().getFullYear() && viewMonth === new Date().getMonth()
-    );
+    let isCurrentMonth = $derived.by(() => {
+        const todayStr = getTodayISO($page.data.userPreferences?.timezone);
+        const [y, m] = todayStr.split('-').map(Number);
+        return viewYear === y && viewMonth === (m - 1);
+    });
 </script>
 
 <svelte:head>
@@ -275,6 +296,7 @@
                                 class:is-weekend={cell.dayName === 'Sun' || cell.dayName === 'Sat'}
                                 class:is-other-month={!cell.isCurrentMonth}
                                 class:is-prior-week={cell.isPriorWeek}
+                                id={cell.isToday ? 'cal-today' : undefined}
                             >
                                 <!-- Day backdrop glow -->
                                 {#if heroSrc}
@@ -506,8 +528,9 @@
         border-color: rgba(251, 191, 36, 0.25);
     }
     .cal-cell.is-today {
-        border-color: oklch(var(--p) / 0.5);
-        box-shadow: 0 0 16px oklch(var(--p) / 0.12);
+        border: 2px solid rgba(255, 255, 255, 0.85);
+        box-shadow: 0 0 20px rgba(255, 255, 255, 0.18);
+        z-index: 5;
     }
     .cal-cell.is-past {
         opacity: 0.75;

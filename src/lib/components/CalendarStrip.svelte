@@ -4,7 +4,8 @@
   Use `mode="tv"` (default) or `mode="music"` to control rendering.
 -->
 <script>
-    import { imgUrl } from "$lib/utils.js";
+    import { imgUrl, getTodayISO } from "$lib/utils.js";
+    import { page } from "$app/stores";
     import MdiIcon from '$lib/components/MdiIcon.svelte';
     import { mdiMusic, mdiTelevision, mdiChevronLeft, mdiChevronRight } from '@mdi/js';
 
@@ -18,7 +19,7 @@
      */
     function formatDay(dateStr) {
         const d = new Date(dateStr + 'T12:00:00');
-        const today = new Date().toISOString().split('T')[0];
+        const today = getTodayISO($page.data.userPreferences?.timezone);
         const isPast = dateStr < today;
         return {
             name: dayNames[(d.getDay() + 6) % 7],
@@ -241,6 +242,9 @@
         flex-direction: column;
         min-width: 0; /* allow columns to shrink equally */
         min-height: 80px;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        padding: 4px;
     }
 
     .col-past {
@@ -248,7 +252,9 @@
     }
 
     .col-today {
-        /* subtle column highlight */
+        border-color: rgba(255, 255, 255, 0.35);
+        background: rgba(255, 255, 255, 0.03);
+        box-shadow: 0 0 12px rgba(255, 255, 255, 0.08);
     }
 
     /* ── Day header ── */

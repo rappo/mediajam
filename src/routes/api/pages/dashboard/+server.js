@@ -10,6 +10,13 @@ export async function GET({ url, locals }) {
     const userId = locals.user.id;
     const calendarDays = parseInt(url.searchParams.get('calendarDays') || '7');
 
+    const userRow = /** @type {any} */ (db.prepare('SELECT preferences FROM users WHERE id = ?').get(userId));
+    let timezone = 'UTC';
+    try {
+        const prefs = userRow?.preferences ? JSON.parse(userRow.preferences) : {};
+        if (prefs.timezone) timezone = prefs.timezone;
+    } catch { /* empty */ }
+
     // Build default calendar types from DB settings
     const calSettings = /** @type {any} */ (db.prepare(
         'SELECT calendar_show_movies, calendar_show_shows, calendar_show_music FROM app_settings WHERE id = 1'
@@ -56,7 +63,7 @@ export async function GET({ url, locals }) {
         timedAsync('getTrendingMovies', () => getTrendingMovies(genreProfile, 20)),
         timedAsync('getTrendingShows', () => getTrendingShows(genreProfile, 20)),
         timedAsync('getSmartRecommendations', () => getSmartRecommendations(userId, 20)),
-        timedAsync('getUpcomingDays', () => getUpcomingDays(calendarDays, calendarTypes)),
+        timedAsync('getUpcomingDays', () => getUpcomingDays(calendarDays, calendarTypes, timezone)),
         timedAsync('getLibrarySizes', () => getLibrarySizes()),
     ]);
     console.log(`[dashboard] parallel block: ${(performance.now() - tParallel).toFixed(0)}ms`);

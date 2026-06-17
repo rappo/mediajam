@@ -252,8 +252,8 @@
         transition: border-color 0.25s, box-shadow 0.25s;
     }
     .cal-day.is-today {
-        border-color: oklch(var(--p) / 0.7);
-        box-shadow: 0 0 20px oklch(var(--p) / 0.15);
+        border-color: rgba(255, 255, 255, 0.45);
+        box-shadow: 0 0 20px rgba(255, 255, 255, 0.15);
     }
 
     /* Day header */

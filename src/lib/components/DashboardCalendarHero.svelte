@@ -201,8 +201,8 @@
         pointer-events: none;
     }
     .hcal-day.is-today {
-        border-color: oklch(var(--p) / 0.5);
-        box-shadow: 0 0 16px oklch(var(--p) / 0.12);
+        border-color: rgba(255, 255, 255, 0.45);
+        box-shadow: 0 0 16px rgba(255, 255, 255, 0.12);
     }
 
     /* Day header */
