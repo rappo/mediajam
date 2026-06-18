@@ -2,6 +2,7 @@ import db from '$lib/server/db.js';
 import { backfillTrakt, backfillLastfm, processLastfmScrobbles } from '$lib/server/backfill-engine.js';
 import { startSync } from '$lib/server/sync-engine.js';
 import { startPipelineScheduler } from '$lib/server/nightly-pipeline.js';
+import { invalidatePrecomputed } from '$lib/server/section-cache.js';
 
 const CHECK_INTERVAL_MS = 30 * 60 * 1000; // Check every 30 minutes
 const DEFAULT_SYNC_INTERVAL_HOURS = 6;
@@ -39,13 +40,17 @@ async function checkAndRunAutoSyncs() {
             if (identity.provider === 'trakt') {
                 console.log(`[auto-sync] Running Trakt sync for user ${identity.user_id}`);
                 await backfillTrakt(identity.user_id);
+                try { invalidatePrecomputed('movies-smart'); invalidatePrecomputed('tv-smart'); } catch { /* non-fatal */ }
             } else if (identity.provider === 'lastfm') {
                 console.log(`[auto-sync] Running Last.fm sync for user ${identity.user_id}`);
                 await backfillLastfm(identity.user_id);
                 processLastfmScrobbles(identity.user_id);
+                try { invalidatePrecomputed('music-smart'); } catch { /* non-fatal */ }
             } else if (identity.provider === 'jellyfin') {
                 console.log(`[auto-sync] Running Jellyfin sync for user ${identity.user_id}`);
                 await startSync();
+                // Jellyfin sync covers all media types
+                try { invalidatePrecomputed(); } catch { /* non-fatal */ }
             }
 
             // Update last_auto_sync_at
