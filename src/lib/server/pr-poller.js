@@ -1,6 +1,7 @@
 import db from '$lib/server/db.js';
 import Database from 'better-sqlite3';
-import { logInfo, logError } from '$lib/server/logger.js';
+import { logInfo, logError, logWarn } from '$lib/server/logger.js';
+import { invalidatePrecomputed } from '$lib/server/section-cache.js';
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const DEFAULT_PR_PATH = '/app/jellyfin/playback_reporting.db';
@@ -77,8 +78,11 @@ function pollForNewPlays() {
     let prDb;
     try {
         prDb = new Database(dbPath, { readonly: true });
-    } catch {
-        // PR DB not available — silently skip (it's optional)
+    } catch (e) {
+        // Log instead of silently swallowing — this is the sole source of music play events
+        const msg = e instanceof Error ? e.message : String(e);
+        console.warn(`[pr-poller] Cannot open PR DB at ${dbPath}: ${msg}`);
+        logWarn('pr-poller', `Cannot open PR DB: ${msg}`);
         return;
     }
 
@@ -93,6 +97,21 @@ function pollForNewPlays() {
         const newEvents = /** @type {any[]} */ (prDb.prepare(
             'SELECT rowid, ItemId, DateCreated, PlayDuration FROM PlaybackActivity WHERE rowid > ? ORDER BY rowid ASC'
         ).all(lastPollRowid));
+
+        // Detect rowid cursor desync: if our cursor is ahead of the PR DB's max rowid,
+        // the DB was likely vacuumed/recreated. Reset cursor and re-poll.
+        if (newEvents.length === 0 && lastPollRowid > 0) {
+            const maxRow = /** @type {any} */ (prDb.prepare('SELECT MAX(rowid) as maxRowid FROM PlaybackActivity').get());
+            const dbMaxRowid = maxRow?.maxRowid || 0;
+            if (dbMaxRowid > 0 && lastPollRowid > dbMaxRowid) {
+                console.warn(`[pr-poller] Rowid cursor desync detected: cursor=${lastPollRowid}, PR DB max=${dbMaxRowid}. Resetting to 0.`);
+                logWarn('pr-poller', `Rowid cursor desync: cursor=${lastPollRowid}, DB max=${dbMaxRowid}. Resetting to re-import.`);
+                lastPollRowid = 0;
+                // Close and retry on next poll cycle with the reset cursor
+                prDb.close();
+                return;
+            }
+        }
 
         if (newEvents.length === 0) return;
 
@@ -260,6 +279,9 @@ function pollForNewPlays() {
         if (imported > 0) {
             console.log(`[pr-poller] Imported ${imported} new playback events (${skipped} skipped)`);
             logInfo('pr-poller', `Imported ${imported} new playback events`);
+
+            // Invalidate music page cache so recent listening updates promptly
+            try { invalidatePrecomputed('music-smart'); } catch { /* non-fatal */ }
         }
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);

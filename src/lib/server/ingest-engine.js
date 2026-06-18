@@ -1,4 +1,5 @@
 import db from '$lib/server/db.js';
+import { invalidatePrecomputed } from '$lib/server/section-cache.js';
 
 // ─── SSE Listeners ───────────────────────────────────────────────────────────
 /** @type {Set<(data: any) => void>} */
@@ -70,6 +71,12 @@ const findMediaByParentJellyfinId = db.prepare(`
     LIMIT 1
 `);
 
+// Music track lookup — individual songs are in the tracks table, not media_children
+const findTrackByJellyfinId = db.prepare(`
+    SELECT t.album_id, t.title as track_title
+    FROM tracks t WHERE t.jellyfin_id = ?
+`);
+
 const findUserByJellyfinId = db.prepare(`
     SELECT u.id FROM users u
     JOIN user_identities ui ON u.id = ui.user_id
@@ -111,6 +118,11 @@ function resolveMediaItem(payload) {
     // Try by parent jellyfin_id
     const parentMatch = /** @type {any} */ (findMediaByParentJellyfinId.get(itemId));
     if (parentMatch) return { mediaId: parentMatch.id, mediaType: parentMatch.media_type };
+
+    // Music: individual tracks are stored in the tracks table, not media_children.
+    // Look up by track jellyfin_id → album_id (which IS a media_children.id).
+    const track = /** @type {any} */ (findTrackByJellyfinId.get(itemId));
+    if (track) return { mediaId: track.album_id, mediaType: 'artist', trackTitle: track.track_title };
 
     return null;
 }
@@ -266,8 +278,13 @@ export function handlePlaybackStop(payload) {
                 durationSeconds,
                 completionPct,
                 externalEventId,
-                trackName: payload.Item?.Name || null
+                trackName: resolved.trackTitle || payload.Item?.Name || null
             });
+
+            // Invalidate music page cache so recent listening updates promptly
+            if (resolved.mediaType === 'artist') {
+                try { invalidatePrecomputed('music-smart'); } catch { /* non-fatal */ }
+            }
 
             broadcast({
                 type: 'scrobble',
