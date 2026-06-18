@@ -1265,8 +1265,14 @@ export async function startSync(libraryId = null, force = false) {
                         }
                     } else if (lib.media_type === 'music' && parentId) {
                         const existingChildren = /** @type {any} */ (countChildren.get(parentId))?.c || 0;
-                        if (!needsChildSync && existingChildren > 0) {
-                            // Fully synced — skip expensive album/track fetch
+
+                        // Music-specific skip: Jellyfin MusicArtist items don't report useful
+                        // ChildCount/DateLastMediaAdded, so needsChildSync is always false.
+                        // Instead, fetch the album list once and compare counts to detect new albums.
+                        const albums = await fetchJellyfinAlbums(api, item.Id);
+
+                        if (!force && existingChildren > 0 && albums.length === existingChildren) {
+                            // Album count matches — skip expensive track fetch
                             updateParentCounts.run(parentId);
                             broadcast({
                                 type: 'progress',
@@ -1279,10 +1285,18 @@ export async function startSync(libraryId = null, force = false) {
                                 itemsSynced: libSynced,
                                 totalSynced,
                                 errors: totalErrors,
-                                log: `  ⏭ ${item.Name} (${existingChildren} albums already synced)`,
+                                log: `  ⏭ ${item.Name} (${existingChildren} albums up to date)`,
                                 logType: 'info'
                             });
                             continue;
+                        }
+
+                        if (existingChildren > 0 && albums.length !== existingChildren) {
+                            broadcast({
+                                type: 'progress',
+                                log: `  🔄 ${item.Name}: album count changed (local: ${existingChildren}, Jellyfin: ${albums.length}), re-syncing...`,
+                                logType: 'info'
+                            });
                         }
 
                         broadcast({
@@ -1295,11 +1309,9 @@ export async function startSync(libraryId = null, force = false) {
                             itemsSynced: libSynced,
                             totalSynced,
                             errors: totalErrors,
-                            log: `  → Fetching albums for ${item.Name}...`,
+                            log: `  → Syncing ${albums.length} albums for ${item.Name}...`,
                             logType: 'info'
                         });
-
-                        const albums = await fetchJellyfinAlbums(api, item.Id);
 
                         // First pass: upsert all albums
                         const albumIdMap = new Map(); // jellyfinId -> dbId

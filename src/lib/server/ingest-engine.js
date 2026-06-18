@@ -54,8 +54,8 @@ const deleteSession = db.prepare(`
 `);
 
 const insertHistory = db.prepare(`
-    INSERT OR IGNORE INTO playback_history (user_id, media_id, source, timestamp, duration_consumed_seconds, completion_pct, external_event_id, track_name)
-    VALUES (@userId, @mediaId, 'webhook', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), @durationSeconds, @completionPct, @externalEventId, @trackName)
+    INSERT OR IGNORE INTO playback_history (user_id, media_id, source, timestamp, duration_consumed_seconds, completion_pct, external_event_id, track_name, track_id)
+    VALUES (@userId, @mediaId, 'webhook', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), @durationSeconds, @completionPct, @externalEventId, @trackName, @trackId)
 `);
 
 const findMediaByJellyfinId = db.prepare(`
@@ -73,7 +73,7 @@ const findMediaByParentJellyfinId = db.prepare(`
 
 // Music track lookup — individual songs are in the tracks table, not media_children
 const findTrackByJellyfinId = db.prepare(`
-    SELECT t.album_id, t.title as track_title
+    SELECT t.id as track_id, t.album_id, t.title as track_title
     FROM tracks t WHERE t.jellyfin_id = ?
 `);
 
@@ -122,7 +122,7 @@ function resolveMediaItem(payload) {
     // Music: individual tracks are stored in the tracks table, not media_children.
     // Look up by track jellyfin_id → album_id (which IS a media_children.id).
     const track = /** @type {any} */ (findTrackByJellyfinId.get(itemId));
-    if (track) return { mediaId: track.album_id, mediaType: 'artist', trackTitle: track.track_title };
+    if (track) return { mediaId: track.album_id, mediaType: 'artist', trackTitle: track.track_title, trackId: track.track_id };
 
     return null;
 }
@@ -278,7 +278,8 @@ export function handlePlaybackStop(payload) {
                 durationSeconds,
                 completionPct,
                 externalEventId,
-                trackName: resolved.trackTitle || payload.Item?.Name || null
+                trackName: resolved.trackTitle || payload.Item?.Name || null,
+                trackId: resolved.trackId || null
             });
 
             // Invalidate music page cache so recent listening updates promptly

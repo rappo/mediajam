@@ -125,14 +125,14 @@ function pollForNewPlays() {
         const WATCHED_THRESHOLD_PCT = 80;
 
         const findChild = db.prepare('SELECT id FROM media_children WHERE jellyfin_id = ?');
-        const findTrack = db.prepare('SELECT t.album_id, t.title as track_title, t.runtime_ticks as track_runtime_ticks FROM tracks t WHERE t.jellyfin_id = ?');
+        const findTrack = db.prepare('SELECT t.id as track_id, t.album_id, t.title as track_title, t.runtime_ticks as track_runtime_ticks FROM tracks t WHERE t.jellyfin_id = ?');
         const findChildRuntime = db.prepare(
             'SELECT mc.runtime_ticks, mp.media_type FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mc.id = ?'
         );
         const insertHistory = db.prepare(`
             INSERT OR IGNORE INTO playback_history
-                (user_id, media_id, source, timestamp, duration_consumed_seconds, completion_pct, external_event_id, track_name)
-            VALUES (@userId, @mediaId, 'jellyfin_pr', @timestamp, @durationSeconds, @completionPct, @externalEventId, @trackName)
+                (user_id, media_id, source, timestamp, duration_consumed_seconds, completion_pct, external_event_id, track_name, track_id)
+            VALUES (@userId, @mediaId, 'jellyfin_pr', @timestamp, @durationSeconds, @completionPct, @externalEventId, @trackName, @trackId)
         `);
         const updateWatchStatus = db.prepare(
             "UPDATE media_children SET watch_status = 'watched', play_count = play_count + 1 WHERE id = ? AND watch_status != 'watched'"
@@ -163,6 +163,7 @@ function pollForNewPlays() {
                 if (!child) child = /** @type {any} */ (findChild.get(itemId + '_child'));
                 let trackName = null;
                 let trackRuntimeTicks = null;
+                let trackId = null;
                 if (!child) {
                     // Music: track IDs are stored in the tracks table, not media_children
                     const track = /** @type {any} */ (findTrack.get(itemId));
@@ -170,6 +171,7 @@ function pollForNewPlays() {
                         child = { id: track.album_id };
                         trackName = track.track_title;
                         trackRuntimeTicks = track.track_runtime_ticks || null;
+                        trackId = track.track_id || null;
                     }
                 }
                 if (!child) { skipped++; continue; }
@@ -250,7 +252,8 @@ function pollForNewPlays() {
                     durationSeconds,
                     completionPct,
                     externalEventId: eventId,
-                    trackName
+                    trackName,
+                    trackId
                 });
 
                 if (result.changes > 0) {
