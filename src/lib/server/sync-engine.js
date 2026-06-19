@@ -1264,14 +1264,17 @@ export async function startSync(libraryId = null, force = false) {
                             console.error(`[sync] People sync failed for ${item.Name}:`, pe instanceof Error ? pe.message : String(pe));
                         }
                     } else if (lib.media_type === 'music' && parentId) {
-                        const existingChildren = /** @type {any} */ (countChildren.get(parentId))?.c || 0;
+                        // Count only Jellyfin-sourced albums (with jellyfin_id), not external/lastfm entries
+                        const existingJellyfinAlbums = /** @type {any} */ (
+                            db.prepare('SELECT COUNT(*) as c FROM media_children WHERE parent_id = ? AND is_special = 0 AND jellyfin_id IS NOT NULL').get(parentId)
+                        )?.c || 0;
 
                         // Music-specific skip: Jellyfin MusicArtist items don't report useful
                         // ChildCount/DateLastMediaAdded, so needsChildSync is always false.
                         // Instead, fetch the album list once and compare counts to detect new albums.
                         const albums = await fetchJellyfinAlbums(api, item.Id);
 
-                        if (!force && existingChildren > 0 && albums.length === existingChildren) {
+                        if (!force && existingJellyfinAlbums > 0 && albums.length === existingJellyfinAlbums) {
                             // Album count matches — skip expensive track fetch
                             updateParentCounts.run(parentId);
                             broadcast({
@@ -1281,20 +1284,20 @@ export async function startSync(libraryId = null, force = false) {
                                 parentIndex: i + 1,
                                 parentCount,
                                 currentItem: item.Name,
-                                childCount: existingChildren,
+                                childCount: existingJellyfinAlbums,
                                 itemsSynced: libSynced,
                                 totalSynced,
                                 errors: totalErrors,
-                                log: `  ⏭ ${item.Name} (${existingChildren} albums up to date)`,
+                                log: `  ⏭ ${item.Name} (${existingJellyfinAlbums} albums up to date)`,
                                 logType: 'info'
                             });
                             continue;
                         }
 
-                        if (existingChildren > 0 && albums.length !== existingChildren) {
+                        if (existingJellyfinAlbums > 0 && albums.length !== existingJellyfinAlbums) {
                             broadcast({
                                 type: 'progress',
-                                log: `  🔄 ${item.Name}: album count changed (local: ${existingChildren}, Jellyfin: ${albums.length}), re-syncing...`,
+                                log: `  🔄 ${item.Name}: album count changed (local: ${existingJellyfinAlbums}, Jellyfin: ${albums.length}), re-syncing...`,
                                 logType: 'info'
                             });
                         }
