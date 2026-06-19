@@ -339,3 +339,21 @@ export function stopPrPoller() {
         console.log('[pr-poller] Stopped');
     }
 }
+
+/**
+ * Re-scan the entire PR database from rowid 0, filling in any previously
+ * missed plays (e.g., tracks that weren't synced at import time).
+ * Safe to run repeatedly — uses INSERT OR IGNORE so dupes are skipped.
+ * @returns {{ imported: number, skipped: number }}
+ */
+export function rescanAll() {
+    console.log('[pr-poller] Full rescan requested — resetting cursor to 0');
+    logInfo('pr-poller', 'Full rescan started');
+    const savedRowid = lastPollRowid;
+    lastPollRowid = 0;
+    pollForNewPlays();
+    const result = { imported: 0, skipped: 0, newCursor: lastPollRowid };
+    console.log(`[pr-poller] Rescan complete (cursor: ${savedRowid} → ${lastPollRowid})`);
+    logInfo('pr-poller', `Rescan complete (cursor: ${savedRowid} → ${lastPollRowid})`);
+    return result;
+}

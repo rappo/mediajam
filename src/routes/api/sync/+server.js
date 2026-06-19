@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { startSync, pauseSync, resumeSync, stopSync, resetSync, addListener, isRunning, getStatus } from '$lib/server/sync-engine.js';
+import { rescanAll as rescanPrDb } from '$lib/server/pr-poller.js';
 import { BUILD_VERSION } from '$lib/version.js';
 import { logInfo, logError } from '$lib/server/logger.js';
 
@@ -33,6 +34,16 @@ export async function POST({ request }) {
         case 'stop':
             stopSync();
             return json({ success: true, message: 'Sync stopped.' });
+
+        case 'rescan-pr':
+            try {
+                rescanPrDb();
+                return json({ success: true, message: 'PR database rescan complete.' });
+            } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                console.error('[sync] PR rescan failed:', msg);
+                return json({ success: false, error: msg }, { status: 500 });
+            }
 
         default:
             return json({ success: false, error: 'Invalid action.' }, { status: 400 });
