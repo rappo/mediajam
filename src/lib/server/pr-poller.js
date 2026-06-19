@@ -153,7 +153,7 @@ function pollForNewPlays() {
 
         const txn = db.transaction(() => {
             for (const event of newEvents) {
-                if (event.rowid > maxRowid) maxRowid = event.rowid;
+                // Don't unconditionally advance cursor — unmatched events should be retried
 
                 const itemId = event.ItemId;
                 if (!itemId) { skipped++; continue; }
@@ -174,7 +174,10 @@ function pollForNewPlays() {
                         trackId = track.track_id || null;
                     }
                 }
-                if (!child) { skipped++; continue; }
+                if (!child) { skipped++; continue; } // Don't advance cursor — retry next cycle
+
+                // Event matched — advance cursor past it
+                if (event.rowid > maxRowid) maxRowid = event.rowid;
 
                 const durationSeconds = event.PlayDuration ? Math.round(event.PlayDuration) : null;
 
@@ -183,7 +186,7 @@ function pollForNewPlays() {
                 const minPlaySeconds = isTrack ? 30 : MIN_PLAY_SECONDS;
                 if (!durationSeconds || durationSeconds < minPlaySeconds) {
                     skipped++;
-                    if (event.rowid > maxRowid) maxRowid = event.rowid; // still advance cursor
+                    if (event.rowid > maxRowid) maxRowid = event.rowid; // legitimately skipped, advance cursor
                     continue;
                 }
 
@@ -191,6 +194,7 @@ function pollForNewPlays() {
                 // Checked AFTER duration filter so 0-duration entries don't poison lastItemId
                 if (itemId === lastItemId) {
                     skipped++;
+                    if (event.rowid > maxRowid) maxRowid = event.rowid; // dedup skip, advance cursor
                     continue;
                 }
                 lastItemId = itemId;
@@ -215,6 +219,7 @@ function pollForNewPlays() {
                 // Require either 50% of the track OR 240 seconds (for very long tracks)
                 if (isTrack && runtimeSeconds > 0 && completionPct < 50 && durationSeconds < 240) {
                     skipped++;
+                    if (event.rowid > maxRowid) maxRowid = event.rowid; // completion skip, advance cursor
                     continue;
                 }
 
