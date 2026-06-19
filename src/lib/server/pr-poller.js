@@ -95,7 +95,7 @@ function pollForNewPlays() {
 
         // Fetch only new rows since last poll
         const newEvents = /** @type {any[]} */ (prDb.prepare(
-            'SELECT rowid, ItemId, DateCreated, PlayDuration FROM PlaybackActivity WHERE rowid > ? ORDER BY rowid ASC'
+            'SELECT rowid, UserId, ItemId, DateCreated, PlayDuration FROM PlaybackActivity WHERE rowid > ? ORDER BY rowid ASC'
         ).all(lastPollRowid));
 
         // Detect rowid cursor desync: if our cursor is ahead of the PR DB's max rowid,
@@ -115,9 +115,14 @@ function pollForNewPlays() {
 
         if (newEvents.length === 0) return;
 
-        // Get the default user (for single-user setups)
-        const user = /** @type {any} */ (db.prepare('SELECT id FROM users LIMIT 1').get());
-        if (!user) return;
+        // Build Jellyfin UserId → MediaJam user_id mapping
+        const allUsers = /** @type {any[]} */ (db.prepare('SELECT id, jellyfin_user_id FROM users WHERE jellyfin_user_id IS NOT NULL').all());
+        /** @type {Map<string, number>} */
+        const userMap = new Map();
+        for (const u of allUsers) userMap.set(u.jellyfin_user_id, u.id);
+        // Fallback: first user (for single-user setups or events without UserId)
+        const fallbackUserId = allUsers.length > 0 ? allUsers[0].id : null;
+        if (!fallbackUserId) return;
 
         // Minimum play duration to record a history entry (filters out brief previews)
         const MIN_PLAY_SECONDS = 300; // 5 minutes
@@ -251,7 +256,7 @@ function pollForNewPlays() {
                 const eventId = `jellyfin_pr:${event.rowid}`;
 
                 const result = insertHistory.run({
-                    userId: user.id,
+                    userId: userMap.get(event.UserId) || fallbackUserId,
                     mediaId: child.id,
                     timestamp,
                     durationSeconds,
