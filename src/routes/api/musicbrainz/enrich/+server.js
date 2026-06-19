@@ -46,6 +46,8 @@ export async function POST({ request }) {
  * Same pattern as /api/people/sync GET.
  */
 export async function GET() {
+    /** @type {(() => void) | null} */
+    let cleanupFn = null;
     const stream = new ReadableStream({
         start(controller) {
             const encoder = new TextEncoder();
@@ -87,9 +89,15 @@ export async function GET() {
                     removeListener();
                 }
             }, 15000);
+
+            // Store cleanup for cancel()
+            cleanupFn = () => {
+                clearInterval(keepAlive);
+                removeListener();
+            };
         },
         cancel() {
-            // Cleanup happens when stream is cancelled
+            if (cleanupFn) cleanupFn();
         }
     });
 
