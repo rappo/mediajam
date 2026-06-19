@@ -328,6 +328,23 @@
         }))
     );
 
+    let recentlyWatchedMovieItems = $derived(
+        (dash?.recentlyWatchedMovies || []).map(m => ({
+            href: m.href,
+            title: m.title,
+            poster_url: m.poster_url,
+        }))
+    );
+
+    let recentlyWatchedTVItems = $derived(
+        (dash?.recentlyWatchedTV || []).map(s => ({
+            href: s.href,
+            title: s.title,
+            subtitle: s.subtitle,
+            poster_url: s.poster_url,
+        }))
+    );
+
     // Hero card: rotate through watchlist every 60s
     let heroIndex = $state(0);
     let heroProgress = $state(0);
@@ -623,9 +640,23 @@
             </DashSection>
         {/if}
 
+        <!-- Recently Watched Movies -->
+        {#if recentlyWatchedMovieItems.length > 0}
+            <DashSection title="Recently Watched Movies" icon={mdiMovie} glowSrc={recentlyWatchedMovieItems.slice(0, 5).map(i => i.poster_url)}>
+                <PosterRow title="" items={recentlyWatchedMovieItems} />
+            </DashSection>
+        {/if}
+
+        <!-- Recently Watched TV -->
+        {#if recentlyWatchedTVItems.length > 0}
+            <DashSection title="Recently Watched TV" icon={mdiTelevision} glowSrc={recentlyWatchedTVItems.slice(0, 5).map(i => i.poster_url)}>
+                <PosterRow title="" items={recentlyWatchedTVItems} />
+            </DashSection>
+        {/if}
+
         <!-- Recently Played Albums -->
         {#if recentlyPlayedItems.length > 0}
-            <DashSection title="Recently Played" icon={mdiMusicNote} glowSrc={recentlyPlayedItems.slice(0, 5).map(i => i.poster_url)}>
+            <DashSection title="Recently Played Albums" icon={mdiMusicNote} glowSrc={recentlyPlayedItems.slice(0, 5).map(i => i.poster_url)}>
                 <PosterRow title="" items={recentlyPlayedItems} square />
             </DashSection>
         {/if}

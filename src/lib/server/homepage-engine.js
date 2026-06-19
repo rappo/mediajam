@@ -1090,17 +1090,21 @@ export function getItsBeenAWhile(userId, sinceMonths = 6, limit = 12) {
                mc.jellyfin_id as album_jellyfin_id, mc.poster_url as album_poster_url,
                mp.id as artist_id, mp.title as artist_name,
                mp.jellyfin_id as artist_jellyfin_id, mp.poster_url as artist_poster,
-               mc.play_count as total_plays,
+               (SELECT COUNT(*) FROM (
+                   SELECT DISTINCT CAST(strftime('%s', ph2.timestamp) / 300 AS INTEGER) as tb
+                   FROM playback_history ph2
+                   WHERE ph2.media_id = mc.id AND ph2.user_id = ?
+               )) as total_plays,
                MAX(ph.timestamp) as last_played
         FROM playback_history ph
         JOIN media_children mc ON ph.media_id = mc.id
         JOIN media_parents mp ON mc.parent_id = mp.id
         WHERE mp.media_type = 'artist' AND ph.user_id = ?
         GROUP BY mc.id
-        HAVING mc.play_count >= 3 AND last_played < ?
-        ORDER BY mc.play_count DESC, last_played ASC
+        HAVING total_plays >= 3 AND last_played < ?
+        ORDER BY total_plays DESC, last_played ASC
         LIMIT ?
-    `).all(userId, cutoffISO, limit));
+    `).all(userId, userId, cutoffISO, limit));
 
     return rows.map(r => ({
         ...r,

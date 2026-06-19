@@ -82,8 +82,14 @@ export async function GET({ url, locals }) {
     let recentlyPlayedAlbums = [];
     try {
         // Recently played albums (by playback history)
+        // Count track plays per album from playback_history (deduplicated by 5-min buckets)
         recentlyPlayedAlbums = /** @type {any[]} */ (db.prepare(`
-            SELECT mc.id, mc.title, mc.poster_url, mc.play_count,
+            SELECT mc.id, mc.title, mc.poster_url,
+                   (SELECT COUNT(*) FROM (
+                       SELECT DISTINCT CAST(strftime('%s', ph2.timestamp) / 300 AS INTEGER) as tb
+                       FROM playback_history ph2
+                       WHERE ph2.media_id = mc.id AND ph2.user_id = ?
+                   )) as track_plays,
                    mp.id as artist_id, mp.title as artist_name, mp.poster_url as artist_poster, mp.slug as artist_slug,
                    MAX(ph.timestamp) as last_played
             FROM playback_history ph
@@ -95,12 +101,12 @@ export async function GET({ url, locals }) {
             GROUP BY mc.id
             ORDER BY last_played DESC
             LIMIT 20
-        `).all(userId)).map(a => ({
+        `).all(userId, userId)).map(a => ({
             href: `/music/${a.artist_slug || a.artist_id}`,
             title: a.title,
             subtitle: a.artist_name,
             poster_url: a.poster_url || a.artist_poster,
-            badge: `${a.play_count} plays`,
+            badge: `${a.track_plays} plays`,
             icon: '🎵',
             _id: a.id,
         }));
@@ -136,6 +142,53 @@ export async function GET({ url, locals }) {
         recentlyPlayedAlbums = recentlyPlayedAlbums.map(({ _id, ...rest }) => rest);
     } catch { /* music tables might not exist */ }
 
+    // Recently Watched Movies — last 20 movies with playback history
+    let recentlyWatchedMovies = [];
+    try {
+        recentlyWatchedMovies = /** @type {any[]} */ (db.prepare(`
+            SELECT mc.id, mc.title, mc.poster_url, mc.slug,
+                   mp.title as parent_title, mp.slug as parent_slug,
+                   MAX(ph.timestamp) as last_watched
+            FROM playback_history ph
+            JOIN media_children mc ON ph.media_id = mc.id
+            JOIN media_parents mp ON mc.parent_id = mp.id
+            WHERE mp.media_type = 'movie'
+              AND ph.user_id = ?
+              AND ph.completion_pct >= 75
+            GROUP BY mc.id
+            ORDER BY last_watched DESC
+            LIMIT 20
+        `).all(userId)).map(m => ({
+            href: `/movies/${m.slug || m.parent_slug || m.id}`,
+            title: m.title,
+            poster_url: m.poster_url,
+        }));
+    } catch { /* */ }
+
+    // Recently Watched TV — last 20 distinct shows with playback history
+    let recentlyWatchedTV = [];
+    try {
+        recentlyWatchedTV = /** @type {any[]} */ (db.prepare(`
+            SELECT mp.id, mp.title, mp.poster_url, mp.slug,
+                   MAX(ph.timestamp) as last_watched,
+                   mc.title as episode_title
+            FROM playback_history ph
+            JOIN media_children mc ON ph.media_id = mc.id
+            JOIN media_parents mp ON mc.parent_id = mp.id
+            WHERE mp.media_type = 'show'
+              AND ph.user_id = ?
+              AND ph.completion_pct >= 75
+            GROUP BY mp.id
+            ORDER BY last_watched DESC
+            LIMIT 20
+        `).all(userId)).map(s => ({
+            href: `/tv/${s.slug || s.id}`,
+            title: s.title,
+            subtitle: s.episode_title,
+            poster_url: s.poster_url,
+        }));
+    } catch { /* */ }
+
     console.log(`[dashboard] TOTAL: ${(performance.now() - t0).toFixed(0)}ms`);
 
     return json({
@@ -149,6 +202,8 @@ export async function GET({ url, locals }) {
         actorDeepDive,
         newAlbums,
         recentlyPlayedAlbums,
+        recentlyWatchedMovies,
+        recentlyWatchedTV,
         recentlyAdded,
     });
 }
