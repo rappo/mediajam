@@ -50,8 +50,17 @@
             // Modifiers
             if (credit.upcoming_count > 0) modifiers += ' poster-airing';
             if (credit.missing_count > 0) modifiers += ' poster-missing';
+        } else if (credit.media_type === 'artist') {
+            // Music: "unwatched" doesn't apply — either listened or collected
+            if (credit.play_count > 0) base = 'poster-watched';
+            else if (credit.jellyfin_id) base = 'poster-watched'; // in library = green
+            // Only show missing border if explicitly wanted but not collected
+            if (!credit.jellyfin_id && credit.collection_status === 'wanted') {
+                base = 'poster-unwatched';
+                modifiers += ' poster-missing';
+            }
         } else {
-            // Movies (& music): use child record watch_status/play_count
+            // Movies: use child record watch_status/play_count
             const ws = credit.watch_status;
             if (ws === 'watched' || credit.play_count > 0) base = 'poster-watched';
             else if (ws === 'in_progress') base = 'poster-progress';
@@ -72,6 +81,11 @@
             if (credit.watched_count > 0 || credit.progress_count > 0)
                 return 'progress';
             if (credit.jellyfin_id) return 'unwatched';
+            return '';
+        }
+        if (credit.media_type === 'artist') {
+            // Music: no "unwatched" concept
+            if (credit.play_count > 0) return 'watched';
             return '';
         }
         const ws = credit.watch_status;
