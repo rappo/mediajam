@@ -146,8 +146,7 @@ export async function GET({ url, locals }) {
     let recentlyWatchedMovies = [];
     try {
         recentlyWatchedMovies = /** @type {any[]} */ (db.prepare(`
-            SELECT mc.id, mc.title, mc.poster_url, mc.slug,
-                   mp.title as parent_title, mp.slug as parent_slug,
+            SELECT mc.id, mc.title, mp.poster_url, mp.slug,
                    MAX(ph.timestamp) as last_watched
             FROM playback_history ph
             JOIN media_children mc ON ph.media_id = mc.id
@@ -159,7 +158,7 @@ export async function GET({ url, locals }) {
             ORDER BY last_watched DESC
             LIMIT 20
         `).all(userId)).map(m => ({
-            href: `/movies/${m.slug || m.parent_slug || m.id}`,
+            href: `/movies/${m.slug || m.id}`,
             title: m.title,
             poster_url: m.poster_url,
         }));

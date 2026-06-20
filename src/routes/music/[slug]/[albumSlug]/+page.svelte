@@ -306,7 +306,7 @@
                                 <td class="text-center">
                                     {#if stats?.play_count > 0}
                                         <span
-                                            class="badge badge-xs badge-accent"
+                                            class="text-xs text-base-content/60"
                                             >{stats.play_count}</span
                                         >
                                     {:else}

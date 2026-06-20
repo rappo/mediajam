@@ -239,26 +239,24 @@
             {#each albumGroups as albumGroup}
                 {@const albumLink = entry.parent_id && albumGroup.albumId ? `/music/${entry.parent_id}/${albumGroup.albumId}` : null}
                 <div class="rounded-lg bg-base-300/20 overflow-hidden">
-                    <!-- Album header (if multiple albums or multiple tracks) -->
-                    {#if albumGroups.length > 1 || albumGroup.tracks.length > 1}
-                        <div class="flex items-center gap-2.5 px-2.5 py-1.5">
-                            {#if albumGroup.albumArtUrl && albumGroups.length > 1}
-                                <img
-                                    src={imgUrl(albumGroup.albumArtUrl, 80)}
-                                    alt=""
-                                    class="w-9 h-9 rounded object-cover shadow-sm shrink-0"
-                                />
-                            {/if}
-                            {#if albumLink}
-                                <a href={albumLink} class="text-xs font-medium text-base-content/60 hover:text-primary transition-colors truncate">
-                                    {albumGroup.albumTitle}
-                                </a>
-                            {:else}
-                                <span class="text-xs font-medium text-base-content/60 truncate">{albumGroup.albumTitle}</span>
-                            {/if}
-                            <span class="text-[10px] text-base-content/30 shrink-0">{albumGroup.tracks.length} {albumGroup.tracks.length === 1 ? 'track' : 'tracks'}</span>
-                        </div>
-                    {/if}
+                    <!-- Album header -->
+                    <div class="flex items-center gap-2.5 px-2.5 py-1.5">
+                        {#if albumGroup.albumArtUrl && albumGroups.length > 1}
+                            <img
+                                src={imgUrl(albumGroup.albumArtUrl, 80)}
+                                alt=""
+                                class="w-9 h-9 rounded object-cover shadow-sm shrink-0"
+                            />
+                        {/if}
+                        {#if albumLink}
+                            <a href={albumLink} class="text-xs font-medium text-base-content/60 hover:text-primary transition-colors truncate">
+                                {albumGroup.albumTitle}
+                            </a>
+                        {:else}
+                            <span class="text-xs font-medium text-base-content/60 truncate">{albumGroup.albumTitle}</span>
+                        {/if}
+                        <span class="text-[10px] text-base-content/30 shrink-0">{albumGroup.tracks.length} {albumGroup.tracks.length === 1 ? 'track' : 'tracks'}</span>
+                    </div>
 
                     <!-- Track list -->
                     <div class="space-y-0">
@@ -271,9 +269,6 @@
                                         <span class="text-base-content/30 ml-1">{runtime}</span>
                                     {/if}
                                 </span>
-                                <div class="shrink-0">
-                                    {@render sourceBadge(track.source)}
-                                </div>
                             </div>
                         {/each}
                     </div>
@@ -338,16 +333,13 @@
 
         <!-- Badges + timestamp — right side -->
         <div class="flex-shrink-0 flex items-center gap-2">
-            <div class="avatar-group -space-x-2">
-                <div class="avatar placeholder">
-                    {@render sourceBadge(entry.source)}
-                </div>
-                {#if isExternal}
+            {#if isExternal}
+                <div class="avatar-group -space-x-2">
                     <div class="avatar placeholder">
                         {@render externalBadge(entry.media_type)}
                     </div>
-                {/if}
-            </div>
+                </div>
+            {/if}
             <span class="text-xs text-base-content/40 w-16 text-right"
                 >{timeAgo(entry.timestamp)}</span
             >
