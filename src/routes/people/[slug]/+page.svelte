@@ -326,7 +326,7 @@
         })()
     );
 
-    // Group filtered discovery items by department, each sorted newest-first
+    // Group filtered discovery items by department, preserving the sort from filteredDiscovery
     const deptOrder = ['Directing', 'Acting', 'Writing', 'Production', 'Sound', 'Art', 'Camera', 'Editing', 'Visual Effects', 'Costume & Make-Up', 'Crew', 'Lighting', 'Self'];
     let groupedByDepartment = $derived(
         (() => {
@@ -338,10 +338,6 @@
                     if (!groups.has(dept)) groups.set(dept, []);
                     groups.get(dept).push(item);
                 }
-            }
-            // Sort each group newest-first
-            for (const [, items] of groups) {
-                items.sort((a, b) => (parseInt(b.release_year) || 0) - (parseInt(a.release_year) || 0));
             }
             // Sort departments by preferred order
             const sorted = [...groups.entries()].sort(([a], [b]) => {
@@ -1272,7 +1268,7 @@
                                             </div>
                                             <div class="filmography-info">
                                                 <div class="filmography-title-line">
-                                                    <span class="filmography-title">{item.title}{#if item.release_year}{' '}({item.release_year}){/if}</span>
+                                                    <span class="filmography-title">{item.title}{#if item.release_year}&nbsp;({item.release_year}){/if}</span>
                                                     {#if item.vote_average > 0}
                                                         <span class="filmography-rating">
                                                             <MdiIcon icon={mdiStar} size={11} />

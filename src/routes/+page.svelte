@@ -143,9 +143,25 @@
         (dash?.recommended || []).map(m => ({
             href: `/movies/${m.slug || m.id}`,
             title: m.title,
-            subtitle: m.reason || String(m.release_year || ''),
+            subtitle: String(m.release_year || ''),
             poster_url: m.poster_url,
         }))
+    );
+
+    // Extract the most common reason for the section title
+    let recommendedReason = $derived(
+        (() => {
+            const recs = dash?.recommended || [];
+            if (recs.length === 0) return '';
+            const counts = {};
+            for (const m of recs) {
+                if (m.reason) {
+                    counts[m.reason] = (counts[m.reason] || 0) + 1;
+                }
+            }
+            const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+            return top ? top[0] : '';
+        })()
     );
 
     let watchlistItems = $derived(
@@ -612,8 +628,8 @@
 
         <!-- Recommended for You -->
         {#if recommendedItems.length > 0}
-            <DashSection title="Recommended for You" icon={mdiBullseyeArrow} glowSrc={recommendedItems.slice(0, 5).map(i => i.poster_url)}>
-                <PosterRow title="" items={recommendedItems} showLabels />
+            <DashSection title={recommendedReason || 'Recommended for You'} icon={mdiBullseyeArrow} glowSrc={recommendedItems.slice(0, 5).map(i => i.poster_url)}>
+                <PosterRow title="" items={recommendedItems} />
             </DashSection>
         {/if}
 

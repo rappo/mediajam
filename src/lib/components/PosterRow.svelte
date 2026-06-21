@@ -68,7 +68,7 @@
                     class:poster-row-labeled={showLabels}
                 >
                     {#each items as item}
-                        <div class="poster-item" class:poster-item-labeled={showLabels}>
+                        <div class="poster-item">
                         <a href={item.href} class="poster-card" title={item.title} target={item.external ? '_blank' : undefined} rel={item.external ? 'noopener noreferrer' : undefined}>
                             {#if item.poster_url}
                                 <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img" loading="lazy" />
@@ -77,58 +77,45 @@
                                     <span><MdiIcon icon={mdiMovieOpen} size={32} /></span>
                                 </div>
                             {/if}
-                            {#if !showLabels}
                             <div class="poster-overlay">
-                                <div class="poster-title">{item.title}</div>
-                                {#if item.subtitle}
-                                    <div class="poster-subtitle">{item.subtitle}</div>
-                                {/if}
-                                {#if onAutoSearch && item.service}
-                                    <button
-                                        class="poster-search-btn"
-                                        title="Auto-search downloads"
-                                        onclick={(e) => {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            const key = item.arrId || item.title;
-                                            if (searching.has(key) || searched.has(key)) return;
-                                            const next = new Set(searching);
-                                            next.add(key);
-                                            searching = next;
-                                            Promise.resolve(onAutoSearch(item)).then(() => {
-                                                const done = new Set(searched);
-                                                done.add(key);
-                                                searched = done;
-                                            }).finally(() => {
-                                                const rm = new Set(searching);
-                                                rm.delete(key);
-                                                searching = rm;
-                                            });
-                                        }}
-                                    >
-                                        {#if searching.has(item.arrId || item.title)}
-                                            <span class="loading loading-spinner" style="width:14px;height:14px"></span>
-                                        {:else if searched.has(item.arrId || item.title)}
-                                            <MdiIcon icon={mdiCheck} size={16} />
-                                        {:else}
-                                            <MdiIcon icon={mdiDownload} size={16} />
-                                        {/if}
-                                    </button>
-                                {/if}
+                                <div class="poster-title">{item.title}{#if item.subtitle}&nbsp;({item.subtitle}){/if}</div>
                             </div>
+                            {#if onAutoSearch && item.service}
+                                <button
+                                    class="poster-search-btn"
+                                    title="Auto-search downloads"
+                                    onclick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        const key = item.arrId || item.title;
+                                        if (searching.has(key) || searched.has(key)) return;
+                                        const next = new Set(searching);
+                                        next.add(key);
+                                        searching = next;
+                                        Promise.resolve(onAutoSearch(item)).then(() => {
+                                            const done = new Set(searched);
+                                            done.add(key);
+                                            searched = done;
+                                        }).finally(() => {
+                                            const rm = new Set(searching);
+                                            rm.delete(key);
+                                            searching = rm;
+                                        });
+                                    }}
+                                >
+                                    {#if searching.has(item.arrId || item.title)}
+                                        <span class="loading loading-spinner" style="width:14px;height:14px"></span>
+                                    {:else if searched.has(item.arrId || item.title)}
+                                        <MdiIcon icon={mdiCheck} size={16} />
+                                    {:else}
+                                        <MdiIcon icon={mdiDownload} size={16} />
+                                    {/if}
+                                </button>
                             {/if}
                             {#if item.badge}
                                 <span class="poster-badge {item.badgeClass || ''}">{item.badge}</span>
                             {/if}
                         </a>
-                        {#if showLabels}
-                            <div class="poster-card-label">
-                                <span class="poster-card-label-title">{item.title}</span>
-                                {#if item.subtitle}
-                                    <span class="poster-card-label-sub">{item.subtitle}</span>
-                                {/if}
-                            </div>
-                        {/if}
                         </div>
                     {/each}
                 </div>
@@ -203,6 +190,7 @@
     }
     .poster-row::-webkit-scrollbar { display: none; }
     .poster-card {
+        display: block;
         flex-shrink: 0;
         width: 140px;
         aspect-ratio: 2/3;
@@ -214,6 +202,7 @@
         cursor: pointer;
         text-decoration: none;
         color: inherit;
+        background: oklch(var(--b3));
     }
     .poster-row-square .poster-card {
         width: 150px;
@@ -225,6 +214,7 @@
         z-index: 2;
     }
     .poster-img {
+        display: block;
         width: 100%;
         height: 100%;
         object-fit: cover;
@@ -243,13 +233,11 @@
         bottom: 0;
         left: 0;
         right: 0;
-        padding: 0.5rem;
-        background: linear-gradient(transparent, rgba(0,0,0,0.85));
-        opacity: 0;
-        transition: opacity 0.15s;
-    }
-    .poster-card:hover .poster-overlay {
-        opacity: 1;
+        padding: 1.5rem 0.4rem 0.35rem;
+        background: linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.55) 60%, transparent 100%);
+        backdrop-filter: blur(2px);
+        -webkit-backdrop-filter: blur(2px);
+        pointer-events: none;
     }
     .poster-search-btn {
         position: absolute;
@@ -259,36 +247,33 @@
         height: 1.75rem;
         border-radius: 50%;
         border: none;
-        background: oklch(var(--p) / 0.9);
+        background: oklch(var(--p));
         color: oklch(var(--pc));
         cursor: pointer;
         display: flex;
         align-items: center;
         justify-content: center;
-        backdrop-filter: blur(4px);
         transition: transform 0.1s, background 0.15s;
-        z-index: 2;
+        z-index: 3;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    }
+    .poster-search-btn :global(svg) {
+        filter: drop-shadow(0 0 1.5px rgba(0,0,0,0.8));
     }
     .poster-search-btn:hover {
         transform: scale(1.15);
         background: oklch(var(--p));
     }
     .poster-title {
-        font-size: 0.75rem;
+        font-size: 0.72rem;
         font-weight: 600;
-        line-height: 1.2;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        line-height: 1.25;
         color: #fff;
-    }
-    .poster-subtitle {
-        font-size: 0.65rem;
-        opacity: 0.7;
-        color: #fff;
-        white-space: nowrap;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
         overflow: hidden;
-        text-overflow: ellipsis;
+        text-shadow: 0 1px 3px rgba(0,0,0,0.7);
     }
     .poster-badge {
         position: absolute;
@@ -347,41 +332,8 @@
     .poster-scroll-btn.left { left: -0.5rem; }
     .poster-scroll-btn.right { right: -0.5rem; }
 
-    /* ══════════════ LABELED CARDS ══════════════ */
+    /* poster-item is still used for flex-shrink */
     .poster-item {
         flex-shrink: 0;
-    }
-    .poster-item-labeled {
-        width: 140px;
-        padding-bottom: 0.25rem;
-    }
-    .poster-item-labeled .poster-card {
-        width: 100%;
-    }
-    .poster-row-square .poster-item-labeled {
-        width: 150px;
-    }
-    .poster-card-label {
-        margin-top: 0.3rem;
-        display: flex;
-        flex-direction: column;
-        gap: 0;
-    }
-    .poster-card-label-title {
-        font-size: 0.7rem;
-        font-weight: 600;
-        line-height: 1.2;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        color: oklch(var(--bc) / 0.9);
-    }
-    .poster-card-label-sub {
-        font-size: 0.6rem;
-        line-height: 1.2;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        color: oklch(var(--bc) / 0.4);
     }
 </style>
