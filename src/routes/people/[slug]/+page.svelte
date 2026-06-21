@@ -1176,18 +1176,17 @@
     {:else if discoveryLoaded}
         <div class="space-y-4">
             <!-- Header -->
-            <div class="flex items-center justify-between flex-wrap gap-2">
+            <div class="space-y-2">
                 <h2 class="text-xl font-bold">
                     More from {data.person.name}
                     <span class="badge badge-neutral badge-sm ml-1">{filteredDiscovery.length}</span>
                 </h2>
                 <div class="flex items-center gap-2 flex-wrap">
-                    <input
-                        type="text"
-                        placeholder="Search titles…"
-                        class="input input-bordered input-xs w-40"
-                        bind:value={discoverySearch}
-                    />
+                    <div class="discovery-chips">
+                        <button class="media-chip" class:active={discoveryFilter === 'all'} onclick={() => { discoveryFilter = 'all'; discoveryLimit = 24; }}>All</button>
+                        <button class="media-chip chip-tv" class:active={discoveryFilter === 'show'} onclick={() => { discoveryFilter = 'show'; discoveryLimit = 24; }}><MdiIcon icon={mdiTelevision} size={12} class="mr-0.5" /> TV</button>
+                        <button class="media-chip chip-movie" class:active={discoveryFilter === 'movie'} onclick={() => { discoveryFilter = 'movie'; discoveryLimit = 24; if (discoverySort === 'episodes') discoverySort = 'newest'; }}><MdiIcon icon={mdiMovieOpen} size={12} class="mr-0.5" /> Movies</button>
+                    </div>
                     <select
                         class="select select-bordered select-xs"
                         bind:value={discoverySort}
@@ -1201,11 +1200,12 @@
                             <option value="episodes">Most Episodes</option>
                         {/if}
                     </select>
-                    <div class="discovery-chips">
-                        <button class="media-chip" class:active={discoveryFilter === 'all'} onclick={() => { discoveryFilter = 'all'; discoveryLimit = 24; }}>All</button>
-                        <button class="media-chip chip-tv" class:active={discoveryFilter === 'show'} onclick={() => { discoveryFilter = 'show'; discoveryLimit = 24; }}><MdiIcon icon={mdiTelevision} size={12} class="mr-0.5" /> TV</button>
-                        <button class="media-chip chip-movie" class:active={discoveryFilter === 'movie'} onclick={() => { discoveryFilter = 'movie'; discoveryLimit = 24; if (discoverySort === 'episodes') discoverySort = 'newest'; }}><MdiIcon icon={mdiMovieOpen} size={12} class="mr-0.5" /> Movies</button>
-                    </div>
+                    <input
+                        type="text"
+                        placeholder="Search…"
+                        class="input input-bordered input-xs w-32"
+                        bind:value={discoverySearch}
+                    />
                     <!-- View toggle -->
                     <div class="btn-group">
                         <button
@@ -1274,7 +1274,7 @@
                                             </div>
                                             <div class="filmography-info">
                                                 <div class="filmography-title-line">
-                                                    <span class="filmography-title">{item.title}</span>
+                                                    <span class="filmography-title">{item.title}{#if item.release_year} ({item.release_year}){/if}</span>
                                                     {#if item.vote_average > 0}
                                                         <span class="filmography-rating">
                                                             <MdiIcon icon={mdiStar} size={11} />
@@ -1294,31 +1294,27 @@
                                                     {/if}
                                                 </div>
                                             </div>
-                                            <div class="filmography-year">
-                                                {item.release_year || '—'}
-                                            </div>
                                             {#if !item.in_library}
                                                 <!-- svelte-ignore a11y_click_events_have_key_events -->
                                                 <!-- svelte-ignore a11y_no_static_element_interactions -->
                                                 <div class="filmography-action" onclick={(e) => e.stopPropagation()}>
-                                                    <ArrAddDialog
-                                                        discoveryItem={{
-                                                            tmdb_id: item.tmdb_id,
-                                                            media_type: item.media_type,
-                                                            title: item.title,
-                                                            release_year: item.release_year,
-                                                            poster_url: item.poster_url,
-                                                            overview: item.overview,
-                                                        }}
-                                                        buttonClass="btn btn-xs btn-ghost opacity-40 hover:opacity-100"
-                                                        buttonLabel="+"
-                                                        onComplete={() => {}}
-                                                    />
-                                                </div>
-                                            {/if}
-                                            {#if navigatingItem === item.tmdb_id}
-                                                <div class="filmography-loading">
-                                                    <span class="loading loading-spinner loading-xs"></span>
+                                                    {#if navigatingItem === item.tmdb_id}
+                                                        <span class="loading loading-spinner loading-xs"></span>
+                                                    {:else}
+                                                        <ArrAddDialog
+                                                            discoveryItem={{
+                                                                tmdb_id: item.tmdb_id,
+                                                                media_type: item.media_type,
+                                                                title: item.title,
+                                                                release_year: item.release_year,
+                                                                poster_url: item.poster_url,
+                                                                overview: item.overview,
+                                                            }}
+                                                            buttonClass="btn btn-xs btn-primary gap-1"
+                                                            buttonLabel="Download"
+                                                            onComplete={() => {}}
+                                                        />
+                                                    {/if}
                                                 </div>
                                             {/if}
                                         </div>
@@ -1742,29 +1738,14 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        max-width: 200px;
+        max-width: 300px;
     }
     .filmography-episodes {
         font-size: 0.6rem;
         color: oklch(var(--bc) / 0.3);
     }
-    .filmography-year {
-        font-size: 0.75rem;
-        font-weight: 500;
-        color: oklch(var(--bc) / 0.4);
-        flex-shrink: 0;
-        min-width: 2.5rem;
-        text-align: right;
-    }
     .filmography-action {
         flex-shrink: 0;
     }
-    .filmography-loading {
-        position: absolute;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: oklch(var(--b1) / 0.5);
-    }
 </style>
+

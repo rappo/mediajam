@@ -348,6 +348,7 @@
     }
     .poster-item-labeled {
         width: 140px;
+        padding-bottom: 0.25rem;
     }
     .poster-item-labeled .poster-card {
         width: 100%;

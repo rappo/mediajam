@@ -147,7 +147,7 @@
         -webkit-backdrop-filter: blur(20px);
         border: 1px solid oklch(var(--bc) / 0.08);
         border-radius: 1rem;
-        padding: 1rem 1.25rem 0.75rem;
+        padding: 1rem 1.25rem 1rem;
     }
     .ds-inner.ds-compact {
         padding: 0.6rem 0.8rem 0.5rem;
