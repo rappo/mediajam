@@ -1177,23 +1177,10 @@
                             <option value="episodes">📺 Most Episodes</option>
                         {/if}
                     </select>
-                    <div class="join">
-                        <button
-                            class="join-item btn btn-xs"
-                            class:btn-active={discoveryFilter === "all"}
-                            onclick={() => { discoveryFilter = "all"; discoveryLimit = 24; }}>All</button
-                        >
-                        <button
-                            class="join-item btn btn-xs"
-                            class:btn-active={discoveryFilter === "movie"}
-                            onclick={() => { discoveryFilter = "movie"; discoveryLimit = 24; if (discoverySort === 'episodes') discoverySort = 'rating'; }}
-                            >Movies</button
-                        >
-                        <button
-                            class="join-item btn btn-xs"
-                            class:btn-active={discoveryFilter === "show"}
-                            onclick={() => { discoveryFilter = "show"; discoveryLimit = 24; }}>TV</button
-                        >
+                    <div class="discovery-chips">
+                        <button class="media-chip" class:active={discoveryFilter === 'all'} onclick={() => { discoveryFilter = 'all'; discoveryLimit = 24; }}>All</button>
+                        <button class="media-chip chip-tv" class:active={discoveryFilter === 'show'} onclick={() => { discoveryFilter = 'show'; discoveryLimit = 24; }}><MdiIcon icon={mdiTelevision} size={12} class="mr-0.5" /> TV</button>
+                        <button class="media-chip chip-movie" class:active={discoveryFilter === 'movie'} onclick={() => { discoveryFilter = 'movie'; discoveryLimit = 24; if (discoverySort === 'episodes') discoverySort = 'rating'; }}><MdiIcon icon={mdiMovieOpen} size={12} class="mr-0.5" /> Movies</button>
                     </div>
                 </div>
             </div>
@@ -1527,5 +1514,43 @@
     :global(.poster-missing-legend) {
         background: rgba(239, 68, 68, 0.15);
         border: 2px dashed rgba(239, 68, 68, 0.8);
+    }
+    /* ── Discovery media-chip filters ── */
+    .discovery-chips {
+        display: flex;
+        gap: 0.3rem;
+    }
+    .media-chip {
+        font-size: 0.65rem;
+        font-weight: 600;
+        padding: 0.15rem 0.5rem;
+        border-radius: 999px;
+        border: 1px solid oklch(var(--bc) / 0.15);
+        background: oklch(var(--b2) / 0.5);
+        color: oklch(var(--bc) / 0.6);
+        cursor: pointer;
+        transition: all 0.15s;
+        white-space: nowrap;
+        display: inline-flex;
+        align-items: center;
+    }
+    .media-chip:hover {
+        border-color: oklch(var(--bc) / 0.3);
+        color: oklch(var(--bc) / 0.8);
+    }
+    .media-chip.active {
+        background: oklch(var(--bc) / 0.12);
+        border-color: oklch(var(--bc) / 0.3);
+        color: oklch(var(--bc));
+    }
+    .chip-tv.active {
+        background: oklch(0.55 0.15 160 / 0.2);
+        border-color: oklch(0.55 0.15 160 / 0.5);
+        color: oklch(0.75 0.15 160);
+    }
+    .chip-movie.active {
+        background: oklch(0.65 0.15 85 / 0.2);
+        border-color: oklch(0.65 0.15 85 / 0.5);
+        color: oklch(0.8 0.15 85);
     }
 </style>
