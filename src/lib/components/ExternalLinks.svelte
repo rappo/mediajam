@@ -73,7 +73,7 @@
         const imdb = imdb_id || imdb_person_id;
         if (imdb) {
             const imdbPath =
-                imdb_person_id || mediaType === "person" ? "name" : "title";
+                imdb_person_id ? "name" : mediaType === "person" ? "name" : "title";
             result.push({
                 label: "IMDb",
                 url: `https://www.imdb.com/${imdbPath}/${imdb}`,

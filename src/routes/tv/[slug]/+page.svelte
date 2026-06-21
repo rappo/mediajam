@@ -1,6 +1,6 @@
 <script>
     import MdiIcon from "$lib/components/MdiIcon.svelte";
-    import { mdiCheckCircle, mdiCloseCircle, mdiSync, mdiEye, mdiCancel, mdiMerge, mdiDramaMasks, mdiMagnify, mdiTelevision, mdiAlert, mdiBookmark, mdiBookmarkOutline, mdiViewGrid, mdiStar, mdiViewList, mdiDownload, mdiMagnifyPlusOutline } from '@mdi/js';
+    import { mdiCheckCircle, mdiCloseCircle, mdiSync, mdiEye, mdiCancel, mdiMerge, mdiDramaMasks, mdiMagnify, mdiTelevision, mdiAlert, mdiBookmark, mdiBookmarkOutline, mdiViewGrid, mdiStar, mdiViewList, mdiDownload, mdiMagnifyPlusOutline, mdiLightbulb } from '@mdi/js';
     import { addToast } from '$lib/stores/toast.js';
     let { data } = $props();
     import { invalidateAll, goto } from "$app/navigation";
@@ -896,136 +896,130 @@
         </DashSection>
     {/if}
 
-    <!-- Similar Items -->
-    <PosterRow
-        title="Similar In Your Library"
-        items={data.similarInLibrary}
-        showLabels
-    />
-    <PosterRow
-        title="You Might Like"
-        items={data.similarYouMightLike}
-        showLabels
-    />
-</div>
+    <!-- Similar Shows -->
+    {#if data.similarInLibrary.length > 0 || data.similarYouMightLike.length > 0 || data.show.tmdb_id}
+        <DashSection title="Similar Shows" icon={mdiLightbulb} noGlow>
+            {#if data.similarInLibrary.length > 0}
+                <PosterRow title="In Your Library" items={data.similarInLibrary} showLabels />
+            {/if}
+            {#if data.similarYouMightLike.length > 0}
+                <PosterRow title="You Might Also Like" items={data.similarYouMightLike} showLabels />
+            {/if}
 
-<!-- Discovery: Related Shows from TMDb -->
-{#if data.show.tmdb_id}
-    <div class="card bg-base-200/50 border border-base-300 max-w-6xl mx-auto">
-        <div class="card-body">
-            {#if !discoveryLoaded && !discoveryLoading}
-                <button class="btn btn-ghost btn-sm gap-2 self-center" onclick={loadDiscovery}>
-                    <MdiIcon icon={mdiMagnify} size={16} /> Discover Related Shows
-                </button>
-            {:else if discoveryLoading}
-                <div class="flex justify-center py-6">
-                    <span class="loading loading-spinner loading-md"></span>
-                    <span class="ml-2 text-sm text-base-content/50">Finding related shows…</span>
-                </div>
-            {:else if discoveryError}
-                <div class="alert alert-error text-sm">{discoveryError}</div>
-            {:else}
-                <div class="flex items-center justify-between mb-3">
-                    <h2 class="text-lg font-bold flex items-center gap-2">
-                        <MdiIcon icon={mdiMagnify} size={18} /> Related Shows
-                        <span class="badge badge-sm badge-ghost">{filteredDiscoveryItems(discoveryItems).length} not in library</span>
-                    </h2>
-                    <div class="flex items-center gap-2">
-                        <label class="flex items-center gap-1.5 cursor-pointer text-xs text-base-content/60">
-                            <input type="checkbox" class="toggle toggle-xs toggle-primary" bind:checked={hideDocumentaries} />
-                            Hide docs/making-of
-                        </label>
-                        {#if discoveryInLibrary.length > 0}
-                            <button
-                                class="btn btn-ghost btn-xs"
-                                onclick={() => showDiscoverInLib = !showDiscoverInLib}
-                            >
-                                {showDiscoverInLib ? 'Hide' : 'Show'} {discoveryInLibrary.length} in library
-                            </button>
-                        {/if}
+            <!-- Discover Related (inline) -->
+            {#if data.show.tmdb_id}
+                {#if !discoveryLoaded && !discoveryLoading}
+                    <button class="btn btn-ghost btn-sm gap-2 w-full mt-2" onclick={loadDiscovery}>
+                        <MdiIcon icon={mdiMagnify} size={16} /> Discover More Related Shows
+                    </button>
+                {:else if discoveryLoading}
+                    <div class="flex justify-center py-4">
+                        <span class="loading loading-spinner loading-md"></span>
+                        <span class="ml-2 text-sm text-base-content/50">Finding related shows…</span>
                     </div>
-                </div>
-
-                {#if filteredDiscoveryItems(discoveryItems).length === 0 && !showDiscoverInLib}
-                    <div class="text-center py-4 text-base-content/40">
-                        <p>🎉 You have all the related shows!</p>
-                    </div>
+                {:else if discoveryError}
+                    <div class="alert alert-error text-sm">{discoveryError}</div>
                 {:else}
-                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                        {#each filteredDiscoveryItems(discoveryItems).slice(0, discoveryLimit) as item}
-                            <div class="card bg-base-300/30 card-compact overflow-hidden group">
-                                {#if item.poster_url}
-                                    <figure class="aspect-[2/3] relative">
-                                        <img
-                                            src={imgUrl(item.poster_url)}
-                                            alt={item.title}
-                                            class="w-full h-full object-cover"
-                                        />
-                                        {#if item.vote_average > 0}
-                                            <div class="absolute top-1 right-1 badge badge-sm bg-black/60 border-0 text-warning">
-                                                ★ {item.vote_average.toFixed(1)}
-                                            </div>
-                                        {/if}
-                                    </figure>
-                                {:else}
-                                    <div class="aspect-[2/3] bg-base-300 flex items-center justify-center"><MdiIcon icon={mdiTelevision} size={32} /></div>
-                                {/if}
-                                <div class="card-body !p-2 !gap-1">
-                                    <h3 class="font-medium text-xs leading-tight line-clamp-2" title={item.title}>{item.title}</h3>
-                                    {#if item.release_year}
-                                        <span class="text-[10px] text-base-content/40">{item.release_year}</span>
-                                    {/if}
+                    <div class="mt-3">
+                        <div class="flex items-center justify-between mb-2">
+                            <h3 class="text-sm font-semibold text-base-content/60">
+                                Discover
+                                <span class="badge badge-sm badge-ghost ml-1">{filteredDiscoveryItems(discoveryItems).length} not in library</span>
+                            </h3>
+                            <div class="flex items-center gap-2">
+                                <label class="flex items-center gap-1.5 cursor-pointer text-xs text-base-content/60">
+                                    <input type="checkbox" class="toggle toggle-xs toggle-primary" bind:checked={hideDocumentaries} />
+                                    Hide docs/making-of
+                                </label>
+                                {#if discoveryInLibrary.length > 0}
                                     <button
-                                        class="btn btn-xs btn-primary gap-1 mt-1 w-full"
-                                        disabled={discAddingToArr === item.tmdb_id || discAddedToArr.has(item.tmdb_id)}
-                                        onclick={() => addDiscoveryToArr(item)}
+                                        class="btn btn-ghost btn-xs"
+                                        onclick={() => showDiscoverInLib = !showDiscoverInLib}
                                     >
-                                        {#if discAddingToArr === item.tmdb_id}
-                                            <span class="loading loading-spinner loading-xs"></span>
-                                        {:else if discAddedToArr.has(item.tmdb_id)}
-                                            <MdiIcon icon={mdiCheckCircle} size={12} /> Added
-                                        {:else}
-                                            <MdiIcon icon={mdiDownload} size={12} />
-                                            Download
-                                        {/if}
+                                        {showDiscoverInLib ? 'Hide' : 'Show'} {discoveryInLibrary.length} in library
                                     </button>
-                                </div>
+                                {/if}
                             </div>
-                        {/each}
+                        </div>
 
-                        {#if showDiscoverInLib}
-                            {#each discoveryInLibrary as item}
-                                <a href="/tv/{item.library_id}" class="card bg-base-300/30 card-compact overflow-hidden group opacity-60 ring-2 ring-success/30">
-                                    {#if item.poster_url}
-                                        <figure class="aspect-[2/3]">
-                                            <img src={imgUrl(item.poster_url)} alt={item.title} class="w-full h-full object-cover" />
-                                        </figure>
-                                    {:else}
-                                        <div class="aspect-[2/3] bg-base-300 flex items-center justify-center"><MdiIcon icon={mdiTelevision} size={32} /></div>
-                                    {/if}
-                                    <div class="card-body !p-2 !gap-1">
-                                        <span class="badge badge-xs badge-success">✓ In Library</span>
-                                        <h3 class="font-medium text-xs leading-tight line-clamp-2">{item.title}</h3>
+                        {#if filteredDiscoveryItems(discoveryItems).length === 0 && !showDiscoverInLib}
+                            <div class="text-center py-4 text-base-content/40">
+                                <p>You have all the related shows!</p>
+                            </div>
+                        {:else}
+                            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                                {#each filteredDiscoveryItems(discoveryItems).slice(0, discoveryLimit) as item}
+                                    <div class="card bg-base-300/30 card-compact overflow-hidden group">
+                                        {#if item.poster_url}
+                                            <figure class="aspect-[2/3] relative">
+                                                <img src={imgUrl(item.poster_url)} alt={item.title} class="w-full h-full object-cover" />
+                                                {#if item.vote_average > 0}
+                                                    <div class="absolute top-1 right-1 badge badge-sm bg-black/60 border-0 text-warning">
+                                                        ★ {item.vote_average.toFixed(1)}
+                                                    </div>
+                                                {/if}
+                                            </figure>
+                                        {:else}
+                                            <div class="aspect-[2/3] bg-base-300 flex items-center justify-center"><MdiIcon icon={mdiTelevision} size={32} /></div>
+                                        {/if}
+                                        <div class="card-body !p-2 !gap-1">
+                                            <h3 class="font-medium text-xs leading-tight line-clamp-2" title={item.title}>{item.title}</h3>
+                                            {#if item.release_year}
+                                                <span class="text-[10px] text-base-content/40">{item.release_year}</span>
+                                            {/if}
+                                            <button
+                                                class="btn btn-xs btn-primary gap-1 mt-1 w-full"
+                                                disabled={discAddingToArr === item.tmdb_id || discAddedToArr.has(item.tmdb_id)}
+                                                onclick={() => addDiscoveryToArr(item)}
+                                            >
+                                                {#if discAddingToArr === item.tmdb_id}
+                                                    <span class="loading loading-spinner loading-xs"></span>
+                                                {:else if discAddedToArr.has(item.tmdb_id)}
+                                                    <MdiIcon icon={mdiCheckCircle} size={12} /> Added
+                                                {:else}
+                                                    <MdiIcon icon={mdiDownload} size={12} />
+                                                    Download
+                                                {/if}
+                                            </button>
+                                        </div>
                                     </div>
-                                </a>
-                            {/each}
+                                {/each}
+
+                                {#if showDiscoverInLib}
+                                    {#each discoveryInLibrary as item}
+                                        <a href="/tv/{item.library_id}" class="card bg-base-300/30 card-compact overflow-hidden group opacity-60 ring-2 ring-success/30">
+                                            {#if item.poster_url}
+                                                <figure class="aspect-[2/3]">
+                                                    <img src={imgUrl(item.poster_url)} alt={item.title} class="w-full h-full object-cover" />
+                                                </figure>
+                                            {:else}
+                                                <div class="aspect-[2/3] bg-base-300 flex items-center justify-center"><MdiIcon icon={mdiTelevision} size={32} /></div>
+                                            {/if}
+                                            <div class="card-body !p-2 !gap-1">
+                                                <span class="badge badge-xs badge-success">✓ In Library</span>
+                                                <h3 class="font-medium text-xs leading-tight line-clamp-2">{item.title}</h3>
+                                            </div>
+                                        </a>
+                                    {/each}
+                                {/if}
+                            </div>
+
+                            {#if discoveryItems.length > discoveryLimit}
+                                <button class="btn btn-ghost btn-sm w-full mt-2" onclick={() => discoveryLimit += 12}>
+                                    Show more ({discoveryItems.length - discoveryLimit} remaining)
+                                </button>
+                            {/if}
+                        {/if}
+
+                        {#if discAddError}
+                            <div class="alert alert-error text-sm mt-2">{discAddError}</div>
                         {/if}
                     </div>
-
-                    {#if discoveryItems.length > discoveryLimit}
-                        <button class="btn btn-ghost btn-sm w-full mt-2" onclick={() => discoveryLimit += 12}>
-                            Show more ({discoveryItems.length - discoveryLimit} remaining)
-                        </button>
-                    {/if}
-                {/if}
-
-                {#if discAddError}
-                    <div class="alert alert-error text-sm mt-2">{discAddError}</div>
                 {/if}
             {/if}
-        </div>
-    </div>
-{/if}
+        </DashSection>
+    {/if}
+</div>
 
 <!-- Discovery Quality Profile Dialog -->
 {#if discShowProfileDialog && discPendingItem}

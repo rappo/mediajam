@@ -102,7 +102,7 @@
         }
         const imdb = el.imdb_id || el.imdb_person_id;
         if (imdb) {
-            const p = el.imdb_person_id || mt === 'person' ? 'name' : 'title';
+            const p = el.imdb_person_id ? 'name' : mt === 'person' ? 'name' : 'title';
             result.push({ label: 'IMDb', url: `https://www.imdb.com/${p}/${imdb}`, service: 'imdb' });
         }
         if (el.tvdb_id) {

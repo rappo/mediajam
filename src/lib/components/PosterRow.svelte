@@ -77,6 +77,7 @@
                                 <span><MdiIcon icon={mdiMovieOpen} size={32} /></span>
                             </div>
                         {/if}
+                        {#if !showLabels}
                         <div class="poster-overlay">
                             <div class="poster-title">{item.title}</div>
                             {#if item.subtitle}
@@ -115,6 +116,7 @@
                                 </button>
                             {/if}
                         </div>
+                        {/if}
                         {#if item.badge}
                             <span class="poster-badge {item.badgeClass || ''}">{item.badge}</span>
                         {/if}
