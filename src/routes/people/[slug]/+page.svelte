@@ -1247,8 +1247,6 @@
                             {#if !collapsedRoles.has(dept)}
                                 <div class="filmography-items">
                                     {#each items as item}
-                                        <!-- svelte-ignore a11y_click_events_have_key_events -->
-                                        <!-- svelte-ignore a11y_no_static_element_interactions -->
                                         <div
                                             class="filmography-row"
                                             onclick={() => {
@@ -1262,7 +1260,7 @@
                                         >
                                             <div class="filmography-poster">
                                                 {#if item.poster_url}
-                                                    <img src={imgUrl(item.poster_url)} alt={item.title} loading="lazy" />
+                                                    <img src={imgUrl(item.poster_url)} alt="" loading="lazy" />
                                                 {:else}
                                                     <div class="filmography-poster-placeholder">
                                                         <MdiIcon icon={item.media_type === 'show' ? mdiTelevision : mdiMovieOpen} size={18} />
@@ -1293,30 +1291,30 @@
                                                         <span class="filmography-episodes">{item.episode_count} ep</span>
                                                     {/if}
                                                 </div>
+                                                {#if !item.in_library}
+                                                    <!-- svelte-ignore a11y_click_events_have_key_events -->
+                                                    <!-- svelte-ignore a11y_no_static_element_interactions -->
+                                                    <div class="filmography-action" onclick={(e) => e.stopPropagation()}>
+                                                        {#if navigatingItem === item.tmdb_id}
+                                                            <span class="loading loading-spinner loading-xs"></span>
+                                                        {:else}
+                                                            <ArrAddDialog
+                                                                discoveryItem={{
+                                                                    tmdb_id: item.tmdb_id,
+                                                                    media_type: item.media_type,
+                                                                    title: item.title,
+                                                                    release_year: item.release_year,
+                                                                    poster_url: item.poster_url,
+                                                                    overview: item.overview,
+                                                                }}
+                                                                buttonClass="btn btn-xs btn-primary gap-1"
+                                                                buttonLabel="Download"
+                                                                onComplete={() => {}}
+                                                            />
+                                                        {/if}
+                                                    </div>
+                                                {/if}
                                             </div>
-                                            {#if !item.in_library}
-                                                <!-- svelte-ignore a11y_click_events_have_key_events -->
-                                                <!-- svelte-ignore a11y_no_static_element_interactions -->
-                                                <div class="filmography-action" onclick={(e) => e.stopPropagation()}>
-                                                    {#if navigatingItem === item.tmdb_id}
-                                                        <span class="loading loading-spinner loading-xs"></span>
-                                                    {:else}
-                                                        <ArrAddDialog
-                                                            discoveryItem={{
-                                                                tmdb_id: item.tmdb_id,
-                                                                media_type: item.media_type,
-                                                                title: item.title,
-                                                                release_year: item.release_year,
-                                                                poster_url: item.poster_url,
-                                                                overview: item.overview,
-                                                            }}
-                                                            buttonClass="btn btn-xs btn-primary gap-1"
-                                                            buttonLabel="Download"
-                                                            onComplete={() => {}}
-                                                        />
-                                                    {/if}
-                                                </div>
-                                            {/if}
                                         </div>
                                     {/each}
                                 </div>
@@ -1664,6 +1662,7 @@
         position: relative;
     }
     .filmography-poster img {
+        display: block;
         width: 100%;
         height: 100%;
         object-fit: cover;
@@ -1745,7 +1744,7 @@
         color: oklch(var(--bc) / 0.3);
     }
     .filmography-action {
-        flex-shrink: 0;
+        margin-top: 0.25rem;
     }
 </style>
 

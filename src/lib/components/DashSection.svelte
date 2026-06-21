@@ -121,7 +121,6 @@
     .ds-outer {
         position: relative;
         border-radius: 1rem;
-        overflow: hidden;
         isolation: isolate;
         margin-bottom: 1rem;
     }
@@ -130,6 +129,8 @@
     .ds-glow {
         position: absolute;
         inset: 0;
+        overflow: hidden;
+        border-radius: 1rem;
         background-size: cover;
         background-position: center;
         filter: blur(60px) saturate(1.5);
