@@ -206,7 +206,7 @@
                 results = null;
             }
             loading = false;
-        }, 250);
+        }, 400);
     }
 
     /** @param {any} item */

@@ -1272,7 +1272,7 @@
                                             </div>
                                             <div class="filmography-info">
                                                 <div class="filmography-title-line">
-                                                    <span class="filmography-title">{item.title}{#if item.release_year} ({item.release_year}){/if}</span>
+                                                    <span class="filmography-title">{item.title}{#if item.release_year}{' '}({item.release_year}){/if}</span>
                                                     {#if item.vote_average > 0}
                                                         <span class="filmography-rating">
                                                             <MdiIcon icon={mdiStar} size={11} />

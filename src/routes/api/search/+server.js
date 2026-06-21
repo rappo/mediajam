@@ -15,9 +15,8 @@ export async function GET({ url, locals }) {
 
     const userId = locals.user?.id;
     const like = `%${query}%`;
-    console.log(`[search] query="${query}" like="${like}" userId=${userId}`);
 
-    // Search shows
+    // Run all keyword queries synchronously (SQLite is fast)
     const shows = /** @type {any[]} */ (db.prepare(`
         SELECT mp.id, mp.title, mp.poster_url, mp.release_year,
                mp.collected_children as episode_count, 'show' as type
@@ -27,7 +26,6 @@ export async function GET({ url, locals }) {
         LIMIT 5
     `).all(like));
 
-    // Search movies
     const movies = /** @type {any[]} */ (db.prepare(`
         SELECT mp.id, mp.title, mp.poster_url, mp.release_year, 'movie' as type
         FROM media_parents mp
@@ -36,7 +34,6 @@ export async function GET({ url, locals }) {
         LIMIT 5
     `).all(like));
 
-    // Search music (artists)
     const music = /** @type {any[]} */ (db.prepare(`
         SELECT mp.id, mp.title, mp.poster_url,
                mp.collected_children as album_count, 'artist' as type
@@ -46,7 +43,6 @@ export async function GET({ url, locals }) {
         LIMIT 5
     `).all(like));
 
-    // Search people (actors, directors, etc.)
     const people = /** @type {any[]} */ (db.prepare(`
         SELECT p.id, p.name as title, p.photo_url as poster_url,
                (SELECT COUNT(*) FROM person_credits pc WHERE pc.person_id = p.id) as credit_count,
@@ -57,7 +53,6 @@ export async function GET({ url, locals }) {
         LIMIT 5
     `).all(like));
 
-    // Search episodes/tracks by title
     const children = /** @type {any[]} */ (db.prepare(`
         SELECT mc.id, mc.title as item_title, mc.season_number, mc.item_number,
                mp.title as parent_title, mp.media_type, mp.poster_url, mp.id as parent_id,
@@ -69,7 +64,6 @@ export async function GET({ url, locals }) {
         LIMIT 8
     `).all(like));
 
-    // Search albums by name
     const albums = /** @type {any[]} */ (db.prepare(`
         SELECT mc.id, mc.title as item_title,
                mp.title as parent_title, mp.poster_url, mp.id as parent_id,
@@ -81,7 +75,6 @@ export async function GET({ url, locals }) {
         LIMIT 5
     `).all(like));
 
-    // Search user's playback history
     const history = userId ? /** @type {any[]} */ (db.prepare(`
         SELECT ph.id, ph.timestamp, ph.completion_pct,
                mc.title as item_title, mc.season_number, mc.item_number,
@@ -95,11 +88,15 @@ export async function GET({ url, locals }) {
         LIMIT 5
     `).all(userId, like, like)) : [];
 
-    // Semantic search (when embeddings available)
+    // Semantic search — run with a timeout so it never blocks results
     let semantic = [];
     if (isEmbeddingAvailable() && query.length >= 3) {
         try {
-            const queryEmbedding = await embed(query);
+            const embedPromise = embed(query);
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('timeout')), 2000)
+            );
+            const queryEmbedding = await Promise.race([embedPromise, timeoutPromise]);
             if (queryEmbedding) {
                 semantic = /** @type {any[]} */ (db.prepare(`
                     SELECT mp.id, mp.title, mp.poster_url, mp.release_year, mp.media_type as type,
@@ -119,12 +116,11 @@ export async function GET({ url, locals }) {
                 semantic = semantic.filter((/** @type {any} */ s) => !keywordIds.has(s.id));
             }
         } catch {
-            // Embedding search failed — that's fine, return keyword results only
+            // Embedding search failed or timed out — return keyword results only
         }
     }
 
     const totalCount = shows.length + movies.length + music.length + albums.length + people.length + children.length + history.length + semantic.length;
-    console.log(`[search] results: shows=${shows.length} movies=${movies.length} music=${music.length} albums=${albums.length} people=${people.length} children=${children.length} history=${history.length} semantic=${semantic.length} total=${totalCount}`);
 
     return json({
         query,
@@ -141,3 +137,4 @@ export async function GET({ url, locals }) {
         totalCount
     });
 }
+

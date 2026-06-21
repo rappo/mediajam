@@ -674,10 +674,44 @@
     {#if data.similarInLibrary.length > 0 || data.similarYouMightLike.length > 0 || data.movie.tmdb_id}
         <DashSection title="Similar Movies" icon={mdiLightbulb} noGlow>
             {#if data.similarInLibrary.length > 0}
-                <PosterRow title="In Your Library" items={data.similarInLibrary} showLabels />
+                <h4 class="text-sm font-semibold text-base-content/60 mb-2">In Your Library</h4>
+                <div class="grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-3">
+                    {#each data.similarInLibrary as item}
+                        <a href={item.href} class="no-underline text-inherit transition-transform duration-150 hover:-translate-y-1" title={item.title}>
+                            <div class="relative aspect-[2/3] rounded-lg overflow-hidden bg-base-300 shadow-md">
+                                {#if item.poster_url}
+                                    <img src={imgUrl(item.poster_url)} alt={item.title} class="w-full h-full object-cover" loading="lazy" />
+                                {/if}
+                            </div>
+                            <div class="mt-1.5 flex flex-col gap-px">
+                                <span class="text-[0.72rem] font-semibold leading-tight truncate">{item.title}</span>
+                                {#if item.subtitle}
+                                    <span class="text-[0.62rem] text-base-content/40">{item.subtitle}</span>
+                                {/if}
+                            </div>
+                        </a>
+                    {/each}
+                </div>
             {/if}
             {#if data.similarYouMightLike.length > 0}
-                <PosterRow title="You Might Also Like" items={data.similarYouMightLike} showLabels />
+                <h4 class="text-sm font-semibold text-base-content/60 mb-2 mt-4">You Might Also Like</h4>
+                <div class="grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-3">
+                    {#each data.similarYouMightLike as item}
+                        <a href={item.href} class="no-underline text-inherit transition-transform duration-150 hover:-translate-y-1" title={item.title}>
+                            <div class="relative aspect-[2/3] rounded-lg overflow-hidden bg-base-300 shadow-md">
+                                {#if item.poster_url}
+                                    <img src={imgUrl(item.poster_url)} alt={item.title} class="w-full h-full object-cover" loading="lazy" />
+                                {/if}
+                            </div>
+                            <div class="mt-1.5 flex flex-col gap-px">
+                                <span class="text-[0.72rem] font-semibold leading-tight truncate">{item.title}</span>
+                                {#if item.subtitle}
+                                    <span class="text-[0.62rem] text-base-content/40">{item.subtitle}</span>
+                                {/if}
+                            </div>
+                        </a>
+                    {/each}
+                </div>
             {/if}
 
             <!-- Discover Related (inline) -->
