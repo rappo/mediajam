@@ -3,8 +3,8 @@
     import { mdiMovieOpen, mdiChevronLeft, mdiChevronRight, mdiDownload, mdiCheck } from '@mdi/js';
     import { imgUrl } from "$lib/utils.js";
     import { goto } from "$app/navigation";
-    /** @type {{ title: string, items: any[], emptyText?: string, square?: boolean, timeFilter?: { paramName: string, value: string, options: {label: string, value: string}[] }, onAutoSearch?: (item: any) => void }} */
-    let { title, items, emptyText = '', square = false, timeFilter = undefined, onAutoSearch = undefined } = $props();
+    /** @type {{ title: string, items: any[], emptyText?: string, square?: boolean, showLabels?: boolean, timeFilter?: { paramName: string, value: string, options: {label: string, value: string}[] }, onAutoSearch?: (item: any) => void }} */
+    let { title, items, emptyText = '', square = false, showLabels = false, timeFilter = undefined, onAutoSearch = undefined } = $props();
     /** @type {HTMLDivElement|null} */
     let scrollContainer = $state(null);
     let canScrollLeft = $state(false);
@@ -68,6 +68,7 @@
                 onscroll={updateScrollState}
             >
                 {#each items as item}
+                    <div class="poster-item" class:poster-item-labeled={showLabels}>
                     <a href={item.href} class="poster-card" title={item.title} target={item.external ? '_blank' : undefined} rel={item.external ? 'noopener noreferrer' : undefined}>
                         {#if item.poster_url}
                             <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img" loading="lazy" />
@@ -118,6 +119,15 @@
                             <span class="poster-badge {item.badgeClass || ''}">{item.badge}</span>
                         {/if}
                     </a>
+                    {#if showLabels}
+                        <div class="poster-card-label">
+                            <span class="poster-card-label-title">{item.title}</span>
+                            {#if item.subtitle}
+                                <span class="poster-card-label-sub">{item.subtitle}</span>
+                            {/if}
+                        </div>
+                    {/if}
+                    </div>
                 {/each}
             </div>
             {#if canScrollRight}
@@ -329,4 +339,41 @@
     }
     .poster-scroll-btn.left { left: -0.5rem; }
     .poster-scroll-btn.right { right: -0.5rem; }
+
+    /* ══════════════ LABELED CARDS ══════════════ */
+    .poster-item {
+        flex-shrink: 0;
+    }
+    .poster-item-labeled {
+        width: 140px;
+    }
+    .poster-item-labeled .poster-card {
+        width: 100%;
+    }
+    .poster-row-square .poster-item-labeled {
+        width: 150px;
+    }
+    .poster-card-label {
+        margin-top: 0.3rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+    }
+    .poster-card-label-title {
+        font-size: 0.7rem;
+        font-weight: 600;
+        line-height: 1.2;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: oklch(var(--bc) / 0.9);
+    }
+    .poster-card-label-sub {
+        font-size: 0.6rem;
+        line-height: 1.2;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: oklch(var(--bc) / 0.4);
+    }
 </style>

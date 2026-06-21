@@ -549,7 +549,7 @@
                 {#snippet headerRight()}
                     <MediaTypeFilter activeTypes={incomingActiveTypes} onchange={(types) => incomingActiveTypes = types} />
                 {/snippet}
-                <PosterRow title="" items={incomingItems} onAutoSearch={handleIncomingAutoSearch} />
+                <PosterRow title="" items={incomingItems} showLabels onAutoSearch={handleIncomingAutoSearch} />
             </DashSection>
         {/if}
 
@@ -570,14 +570,14 @@
                         <button class="media-chip chip-music" class:active={recentlyAddedFilter === 'artist'} onclick={() => recentlyAddedFilter = 'artist'}><MdiIcon icon={mdiMusicNote} size={12} class="mr-0.5" /> Music</button>
                     </div>
                 {/snippet}
-                <PosterRow title="" items={recentlyAddedItems} />
+                <PosterRow title="" items={recentlyAddedItems} showLabels />
             </DashSection>
         {/if}
 
         <!-- Trending Movies -->
         {#if trendingMovieItems.length > 0}
             <DashSection title="Trending Movies" icon={mdiMovieFilter} glowSrc={trendingMovieItems.slice(0, 5).map(i => i.poster_url)}>
-                <PosterRow title="" items={trendingMovieItems} />
+                <PosterRow title="" items={trendingMovieItems} showLabels />
                 {#snippet footer()}
                     {#if dash.trendingMovies?.totalPages > trendingMoviePage}
                         <button class="show-more-btn" onclick={loadMoreTrendingMovies} disabled={loadingMoreMovies}>
@@ -595,7 +595,7 @@
         <!-- Trending Shows -->
         {#if trendingShowItems.length > 0}
             <DashSection title="Trending Shows" icon={mdiTelevisionShimmer} glowSrc={trendingShowItems.slice(0, 5).map(i => i.poster_url)}>
-                <PosterRow title="" items={trendingShowItems} />
+                <PosterRow title="" items={trendingShowItems} showLabels />
                 {#snippet footer()}
                     {#if dash.trendingShows?.totalPages > trendingShowPage}
                         <button class="show-more-btn" onclick={loadMoreTrendingShows} disabled={loadingMoreShows}>
@@ -613,7 +613,7 @@
         <!-- Recommended for You -->
         {#if recommendedItems.length > 0}
             <DashSection title="Recommended for You" icon={mdiBullseyeArrow} glowSrc={recommendedItems.slice(0, 5).map(i => i.poster_url)}>
-                <PosterRow title="" items={recommendedItems} />
+                <PosterRow title="" items={recommendedItems} showLabels />
             </DashSection>
         {/if}
 
@@ -629,6 +629,7 @@
                 <PosterRow
                     title=""
                     items={actorUnwatchedItems}
+                    showLabels
                 />
             </DashSection>
         {/if}
@@ -636,35 +637,35 @@
         <!-- Watchlist -->
         {#if watchlistItems.length > 0}
             <DashSection title="Your Watchlist" icon={mdiClipboardList} glowSrc={watchlistItems.slice(0, 5).map(i => i.poster_url)}>
-                <PosterRow title="" items={watchlistItems} />
+                <PosterRow title="" items={watchlistItems} showLabels />
             </DashSection>
         {/if}
 
         <!-- Recently Watched Movies -->
         {#if recentlyWatchedMovieItems.length > 0}
             <DashSection title="Recently Watched Movies" icon={mdiMovie} glowSrc={recentlyWatchedMovieItems.slice(0, 5).map(i => i.poster_url)}>
-                <PosterRow title="" items={recentlyWatchedMovieItems} />
+                <PosterRow title="" items={recentlyWatchedMovieItems} showLabels />
             </DashSection>
         {/if}
 
         <!-- Recently Watched TV -->
         {#if recentlyWatchedTVItems.length > 0}
             <DashSection title="Recently Watched TV" icon={mdiTelevision} glowSrc={recentlyWatchedTVItems.slice(0, 5).map(i => i.poster_url)}>
-                <PosterRow title="" items={recentlyWatchedTVItems} />
+                <PosterRow title="" items={recentlyWatchedTVItems} showLabels />
             </DashSection>
         {/if}
 
         <!-- Recently Played Albums -->
         {#if recentlyPlayedItems.length > 0}
             <DashSection title="Recently Played Albums" icon={mdiMusicNote} glowSrc={recentlyPlayedItems.slice(0, 5).map(i => i.poster_url)}>
-                <PosterRow title="" items={recentlyPlayedItems} square />
+                <PosterRow title="" items={recentlyPlayedItems} square showLabels />
             </DashSection>
         {/if}
 
         <!-- New Albums -->
         {#if newAlbumItems.length > 0}
             <DashSection title="New Albums" icon={mdiAlbum} glowSrc={newAlbumItems.slice(0, 5).map(i => i.poster_url)}>
-                <PosterRow title="" items={newAlbumItems} square />
+                <PosterRow title="" items={newAlbumItems} square showLabels />
             </DashSection>
         {/if}
 
