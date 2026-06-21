@@ -57,80 +57,81 @@
             {/if}
         </div>
         {/if}
-        <div class="poster-row-wrapper" class:fade-right={canScrollRight}>
+        <div class="poster-row-outer">
             {#if canScrollLeft}
                 <button class="poster-scroll-btn left" onclick={() => scrollBy(-1)}><MdiIcon icon={mdiChevronLeft} size={20} /></button>
             {/if}
-            <div
-                class="poster-row"
-                class:poster-row-square={square}
-                bind:this={scrollContainer}
-                onscroll={updateScrollState}
-            >
-                {#each items as item}
-                    <div class="poster-item" class:poster-item-labeled={showLabels}>
-                    <a href={item.href} class="poster-card" title={item.title} target={item.external ? '_blank' : undefined} rel={item.external ? 'noopener noreferrer' : undefined}>
-                        {#if item.poster_url}
-                            <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img" loading="lazy" />
-                        {:else}
-                            <div class="poster-placeholder">
-                                <span><MdiIcon icon={mdiMovieOpen} size={32} /></span>
+            <div class="poster-row-wrapper" class:fade-right={canScrollRight} bind:this={scrollContainer} onscroll={updateScrollState}>
+                <div
+                    class="poster-row"
+                    class:poster-row-square={square}
+                    class:poster-row-labeled={showLabels}
+                >
+                    {#each items as item}
+                        <div class="poster-item" class:poster-item-labeled={showLabels}>
+                        <a href={item.href} class="poster-card" title={item.title} target={item.external ? '_blank' : undefined} rel={item.external ? 'noopener noreferrer' : undefined}>
+                            {#if item.poster_url}
+                                <img src={imgUrl(item.poster_url)} alt={item.title} class="poster-img" loading="lazy" />
+                            {:else}
+                                <div class="poster-placeholder">
+                                    <span><MdiIcon icon={mdiMovieOpen} size={32} /></span>
+                                </div>
+                            {/if}
+                            {#if !showLabels}
+                            <div class="poster-overlay">
+                                <div class="poster-title">{item.title}</div>
+                                {#if item.subtitle}
+                                    <div class="poster-subtitle">{item.subtitle}</div>
+                                {/if}
+                                {#if onAutoSearch && item.service}
+                                    <button
+                                        class="poster-search-btn"
+                                        title="Auto-search downloads"
+                                        onclick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            const key = item.arrId || item.title;
+                                            if (searching.has(key) || searched.has(key)) return;
+                                            const next = new Set(searching);
+                                            next.add(key);
+                                            searching = next;
+                                            Promise.resolve(onAutoSearch(item)).then(() => {
+                                                const done = new Set(searched);
+                                                done.add(key);
+                                                searched = done;
+                                            }).finally(() => {
+                                                const rm = new Set(searching);
+                                                rm.delete(key);
+                                                searching = rm;
+                                            });
+                                        }}
+                                    >
+                                        {#if searching.has(item.arrId || item.title)}
+                                            <span class="loading loading-spinner" style="width:14px;height:14px"></span>
+                                        {:else if searched.has(item.arrId || item.title)}
+                                            <MdiIcon icon={mdiCheck} size={16} />
+                                        {:else}
+                                            <MdiIcon icon={mdiDownload} size={16} />
+                                        {/if}
+                                    </button>
+                                {/if}
+                            </div>
+                            {/if}
+                            {#if item.badge}
+                                <span class="poster-badge {item.badgeClass || ''}">{item.badge}</span>
+                            {/if}
+                        </a>
+                        {#if showLabels}
+                            <div class="poster-card-label">
+                                <span class="poster-card-label-title">{item.title}</span>
+                                {#if item.subtitle}
+                                    <span class="poster-card-label-sub">{item.subtitle}</span>
+                                {/if}
                             </div>
                         {/if}
-                        {#if !showLabels}
-                        <div class="poster-overlay">
-                            <div class="poster-title">{item.title}</div>
-                            {#if item.subtitle}
-                                <div class="poster-subtitle">{item.subtitle}</div>
-                            {/if}
-                            {#if onAutoSearch && item.service}
-                                <button
-                                    class="poster-search-btn"
-                                    title="Auto-search downloads"
-                                    onclick={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        const key = item.arrId || item.title;
-                                        if (searching.has(key) || searched.has(key)) return;
-                                        const next = new Set(searching);
-                                        next.add(key);
-                                        searching = next;
-                                        Promise.resolve(onAutoSearch(item)).then(() => {
-                                            const done = new Set(searched);
-                                            done.add(key);
-                                            searched = done;
-                                        }).finally(() => {
-                                            const rm = new Set(searching);
-                                            rm.delete(key);
-                                            searching = rm;
-                                        });
-                                    }}
-                                >
-                                    {#if searching.has(item.arrId || item.title)}
-                                        <span class="loading loading-spinner" style="width:14px;height:14px"></span>
-                                    {:else if searched.has(item.arrId || item.title)}
-                                        <MdiIcon icon={mdiCheck} size={16} />
-                                    {:else}
-                                        <MdiIcon icon={mdiDownload} size={16} />
-                                    {/if}
-                                </button>
-                            {/if}
                         </div>
-                        {/if}
-                        {#if item.badge}
-                            <span class="poster-badge {item.badgeClass || ''}">{item.badge}</span>
-                        {/if}
-                    </a>
-                    {#if showLabels}
-                        <div class="poster-card-label">
-                            <span class="poster-card-label-title">{item.title}</span>
-                            {#if item.subtitle}
-                                <span class="poster-card-label-sub">{item.subtitle}</span>
-                            {/if}
-                        </div>
-                    {/if}
-                    </div>
-                {/each}
+                    {/each}
+                </div>
             </div>
             {#if canScrollRight}
                 <button class="poster-scroll-btn right" onclick={() => scrollBy(1)}><MdiIcon icon={mdiChevronRight} size={20} /></button>
@@ -179,22 +180,26 @@
     .time-select:hover {
         border-color: oklch(var(--bc) / 0.3);
     }
-    .poster-row-wrapper {
+    .poster-row-outer {
         position: relative;
     }
+    .poster-row-wrapper {
+        position: relative;
+        overflow-x: auto;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+    }
+    .poster-row-wrapper::-webkit-scrollbar { display: none; }
     /* Right-edge fade via CSS mask — works over any background */
-    .poster-row-wrapper.fade-right .poster-row {
+    .poster-row-wrapper.fade-right {
         -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
         mask-image: linear-gradient(to right, black 85%, transparent 100%);
     }
     .poster-row {
         display: flex;
         gap: 0.6rem;
-        overflow-x: auto;
-        scroll-snap-type: x mandatory;
-        scrollbar-width: none;
-        -ms-overflow-style: none;
         padding-bottom: 0.25rem;
+        width: max-content;
     }
     .poster-row::-webkit-scrollbar { display: none; }
     .poster-card {
