@@ -240,11 +240,30 @@
     /** @type {Set<string>} */
     let collapsedRoles = $state(new Set());
 
-    // Auto-load filmography when person has a TMDB ID
+    // Auto-load filmography when person changes or on first mount
+    let lastDiscoveryPersonId = $state(/** @type {number|null} */ (null));
     $effect(() => {
-        if (data.person.tmdb_person_id && !discoveryLoaded && !discoveryLoading && !discoveryError) {
-            loadDiscovery();
-        }
+        const personId = data.person.id;
+        const tmdbId = data.person.tmdb_person_id;
+        if (!tmdbId) return;
+        if (personId === lastDiscoveryPersonId) return;
+        // Person changed — reset all discovery state
+        lastDiscoveryPersonId = personId;
+        discoveryItems = [];
+        discoveryLoaded = false;
+        discoveryLoading = false;
+        discoveryError = '';
+        discoverySearch = '';
+        discoveryRoleFilter = 'all';
+        discoveryLimit = 24;
+        collapsedRoles = new Set();
+        // Reset filter based on new person's credits
+        discoveryFilter = data.movies.length > data.shows.length
+            ? 'movie'
+            : data.shows.length > data.movies.length
+              ? 'show'
+              : 'all';
+        loadDiscovery();
     });
 
     /** Create a stub and open the item page in a new tab */
