@@ -1643,6 +1643,130 @@ export function resetSync() {
 // Re-export from standalone module for backward compatibility
 export { reconcileExternalMedia, deduplicateParents, deduplicateChildren, deduplicateParentsByTitle } from '$lib/server/reconcile.js';
 
+/**
+ * Refresh episodes for a single TV show by re-fetching from Jellyfin.
+ * Lightweight alternative to a full sync — only touches one show's episodes.
+ * Used by calendar-triggered refresh to keep episode data current.
+ *
+ * @param {number} parentId - media_parents.id of the show
+ * @returns {Promise<{ success: boolean, episodeCount?: number, error?: string }>}
+ */
+export async function refreshShowEpisodes(parentId) {
+    try {
+        const show = /** @type {any} */ (db.prepare(
+            'SELECT id, jellyfin_id, title FROM media_parents WHERE id = ? AND media_type = \'show\''
+        ).get(parentId));
+        if (!show?.jellyfin_id) return { success: false, error: 'No Jellyfin ID' };
+
+        const settings = /** @type {any} */ (db.prepare('SELECT jellyfin_url FROM app_settings WHERE id = 1').get());
+        const user = /** @type {any} */ (db.prepare('SELECT jellyfin_access_token, jellyfin_user_id FROM users LIMIT 1').get());
+        if (!settings?.jellyfin_url || !user?.jellyfin_access_token) {
+            return { success: false, error: 'Missing Jellyfin config' };
+        }
+
+        const { api } = getJellyfinApis(settings.jellyfin_url, user.jellyfin_access_token);
+        const episodes = await fetchJellyfinEpisodes(api, show.jellyfin_id, user.jellyfin_user_id);
+
+        if (episodes.length === 0) {
+            return { success: true, episodeCount: 0 };
+        }
+
+        // Prepared statements for episode upsert
+        const upsertEp = db.prepare(`
+            INSERT INTO media_children (parent_id, jellyfin_id, title, season_number, item_number, is_special, is_collected, watch_status, play_count, runtime_ticks, premiere_date, community_rating)
+            VALUES (@parentId, @jellyfinId, @title, @seasonNumber, @itemNumber, @isSpecial, 1, @watchStatus, @playCount, @runtimeTicks, @premiereDate, @communityRating)
+            ON CONFLICT(jellyfin_id) DO UPDATE SET
+                title = @title, season_number = @seasonNumber, item_number = @itemNumber,
+                is_special = @isSpecial, is_collected = 1, watch_status = @watchStatus,
+                play_count = @playCount, runtime_ticks = @runtimeTicks, premiere_date = @premiereDate,
+                community_rating = COALESCE(@communityRating, community_rating)
+        `);
+        const upsertMissing = db.prepare(`
+            INSERT INTO media_children (parent_id, jellyfin_id, title, season_number, item_number, is_special, is_collected, watch_status, play_count, runtime_ticks, premiere_date)
+            VALUES (@parentId, @jellyfinId, @title, @seasonNumber, @itemNumber, @isSpecial, 0, 'unwatched', 0, 0, @premiereDate)
+            ON CONFLICT(jellyfin_id) DO UPDATE SET
+                title = @title, season_number = @seasonNumber, item_number = @itemNumber,
+                is_special = @isSpecial, is_collected = 0, premiere_date = @premiereDate
+        `);
+
+        db.transaction(() => {
+            for (const ep of episodes) {
+                const isOnDisk = ep.LocationType !== 'Virtual';
+                const params = {
+                    parentId,
+                    jellyfinId: ep.Id,
+                    title: ep.Name || `Episode ${ep.IndexNumber || '?'}`,
+                    seasonNumber: ep.ParentIndexNumber || 0,
+                    itemNumber: ep.IndexNumber || 0,
+                    isSpecial: (ep.ParentIndexNumber === 0) ? 1 : 0,
+                    premiereDate: ep.PremiereDate || null,
+                };
+                if (isOnDisk) {
+                    upsertEp.run({
+                        ...params,
+                        watchStatus: getWatchStatus(ep.UserData),
+                        playCount: ep.UserData?.PlayCount || 0,
+                        runtimeTicks: ep.RunTimeTicks || 0,
+                        communityRating: ep.CommunityRating || null,
+                    });
+                } else {
+                    upsertMissing.run(params);
+                }
+            }
+
+            // Dedup episodes with same season/episode number
+            const dupes = /** @type {any[]} */ (db.prepare(`
+                SELECT season_number, item_number, GROUP_CONCAT(id) as ids, COUNT(*) as cnt
+                FROM media_children
+                WHERE parent_id = ? AND season_number IS NOT NULL
+                GROUP BY season_number, item_number
+                HAVING cnt > 1
+            `).all(parentId));
+            if (dupes.length > 0) {
+                const migrateHistory = db.prepare('UPDATE playback_history SET media_id = ? WHERE media_id = ?');
+                const deleteChild = db.prepare('DELETE FROM media_children WHERE id = ?');
+                for (const dupe of dupes) {
+                    const ids = dupe.ids.split(',').map(Number);
+                    const rows = /** @type {any[]} */ (db.prepare(
+                        `SELECT id, is_collected, play_count FROM media_children WHERE id IN (${ids.join(',')})`
+                    ).all());
+                    rows.sort((a, b) => {
+                        if (a.is_collected !== b.is_collected) return b.is_collected - a.is_collected;
+                        if ((a.play_count || 0) !== (b.play_count || 0)) return (b.play_count || 0) - (a.play_count || 0);
+                        return b.id - a.id;
+                    });
+                    const keepId = rows[0].id;
+                    for (const row of rows.slice(1)) {
+                        migrateHistory.run(keepId, row.id);
+                        deleteChild.run(row.id);
+                    }
+                }
+            }
+
+            // Update parent counts
+            const collectedNonSpecial = episodes.filter(ep => ep.LocationType !== 'Virtual' && (ep.ParentIndexNumber || 0) !== 0).length;
+            const missingNonSpecial = episodes.filter(ep => ep.LocationType === 'Virtual' && (ep.ParentIndexNumber || 0) !== 0).length;
+            db.prepare('UPDATE media_parents SET total_released_children = ? WHERE id = ?').run(
+                collectedNonSpecial + missingNonSpecial, parentId
+            );
+            db.prepare(`
+                UPDATE media_parents SET
+                    collected_children = (SELECT COUNT(*) FROM media_children WHERE parent_id = ? AND is_collected = 1 AND is_special = 0),
+                    watched_children = (SELECT COUNT(*) FROM media_children WHERE parent_id = ? AND watch_status = 'watched' AND is_special = 0),
+                    last_episode_refresh = datetime('now')
+                WHERE id = ?
+            `).run(parentId, parentId, parentId);
+        })();
+
+        console.log(`[episode-refresh] ✅ ${show.title}: ${episodes.length} episodes refreshed`);
+        return { success: true, episodeCount: episodes.length };
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[episode-refresh] ❌ parentId=${parentId}: ${msg}`);
+        return { success: false, error: msg };
+    }
+}
+
 export function getStatus() {
     return {
         running: engineState.running,

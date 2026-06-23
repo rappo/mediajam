@@ -1052,6 +1052,10 @@ if (!mpCols3.has('backdrop_fetched_at')) {
     db.exec("ALTER TABLE media_parents ADD COLUMN backdrop_fetched_at TEXT");
     console.log('[db] Added backdrop_fetched_at column to media_parents');
 }
+if (!mpCols3.has('last_episode_refresh')) {
+    db.exec("ALTER TABLE media_parents ADD COLUMN last_episode_refresh TEXT");
+    console.log('[db] Added last_episode_refresh column to media_parents');
+}
 
 // -- tmdb_enriched_at on persons (tracks when TMDB enrich was last attempted) --
 const pCols3 = new Set(db.prepare("PRAGMA table_info(persons)").all().map((/** @type {any} */ c) => c.name));

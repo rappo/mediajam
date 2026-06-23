@@ -5,6 +5,7 @@
  */
 import db from '$lib/server/db.js';
 import { tmdbFetch } from '$lib/server/tmdb.js';
+import { refreshShowEpisodes } from '$lib/server/sync-engine.js';
 
 // ── TMDB genre ID → name maps ───────────────────────────────────────────────
 
@@ -605,6 +606,8 @@ export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artis
         } catch { /* optional */ }
 
         const fetches = [];
+        /** @type {Set<number>} tvdbIds of shows seen in the Sonarr calendar */
+        const calendarShowTvdbIds = new Set();
 
         // ── Sonarr calendar ────────────────────────────────────
         if (types.includes('show') && settings?.sonarr_api_key) {
@@ -621,6 +624,7 @@ export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artis
 
                         const series = ep.series || {};
                         const tvdbId = series.tvdbId;
+                        if (tvdbId) calendarShowTvdbIds.add(tvdbId);
                         const slug = localShowSlugs.get('tvdb:' + tvdbId) || series.titleSlug || '';
                         const posterImage = (series.images || []).find(i => i.coverType === 'poster');
                         const posterUrl = posterImage?.remoteUrl || posterImage?.url || '';
@@ -725,6 +729,34 @@ export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artis
         // Fetch all in parallel
         if (fetches.length > 0) {
             await Promise.all(fetches);
+        }
+
+        // ── Calendar-triggered episode refresh (fire-and-forget) ──
+        // For shows appearing in the Sonarr calendar, check if their episode data
+        // is stale and refresh in the background. Max 3 shows per dashboard load.
+        if (calendarShowTvdbIds.size > 0) {
+            try {
+                const tvdbList = [...calendarShowTvdbIds];
+                const placeholders = tvdbList.map(() => '?').join(',');
+                const staleShows = /** @type {any[]} */ (db.prepare(`
+                    SELECT id, title, tvdb_id FROM media_parents
+                    WHERE media_type = 'show'
+                      AND tvdb_id IN (${placeholders})
+                      AND jellyfin_id IS NOT NULL
+                      AND (last_episode_refresh IS NULL OR last_episode_refresh < datetime('now', '-6 hours'))
+                    LIMIT 3
+                `).all(...tvdbList));
+
+                if (staleShows.length > 0) {
+                    console.log(`[discovery-engine] 🔄 Calendar-triggered episode refresh for ${staleShows.length} show(s): ${staleShows.map(s => s.title).join(', ')}`);
+                    // Fire-and-forget — don't block the calendar response
+                    Promise.allSettled(
+                        staleShows.map(show => refreshShowEpisodes(show.id))
+                    ).catch(() => { /* swallow */ });
+                }
+            } catch (err) {
+                console.error('[discovery-engine] Calendar episode refresh error:', err?.message || err);
+            }
         }
 
         // Fallback: also merge local DB data for items not from arr APIs
