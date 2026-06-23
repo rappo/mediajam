@@ -582,8 +582,9 @@ export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artis
 
         // Get arr connection info (internal + external URLs for fallback)
         const settings = /** @type {any} */ (db.prepare(
-            'SELECT sonarr_url, sonarr_api_key, sonarr_external_url, radarr_url, radarr_api_key, radarr_external_url, lidarr_url, lidarr_api_key, lidarr_external_url FROM app_settings WHERE id = 1'
+            'SELECT sonarr_url, sonarr_api_key, sonarr_external_url, radarr_url, radarr_api_key, radarr_external_url, lidarr_url, lidarr_api_key, lidarr_external_url, include_specials FROM app_settings WHERE id = 1'
         ).get());
+        const includeSpecials = settings?.include_specials === 1;
 
         // Build local slug lookup maps for linking
         const localShowSlugs = new Map();
@@ -619,6 +620,8 @@ export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artis
                     );
                     if (!episodes) return;
                     for (const ep of episodes) {
+                        // Skip specials (Season 0) when include_specials is off
+                        if (!includeSpecials && (ep.seasonNumber === 0 || ep.seasonNumber === undefined)) continue;
                         const dateKey = ep.airDate || (ep.airDateUtc ? toLocalDate(ep.airDateUtc) : null);
                         if (!dateKey || !byDate[dateKey]) continue;
 
@@ -938,8 +941,9 @@ export async function getMonthCalendar(year, month, types = ['movie', 'show', 'a
 
         // Get arr connection info
         const settings = /** @type {any} */ (db.prepare(
-            'SELECT sonarr_url, sonarr_api_key, sonarr_external_url, radarr_url, radarr_api_key, radarr_external_url, lidarr_url, lidarr_api_key, lidarr_external_url FROM app_settings WHERE id = 1'
+            'SELECT sonarr_url, sonarr_api_key, sonarr_external_url, radarr_url, radarr_api_key, radarr_external_url, lidarr_url, lidarr_api_key, lidarr_external_url, include_specials FROM app_settings WHERE id = 1'
         ).get());
+        const includeSpecials = settings?.include_specials === 1;
 
         const fetches = [];
 
@@ -953,6 +957,8 @@ export async function getMonthCalendar(year, month, types = ['movie', 'show', 'a
                     );
                     if (!episodes) return;
                     for (const ep of episodes) {
+                        // Skip specials (Season 0) when include_specials is off
+                        if (!includeSpecials && (ep.seasonNumber === 0 || ep.seasonNumber === undefined)) continue;
                         const dateKey = ep.airDate || (ep.airDateUtc ? toLocalDate(ep.airDateUtc) : null);
                         if (!dateKey || !byDate[dateKey]) continue;
 
