@@ -83,6 +83,7 @@ export async function POST({ request, url, locals }) {
             'external_ratings',
             'watchlist',
             'activity_log',
+            'arr_events',
             'embedding_hashes',
             'overview_embeddings'
         ];

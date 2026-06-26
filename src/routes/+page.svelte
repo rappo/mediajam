@@ -1,16 +1,22 @@
 <script>
     import { onMount, onDestroy } from "svelte";
     import { imgUrl } from "$lib/utils.js";
+    import { addToast } from '$lib/stores/toast.js';
     import Skeleton from "$lib/components/Skeleton.svelte";
     import PosterRow from "$lib/components/PosterRow.svelte";
+    import DashSection from "$lib/components/DashSection.svelte";
     // import DashboardCalendar from "$lib/components/DashboardCalendar.svelte";
     import DashboardCalendarHero from "$lib/components/DashboardCalendarHero.svelte";
+    import MediaTypeFilter from "$lib/components/MediaTypeFilter.svelte";
+    import MdiIcon from "$lib/components/MdiIcon.svelte";
+    import { mdiMovie, mdiHexagonOutline, mdiBookmark, mdiTelevision, mdiArrowDownCircle, mdiMusic, mdiAlbum, mdiChevronLeft, mdiChevronRight, mdiSatelliteUplink, mdiNewBox, mdiMovieFilter, mdiTelevisionShimmer, mdiBullseyeArrow, mdiDramaMasks, mdiMovieOpen, mdiMusicNote, mdiClipboardList, mdiAlert } from '@mdi/js';
 
     let { data } = $props();
 
     let loading = $state(true);
     let dash = $state(null);
     let error = $state(null);
+    let incomingRaw = $state(null); // { items, summary } from /api/arr/wanted
 
     // Calendar settings
     let calendarDays = $state(7);
@@ -32,10 +38,20 @@
             if (!res.ok) throw new Error('Failed to load dashboard');
             dash = await res.json();
             loading = false;
+            // Fire-and-forget: fetch incoming data from arr wanted endpoint
+            fetchIncoming();
         } catch (e) {
             error = e.message;
             loading = false;
         }
+    }
+
+    async function fetchIncoming() {
+        try {
+            const res = await fetch('/api/arr/wanted');
+            if (!res.ok) return;
+            incomingRaw = await res.json();
+        } catch { /* silent — arr services may not be configured */ }
     }
 
     async function refreshCalendar(settings) {
@@ -127,9 +143,25 @@
         (dash?.recommended || []).map(m => ({
             href: `/movies/${m.slug || m.id}`,
             title: m.title,
-            subtitle: m.reason || String(m.release_year || ''),
+            subtitle: String(m.release_year || ''),
             poster_url: m.poster_url,
         }))
+    );
+
+    // Extract the most common reason for the section title
+    let recommendedReason = $derived(
+        (() => {
+            const recs = dash?.recommended || [];
+            if (recs.length === 0) return '';
+            const counts = {};
+            for (const m of recs) {
+                if (m.reason) {
+                    counts[m.reason] = (counts[m.reason] || 0) + 1;
+                }
+            }
+            const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+            return top ? top[0] : '';
+        })()
     );
 
     let watchlistItems = $derived(
@@ -169,10 +201,55 @@
     );
 
     // Incoming (wanted/missing) items
-    let incomingFilter = $state('all'); // 'all' | 'show' | 'movie' | 'artist'
+    /** Simple client-side slugify to match server slug format */
+    function clientSlugify(title, year) {
+        let s = title
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/&/g, 'and')
+            .toLowerCase()
+            .replace(/[^a-z0-9\s-]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-')
+            .replace(/^-+|-+$/g, '');
+        if (!s) s = 'untitled';
+        if (year) s += `-${year}`;
+        return s;
+    }
+
+    let incomingActiveTypes = $state(['movie', 'show', 'artist']);
+
+    /**
+     * Auto-search handler for Incoming items — triggers *arr search command.
+     * @param {any} item
+     */
+    async function handleIncomingAutoSearch(item) {
+        if (!item.service || (!item.mediaParentId && !item.arrId)) return;
+        try {
+            const res = await fetch(`/api/arr/${item.service}/search`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mediaParentId: item.mediaParentId || undefined,
+                    arrId: item.arrId || undefined,
+                }),
+            });
+            if (!res.ok) {
+                const r = await res.json();
+                throw new Error(r.error || `HTTP ${res.status}`);
+            }
+            addToast({ type: 'success', message: `Started search for ${item.title}`, detail: item.year ? String(item.year) : '' });
+        } catch (e) {
+            addToast({ type: 'error', message: `Search failed for ${item.title}`, detail: e instanceof Error ? e.message : String(e) });
+            throw e; // re-throw so PosterRow shows error state
+        }
+    }
+
     let incomingAll = $derived(
-        (dash?.incoming || []).map(item => {
+        (incomingRaw?.items || []).map(item => {
             const mediaType = item.type === 'movie' ? 'movies' : item.type === 'show' ? 'tv' : 'music';
+            // Prefer DB slug → numeric ID (auto-redirects) → client-generated slug (last resort)
+            const linkId = item.slug || (item.mediaParentId ? String(item.mediaParentId) : clientSlugify(item.title, item.year));
+
             // Build badge
             let badge = item.reasonLabel || '';
             let badgeClass = 'badge-missing';
@@ -202,7 +279,7 @@
                 subtitle = item.year ? String(item.year) : '';
             }
             return {
-                href: item.slug ? `/${mediaType}/${item.slug}` : null,
+                href: `/${mediaType}/${linkId}`,
                 title: item.title,
                 subtitle,
                 poster_url: item.poster_url,
@@ -210,19 +287,39 @@
                 badgeClass,
                 media_type: item.type,
                 icon: item.type === 'movie' ? '🎬' : item.type === 'show' ? '📺' : '🎵',
+                // Action fields for hover buttons
+                service: item.service,
+                mediaParentId: item.mediaParentId,
+                arrId: item.arrId,
+                year: item.year,
             };
         })
     );
     let incomingItems = $derived(
-        incomingFilter === 'all'
-            ? incomingAll
-            : incomingAll.filter(m => m.media_type === incomingFilter)
+        incomingAll.filter(m => incomingActiveTypes.includes(m.media_type))
     );
-    let incomingCounts = $derived({
-        all: incomingAll.length,
-        show: incomingAll.filter(m => m.media_type === 'show').length,
-        movie: incomingAll.filter(m => m.media_type === 'movie').length,
-        artist: incomingAll.filter(m => m.media_type === 'artist').length,
+
+    // Arr Health — derived from incoming raw data
+    const arrServiceConfigs = [
+        { key: 'sonarr', name: 'Sonarr', color: '0.65 0.17 250' },
+        { key: 'radarr', name: 'Radarr', color: '0.72 0.18 40' },
+        { key: 'lidarr', name: 'Lidarr', color: '0.70 0.17 145' },
+    ];
+    let arrHealth = $derived.by(() => {
+        if (!incomingRaw?.summary?.byService) return [];
+        return arrServiceConfigs
+            .filter(svc => (incomingRaw.summary.byService[svc.key] ?? -1) >= 0 ||
+                           (incomingRaw.items || []).some(i => i.service === svc.key))
+            .map(svc => {
+                const items = incomingRaw.items || [];
+                return {
+                    ...svc,
+                    wanted: incomingRaw.summary.byService[svc.key] || 0,
+                    queue: items.filter(i => i.service === svc.key && i.reason === 'in_queue').length,
+                    failed: items.filter(i => i.service === svc.key && i.reason === 'failed').length,
+                    status: items.some(i => i.service === svc.key && i.reason === 'failed') ? 'warning' : 'ok',
+                };
+            });
     });
 
     let newAlbumItems = $derived(
@@ -244,6 +341,23 @@
             poster_url: a.poster_url,
             badge: a.badge,
             icon: a.icon,
+        }))
+    );
+
+    let recentlyWatchedMovieItems = $derived(
+        (dash?.recentlyWatchedMovies || []).map(m => ({
+            href: m.href,
+            title: m.title,
+            poster_url: m.poster_url,
+        }))
+    );
+
+    let recentlyWatchedTVItems = $derived(
+        (dash?.recentlyWatchedTV || []).map(s => ({
+            href: s.href,
+            title: s.title,
+            subtitle: s.subtitle,
+            poster_url: s.poster_url,
         }))
     );
 
@@ -334,7 +448,7 @@
         </div>
     {:else if error}
         <div class="dash-error">
-            <span class="dash-error-icon">⚠️</span>
+            <MdiIcon icon={mdiAlert} size={40} class="text-warning mb-4" />
             <p>{error}</p>
             <button class="btn btn-primary btn-sm" onclick={fetchDashboard}>Retry</button>
         </div>
@@ -361,10 +475,10 @@
                 <!-- Prev/Next navigation -->
                 {#if dash?.watchlist?.length > 1}
                     <button class="dash-hero-nav dash-hero-nav-prev" onclick={(e) => { e.preventDefault(); heroPrev(); }} title="Previous">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+                        <MdiIcon icon={mdiChevronLeft} size={20} />
                     </button>
                     <button class="dash-hero-nav dash-hero-nav-next" onclick={(e) => { e.preventDefault(); heroNext(); }} title="Next">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18" /></svg>
+                        <MdiIcon icon={mdiChevronRight} size={20} />
                     </button>
                 {/if}
             </div>
@@ -374,14 +488,14 @@
         <div class="dash-stats-bar">
             <div class="stat-cell">
                 <div class="stat-cell-top">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="stat-cell-icon" style="color: oklch(var(--color-movies))" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+                    <MdiIcon icon={mdiMovie} size={13} class="stat-cell-icon" style="color: oklch(var(--color-movies))" />
                     <span class="stat-cell-value" style="color: oklch(var(--color-movies))">{(dash.stats?.movies || 0).toLocaleString()}</span>
                 </div>
                 <span class="stat-cell-label">Movies</span>
             </div>
             <div class="stat-cell">
                 <div class="stat-cell-top">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="stat-cell-icon" style="color: oklch(var(--color-movies) / 0.5)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                    <MdiIcon icon={mdiHexagonOutline} size={13} class="stat-cell-icon" style="color: oklch(var(--color-movies) / 0.5)" />
                     <span class="stat-cell-value" style="color: oklch(var(--color-movies) / 0.5)">{dash.stats?.movieGB >= 1000 ? (dash.stats.movieGB / 1024).toFixed(1) + ' TB' : (dash.stats?.movieGB || 0).toLocaleString() + ' GB'}</span>
                 </div>
                 <span class="stat-cell-label">Movie Size</span>
@@ -389,7 +503,7 @@
             {#if dash.watchlist?.length > 0}
                 <div class="stat-cell">
                     <div class="stat-cell-top">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="stat-cell-icon" style="color: oklch(var(--color-movies) / 0.7)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+                        <MdiIcon icon={mdiBookmark} size={13} class="stat-cell-icon" style="color: oklch(var(--color-movies) / 0.7)" />
                         <span class="stat-cell-value" style="color: oklch(var(--color-movies) / 0.7)">{dash.watchlist.length}</span>
                     </div>
                     <span class="stat-cell-label">Watchlist</span>
@@ -400,21 +514,21 @@
 
             <div class="stat-cell">
                 <div class="stat-cell-top">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="stat-cell-icon" style="color: oklch(var(--color-tv))" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="15" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/></svg>
+                    <MdiIcon icon={mdiTelevision} size={13} class="stat-cell-icon" style="color: oklch(var(--color-tv))" />
                     <span class="stat-cell-value" style="color: oklch(var(--color-tv))">{(dash.stats?.shows || 0).toLocaleString()}</span>
                 </div>
                 <span class="stat-cell-label">TV Shows</span>
             </div>
             <div class="stat-cell">
                 <div class="stat-cell-top">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="stat-cell-icon" style="color: oklch(var(--color-tv) / 0.7)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="8 12 12 16 16 12"/><line x1="12" y1="8" x2="12" y2="16"/></svg>
+                    <MdiIcon icon={mdiArrowDownCircle} size={13} class="stat-cell-icon" style="color: oklch(var(--color-tv) / 0.7)" />
                     <span class="stat-cell-value" style="color: oklch(var(--color-tv) / 0.7)">{(dash.stats?.episodes || 0).toLocaleString()}</span>
                 </div>
                 <span class="stat-cell-label">Episodes</span>
             </div>
             <div class="stat-cell">
                 <div class="stat-cell-top">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="stat-cell-icon" style="color: oklch(var(--color-tv) / 0.5)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                    <MdiIcon icon={mdiHexagonOutline} size={13} class="stat-cell-icon" style="color: oklch(var(--color-tv) / 0.5)" />
                     <span class="stat-cell-value" style="color: oklch(var(--color-tv) / 0.5)">{dash.stats?.showGB >= 1000 ? (dash.stats.showGB / 1024).toFixed(1) + ' TB' : (dash.stats?.showGB || 0).toLocaleString() + ' GB'}</span>
                 </div>
                 <span class="stat-cell-label">TV Size</span>
@@ -424,164 +538,151 @@
 
             <div class="stat-cell">
                 <div class="stat-cell-top">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="stat-cell-icon" style="color: oklch(var(--color-music))" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                    <MdiIcon icon={mdiMusic} size={13} class="stat-cell-icon" style="color: oklch(var(--color-music))" />
                     <span class="stat-cell-value" style="color: oklch(var(--color-music))">{(dash.stats?.artists || 0).toLocaleString()}</span>
                 </div>
                 <span class="stat-cell-label">Artists</span>
             </div>
             <div class="stat-cell">
                 <div class="stat-cell-top">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="stat-cell-icon" style="color: oklch(var(--color-music) / 0.7)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/></svg>
+                    <MdiIcon icon={mdiAlbum} size={13} class="stat-cell-icon" style="color: oklch(var(--color-music) / 0.7)" />
                     <span class="stat-cell-value" style="color: oklch(var(--color-music) / 0.7)">{(dash.stats?.albums || 0).toLocaleString()}</span>
                 </div>
                 <span class="stat-cell-label">Albums</span>
             </div>
             <div class="stat-cell">
                 <div class="stat-cell-top">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="stat-cell-icon" style="color: oklch(var(--color-music) / 0.5)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                    <MdiIcon icon={mdiHexagonOutline} size={13} class="stat-cell-icon" style="color: oklch(var(--color-music) / 0.5)" />
                     <span class="stat-cell-value" style="color: oklch(var(--color-music) / 0.5)">{dash.stats?.musicGB >= 1000 ? (dash.stats.musicGB / 1024).toFixed(1) + ' TB' : (dash.stats?.musicGB || 0).toLocaleString() + ' GB'}</span>
                 </div>
                 <span class="stat-cell-label">Music Size</span>
             </div>
         </div>
 
-        <!-- Arr Health Bar -->
-        {#if dash.arrHealth?.services?.length > 0}
-            <div class="dash-stats-bar arr-health-bar">
-                {#each dash.arrHealth.services as svc, i}
-                    {#if i > 0}
-                        <div class="stat-cell-divider"></div>
-                    {/if}
-                    <div class="stat-cell">
-                        <div class="stat-cell-top">
-                            <span class="arr-health-dot" class:dot-ok={svc.status === 'ok'} class:dot-warn={svc.status === 'warning'}></span>
-                            <span class="stat-cell-value" style="color: oklch({svc.color})">{svc.name}</span>
-                        </div>
-                        <span class="stat-cell-label">
-                            {svc.wanted} wanted{#if svc.queue > 0} · {svc.queue} ↓{/if}{#if svc.failed > 0} · <span class="arr-failed-count">{svc.failed} ✗</span>{/if}
-                        </span>
-                    </div>
-                {/each}
-            </div>
-        {/if}
-
         <!-- Incoming (Wanted / Missing / Downloading) -->
         {#if incomingAll.length > 0}
-            <div class="poster-section">
-                <div class="poster-title-row">
-                    <h3 class="poster-section-title">📡 Incoming</h3>
-                    <div class="media-type-chips">
-                        <button class="media-chip" class:active={incomingFilter === 'all'} onclick={() => incomingFilter = 'all'}>All ({incomingCounts.all})</button>
-                        {#if incomingCounts.show > 0}
-                            <button class="media-chip chip-tv" class:active={incomingFilter === 'show'} onclick={() => incomingFilter = 'show'}>📺 TV ({incomingCounts.show})</button>
-                        {/if}
-                        {#if incomingCounts.movie > 0}
-                            <button class="media-chip chip-movie" class:active={incomingFilter === 'movie'} onclick={() => incomingFilter = 'movie'}>🎬 Movies ({incomingCounts.movie})</button>
-                        {/if}
-                        {#if incomingCounts.artist > 0}
-                            <button class="media-chip chip-music" class:active={incomingFilter === 'artist'} onclick={() => incomingFilter = 'artist'}>🎵 Music ({incomingCounts.artist})</button>
-                        {/if}
-                    </div>
-                </div>
-            </div>
-            <PosterRow title="" items={incomingItems} />
+            <DashSection title="Incoming" icon={mdiSatelliteUplink} glowSrc={incomingItems.slice(0, 5).map(i => i.poster_url)}>
+                {#snippet headerRight()}
+                    <MediaTypeFilter activeTypes={incomingActiveTypes} onchange={(types) => incomingActiveTypes = types} />
+                {/snippet}
+                <PosterRow title="" items={incomingItems} showLabels onAutoSearch={handleIncomingAutoSearch} />
+            </DashSection>
         {/if}
 
         <!-- Calendar -->
         {#if dash.upcoming}
             <!-- <DashboardCalendar upcoming={dash.upcoming} onSettingsChange={refreshCalendar} /> -->
-            <DashboardCalendarHero upcoming={dash.upcoming} onSettingsChange={refreshCalendar} />
+            <DashboardCalendarHero upcoming={dash.upcoming} onSettingsChange={refreshCalendar} maxPerDay={data.settings.calendarMaxPerDay ?? 2} />
         {/if}
 
         <!-- Recently Added -->
         {#if recentlyAddedAll.length > 0}
-            <div class="poster-section">
-                <div class="poster-title-row">
-                    <h3 class="poster-section-title">🆕 Recently Added to Your Library</h3>
+            <DashSection title="Recently Added" icon={mdiNewBox} glowSrc={recentlyAddedItems.slice(0, 5).map(i => i.poster_url)}>
+                {#snippet headerRight()}
                     <div class="media-type-chips">
                         <button class="media-chip" class:active={recentlyAddedFilter === 'all'} onclick={() => recentlyAddedFilter = 'all'}>All</button>
-                        <button class="media-chip chip-tv" class:active={recentlyAddedFilter === 'show'} onclick={() => recentlyAddedFilter = 'show'}>📺 TV</button>
-                        <button class="media-chip chip-movie" class:active={recentlyAddedFilter === 'movie'} onclick={() => recentlyAddedFilter = 'movie'}>🎬 Movies</button>
-                        <button class="media-chip chip-music" class:active={recentlyAddedFilter === 'artist'} onclick={() => recentlyAddedFilter = 'artist'}>🎵 Music</button>
+                        <button class="media-chip chip-tv" class:active={recentlyAddedFilter === 'show'} onclick={() => recentlyAddedFilter = 'show'}><MdiIcon icon={mdiTelevision} size={12} class="mr-0.5" /> TV</button>
+                        <button class="media-chip chip-movie" class:active={recentlyAddedFilter === 'movie'} onclick={() => recentlyAddedFilter = 'movie'}><MdiIcon icon={mdiMovieOpen} size={12} class="mr-0.5" /> Movies</button>
+                        <button class="media-chip chip-music" class:active={recentlyAddedFilter === 'artist'} onclick={() => recentlyAddedFilter = 'artist'}><MdiIcon icon={mdiMusicNote} size={12} class="mr-0.5" /> Music</button>
                     </div>
-                </div>
-            </div>
-            <PosterRow title="" items={recentlyAddedItems} />
+                {/snippet}
+                <PosterRow title="" items={recentlyAddedItems} showLabels />
+            </DashSection>
         {/if}
 
         <!-- Trending Movies -->
         {#if trendingMovieItems.length > 0}
-            <div class="dash-section">
-                <PosterRow title="🔥 Trending Movies" items={trendingMovieItems} />
-                {#if dash.trendingMovies?.totalPages > trendingMoviePage}
-                    <button class="show-more-btn" onclick={loadMoreTrendingMovies} disabled={loadingMoreMovies}>
-                        {#if loadingMoreMovies}
-                            <span class="loading loading-spinner loading-xs"></span> Loading…
-                        {:else}
-                            Show More
-                        {/if}
-                    </button>
-                {/if}
-            </div>
+            <DashSection title="Trending Movies" icon={mdiMovieFilter} glowSrc={trendingMovieItems.slice(0, 5).map(i => i.poster_url)}>
+                <PosterRow title="" items={trendingMovieItems} showLabels />
+                {#snippet footer()}
+                    {#if dash.trendingMovies?.totalPages > trendingMoviePage}
+                        <button class="show-more-btn" onclick={loadMoreTrendingMovies} disabled={loadingMoreMovies}>
+                            {#if loadingMoreMovies}
+                                <span class="loading loading-spinner loading-xs"></span> Loading…
+                            {:else}
+                                Show More
+                            {/if}
+                        </button>
+                    {/if}
+                {/snippet}
+            </DashSection>
         {/if}
 
         <!-- Trending Shows -->
         {#if trendingShowItems.length > 0}
-            <div class="dash-section">
-                <PosterRow title="📺 Trending Shows" items={trendingShowItems} />
-                {#if dash.trendingShows?.totalPages > trendingShowPage}
-                    <button class="show-more-btn" onclick={loadMoreTrendingShows} disabled={loadingMoreShows}>
-                        {#if loadingMoreShows}
-                            <span class="loading loading-spinner loading-xs"></span> Loading…
-                        {:else}
-                            Show More
-                        {/if}
-                    </button>
-                {/if}
-            </div>
+            <DashSection title="Trending Shows" icon={mdiTelevisionShimmer} glowSrc={trendingShowItems.slice(0, 5).map(i => i.poster_url)}>
+                <PosterRow title="" items={trendingShowItems} showLabels />
+                {#snippet footer()}
+                    {#if dash.trendingShows?.totalPages > trendingShowPage}
+                        <button class="show-more-btn" onclick={loadMoreTrendingShows} disabled={loadingMoreShows}>
+                            {#if loadingMoreShows}
+                                <span class="loading loading-spinner loading-xs"></span> Loading…
+                            {:else}
+                                Show More
+                            {/if}
+                        </button>
+                    {/if}
+                {/snippet}
+            </DashSection>
         {/if}
 
         <!-- Recommended for You -->
         {#if recommendedItems.length > 0}
-            <PosterRow title="✨ Recommended for You" items={recommendedItems} />
+            <DashSection title={recommendedReason || 'Recommended for You'} icon={mdiBullseyeArrow} glowSrc={recommendedItems.slice(0, 5).map(i => i.poster_url)}>
+                <PosterRow title="" items={recommendedItems} />
+            </DashSection>
         {/if}
 
         <!-- Actor Deep Dive -->
         {#if dash.actorDeepDive && actorUnwatchedItems.length > 0}
-            <div class="dash-actor-section">
-                <div class="dash-actor-header">
-                    {#if dash.actorDeepDive.person?.profile_url}
-                        <img src={imgUrl(dash.actorDeepDive.person.profile_url)} alt={dash.actorDeepDive.person.name} class="actor-avatar" />
-                    {:else}
-                        <div class="actor-avatar-placeholder">🎭</div>
-                    {/if}
-                    <div class="actor-info">
-                        <h3 class="actor-name">{dash.actorDeepDive.person.name}</h3>
-                        <p class="actor-stats">
-                            {dash.actorDeepDive.watchedCount} of {dash.actorDeepDive.totalCount} films watched
-                        </p>
-                    </div>
-                </div>
+            <DashSection
+                title="Selected {dash.actorDeepDive.person.name} Works"
+                iconSrc={dash.actorDeepDive.person?.profile_url}
+                icon={mdiDramaMasks}
+                subtitle="{dash.actorDeepDive.watchedCount} of {dash.actorDeepDive.totalCount} watched"
+                glowSrc={[dash.actorDeepDive.person?.profile_url, ...actorUnwatchedItems.slice(0, 4).map(i => i.poster_url)]}
+            >
                 <PosterRow
-                    title="Unwatched Films"
+                    title=""
                     items={actorUnwatchedItems}
+                    showLabels
                 />
-            </div>
+            </DashSection>
         {/if}
 
         <!-- Watchlist -->
         {#if watchlistItems.length > 0}
-            <PosterRow title="📋 Your Watchlist" items={watchlistItems} />
+            <DashSection title="Your Watchlist" icon={mdiClipboardList} glowSrc={watchlistItems.slice(0, 5).map(i => i.poster_url)}>
+                <PosterRow title="" items={watchlistItems} showLabels />
+            </DashSection>
+        {/if}
+
+        <!-- Recently Watched Movies -->
+        {#if recentlyWatchedMovieItems.length > 0}
+            <DashSection title="Recently Watched Movies" icon={mdiMovie} glowSrc={recentlyWatchedMovieItems.slice(0, 5).map(i => i.poster_url)}>
+                <PosterRow title="" items={recentlyWatchedMovieItems} showLabels />
+            </DashSection>
+        {/if}
+
+        <!-- Recently Watched TV -->
+        {#if recentlyWatchedTVItems.length > 0}
+            <DashSection title="Recently Watched TV" icon={mdiTelevision} glowSrc={recentlyWatchedTVItems.slice(0, 5).map(i => i.poster_url)}>
+                <PosterRow title="" items={recentlyWatchedTVItems} showLabels />
+            </DashSection>
         {/if}
 
         <!-- Recently Played Albums -->
         {#if recentlyPlayedItems.length > 0}
-            <PosterRow title="🎵 Recently Played" items={recentlyPlayedItems} square />
+            <DashSection title="Recently Played Albums" icon={mdiMusicNote} glowSrc={recentlyPlayedItems.slice(0, 5).map(i => i.poster_url)}>
+                <PosterRow title="" items={recentlyPlayedItems} square showLabels />
+            </DashSection>
         {/if}
 
         <!-- New Albums -->
         {#if newAlbumItems.length > 0}
-            <PosterRow title="💿 New Albums" items={newAlbumItems} square />
+            <DashSection title="New Albums" icon={mdiAlbum} glowSrc={newAlbumItems.slice(0, 5).map(i => i.poster_url)}>
+                <PosterRow title="" items={newAlbumItems} square showLabels />
+            </DashSection>
         {/if}
 
     {/if}
@@ -867,10 +968,6 @@
     .dash-hero-nav-next { right: 0.75rem; }
 
 
-    /* ── Section ────────────────────────────────────────────── */
-    .dash-section {
-        margin-bottom: 0.5rem;
-    }
     .show-more-btn {
         display: flex;
         align-items: center;
@@ -897,15 +994,7 @@
         cursor: not-allowed;
     }
 
-    /* ── Actor Deep Dive ────────────────────────────────────── */
-    .dash-actor-section {
-        background: oklch(var(--b2) / 0.5);
-        border: 1px solid oklch(var(--bc) / 0.06);
-        border-radius: 1rem;
-        padding: 1rem;
-        margin-bottom: 1.5rem;
-        backdrop-filter: blur(12px);
-    }
+    /* ── Actor Deep Dive (sub-styles, card handled by DashSection) ── */
     .dash-actor-header {
         display: flex;
         align-items: center;
@@ -959,27 +1048,6 @@
     }
 
     /* Filter chips for Recently Added */
-    .poster-title-row {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        margin-bottom: 0.25rem;
-    }
-    .poster-title-row::after {
-        content: '';
-        flex: 1;
-        height: 1px;
-        background: currentColor;
-        opacity: 0.12;
-        min-width: 2rem;
-        margin-left: 0.5rem;
-    }
-    .poster-section-title {
-        font-size: 1.1rem;
-        font-weight: 700;
-        opacity: 0.9;
-        white-space: nowrap;
-    }
     .media-type-chips {
         display: flex;
         gap: 0.3rem;

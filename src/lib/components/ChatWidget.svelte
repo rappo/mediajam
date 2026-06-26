@@ -2,6 +2,9 @@
     /** @type {{ llmConfigured?: boolean }} */
     let { llmConfigured = false } = $props();
 
+    import MdiIcon from '$lib/components/MdiIcon.svelte';
+    import { mdiMessageText, mdiCog, mdiCheck, mdiContentCopy, mdiDelete, mdiMinus, mdiDockRight, mdiWindowRestore, mdiClose, mdiSend } from '@mdi/js';
+
     /** @typedef {{ role: 'user' | 'assistant', text: string, sql?: string, results?: any[], sources?: any[], error?: string, loading?: boolean, type?: string }} ChatMessage */
 
     /** @type {ChatMessage[]} */
@@ -263,9 +266,7 @@
         onclick={open}
         title="Chat with your library"
     >
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-        </svg>
+        <MdiIcon icon={mdiMessageText} size={20} />
     </button>
 {/if}
 
@@ -276,9 +277,7 @@
         onclick={open}
         title="Open chat"
     >
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-        </svg>
+        <MdiIcon icon={mdiMessageText} size={24} />
         {#if messages.length > 0}
             <span class="absolute -top-1 -right-1 bg-accent text-accent-content text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">{messages.filter(m => m.role === 'assistant' && !m.loading).length}</span>
         {/if}
@@ -307,9 +306,7 @@
     <div class="flex items-center justify-between px-3 py-2 bg-gradient-to-r from-primary/10 to-secondary/10 border-b border-base-300 shrink-0 select-none">
         <div class="flex items-center gap-2">
             <div class="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-                </svg>
+                <MdiIcon icon={mdiMessageText} size={14} class="text-primary" />
             </div>
             <div>
                 <span class="font-semibold text-sm">Ask Mediajam</span>
@@ -321,37 +318,37 @@
         <div class="flex items-center gap-0.5">
             <!-- Status -->
             <button class="btn btn-ghost btn-xs btn-square opacity-50 hover:opacity-100" onclick={fetchStatus} title="System status" class:text-primary={showStatus}>
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+                <MdiIcon icon={mdiCog} size={14} />
             </button>
             {#if messages.length > 0}
                 <button class="btn btn-ghost btn-xs btn-square opacity-50 hover:opacity-100" onclick={copyDebug} title="Copy debug info">
                     {#if copied}
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-success" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                        <MdiIcon icon={mdiCheck} size={14} class="text-success" />
                     {:else}
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                        <MdiIcon icon={mdiContentCopy} size={14} />
                     {/if}
                 </button>
                 <button class="btn btn-ghost btn-xs btn-square opacity-50 hover:opacity-100" onclick={clearChat} title="Clear chat">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                    <MdiIcon icon={mdiDelete} size={14} />
                 </button>
             {/if}
             <!-- Minimize -->
             <button class="btn btn-ghost btn-xs btn-square opacity-50 hover:opacity-100" onclick={minimize} title="Minimize">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <MdiIcon icon={mdiMinus} size={14} />
             </button>
             <!-- Dock / Undock -->
             {#if mode === 'floating'}
                 <button class="btn btn-ghost btn-xs btn-square opacity-50 hover:opacity-100" onclick={dock} title="Dock to sidebar">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+                    <MdiIcon icon={mdiDockRight} size={14} />
                 </button>
             {:else}
                 <button class="btn btn-ghost btn-xs btn-square opacity-50 hover:opacity-100" onclick={undock} title="Float">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="13" height="13" rx="2"/><path d="M9 3h10a2 2 0 012 2v10"/></svg>
+                    <MdiIcon icon={mdiWindowRestore} size={14} />
                 </button>
             {/if}
             <!-- Close -->
             <button class="btn btn-ghost btn-xs btn-square opacity-50 hover:opacity-100" onclick={close} title="Close">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                <MdiIcon icon={mdiClose} size={14} />
             </button>
         </div>
     </div>
@@ -399,21 +396,19 @@
         {#if messages.length === 0}
             <div class="flex flex-col items-center justify-center h-full text-center text-base-content/40 gap-4 py-8">
                 <div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-primary/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-                    </svg>
+                    <MdiIcon icon={mdiMessageText} size={24} class="text-primary/50" />
                 </div>
                 <div>
                     <p class="font-medium text-sm text-base-content/60">Ask about your library</p>
                     <div class="text-xs mt-2 space-y-1 max-w-[260px]">
                         <button class="block w-full text-left px-2 py-1 rounded hover:bg-base-200 transition-colors" onclick={() => { input = "What movies did I watch this month?"; sendMessage(); }}>
-                            💬 "What movies did I watch this month?"
+                            <MdiIcon icon={mdiMessageText} size={14} class="mr-1" /> "What movies did I watch this month?"
                         </button>
                         <button class="block w-full text-left px-2 py-1 rounded hover:bg-base-200 transition-colors" onclick={() => { input = "How many albums do I have?"; sendMessage(); }}>
-                            💬 "How many albums do I have?"
+                            <MdiIcon icon={mdiMessageText} size={14} class="mr-1" /> "How many albums do I have?"
                         </button>
                         <button class="block w-full text-left px-2 py-1 rounded hover:bg-base-200 transition-colors" onclick={() => { input = "Who are my favorite actors?"; sendMessage(); }}>
-                            💬 "Who are my favorite actors?"
+                            <MdiIcon icon={mdiMessageText} size={14} class="mr-1" /> "Who are my favorite actors?"
                         </button>
                     </div>
                 </div>
@@ -423,7 +418,7 @@
                 {#if msg.loading}
                     <div class="flex gap-2 items-start">
                         <div class="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center shrink-0 mt-0.5">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                            <MdiIcon icon={mdiMessageText} size={12} class="text-primary" />
                         </div>
                         <div class="bg-base-200 rounded-2xl rounded-tl-sm px-3 py-2">
                             <span class="loading loading-dots loading-sm"></span>
@@ -436,7 +431,7 @@
                 {:else}
                     <div class="flex gap-2 items-start">
                         <div class="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center shrink-0 mt-0.5">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                            <MdiIcon icon={mdiMessageText} size={12} class="text-primary" />
                         </div>
                         <div class="bg-base-200 rounded-2xl rounded-tl-sm px-3 py-2 text-sm max-w-[90%] whitespace-pre-wrap">
                             {#if msg.sources && msg.sources.length > 0}
@@ -501,7 +496,7 @@
                 {#if sending}
                     <span class="loading loading-spinner loading-xs"></span>
                 {:else}
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                    <MdiIcon icon={mdiSend} size={16} />
                 {/if}
             </button>
         </form>

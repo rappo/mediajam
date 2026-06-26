@@ -10,6 +10,13 @@ export async function GET({ url, locals }) {
     const userId = locals.user.id;
     const calendarDays = parseInt(url.searchParams.get('calendarDays') || '7');
 
+    const userRow = /** @type {any} */ (db.prepare('SELECT preferences FROM users WHERE id = ?').get(userId));
+    let timezone = 'UTC';
+    try {
+        const prefs = userRow?.preferences ? JSON.parse(userRow.preferences) : {};
+        if (prefs.timezone) timezone = prefs.timezone;
+    } catch { /* empty */ }
+
     // Build default calendar types from DB settings
     const calSettings = /** @type {any} */ (db.prepare(
         'SELECT calendar_show_movies, calendar_show_shows, calendar_show_music FROM app_settings WHERE id = 1'
@@ -52,13 +59,12 @@ export async function GET({ url, locals }) {
         return result;
     };
 
-    const [trendingMovies, trendingShows, recommended, upcoming, libSizes, incomingData] = await Promise.all([
+    const [trendingMovies, trendingShows, recommended, upcoming, libSizes] = await Promise.all([
         timedAsync('getTrendingMovies', () => getTrendingMovies(genreProfile, 20)),
         timedAsync('getTrendingShows', () => getTrendingShows(genreProfile, 20)),
         timedAsync('getSmartRecommendations', () => getSmartRecommendations(userId, 20)),
-        timedAsync('getUpcomingDays', () => getUpcomingDays(calendarDays, calendarTypes)),
+        timedAsync('getUpcomingDays', () => getUpcomingDays(calendarDays, calendarTypes, timezone)),
         timedAsync('getLibrarySizes', () => getLibrarySizes()),
-        timedAsync('getIncoming', () => fetchIncomingForDashboard()),
     ]);
     console.log(`[dashboard] parallel block: ${(performance.now() - tParallel).toFixed(0)}ms`);
 
@@ -76,8 +82,14 @@ export async function GET({ url, locals }) {
     let recentlyPlayedAlbums = [];
     try {
         // Recently played albums (by playback history)
+        // Count track plays per album from playback_history (deduplicated by 5-min buckets)
         recentlyPlayedAlbums = /** @type {any[]} */ (db.prepare(`
-            SELECT mc.id, mc.title, mc.poster_url, mc.play_count,
+            SELECT mc.id, mc.title, mc.poster_url,
+                   (SELECT COUNT(*) FROM (
+                       SELECT DISTINCT CAST(strftime('%s', ph2.timestamp) / 300 AS INTEGER) as tb
+                       FROM playback_history ph2
+                       WHERE ph2.media_id = mc.id AND ph2.user_id = ?
+                   )) as track_plays,
                    mp.id as artist_id, mp.title as artist_name, mp.poster_url as artist_poster, mp.slug as artist_slug,
                    MAX(ph.timestamp) as last_played
             FROM playback_history ph
@@ -89,12 +101,12 @@ export async function GET({ url, locals }) {
             GROUP BY mc.id
             ORDER BY last_played DESC
             LIMIT 20
-        `).all(userId)).map(a => ({
+        `).all(userId, userId)).map(a => ({
             href: `/music/${a.artist_slug || a.artist_id}`,
             title: a.title,
             subtitle: a.artist_name,
             poster_url: a.poster_url || a.artist_poster,
-            badge: `${a.play_count} plays`,
+            badge: `${a.track_plays} plays`,
             icon: '🎵',
             _id: a.id,
         }));
@@ -130,6 +142,52 @@ export async function GET({ url, locals }) {
         recentlyPlayedAlbums = recentlyPlayedAlbums.map(({ _id, ...rest }) => rest);
     } catch { /* music tables might not exist */ }
 
+    // Recently Watched Movies — last 20 movies with playback history
+    let recentlyWatchedMovies = [];
+    try {
+        recentlyWatchedMovies = /** @type {any[]} */ (db.prepare(`
+            SELECT mc.id, mc.title, mp.poster_url, mp.slug,
+                   MAX(ph.timestamp) as last_watched
+            FROM playback_history ph
+            JOIN media_children mc ON ph.media_id = mc.id
+            JOIN media_parents mp ON mc.parent_id = mp.id
+            WHERE mp.media_type = 'movie'
+              AND ph.user_id = ?
+              AND ph.completion_pct >= 75
+            GROUP BY mc.id
+            ORDER BY last_watched DESC
+            LIMIT 20
+        `).all(userId)).map(m => ({
+            href: `/movies/${m.slug || m.id}`,
+            title: m.title,
+            poster_url: m.poster_url,
+        }));
+    } catch { /* */ }
+
+    // Recently Watched TV — last 20 distinct shows with playback history
+    let recentlyWatchedTV = [];
+    try {
+        recentlyWatchedTV = /** @type {any[]} */ (db.prepare(`
+            SELECT mp.id, mp.title, mp.poster_url, mp.slug,
+                   MAX(ph.timestamp) as last_watched,
+                   mc.title as episode_title
+            FROM playback_history ph
+            JOIN media_children mc ON ph.media_id = mc.id
+            JOIN media_parents mp ON mc.parent_id = mp.id
+            WHERE mp.media_type = 'show'
+              AND ph.user_id = ?
+              AND ph.completion_pct >= 75
+            GROUP BY mp.id
+            ORDER BY last_watched DESC
+            LIMIT 20
+        `).all(userId)).map(s => ({
+            href: `/tv/${s.slug || s.id}`,
+            title: s.title,
+            subtitle: s.episode_title,
+            poster_url: s.poster_url,
+        }));
+    } catch { /* */ }
+
     console.log(`[dashboard] TOTAL: ${(performance.now() - t0).toFixed(0)}ms`);
 
     return json({
@@ -143,74 +201,8 @@ export async function GET({ url, locals }) {
         actorDeepDive,
         newAlbums,
         recentlyPlayedAlbums,
+        recentlyWatchedMovies,
+        recentlyWatchedTV,
         recentlyAdded,
-        incoming: incomingData?.items || [],
-        incomingSummary: incomingData?.summary || null,
-        arrHealth: incomingData?.health || null,
     });
-}
-
-/**
- * Fetch incoming/wanted data for the dashboard.
- * Calls the internal wanted API and builds arr health from the summary.
- */
-async function fetchIncomingForDashboard() {
-    try {
-        const settings = /** @type {any} */ (db.prepare(
-            `SELECT sonarr_url, sonarr_api_key, radarr_url, radarr_api_key, lidarr_url, lidarr_api_key FROM app_settings WHERE id = 1`
-        ).get());
-
-        // Check if any arr service is configured
-        const hasArr = (settings?.sonarr_api_key && settings?.sonarr_url) ||
-                       (settings?.radarr_api_key && settings?.radarr_url) ||
-                       (settings?.lidarr_api_key && settings?.lidarr_url);
-        if (!hasArr) return null;
-
-        // Fetch wanted data via internal HTTP call (reuses caching)
-        const baseUrl = `http://localhost:${process.env.PORT || 3000}`;
-        const apiKey = db.prepare('SELECT api_key FROM users WHERE is_admin = 1 LIMIT 1').get()?.api_key;
-        if (!apiKey) return null;
-
-        const res = await fetch(`${baseUrl}/api/arr/wanted`, {
-            headers: { 'Authorization': `Bearer ${apiKey}` },
-            signal: AbortSignal.timeout(20000),
-        });
-        if (!res.ok) return null;
-        const data = await res.json();
-
-        // Build arr health from summary
-        const health = {
-            services: [],
-            totalWanted: data.summary?.totalItems || 0,
-        };
-
-        // Per-service health
-        const serviceConfigs = [
-            { key: 'sonarr', name: 'Sonarr', color: '0.65 0.17 250', hasConfig: !!settings?.sonarr_api_key },
-            { key: 'radarr', name: 'Radarr', color: '0.72 0.18 40', hasConfig: !!settings?.radarr_api_key },
-            { key: 'lidarr', name: 'Lidarr', color: '0.70 0.17 145', hasConfig: !!settings?.lidarr_api_key },
-        ];
-
-        for (const svc of serviceConfigs) {
-            if (!svc.hasConfig) continue;
-            const wantedCount = data.summary?.byService?.[svc.key] || 0;
-            const failedCount = (data.items || []).filter(i => i.service === svc.key && i.reason === 'failed').length;
-            const queueCount = (data.items || []).filter(i => i.service === svc.key && i.reason === 'in_queue').length;
-
-            health.services.push({
-                key: svc.key,
-                name: svc.name,
-                color: svc.color,
-                wanted: wantedCount,
-                failed: failedCount,
-                queue: queueCount,
-                status: failedCount > 0 ? 'warning' : 'ok',
-            });
-        }
-
-        return { items: data.items || [], summary: data.summary, health };
-    } catch (e) {
-        console.error('[dashboard] incoming fetch failed:', e.message);
-        return null;
-    }
 }

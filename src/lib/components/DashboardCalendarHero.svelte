@@ -1,20 +1,17 @@
 <script>
     import { imgUrl } from "$lib/utils.js";
+    import MediaTypeFilter from "$lib/components/MediaTypeFilter.svelte";
+    import DashSection from '$lib/components/DashSection.svelte';
+    import MdiIcon from '$lib/components/MdiIcon.svelte';
+    import { mdiCalendar, mdiMovieOpen, mdiTelevision, mdiMusic } from '@mdi/js';
 
-    let { upcoming = [], onSettingsChange = () => {} } = $props();
+    let { upcoming = [], onSettingsChange = () => {}, maxPerDay = 2 } = $props();
 
     let calendarDays = $state(7);
     let activeTypes = $state(['movie', 'show', 'artist']);
     /** @type {Set<string>} */
     let expandedDays = $state(new Set());
-    const MAX_VISIBLE = 3;
-    const MAX_CARDS = 7;
-
-    const typeLabels = [
-        { key: 'show', label: 'TV', icon: '📺', colorVar: '--color-tv' },
-        { key: 'movie', label: 'Movies', icon: '🎬', colorVar: '--color-movies' },
-        { key: 'artist', label: 'Music', icon: '🎵', colorVar: '--color-music' },
-    ];
+    const MAX_VISIBLE = $derived(maxPerDay);
 
     let filteredDays = $derived(
         upcoming.map(day => ({
@@ -23,22 +20,10 @@
         }))
     );
 
-    /** Cap total cards across all days to MAX_CARDS */
-    let cappedDays = $derived.by(() => {
-        let total = 0;
-        return filteredDays.map(day => {
-            if (total >= MAX_CARDS) return { ...day, items: [] };
-            const remaining = MAX_CARDS - total;
-            const items = day.items.slice(0, remaining);
-            total += items.length;
-            return { ...day, items };
-        });
-    });
-
     let weekRows = $derived.by(() => {
         const rows = [];
-        for (let i = 0; i < cappedDays.length; i += 7) {
-            rows.push(cappedDays.slice(i, i + 7));
+        for (let i = 0; i < filteredDays.length; i += 7) {
+            rows.push(filteredDays.slice(i, i + 7));
         }
         return rows;
     });
@@ -49,21 +34,30 @@
         return `${weeks} weeks`;
     });
 
-    /** Pick the best poster from a day's items for the ambient glow */
-    function dayHeroImage(day) {
+    /** Pick the best poster from a day's items — returns raw URL */
+    function dayHeroPosterRaw(day) {
         const withPoster = day.items.filter(i => i.display_poster || i.poster_url);
         if (withPoster.length === 0) return '';
-        return imgUrl(withPoster[0].display_poster || withPoster[0].poster_url);
+        return withPoster[0].display_poster || withPoster[0].poster_url;
     }
 
-    function onTypeChange(type, checked) {
-        if (checked) {
-            activeTypes = [...activeTypes, type];
-        } else {
-            if (activeTypes.length > 1) {
-                activeTypes = activeTypes.filter(t => t !== type);
-            }
+    /** Same but proxied for inline CSS background-image */
+    function dayHeroImage(day) {
+        const raw = dayHeroPosterRaw(day);
+        return raw ? imgUrl(raw) : '';
+    }
+
+    /** First poster URL for DashSection glow */
+    let firstGlowSrc = $derived.by(() => {
+        for (const day of filteredDays) {
+            const src = dayHeroPosterRaw(day);
+            if (src) return src;
         }
+        return '';
+    });
+
+    function onTypesChanged(types) {
+        activeTypes = types;
         onSettingsChange({ calendarDays, calendarTypes: activeTypes });
     }
 
@@ -90,39 +84,14 @@
     }
 </script>
 
-<div class="hcal-outer">
-    <!-- Ambient glow from first poster -->
-    {#if cappedDays[0]?.items[0]}
-        {@const heroSrc = dayHeroImage(cappedDays[0])}
-        {#if heroSrc}
-            <div class="hcal-glow" style="background-image: url('{heroSrc}')"></div>
-        {/if}
-    {/if}
-
-    <div class="hcal-inner">
-        <!-- Header -->
-        <div class="hcal-header">
-            <div class="hcal-header-left">
-                <span class="hcal-icon">📅</span>
-                <h3 class="hcal-title">Upcoming · {rangeLabel}</h3>
-            </div>
-            <div class="hcal-header-right">
-                <form class="hcal-filter">
-                    {#each typeLabels as { key, label, icon, colorVar }}
-                        <input
-                            class="btn btn-xs hcal-filter-btn"
-                            type="checkbox"
-                            name="media-types"
-                            aria-label="{icon} {label}"
-                            checked={activeTypes.includes(key)}
-                            onchange={(e) => onTypeChange(key, e.target.checked)}
-                            style="--filter-color: oklch(var({colorVar})); {activeTypes.includes(key) ? `background: oklch(var(${colorVar}) / 0.18); color: oklch(var(${colorVar})); border-color: oklch(var(${colorVar}) / 0.5);` : `opacity: 0.35; border-color: oklch(var(${colorVar}) / 0.15);`}"
-                        />
-                    {/each}
-                </form>
-                <a href="/calendar" class="hcal-link">Calendar →</a>
-            </div>
-        </div>
+<DashSection title="Upcoming · {rangeLabel}" icon={mdiCalendar} glowSrc={firstGlowSrc}>
+    {#snippet headerLeft()}
+        <a href="/calendar" class="hcal-inline-link">Calendar →</a>
+        <button class="hcal-inline-btn" onclick={showMore}>Show more +</button>
+    {/snippet}
+    {#snippet headerRight()}
+        <MediaTypeFilter {activeTypes} onchange={onTypesChanged} />
+    {/snippet}
 
         <!-- Week rows -->
         {#each weekRows as week, wi}
@@ -161,7 +130,7 @@
                                                 />
                                             {:else}
                                                 <div class="hcal-no-poster">
-                                                    {item.media_type === 'movie' ? '🎬' : item.media_type === 'show' ? '📺' : '🎵'}
+                                                    {#if item.media_type === 'movie'}<MdiIcon icon={mdiMovieOpen} size={16} />{:else if item.media_type === 'show'}<MdiIcon icon={mdiTelevision} size={16} />{:else}<MdiIcon icon={mdiMusic} size={16} />{/if}
                                                 </div>
                                             {/if}
                                         </div>
@@ -192,95 +161,9 @@
             </div>
         {/each}
 
-        <!-- Show more -->
-        <button class="hcal-show-more" onclick={showMore}>
-            Show more +
-        </button>
-    </div>
-</div>
+</DashSection>
 
 <style>
-    /* ══════════════ OUTER HERO CARD ══════════════ */
-    .hcal-outer {
-        position: relative;
-        border-radius: 1rem;
-        overflow: hidden;
-        isolation: isolate;
-        margin-bottom: 1rem;
-    }
-    .hcal-glow {
-        position: absolute;
-        inset: 0;
-        background-size: cover;
-        background-position: center;
-        filter: blur(60px) saturate(1.5);
-        opacity: 0.15;
-        z-index: 0;
-        pointer-events: none;
-    }
-    .hcal-inner {
-        position: relative;
-        z-index: 1;
-        background: oklch(var(--b1) / 0.7);
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
-        border: 1px solid oklch(var(--bc) / 0.08);
-        border-radius: 1rem;
-        padding: 1rem 1.25rem 0.75rem;
-    }
-
-    /* ══════════════ HEADER ══════════════ */
-    .hcal-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 0.75rem;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-    }
-    .hcal-header-left {
-        display: flex;
-        align-items: center;
-        gap: 0.4rem;
-    }
-    .hcal-header-right {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
-    .hcal-icon { font-size: 0.9rem; opacity: 0.7; }
-    .hcal-title {
-        font-size: 0.9rem;
-        font-weight: 700;
-        color: oklch(var(--bc) / 0.9);
-        margin: 0;
-    }
-    .hcal-link {
-        font-size: 0.65rem;
-        font-weight: 600;
-        color: oklch(var(--p));
-        text-decoration: none;
-        padding: 0.2rem 0.6rem;
-        border-radius: 0.4rem;
-        border: 1px solid oklch(var(--p) / 0.2);
-        transition: all 0.15s;
-        white-space: nowrap;
-    }
-    .hcal-link:hover {
-        background: oklch(var(--p) / 0.1);
-        border-color: oklch(var(--p) / 0.4);
-    }
-
-    /* ══════════════ FILTER ══════════════ */
-    .hcal-filter {
-        display: flex;
-        gap: 0.25rem;
-        align-items: center;
-    }
-    .hcal-filter-btn {
-        transition: all 0.2s ease !important;
-    }
-
     /* ══════════════ DAY STRIP ══════════════ */
     .hcal-strip {
         display: flex;
@@ -318,8 +201,8 @@
         pointer-events: none;
     }
     .hcal-day.is-today {
-        border-color: oklch(var(--p) / 0.5);
-        box-shadow: 0 0 16px oklch(var(--p) / 0.12);
+        border-color: rgba(255, 255, 255, 0.45);
+        box-shadow: 0 0 16px rgba(255, 255, 255, 0.12);
     }
 
     /* Day header */
@@ -401,8 +284,12 @@
         overflow: hidden;
     }
     .hcal-item:hover {
-        background: oklch(var(--bc) / 0.06);
-        transform: translateY(-1px);
+        background: oklch(var(--bc) / 0.1);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px oklch(0 0 0 / 0.3);
+    }
+    .hcal-item:hover .hcal-item-title {
+        text-decoration: underline;
     }
 
     .hcal-item-poster {
@@ -469,29 +356,34 @@
     }
 
     /* ══════════════ SHOW MORE ══════════════ */
-    .hcal-show-more {
-        display: inline-block;
-        margin-top: 0.4rem;
-        padding: 0.2rem 0.7rem;
+    /* ══════════════ INLINE HEADER CONTROLS ══════════════ */
+    .hcal-inline-link,
+    .hcal-inline-btn {
         font-size: 0.65rem;
         font-weight: 600;
         color: oklch(var(--bc) / 0.4);
+        text-decoration: none;
         background: transparent;
-        border: 1px dashed oklch(var(--bc) / 0.1);
+        border: 1px dashed oklch(var(--bc) / 0.12);
         border-radius: 999px;
+        padding: 0.15rem 0.55rem;
         cursor: pointer;
         transition: all 0.15s;
+        white-space: nowrap;
     }
-    .hcal-show-more:hover {
+    .hcal-inline-btn {
+        margin-left: auto;
+    }
+    .hcal-inline-link:hover,
+    .hcal-inline-btn:hover {
         color: oklch(var(--p));
         border-color: oklch(var(--p) / 0.3);
-        background: oklch(var(--p) / 0.04);
+        background: oklch(var(--p) / 0.05);
     }
 
     @media (max-width: 767px) {
         .hcal-day { min-width: 110px; }
         .hcal-item-poster { width: 36px; height: 36px; }
         .hcal-item-poster.tall { height: 54px; }
-        .hcal-header { flex-direction: column; align-items: flex-start; }
     }
 </style>

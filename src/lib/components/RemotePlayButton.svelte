@@ -1,4 +1,6 @@
 <script>
+    import MdiIcon from '$lib/components/MdiIcon.svelte';
+    import { mdiTelevision, mdiWeb, mdiCellphone, mdiMonitor, mdiHome, mdiPlay, mdiSkipNextCircle, mdiPlaylistPlus, mdiChevronDown, mdiMagnify, mdiCheck, mdiClose } from '@mdi/js';
     /**
      * RemotePlayButton — "Play on [device]" with dropdown for Play Now / Play Next / Queue
      * Shows saved players from preferences, with a "Show All" to fetch live sessions.
@@ -151,12 +153,12 @@
     /** @param {any} player */
     function getPlayerIcon(player) {
         const c = player.client || "";
-        if (c.includes("TV")) return "📺";
-        if (c.includes("Web")) return "💻";
-        if (c.includes("Android") || c.includes("iOS")) return "📱";
-        if (c.includes("Desktop")) return "🖥";
-        if (c.includes("Home Assistant")) return "🏠";
-        return "🖥";
+        if (c.includes("TV")) return mdiTelevision;
+        if (c.includes("Web")) return mdiWeb;
+        if (c.includes("Android") || c.includes("iOS")) return mdiCellphone;
+        if (c.includes("Desktop")) return mdiMonitor;
+        if (c.includes("Home Assistant")) return mdiHome;
+        return mdiMonitor;
     }
 </script>
 
@@ -187,18 +189,11 @@
                 {#if sending}
                     <span class="loading loading-spinner loading-xs"></span>
                 {:else if feedback === "success"}
-                    ✓
+                    <MdiIcon icon={mdiCheck} size={14} />
                 {:else if feedback === "error"}
-                    ✕
+                    <MdiIcon icon={mdiClose} size={14} />
                 {:else}
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="h-4 w-4"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                    >
-                        <polygon points="5 3 19 12 5 21 5 3" />
-                    </svg>
+                    <MdiIcon icon={mdiPlay} size={16} />
                 {/if}
                 Play on {selectedSession?.deviceName || "Player"}
                 {#if selectedSession && !selectedSession.supportsMediaControl}
@@ -217,23 +212,14 @@
                 aria-label="Playback options"
                 onclick={toggleDropdown}
             >
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-3 w-3"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2.5"
-                >
-                    <polyline points="6 9 12 15 18 9" />
-                </svg>
+                <MdiIcon icon={mdiChevronDown} size={12} />
             </button>
             {#if showDropdown}
-                <!-- svelte-ignore a11y_no_static_element_interactions -->
-                <div
-                    class="fixed inset-0 z-[90]"
+                <button
+                    class="fixed inset-0 z-[90] bg-transparent border-none cursor-default"
+                    aria-label="Close dropdown"
                     onclick={() => (showDropdown = false)}
-                ></div>
+                ></button>
                 <ul
                     class="fixed menu bg-base-200 rounded-box z-[100] w-56 p-2 shadow-xl border border-base-300"
                     style="top: {dropdownPos.top}px; left: {dropdownPos.left}px"
@@ -243,21 +229,21 @@
                         <button
                             onclick={() => sendCommand("play")}
                             disabled={!selectedSession?.supportsMediaControl}
-                            >▶ Play Now</button
+                            ><MdiIcon icon={mdiPlay} size={14} /> Play Now</button
                         >
                     </li>
                     <li>
                         <button
                             onclick={() => sendCommand("play_next")}
                             disabled={!selectedSession?.supportsMediaControl}
-                            >⏭ Play Next</button
+                            ><MdiIcon icon={mdiSkipNextCircle} size={14} /> Play Next</button
                         >
                     </li>
                     <li>
                         <button
                             onclick={() => sendCommand("queue")}
                             disabled={!selectedSession?.supportsMediaControl}
-                            >📋 Add to Queue</button
+                            ><MdiIcon icon={mdiPlaylistPlus} size={14} /> Add to Queue</button
                         >
                     </li>
 
@@ -269,7 +255,7 @@
                                     player.deviceId}
                                 onclick={() => selectPlayer(player)}
                             >
-                                {getPlayerIcon(player)}
+                                <MdiIcon icon={getPlayerIcon(player)} size={16} />
                                 <span class="flex-1">{player.deviceName}</span>
                                 {#if player.supportsMediaControl}
                                     <span class="badge badge-success badge-xs"
@@ -296,7 +282,7 @@
                                         class="loading loading-spinner loading-xs"
                                     ></span>
                                 {/if}
-                                🔍 Show all players
+                                <MdiIcon icon={mdiMagnify} size={14} /> Show all players
                             </button>
                         </li>
                     {/if}

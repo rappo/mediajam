@@ -1,4 +1,6 @@
 <script>
+    import MdiIcon from '$lib/components/MdiIcon.svelte';
+    import { mdiTelevision, mdiMusic, mdiMovieOpen, mdiPause, mdiPlay, mdiSkipPrevious, mdiSkipNext, mdiStop, mdiChevronUp, mdiChevronDown } from '@mdi/js';
     /**
      * Global Now Playing bar — fixed bottom, shows on all pages when media is playing.
      * @type {{ remoteControlEnabled?: boolean }}
@@ -76,9 +78,9 @@
 
     /** @param {string} type */
     function getMediaIcon(type) {
-        if (type === "episode") return "📺";
-        if (type === "track") return "🎵";
-        return "🎬";
+        if (type === "episode") return mdiTelevision;
+        if (type === "track") return mdiMusic;
+        return mdiMovieOpen;
     }
 
     /**
@@ -115,26 +117,10 @@
                 title={minimized ? "Expand player" : "Minimize player"}
             >
                 {#if minimized}
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="h-3 w-3"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2.5"
-                        ><polyline points="18 15 12 9 6 15" /></svg
-                    >
+                    <MdiIcon icon={mdiChevronUp} size={12} />
                     <span class="text-xs ml-1">Now Playing</span>
                 {:else}
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="h-3 w-3"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2.5"
-                        ><polyline points="6 9 12 15 18 9" /></svg
-                    >
+                    <MdiIcon icon={mdiChevronDown} size={12} />
                 {/if}
             </button>
         </div>
@@ -166,7 +152,7 @@
                         <div
                             class="w-10 h-10 rounded-lg bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center text-xl"
                         >
-                            {getMediaIcon(session.media_type)}
+                            <MdiIcon icon={getMediaIcon(session.media_type)} size={22} />
                         </div>
                         {#if !session.is_paused}
                             <div
@@ -181,7 +167,7 @@
                             {session.title || "Unknown"}
                         </p>
                         <p class="text-xs text-base-content/50">
-                            {session.is_paused ? "⏸ Paused" : "▶ Playing"} · {formatTime(
+                            <MdiIcon icon={session.is_paused ? mdiPause : mdiPlay} size={12} /> {session.is_paused ? "Paused" : "Playing"} · {formatTime(
                                 session.progress_ticks,
                             )} / {formatTime(session.runtime_ticks)}
                         </p>
@@ -195,15 +181,7 @@
                                 title="Previous"
                                 onclick={() => sendCommand(session.id, "prev")}
                             >
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    class="h-4 w-4"
-                                    viewBox="0 0 24 24"
-                                    fill="currentColor"
-                                    ><path
-                                        d="M6 6h2v12H6zm3.5 6l8.5 6V6z"
-                                    /></svg
-                                >
+                                <MdiIcon icon={mdiSkipPrevious} size={16} />
                             </button>
                             {#if session.is_paused}
                                 <button
@@ -212,15 +190,7 @@
                                     onclick={() =>
                                         sendCommand(session.id, "unpause")}
                                 >
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        class="h-4 w-4"
-                                        viewBox="0 0 24 24"
-                                        fill="currentColor"
-                                        ><polygon
-                                            points="5 3 19 12 5 21 5 3"
-                                        /></svg
-                                    >
+                                    <MdiIcon icon={mdiPlay} size={16} />
                                 </button>
                             {:else}
                                 <button
@@ -229,23 +199,7 @@
                                     onclick={() =>
                                         sendCommand(session.id, "pause")}
                                 >
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        class="h-4 w-4"
-                                        viewBox="0 0 24 24"
-                                        fill="currentColor"
-                                        ><rect
-                                            x="6"
-                                            y="4"
-                                            width="4"
-                                            height="16"
-                                        /><rect
-                                            x="14"
-                                            y="4"
-                                            width="4"
-                                            height="16"
-                                        /></svg
-                                    >
+                                    <MdiIcon icon={mdiPause} size={16} />
                                 </button>
                             {/if}
                             <button
@@ -253,34 +207,14 @@
                                 title="Next"
                                 onclick={() => sendCommand(session.id, "next")}
                             >
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    class="h-4 w-4"
-                                    viewBox="0 0 24 24"
-                                    fill="currentColor"
-                                    ><path
-                                        d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"
-                                    /></svg
-                                >
+                                <MdiIcon icon={mdiSkipNext} size={16} />
                             </button>
                             <button
                                 class="btn btn-ghost btn-sm btn-square text-error/60 hover:text-error"
                                 title="Stop"
                                 onclick={() => sendCommand(session.id, "stop")}
                             >
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    class="h-4 w-4"
-                                    viewBox="0 0 24 24"
-                                    fill="currentColor"
-                                    ><rect
-                                        x="6"
-                                        y="6"
-                                        width="12"
-                                        height="12"
-                                        rx="1"
-                                    /></svg
-                                >
+                                <MdiIcon icon={mdiStop} size={16} />
                             </button>
                         </div>
                     {/if}

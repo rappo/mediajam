@@ -9,8 +9,10 @@
      */
     let { type, id, isFavorite = false, size = "1.4rem" } = $props();
 
+    // svelte-ignore state_referenced_locally
     let favorite = $state(isFavorite);
     let loading = $state(false);
+    // svelte-ignore state_referenced_locally
     let prevIsFavorite = isFavorite;
 
     // Sync from prop ONLY when the prop itself changes (not when loading changes)

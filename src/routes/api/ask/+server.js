@@ -82,6 +82,9 @@ CRITICAL RULES — violating these will produce errors:
 10. "unwatched" or "remaining" episodes = watch_status = 'unwatched' OR watch_status = 'in_progress'
 11. duration_consumed_seconds in playback_history IS already in seconds (no conversion needed).
 12. DEDUP RULE: playback_history may contain duplicate entries from different sources (Jellyfin + Trakt) for the SAME viewing event. When counting plays, ALWAYS deduplicate using: SELECT COUNT(*) FROM (SELECT DISTINCT media_id, CAST(strftime('%s', timestamp) / 43200 AS INTEGER) as time_bucket FROM playback_history GROUP BY media_id, time_bucket). The 43200 seconds = 12-hour window merges multi-source plays of the same item.
+13. premiere_date is an ISO date string (e.g. '2025-07-15') on media_children. For episodes, it's the air date. For movies, it's the theatrical release date. Use it for "when does X come out", "next episode", "upcoming" queries.
+14. "next", "upcoming", "coming out" = premiere_date >= date('now'). Filter to FUTURE dates only.
+15. This database only contains items IN the user's library or monitored by arr services. It does NOT have info about movies/shows that aren't tracked. If no results are found for a "when" question, say the item isn't in the library.
 
 Tables:
 
@@ -125,6 +128,8 @@ EXAMPLE QUERIES — FOLLOW THESE PATTERNS EXACTLY:
 -- Most watched artists: SELECT mp.title, SUM(mc.play_count) as plays FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.media_type = 'artist' GROUP BY mp.id ORDER BY plays DESC LIMIT 10
 -- Hours of music listened: SELECT ROUND(SUM(ph.duration_consumed_seconds) / 3600.0, 1) as hours FROM playback_history ph JOIN media_children mc ON ph.media_id = mc.id JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.media_type = 'artist'
 -- What is a movie about / tell me about X: SELECT mp.title, mp.release_year, mp.overview, mp.media_type FROM media_parents mp WHERE mp.title LIKE '%Ran%' LIMIT 5
+-- When does X come out / next episode / upcoming: SELECT mp.title, mc.title as episode_title, mc.season_number, mc.item_number, mc.premiere_date FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.title LIKE '%Game Changer%' AND mc.premiere_date >= date('now') ORDER BY mc.premiere_date ASC LIMIT 5
+-- Upcoming episodes this week: SELECT mp.title, mc.title as episode_title, mc.season_number, mc.item_number, mc.premiere_date FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mc.premiere_date BETWEEN date('now') AND date('now', '+7 days') ORDER BY mc.premiere_date ASC LIMIT 20
 
 COMMON MISTAKES — NEVER DO THESE:
 ❌ WRONG: ... JOIN persons p ON pc.person_id = p.id ... (using 'pc' before defining it)
@@ -844,6 +849,7 @@ ${historyContext ? `\nConversation context (use this to resolve pronouns like "t
             try {
                 const dataPreview = JSON.stringify(sliced.slice(0, 15), null, 2);
                 const summaryPrompt = `The user asked: "${question}"
+Today's date is ${today}.
 
 The database query returned ${results.length} result(s)${results.length > 15 ? ` (showing first 15)` : ''}. Here is the data (JSON):
 ${dataPreview}
@@ -853,6 +859,7 @@ CRITICAL RULES:
 - If the data shows titles, LIST them by name. Do not say "I don't have information" when the data clearly contains it.
 - If the data shows a count, state the exact number.
 - If a COUNT(*) is 28, that means 28 items were found — say that, don't say "none" or "zero".
+- If the user asked about "next" or "upcoming" and the dates in the data are in the past (before ${today}), say the data only shows past releases and there's no upcoming entry tracked.
 - Be concise (2-3 sentences max). Be conversational. Do NOT mention SQL or databases.`;
 
                 summary = await generate(summaryPrompt, {

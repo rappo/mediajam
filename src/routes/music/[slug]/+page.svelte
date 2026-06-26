@@ -1,4 +1,6 @@
 <script>
+    import MdiIcon from "$lib/components/MdiIcon.svelte";
+    import { mdiCheckCircle, mdiCloseCircle, mdiSync, mdiEyeOff, mdiAlbum, mdiDownload, mdiMerge, mdiDelete, mdiHeadphones, mdiMusic, mdiAccountGroup, mdiAccount, mdiMagnify, mdiPlusCircle, mdiAlert, mdiViewList, mdiViewGrid, mdiInformation, mdiChevronRight } from '@mdi/js';
     import { imgUrl } from "$lib/utils.js";
     import { invalidateAll, goto } from "$app/navigation";
     import ExternalLinks from "$lib/components/ExternalLinks.svelte";
@@ -8,6 +10,7 @@
     import CollectionStatusBanner from "$lib/components/CollectionStatusBanner.svelte";
     import InteractiveSearchDialog from "$lib/components/InteractiveSearchDialog.svelte";
     import RemotePlayButton from "$lib/components/RemotePlayButton.svelte";
+    import { playerStatus, quickPlay } from '$lib/stores/player.js';
     import { page } from "$app/stores";
     let { data } = $props();
     let expandedAlbum = $state(null);
@@ -69,6 +72,7 @@
     // *arr state
     let arrLoading = $state("");
     let arrError = $state("");
+    // svelte-ignore state_referenced_locally
     let arrMonitored = $state(!!data.artist.arr_monitored);
 
     async function onArrAdded() {
@@ -483,6 +487,9 @@
             favoriteType="media"
             favoriteId={data.artist.id}
             heartBorderEnabled={!!data.settings?.heartBorderMusic}
+            onPlay={data.artist.jellyfin_id && $playerStatus?.status !== 'offline' ? () => quickPlay(data.artist.jellyfin_id) : null}
+            playerStatus={$playerStatus?.status}
+            playerDeviceName={$playerStatus?.deviceName}
             stats={[
                 { label: 'albums', value: data.albums.length },
                 { label: data.artist.total_plays === 1 ? 'play' : 'plays', value: data.artist.total_plays },
@@ -499,7 +506,7 @@
                 mediaType: 'artist'
             }}
             extraBadges={[
-                ...(!data.artist.jellyfin_id ? [{ label: '📡 External', cls: 'badge-warning' }] : []),
+                ...(!data.artist.jellyfin_id ? [{ label: 'External', cls: 'badge-warning', icon: 'satellite-uplink' }] : []),
             ]}
         >
             {#snippet actions()}
@@ -514,18 +521,18 @@
                     {#if syncing}
                         <span class="loading loading-spinner loading-xs"></span> Syncing…
                     {:else if syncStatus === 'success'}
-                        ✅ Synced
+                        <MdiIcon icon={mdiCheckCircle} size={14} /> Synced
                     {:else if syncStatus === 'failed'}
-                        ❌ {syncError || 'Failed'}
+                        <MdiIcon icon={mdiCloseCircle} size={14} /> {syncError || 'Failed'}
                     {:else}
-                        🔄 {data.artist.jellyfin_id ? 'Update from Jellyfin' : 'Update from MusicBrainz'}
+                        <MdiIcon icon={mdiSync} size={14} /> {data.artist.jellyfin_id ? 'Update from Jellyfin' : 'Update from MusicBrainz'}
                     {/if}
                 </button>
                 {#if data.artist.lidarr_id}
                     <InteractiveSearchDialog
                         service="lidarr"
                         mediaParentId={data.artist.id}
-                        title="{data.artist.title}"
+                        title={data.artist.title}
                     />
                     <button
                         class="btn btn-xs btn-ghost gap-1"
@@ -582,7 +589,7 @@
                         onclick={() => showHiddenAlbums = !showHiddenAlbums}
                         title="{showHiddenAlbums ? 'Hide' : 'Show'} {hiddenCount} hidden album{hiddenCount === 1 ? '' : 's'}"
                     >
-                        🙈 {hiddenCount} hidden
+                        <MdiIcon icon={mdiEyeOff} size={14} /> {hiddenCount} hidden
                         <input type="checkbox" class="toggle toggle-xs" checked={showHiddenAlbums} />
                     </button>
                 {/if}
@@ -594,30 +601,7 @@
                     onclick={() => (viewMode = "list")}
                     title="List view"
                 >
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="h-3.5 w-3.5"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        ><line x1="8" y1="6" x2="21" y2="6" /><line
-                            x1="8"
-                            y1="12"
-                            x2="21"
-                            y2="12"
-                        /><line x1="8" y1="18" x2="21" y2="18" /><line
-                            x1="3"
-                            y1="6"
-                            x2="3.01"
-                            y2="6"
-                        /><line x1="3" y1="12" x2="3.01" y2="12" /><line
-                            x1="3"
-                            y1="18"
-                            x2="3.01"
-                            y2="18"
-                        /></svg
-                    >
+                    <MdiIcon icon={mdiViewList} size={14} />
                 </button>
                 <button
                     class="join-item btn btn-xs"
@@ -625,25 +609,7 @@
                     onclick={() => (viewMode = "grid")}
                     title="Grid view"
                 >
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="h-3.5 w-3.5"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        ><rect x="3" y="3" width="7" height="7" /><rect
-                            x="14"
-                            y="3"
-                            width="7"
-                            height="7"
-                        /><rect x="3" y="14" width="7" height="7" /><rect
-                            x="14"
-                            y="14"
-                            width="7"
-                            height="7"
-                        /></svg
-                    >
+                    <MdiIcon icon={mdiViewGrid} size={14} />
                 </button>
             </div>
         </div>
@@ -651,7 +617,7 @@
         {#if data.albums.length === 0}
             {#if !data.artist.jellyfin_id && data.artist.collection_status === 'wanted'}
                 <div class="alert alert-info bg-info/10 border-info/20 text-sm py-6 text-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0 opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    <MdiIcon icon={mdiInformation} size={20} class="shrink-0 opacity-60" />
                     <div>
                         <p class="font-semibold">No local files</p>
                         <p class="opacity-60">This artist is monitored in Lidarr but no music has been downloaded yet.</p>
@@ -681,7 +647,7 @@
                                 />
                             {:else}
                                 <div class="album-tile-placeholder">
-                                    <span class="text-4xl opacity-20">💿</span>
+                                    <span class="text-4xl opacity-20"><MdiIcon icon={mdiAlbum} size={36} /></span>
                                 </div>
                             {/if}
                             <div class="album-tile-overlay">
@@ -702,7 +668,7 @@
                                 {#if lidarrDownloaded.has(album.musicbrainz_id)}
                                     <span class="badge badge-success badge-sm gap-0.5 shadow-md">✓</span>
                                 {:else}
-                                    <span class="badge badge-error badge-sm gap-0.5 shadow-md">⬇</span>
+                                    <span class="badge badge-error badge-sm gap-0.5 shadow-md"><MdiIcon icon={mdiDownload} size={12} /></span>
                                 {/if}
                             </div>
                             <!-- Download button overlay -->
@@ -740,7 +706,7 @@
                                 />
                             {:else}
                                 <div class="album-tile-placeholder">
-                                    <span class="text-4xl opacity-20">💿</span>
+                                    <span class="text-4xl opacity-20"><MdiIcon icon={mdiAlbum} size={36} /></span>
                                 </div>
                             {/if}
                             <div class="album-tile-overlay">
@@ -762,12 +728,12 @@
                                         class="btn btn-xs btn-circle btn-ghost bg-base-300/80"
                                         title="Merge into another album"
                                         onclick={(e) => { e.preventDefault(); e.stopPropagation(); mergeAlbum(album.id, album.title); }}
-                                    >🔀</button>
+                                    ><MdiIcon icon={mdiMerge} size={14} /></button>
                                     <button
                                         class="btn btn-xs btn-circle btn-ghost bg-base-300/80"
                                         title="Delete this album"
                                         onclick={(e) => { e.preventDefault(); e.stopPropagation(); deleteAlbum(album.id, album.title); }}
-                                    >🗑</button>
+                                    ><MdiIcon icon={mdiDelete} size={14} /></button>
                                 </div>
                                 <!-- Download badge + overlay for no-file local albums in Lidarr -->
                                 {#if data.artist.lidarr_id && album.musicbrainz_id}
@@ -775,7 +741,7 @@
                                         {#if lidarrDownloaded.has(album.musicbrainz_id)}
                                             <span class="badge badge-success badge-sm gap-0.5 shadow-md">✓</span>
                                         {:else}
-                                            <span class="badge badge-error badge-sm gap-0.5 shadow-md">⬇</span>
+                                            <span class="badge badge-error badge-sm gap-0.5 shadow-md"><MdiIcon icon={mdiDownload} size={12} /></span>
                                         {/if}
                                     </div>
                                     <div class="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -790,7 +756,7 @@
                                                 {#if lidarrDownloading === album.musicbrainz_id}
                                                     <span class="loading loading-spinner loading-xs"></span>
                                                 {:else}
-                                                    ⬇
+                                                    <MdiIcon icon={mdiDownload} size={14} />
                                                 {/if}
                                                 Download
                                             </button>
@@ -823,7 +789,7 @@
                                 <div
                                     class="w-16 h-16 rounded-lg bg-base-300 flex items-center justify-center shrink-0"
                                 >
-                                    <span class="text-2xl opacity-30">💿</span>
+                                    <span class="text-2xl opacity-30"><MdiIcon icon={mdiAlbum} size={28} /></span>
                                 </div>
                             {/if}
                             <div class="flex-1 min-w-0">
@@ -841,12 +807,12 @@
                                         class="btn btn-xs btn-ghost"
                                         title="Merge into another album"
                                         onclick={(e) => { e.preventDefault(); e.stopPropagation(); mergeAlbum(album.id, album.title); }}
-                                    >🔀</button>
+                                    ><MdiIcon icon={mdiMerge} size={14} /></button>
                                     <button
                                         class="btn btn-xs btn-ghost"
                                         title="Delete this album"
                                         onclick={(e) => { e.preventDefault(); e.stopPropagation(); deleteAlbum(album.id, album.title); }}
-                                    >🗑</button>
+                                    ><MdiIcon icon={mdiDelete} size={14} /></button>
                                 </div>
                             {/if}
                             <div class="flex items-center gap-3 shrink-0">
@@ -855,15 +821,7 @@
                                         >{album.play_count} plays</span
                                     >
                                 {/if}
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    class="h-4 w-4 text-base-content/30"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    ><polyline points="9 18 15 12 9 6" /></svg
-                                >
+                                <MdiIcon icon={mdiChevronRight} size={16} class="text-base-content/30" />
                             </div>
                         </div>
                     </a>
@@ -946,7 +904,7 @@
     <!-- Listening History -->
     {#if data.listeningHistory && data.listeningHistory.length > 0}
         <div class="space-y-3">
-            <h2 class="text-xl font-bold">🎧 Listening History</h2>
+            <h2 class="text-xl font-bold"><MdiIcon icon={mdiHeadphones} size={20} /> Listening History</h2>
             <div class="listening-history">
                 {#each data.listeningHistory as entry}
                     <a
@@ -957,7 +915,7 @@
                             {#if entry.album_art}
                                 <img src={imgUrl(entry.album_art)} alt="" loading="lazy" />
                             {:else}
-                                <div class="history-art-fallback">🎵</div>
+                                <div class="history-art-fallback"><MdiIcon icon={mdiMusic} size={14} /></div>
                             {/if}
                         </div>
                         <div class="history-info">
@@ -978,7 +936,7 @@
         <div class="card bg-base-200/50 border border-base-300">
             <div class="card-body">
                 <div class="flex items-center justify-between">
-                    <h2 class="card-title text-lg">🎸 Members & Credits</h2>
+                    <h2 class="card-title text-lg"><MdiIcon icon={mdiAccountGroup} size={20} class="text-accent" /> Members & Credits</h2>
                     {#if data.artist.musicbrainz_id}
                         <button
                             class="btn btn-ghost btn-xs gap-1"
@@ -989,7 +947,7 @@
                             {#if syncingMembers}
                                 <span class="loading loading-spinner loading-xs"></span> Syncing…
                             {:else}
-                                🔄 Sync Members
+                                <MdiIcon icon={mdiSync} size={14} /> Sync Members
                             {/if}
                         </button>
                     {/if}
@@ -1020,9 +978,9 @@
                                     />
                                 {:else}
                                     <div
-                                        class="w-20 h-20 rounded-full bg-base-300 flex items-center justify-center text-2xl"
+                                        class="w-20 h-20 rounded-full bg-base-300 flex items-center justify-center"
                                     >
-                                        👤
+                                        <MdiIcon icon={mdiAccount} size={28} />
                                     </div>
                                 {/if}
                                 <span
@@ -1064,9 +1022,9 @@
                                     />
                                 {:else}
                                     <div
-                                        class="w-6 h-6 rounded-full bg-base-300 flex items-center justify-center text-xs"
+                                        class="w-6 h-6 rounded-full bg-base-300 flex items-center justify-center"
                                     >
-                                        👤
+                                        <MdiIcon icon={mdiAccount} size={14} />
                                     </div>
                                 {/if}
                                 <span
@@ -1101,7 +1059,7 @@
             class="btn btn-outline btn-sm gap-2 w-full"
             onclick={loadDiscovery}
         >
-            🔍 Discover Full Discography
+            <MdiIcon icon={mdiMagnify} size={16} /> Discover Full Discography
         </button>
     {:else if discoveryLoading}
         <div class="flex items-center justify-center gap-2 py-8">
@@ -1114,7 +1072,7 @@
         <div class="space-y-4">
             <div class="flex flex-wrap items-center justify-between gap-2">
                 <h2 class="text-xl font-bold flex items-center gap-2">
-                    🔍 Discography Discovery
+                    <MdiIcon icon={mdiMagnify} size={18} /> Discography Discovery
                     <span class="badge badge-sm badge-ghost">{filteredDiscovery.length} not in library</span>
                 </h2>
                 <div class="flex items-center gap-2">
@@ -1155,9 +1113,9 @@
                             {#if addingToArr === 'lidarr'}
                                 <span class="loading loading-spinner loading-xs"></span>
                             {:else if addedToArr.has('lidarr')}
-                                ✅ Added
+                                <MdiIcon icon={mdiCheckCircle} size={12} /> Added
                             {:else}
-                                ➕ Lidarr
+                                <MdiIcon icon={mdiPlusCircle} size={12} /> Lidarr
                             {/if}
                         </button>
                     {/if}
@@ -1192,7 +1150,7 @@
                                     onerror={(e) => { e.target.style.display = 'none'; e.target.nextElementSibling.style.display = 'flex'; }}
                                 />
                                 <div class="discovery-tile-placeholder" style="display:none">
-                                    <span class="text-3xl opacity-20">💿</span>
+                                    <span class="text-3xl opacity-20"><MdiIcon icon={mdiAlbum} size={32} /></span>
                                 </div>
                             {/if}
                             <div class="discovery-tile-overlay">
@@ -1217,9 +1175,9 @@
                                     {#if discDownloading === item.mbid}
                                         <span class="loading loading-spinner loading-xs"></span>
                                     {:else if discDownloaded.has(item.mbid)}
-                                        ✅
+                                        <MdiIcon icon={mdiCheckCircle} size={14} />
                                     {:else}
-                                        ⬇️
+                                        <MdiIcon icon={mdiDownload} size={14} />
                                     {/if}
                                 </button>
                             {/if}
@@ -1239,7 +1197,7 @@
                                     onerror={(e) => { e.target.style.display = 'none'; e.target.nextElementSibling.style.display = 'flex'; }}
                                 />
                                 <div class="discovery-tile-placeholder" style="display:none">
-                                    <span class="text-3xl opacity-20">💿</span>
+                                    <span class="text-3xl opacity-20"><MdiIcon icon={mdiAlbum} size={32} /></span>
                                 </div>
                                 <div class="discovery-tile-overlay">
                                     <div class="flex items-center gap-1">
@@ -1358,7 +1316,7 @@
             <p class="py-4 text-base-content/70">
                 This will remove this artist and all its albums, play history, and ratings.
                 {#if data.artist.jellyfin_id}
-                    <br /><span class="text-warning text-sm">⚠️ This item is in Jellyfin and will reappear on the next sync.</span>
+                    <br /><span class="text-warning text-sm"><MdiIcon icon={mdiAlert} size={14} /> This item is in Jellyfin and will reappear on the next sync.</span>
                 {/if}
             </p>
             <div class="modal-action">
@@ -1371,6 +1329,8 @@
                 </button>
             </div>
         </div>
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
         <div class="modal-backdrop" onclick={() => (showDeleteConfirm = false)}></div>
     </div>
 {/if}

@@ -33,7 +33,8 @@ export function load({ locals }) {
             heartBorderMovies: settings?.heart_border_movies !== 0,
             heartBorderShows: settings?.heart_border_shows !== 0,
             heartBorderMusic: settings?.heart_border_music !== 0,
-            heartBorderPeople: settings?.heart_border_people !== 0
+            heartBorderPeople: settings?.heart_border_people !== 0,
+            calendarMaxPerDay: settings?.calendar_max_per_day ?? 2,
         },
         syncState: {
             status: syncState?.status || 'idle',

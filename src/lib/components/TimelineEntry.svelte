@@ -1,6 +1,8 @@
 <script>
     import { imgUrl } from "$lib/utils.js";
     import ServiceIcon from "$lib/components/ServiceIcon.svelte";
+    import MdiIcon from '$lib/components/MdiIcon.svelte';
+    import { mdiTelevision, mdiMusic, mdiMovieOpen, mdiCircle, mdiCircleOutline, mdiMusicOff, mdiMovieOpenOff, mdiTelevisionOff, mdiChevronRight } from '@mdi/js';
 
     /** @type {{ entry: any, jellyfinUrl?: string, albumGroups?: Array<{albumTitle: string, albumArtUrl: string|null, albumId: number|null, tracks: any[]}> | null }} */
     let { entry, jellyfinUrl = "", albumGroups = null } = $props();
@@ -73,9 +75,9 @@
 
     /** @param {string} type */
     function getMediaIcon(type) {
-        if (type === "show") return "📺";
-        if (type === "artist") return "🎵";
-        return "🎬";
+        if (type === "show") return mdiTelevision;
+        if (type === "artist") return mdiMusic;
+        return mdiMovieOpen;
     }
 
     /** @param {string} source */
@@ -150,16 +152,16 @@
         return "";
     }
 
-    const posterUrl = getPosterUrl(entry);
-    const link = getLink(entry);
-    const title = getTitle(entry);
-    const isExternal = entry.collection_status === "external";
+    const posterUrl = $derived(getPosterUrl(entry));
+    const link = $derived(getLink(entry));
+    const title = $derived(getTitle(entry));
+    const isExternal = $derived(entry.collection_status === "external");
 
     // Is this a movie or TV entry? -> larger poster
-    const isVideoMedia =
-        entry.media_type === "movie" || entry.media_type === "show";
+    const isVideoMedia = $derived(
+        entry.media_type === "movie" || entry.media_type === "show");
     // Is this an artist group with album sub-groups?
-    const isGroup = albumGroups && albumGroups.length > 0;
+    const isGroup = $derived(albumGroups && albumGroups.length > 0);
 </script>
 
 {#snippet sourceBadge(src)}
@@ -176,23 +178,9 @@
                 class="text-white"
             />
         {:else if src === "webhook"}
-            <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="w-2.5 h-2.5 text-white"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="3"><circle cx="12" cy="12" r="4" /></svg
-            >
+            <MdiIcon icon={mdiCircle} size={10} />
         {:else}
-            <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="w-2.5 h-2.5 text-white"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"><circle cx="12" cy="12" r="10" /></svg
-            >
+            <MdiIcon icon={mdiCircleOutline} size={10} />
         {/if}
     </span>
 {/snippet}
@@ -200,63 +188,17 @@
 {#snippet externalBadge(mediaType)}
     <span
         class="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full bg-warning/80"
-        title="Not in library"
+        title="Not downloaded"
     >
         {#if mediaType === "artist"}
-            <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="w-2.5 h-2.5 text-warning-content"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                ><line x1="2" y1="2" x2="22" y2="22" /><path
-                    d="M9 18V5l12-2v13"
-                /><circle cx="6" cy="18" r="3" /><circle
-                    cx="18"
-                    cy="16"
-                    r="3"
-                /></svg
-            >
+            <MdiIcon icon={mdiMusicOff} size={10} />
         {:else if mediaType === "movie"}
-            <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="w-2.5 h-2.5 text-warning-content"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                ><line x1="2" y1="2" x2="22" y2="22" /><rect
-                    x="2"
-                    y="4"
-                    width="20"
-                    height="16"
-                    rx="2"
-                /><path d="M7 4v4l-3-2v8l3-2v4" /></svg
-            >
+            <MdiIcon icon={mdiMovieOpenOff} size={10} />
         {:else}
-            <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="w-2.5 h-2.5 text-warning-content"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.5"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                ><line x1="2" y1="2" x2="22" y2="22" /><rect
-                    x="2"
-                    y="6"
-                    width="20"
-                    height="14"
-                    rx="2"
-                /><path d="M7 2l5 5 5-5" /></svg
-            >
+            <MdiIcon icon={mdiTelevisionOff} size={10} />
         {/if}
+
+
     </span>
 {/snippet}
 
@@ -277,7 +219,7 @@
                     class="w-10 h-10 rounded-lg object-cover shadow-sm shrink-0"
                 />
             {:else}
-                <div class="w-10 h-10 rounded-lg bg-base-300 flex items-center justify-center text-lg shrink-0">🎵</div>
+                <div class="w-10 h-10 rounded-lg bg-base-300 flex items-center justify-center text-lg shrink-0"><MdiIcon icon={mdiMusic} size={20} /></div>
             {/if}
             <div class="flex-1 min-w-0">
                 {#if artistLink}
@@ -297,26 +239,24 @@
             {#each albumGroups as albumGroup}
                 {@const albumLink = entry.parent_id && albumGroup.albumId ? `/music/${entry.parent_id}/${albumGroup.albumId}` : null}
                 <div class="rounded-lg bg-base-300/20 overflow-hidden">
-                    <!-- Album header (if multiple albums or multiple tracks) -->
-                    {#if albumGroups.length > 1 || albumGroup.tracks.length > 1}
-                        <div class="flex items-center gap-2.5 px-2.5 py-1.5">
-                            {#if albumGroup.albumArtUrl && albumGroups.length > 1}
-                                <img
-                                    src={imgUrl(albumGroup.albumArtUrl, 80)}
-                                    alt=""
-                                    class="w-9 h-9 rounded object-cover shadow-sm shrink-0"
-                                />
-                            {/if}
-                            {#if albumLink}
-                                <a href={albumLink} class="text-xs font-medium text-base-content/60 hover:text-primary transition-colors truncate">
-                                    {albumGroup.albumTitle}
-                                </a>
-                            {:else}
-                                <span class="text-xs font-medium text-base-content/60 truncate">{albumGroup.albumTitle}</span>
-                            {/if}
-                            <span class="text-[10px] text-base-content/30 shrink-0">{albumGroup.tracks.length} {albumGroup.tracks.length === 1 ? 'track' : 'tracks'}</span>
-                        </div>
-                    {/if}
+                    <!-- Album header -->
+                    <div class="flex items-center gap-2.5 px-2.5 py-1.5">
+                        {#if albumGroup.albumArtUrl && albumGroups.length > 1}
+                            <img
+                                src={imgUrl(albumGroup.albumArtUrl, 80)}
+                                alt=""
+                                class="w-9 h-9 rounded object-cover shadow-sm shrink-0"
+                            />
+                        {/if}
+                        {#if albumLink}
+                            <a href={albumLink} class="text-xs font-medium text-base-content/60 hover:text-primary transition-colors truncate">
+                                {albumGroup.albumTitle}
+                            </a>
+                        {:else}
+                            <span class="text-xs font-medium text-base-content/60 truncate">{albumGroup.albumTitle}</span>
+                        {/if}
+                        <span class="text-[10px] text-base-content/30 shrink-0">{albumGroup.tracks.length} {albumGroup.tracks.length === 1 ? 'track' : 'tracks'}</span>
+                    </div>
 
                     <!-- Track list -->
                     <div class="space-y-0">
@@ -329,9 +269,6 @@
                                         <span class="text-base-content/30 ml-1">{runtime}</span>
                                     {/if}
                                 </span>
-                                <div class="shrink-0">
-                                    {@render sourceBadge(track.source)}
-                                </div>
                             </div>
                         {/each}
                     </div>
@@ -361,7 +298,7 @@
                         ? 'text-2xl'
                         : 'text-sm'}"
                 >
-                    {getMediaIcon(entry.media_type)}
+                    <MdiIcon icon={getMediaIcon(entry.media_type)} size={isVideoMedia ? 28 : 14} />
                 </div>
             {/if}
         </div>
@@ -396,30 +333,18 @@
 
         <!-- Badges + timestamp — right side -->
         <div class="flex-shrink-0 flex items-center gap-2">
-            <div class="avatar-group -space-x-2">
-                <div class="avatar placeholder">
-                    {@render sourceBadge(entry.source)}
-                </div>
-                {#if isExternal}
+            {#if isExternal}
+                <div class="avatar-group -space-x-2">
                     <div class="avatar placeholder">
                         {@render externalBadge(entry.media_type)}
                     </div>
-                {/if}
-            </div>
+                </div>
+            {/if}
             <span class="text-xs text-base-content/40 w-16 text-right"
                 >{timeAgo(entry.timestamp)}</span
             >
             {#if link}
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-3 w-3 text-base-content/15 group-hover:text-primary/50 transition-colors"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                >
-                    <polyline points="9 18 15 12 9 6" />
-                </svg>
+                <MdiIcon icon={mdiChevronRight} size={12} />
             {/if}
         </div>
     {/snippet}

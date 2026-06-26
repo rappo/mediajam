@@ -3,7 +3,7 @@ import { error, redirect } from '@sveltejs/kit';
 import { checkJellyfinFavorite } from '$lib/server/jellyfin-favorites.js';
 import { resolveBackdrop } from '$lib/server/backdrop.js';
 import { tmdbFetch, getTmdbKey } from '$lib/server/tmdb.js';
-import { slugify, ensureUniqueSlug } from '$lib/server/slugify.js';
+import { slugify, ensureUniqueSlug, resolveSlug } from '$lib/server/slugify.js';
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ params, locals }) {
@@ -27,8 +27,15 @@ export async function load({ params, locals }) {
         throw redirect(301, `/movies/${slug}`);
     } else {
         const row = /** @type {any} */ (db.prepare('SELECT id FROM media_parents WHERE slug = ? AND media_type = \'movie\'').get(paramSlug));
-        if (!row) throw error(404, 'Movie not found');
-        movieId = row.id;
+        if (row) {
+            movieId = row.id;
+        } else {
+            // Fuzzy fallback: try title+year matching for client-generated slugs
+            const resolved = resolveSlug(db, paramSlug, 'movie', '/movies');
+            if (resolved?.redirect) throw redirect(301, resolved.redirect);
+            if (resolved) movieId = resolved.id;
+            else throw error(404, 'Movie not found');
+        }
     }
 
     // Movie parent + child info

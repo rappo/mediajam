@@ -21,9 +21,11 @@ services:
       - PORT=7331
       - HOST=0.0.0.0
       - ORIGIN=http://192.168.1.50:7331
+      - NODE_OPTIONS=--max-old-space-size=384
       - BODY_SIZE_LIMIT=Infinity
       - TZ=America/New_York
     restart: unless-stopped
+    mem_limit: 512m
     networks:
       - media-network
       - infra-bridge

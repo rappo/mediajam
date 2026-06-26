@@ -1,4 +1,6 @@
 <script>
+    import MdiIcon from "$lib/components/MdiIcon.svelte";
+    import { mdiCheckCircle, mdiCloseCircle, mdiSync, mdiMovieOpen, mdiTelevision, mdiMusic, mdiLightbulb, mdiMagnify, mdiViewList, mdiImage, mdiPalette, mdiEyeOffOutline, mdiTimerSand, mdiChevronDown, mdiChevronUp, mdiViewGrid, mdiStar, mdiDownload, mdiCheck } from '@mdi/js';
     import ArrAddDialog from "$lib/components/ArrAddDialog.svelte";
     import ExternalLinks from "$lib/components/ExternalLinks.svelte";
     import FavoriteButton from "$lib/components/FavoriteButton.svelte";
@@ -31,9 +33,9 @@
     }
 
     function watchIcon(status) {
-        if (status === "watched") return "✅";
-        if (status === "in_progress") return "⏳";
-        return "🙈";
+        if (status === "watched") return "watched";
+        if (status === "in_progress") return "progress";
+        return "unwatched";
     }
 
     /**
@@ -57,8 +59,17 @@
             // Modifiers
             if (credit.upcoming_count > 0) modifiers += ' poster-airing';
             if (credit.missing_count > 0) modifiers += ' poster-missing';
+        } else if (credit.media_type === 'artist') {
+            // Music: "unwatched" doesn't apply — either listened or collected
+            if (credit.play_count > 0) base = 'poster-watched';
+            else if (credit.jellyfin_id) base = 'poster-watched'; // in library = green
+            // Only show missing border if explicitly wanted but not collected
+            if (!credit.jellyfin_id && credit.collection_status === 'wanted') {
+                base = 'poster-unwatched';
+                modifiers += ' poster-missing';
+            }
         } else {
-            // Movies (& music): use child record watch_status/play_count
+            // Movies: use child record watch_status/play_count
             const ws = credit.watch_status;
             if (ws === 'watched' || credit.play_count > 0) base = 'poster-watched';
             else if (ws === 'in_progress') base = 'poster-progress';
@@ -75,16 +86,21 @@
     function mediaWatchIcon(credit) {
         if (credit.media_type === 'show') {
             if (credit.total_episodes > 0 && credit.watched_count === credit.total_episodes)
-                return '✅';
+                return 'watched';
             if (credit.watched_count > 0 || credit.progress_count > 0)
-                return '⏳';
-            if (credit.jellyfin_id) return '🙈';
+                return 'progress';
+            if (credit.jellyfin_id) return 'unwatched';
+            return '';
+        }
+        if (credit.media_type === 'artist') {
+            // Music: no "unwatched" concept
+            if (credit.play_count > 0) return 'watched';
             return '';
         }
         const ws = credit.watch_status;
-        if (ws === 'watched' || credit.play_count > 0) return '✅';
-        if (ws === 'in_progress') return '⏳';
-        if (credit.jellyfin_id) return '🙈';
+        if (ws === 'watched' || credit.play_count > 0) return 'watched';
+        if (ws === 'in_progress') return 'progress';
+        if (credit.jellyfin_id) return 'unwatched';
         return '';
     }
 
@@ -216,6 +232,7 @@
     /** @type {any[]} */
     let discoveryItems = $state([]);
     // Default discovery filter: whichever type the person has more local credits for
+    // svelte-ignore state_referenced_locally
     let discoveryFilter = $state(
         data.movies.length > data.shows.length
             ? "movie"
@@ -226,8 +243,37 @@
     let discoveryLimit = $state(24);
     let discoverySearch = $state('');
     let discoveryRoleFilter = $state('all');
-    let discoverySort = $state('rating');
+    let discoverySort = $state('newest');
     let navigatingItem = $state(/** @type {string|null} */ (null));
+    let discoveryViewMode = $state(/** @type {'list'|'grid'} */ ('list'));
+    /** @type {Set<string>} */
+    let collapsedRoles = $state(new Set());
+
+    // Auto-load filmography when person changes or on first mount
+    let lastDiscoveryPersonId = $state(/** @type {number|null} */ (null));
+    $effect(() => {
+        const personId = data.person.id;
+        const tmdbId = data.person.tmdb_person_id;
+        if (!tmdbId) return;
+        if (personId === lastDiscoveryPersonId) return;
+        // Person changed — reset all discovery state
+        lastDiscoveryPersonId = personId;
+        discoveryItems = [];
+        discoveryLoaded = false;
+        discoveryLoading = false;
+        discoveryError = '';
+        discoverySearch = '';
+        discoveryRoleFilter = 'all';
+        discoveryLimit = 24;
+        collapsedRoles = new Set();
+        // Reset filter based on new person's credits
+        discoveryFilter = data.movies.length > data.shows.length
+            ? 'movie'
+            : data.shows.length > data.movies.length
+              ? 'show'
+              : 'all';
+        loadDiscovery();
+    });
 
     /** Create a stub and open the item page in a new tab */
     async function openDiscoveryItem(item) {
@@ -307,6 +353,38 @@
             }
         })()
     );
+
+    // Group filtered discovery items by department, preserving the sort from filteredDiscovery
+    const deptOrder = ['Directing', 'Acting', 'Writing', 'Production', 'Sound', 'Art', 'Camera', 'Editing', 'Visual Effects', 'Costume & Make-Up', 'Crew', 'Lighting', 'Self'];
+    let groupedByDepartment = $derived(
+        (() => {
+            /** @type {Map<string, any[]>} */
+            const groups = new Map();
+            for (const item of filteredDiscovery) {
+                const depts = item.departments?.length ? item.departments : ['Other'];
+                for (const dept of depts) {
+                    if (!groups.has(dept)) groups.set(dept, []);
+                    groups.get(dept).push(item);
+                }
+            }
+            // Sort departments by preferred order
+            const sorted = [...groups.entries()].sort(([a], [b]) => {
+                const ai = deptOrder.indexOf(a), bi = deptOrder.indexOf(b);
+                if (ai >= 0 && bi >= 0) return ai - bi;
+                if (ai >= 0) return -1;
+                if (bi >= 0) return 1;
+                return a.localeCompare(b);
+            });
+            return sorted;
+        })()
+    );
+
+    function toggleRole(dept) {
+        const next = new Set(collapsedRoles);
+        if (next.has(dept)) next.delete(dept);
+        else next.add(dept);
+        collapsedRoles = next;
+    }
 
     async function loadDiscovery() {
         discoveryLoading = true;
@@ -449,11 +527,11 @@
                     {#if personSyncing}
                         <span class="loading loading-spinner loading-xs"></span> Syncing…
                     {:else if personSyncResult?.success}
-                        ✅ Synced
+                        <MdiIcon icon={mdiCheckCircle} size={14} /> Synced
                     {:else if personSyncResult && !personSyncResult.success}
-                        ❌ Failed
+                        <MdiIcon icon={mdiCloseCircle} size={14} /> Failed
                     {:else}
-                        🔄 Sync Person
+                        <MdiIcon icon={mdiSync} size={14} /> Sync Person
                     {/if}
                 </button>
             {/snippet}
@@ -539,7 +617,7 @@
         <div class="space-y-3">
             <div class="flex items-center justify-between">
                 <h2 class="text-xl font-bold flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" style="color: oklch(var(--color-movies))" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg> Movies
+                    <MdiIcon icon={mdiMovieOpen} size={20} class="text-[oklch(var(--color-movies))]" /> Movies
                     <span class="badge badge-ghost badge-sm"
                         >{libraryMovies.length}</span
                     >
@@ -550,7 +628,7 @@
                         (creditsView =
                             creditsView === "poster" ? "list" : "poster")}
                 >
-                    {creditsView === "poster" ? "📋 List" : "🖼️ Poster"}
+                    {creditsView === "poster" ? "" : ""}{#if creditsView === "poster"}<MdiIcon icon={mdiViewList} size={14} /> List{:else}<MdiIcon icon={mdiImage} size={14} /> Poster{/if}
                 </button>
             </div>
             {#if creditsView === "poster"}
@@ -573,19 +651,19 @@
                                     />
                                     {#if mediaWatchIcon(credit)}
                                         <div class="absolute top-1 left-1 text-sm">
-                                            {mediaWatchIcon(credit)}
+                                            {#if mediaWatchIcon(credit) === 'watched'}<MdiIcon icon={mdiCheckCircle} size={16} />{:else if mediaWatchIcon(credit) === 'progress'}<MdiIcon icon={mdiTimerSand} size={16} />{:else}<MdiIcon icon={mdiEyeOffOutline} size={16} />{/if}
                                         </div>
                                     {/if}
 
                                 </figure>
                             {:else}
                                 <div
-                                    class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl relative"
+                                    class="aspect-[2/3] bg-base-300 flex items-center justify-center relative"
                                 >
-                                    🎬
+                                    <MdiIcon icon={mdiMovieOpen} size={32} />
                                     {#if mediaWatchIcon(credit)}
                                         <div class="absolute top-1 left-1 text-sm">
-                                            {mediaWatchIcon(credit)}
+                                            {#if mediaWatchIcon(credit) === 'watched'}<MdiIcon icon={mdiCheckCircle} size={16} />{:else if mediaWatchIcon(credit) === 'progress'}<MdiIcon icon={mdiTimerSand} size={16} />{:else}<MdiIcon icon={mdiEyeOffOutline} size={16} />{/if}
                                         </div>
                                     {/if}
 
@@ -624,16 +702,16 @@
                                 />
                             {:else}
                                 <div
-                                    class="w-12 h-18 rounded-lg bg-base-300 flex items-center justify-center text-lg shrink-0"
+                                    class="w-12 h-18 rounded-lg bg-base-300 flex items-center justify-center shrink-0"
                                 >
-                                    🎬
+                                    <MdiIcon icon={mdiMovieOpen} size={20} />
                                 </div>
                             {/if}
                             <div class="min-w-0 flex-1">
                                 <div class="flex items-center gap-2">
-                                    <span class="text-sm"
-                                        >{watchIcon(credit.watch_status)}</span
-                                    >
+                                    <span class="text-sm">
+                                        {#if watchIcon(credit.watch_status) === 'watched'}<MdiIcon icon={mdiCheckCircle} size={14} />{:else if watchIcon(credit.watch_status) === 'progress'}<MdiIcon icon={mdiTimerSand} size={14} />{:else}<MdiIcon icon={mdiEyeOffOutline} size={14} />{/if}
+                                    </span>
                                     <span
                                         class="font-medium group-hover:text-primary transition-colors truncate"
                                         >{credit.title}</span
@@ -657,7 +735,7 @@
         {#if stubMovies.length > 0}
             <div class="space-y-3 mt-6">
                 <h3 class="text-lg font-semibold flex items-center gap-2 text-base-content/70">
-                    💡 You Might Be Interested In
+                    <MdiIcon icon={mdiLightbulb} size={18} /> You Might Be Interested In
                     <span class="badge badge-ghost badge-sm">{stubMovies.length}</span>
                 </h3>
                 {#if creditsView === "poster"}
@@ -676,7 +754,7 @@
                                         />
                                     </figure>
                                 {:else}
-                                    <div class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl">🎬</div>
+                                    <div class="aspect-[2/3] bg-base-300 flex items-center justify-center"><MdiIcon icon={mdiMovieOpen} size={32} /></div>
                                 {/if}
                                 <div class="card-body !p-2 !gap-1">
                                     <div class="flex items-center justify-between gap-1">
@@ -713,7 +791,7 @@
                                 {#if credit.poster_url}
                                     <img src={imgUrl(credit.poster_url, 100)} alt={credit.title} class="w-12 h-18 rounded-lg object-cover shrink-0" />
                                 {:else}
-                                    <div class="w-12 h-18 rounded-lg bg-base-300 flex items-center justify-center text-lg shrink-0">🎬</div>
+                                    <div class="w-12 h-18 rounded-lg bg-base-300 flex items-center justify-center shrink-0"><MdiIcon icon={mdiMovieOpen} size={20} /></div>
                                 {/if}
                                 <div class="min-w-0 flex-1">
                                     <div class="flex items-center gap-2">
@@ -751,7 +829,7 @@
         {@const stubShows = data.shows.filter(c => !isInLibrary(c))}
         <div class="space-y-3">
             <h2 class="text-xl font-bold flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" style="color: oklch(var(--color-tv))" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="15" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/></svg> TV Shows
+                <MdiIcon icon={mdiTelevision} size={20} class="text-[oklch(var(--color-tv))]" /> TV Shows
                 <span class="badge badge-ghost badge-sm"
                     >{libraryShows.length}</span
                 >
@@ -776,19 +854,19 @@
                                     />
                                     {#if mediaWatchIcon(credit)}
                                         <div class="absolute top-1 left-1 text-sm">
-                                            {mediaWatchIcon(credit)}
+                                            {#if mediaWatchIcon(credit) === 'watched'}<MdiIcon icon={mdiCheckCircle} size={16} />{:else if mediaWatchIcon(credit) === 'progress'}<MdiIcon icon={mdiTimerSand} size={16} />{:else}<MdiIcon icon={mdiEyeOffOutline} size={16} />{/if}
                                         </div>
                                     {/if}
 
                                 </figure>
                             {:else}
                                 <div
-                                    class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl relative"
+                                    class="aspect-[2/3] bg-base-300 flex items-center justify-center relative"
                                 >
-                                    📺
+                                    <MdiIcon icon={mdiTelevision} size={32} />
                                     {#if mediaWatchIcon(credit)}
                                         <div class="absolute top-1 left-1 text-sm">
-                                            {mediaWatchIcon(credit)}
+                                            {#if mediaWatchIcon(credit) === 'watched'}<MdiIcon icon={mdiCheckCircle} size={16} />{:else if mediaWatchIcon(credit) === 'progress'}<MdiIcon icon={mdiTimerSand} size={16} />{:else}<MdiIcon icon={mdiEyeOffOutline} size={16} />{/if}
                                         </div>
                                     {/if}
 
@@ -831,9 +909,9 @@
                                 />
                             {:else}
                                 <div
-                                    class="w-12 h-18 rounded-lg bg-base-300 flex items-center justify-center text-lg shrink-0"
+                                    class="w-12 h-18 rounded-lg bg-base-300 flex items-center justify-center shrink-0"
                                 >
-                                    📺
+                                    <MdiIcon icon={mdiTelevision} size={20} />
                                 </div>
                             {/if}
                             <div class="min-w-0 flex-1">
@@ -865,7 +943,7 @@
         {#if stubShows.length > 0}
             <div class="space-y-3 mt-6">
                 <h3 class="text-lg font-semibold flex items-center gap-2 text-base-content/70">
-                    💡 You Might Be Interested In
+                    <MdiIcon icon={mdiLightbulb} size={18} /> You Might Be Interested In
                     <span class="badge badge-ghost badge-sm">{stubShows.length}</span>
                 </h3>
                 {#if creditsView === "poster"}
@@ -880,7 +958,7 @@
                                         <img src={imgUrl(credit.poster_url, 300)} alt={credit.title} class="w-full h-full object-cover" />
                                     </figure>
                                 {:else}
-                                    <div class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl">📺</div>
+                                    <div class="aspect-[2/3] bg-base-300 flex items-center justify-center"><MdiIcon icon={mdiTelevision} size={32} /></div>
                                 {/if}
                                 <div class="card-body !p-2 !gap-1">
                                     <div class="flex items-center justify-between gap-1">
@@ -917,7 +995,7 @@
                                 {#if credit.poster_url}
                                     <img src={imgUrl(credit.poster_url, 100)} alt={credit.title} class="w-12 h-18 rounded-lg object-cover shrink-0" />
                                 {:else}
-                                    <div class="w-12 h-18 rounded-lg bg-base-300 flex items-center justify-center text-lg shrink-0">📺</div>
+                                    <div class="w-12 h-18 rounded-lg bg-base-300 flex items-center justify-center shrink-0"><MdiIcon icon={mdiTelevision} size={20} /></div>
                                 {/if}
                                 <div class="min-w-0 flex-1">
                                     <div class="flex items-center gap-2">
@@ -953,7 +1031,7 @@
     {#if data.artists.length > 0}
         <div class="space-y-3">
             <h2 class="text-xl font-bold flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" style="color: oklch(var(--color-music))" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg> Music
+                <MdiIcon icon={mdiMusic} size={20} class="text-[oklch(var(--color-music))]" /> Music
                 <span class="badge badge-ghost badge-sm"
                     >{data.artists.length}</span
                 >
@@ -978,19 +1056,19 @@
                                     />
                                     {#if mediaWatchIcon(credit)}
                                         <div class="absolute top-1 left-1 text-sm">
-                                            {mediaWatchIcon(credit)}
+                                            {#if mediaWatchIcon(credit) === 'watched'}<MdiIcon icon={mdiCheckCircle} size={16} />{:else if mediaWatchIcon(credit) === 'progress'}<MdiIcon icon={mdiTimerSand} size={16} />{:else}<MdiIcon icon={mdiEyeOffOutline} size={16} />{/if}
                                         </div>
                                     {/if}
 
                                 </figure>
                             {:else}
                                 <div
-                                    class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl relative"
+                                    class="aspect-[2/3] bg-base-300 flex items-center justify-center relative"
                                 >
-                                    🎵
+                                    <MdiIcon icon={mdiMusic} size={32} />
                                     {#if mediaWatchIcon(credit)}
                                         <div class="absolute top-1 left-1 text-sm">
-                                            {mediaWatchIcon(credit)}
+                                            {#if mediaWatchIcon(credit) === 'watched'}<MdiIcon icon={mdiCheckCircle} size={16} />{:else if mediaWatchIcon(credit) === 'progress'}<MdiIcon icon={mdiTimerSand} size={16} />{:else}<MdiIcon icon={mdiEyeOffOutline} size={16} />{/if}
                                         </div>
                                     {/if}
 
@@ -1025,9 +1103,9 @@
                                 />
                             {:else}
                                 <div
-                                    class="w-12 h-18 rounded-lg bg-base-300 flex items-center justify-center text-lg shrink-0"
+                                    class="w-12 h-18 rounded-lg bg-base-300 flex items-center justify-center shrink-0"
                                 >
-                                    🎵
+                                    <MdiIcon icon={mdiMusic} size={20} />
                                 </div>
                             {/if}
                             <div class="min-w-0 flex-1">
@@ -1047,239 +1125,231 @@
     {/if}
 </div>
 
-<!-- Discovery: Filmography from TMDb -->
+<!-- More from Person: Filmography from TMDb -->
+{#if data.person.tmdb_person_id}
 <div class="max-w-5xl mx-auto px-6 py-8">
-    {#if !discoveryLoaded && !discoveryLoading}
-        <button
-            class="btn btn-outline btn-primary w-full gap-2"
-            onclick={loadDiscovery}
-        >
-            🔍 Discover Full Filmography from TMDb
-        </button>
-    {:else if discoveryLoading}
+    {#if discoveryLoading}
         <div class="flex flex-col items-center gap-3 py-8">
-            <span class="loading loading-spinner loading-lg text-primary"
-            ></span>
-            <span class="text-sm text-base-content/50"
-                >Fetching filmography from TMDb...</span
-            >
+            <span class="loading loading-spinner loading-lg text-primary"></span>
+            <span class="text-sm text-base-content/50">Loading filmography…</span>
         </div>
     {:else if discoveryError}
         <div class="alert alert-error text-sm">{discoveryError}</div>
-    {:else}
+    {:else if discoveryLoaded}
         <div class="space-y-4">
-            <div class="flex items-center justify-between flex-wrap gap-2">
+            <!-- Header -->
+            <div class="space-y-2">
                 <h2 class="text-xl font-bold">
-                    🔍 Not in Your Library
-                    <span class="badge badge-neutral badge-sm ml-1"
-                        >{filteredDiscovery.length}</span
-                    >
+                    More from {data.person.name}
+                    <span class="badge badge-neutral badge-sm ml-1">{filteredDiscovery.length}</span>
                 </h2>
                 <div class="flex items-center gap-2 flex-wrap">
-                    <input
-                        type="text"
-                        placeholder="Search titles…"
-                        class="input input-bordered input-xs w-40"
-                        bind:value={discoverySearch}
-                    />
-                    {#if availableDepartments.length > 1}
-                        <select
-                            class="select select-bordered select-xs"
-                            bind:value={discoveryRoleFilter}
-                            onchange={() => { discoveryLimit = 24; }}
-                        >
-                            <option value="all">All Roles</option>
-                            {#each availableDepartments as dept}
-                                <option value={dept}>{dept}</option>
-                            {/each}
-                        </select>
-                    {/if}
+                    <div class="discovery-chips">
+                        <button class="media-chip" class:active={discoveryFilter === 'all'} onclick={() => { discoveryFilter = 'all'; discoveryLimit = 24; }}>All</button>
+                        <button class="media-chip chip-tv" class:active={discoveryFilter === 'show'} onclick={() => { discoveryFilter = 'show'; discoveryLimit = 24; }}><MdiIcon icon={mdiTelevision} size={12} class="mr-0.5" /> TV</button>
+                        <button class="media-chip chip-movie" class:active={discoveryFilter === 'movie'} onclick={() => { discoveryFilter = 'movie'; discoveryLimit = 24; if (discoverySort === 'episodes') discoverySort = 'newest'; }}><MdiIcon icon={mdiMovieOpen} size={12} class="mr-0.5" /> Movies</button>
+                    </div>
                     <select
                         class="select select-bordered select-xs"
                         bind:value={discoverySort}
                         onchange={() => { discoveryLimit = 24; }}
                     >
-                        <option value="rating">★ Rating</option>
-                        <option value="popularity">🔥 Popularity</option>
-                        <option value="newest">📅 Newest</option>
-                        <option value="oldest">📅 Oldest</option>
+                        <option value="newest">Newest</option>
+                        <option value="oldest">Oldest</option>
+                        <option value="rating">Rating</option>
+                        <option value="popularity">Popularity</option>
                         {#if discoveryFilter !== 'movie'}
-                            <option value="episodes">📺 Most Episodes</option>
+                            <option value="episodes">Most Episodes</option>
                         {/if}
                     </select>
-                    <div class="join">
+                    <input
+                        type="text"
+                        placeholder="Search…"
+                        class="input input-bordered input-xs w-32"
+                        bind:value={discoverySearch}
+                    />
+                    <!-- View toggle -->
+                    <div class="btn-group">
                         <button
-                            class="join-item btn btn-xs"
-                            class:btn-active={discoveryFilter === "all"}
-                            onclick={() => { discoveryFilter = "all"; discoveryLimit = 24; }}>All</button
+                            class="btn btn-xs"
+                            class:btn-active={discoveryViewMode === 'list'}
+                            onclick={() => discoveryViewMode = 'list'}
+                            title="List view"
                         >
+                            <MdiIcon icon={mdiViewList} size={14} />
+                        </button>
                         <button
-                            class="join-item btn btn-xs"
-                            class:btn-active={discoveryFilter === "movie"}
-                            onclick={() => { discoveryFilter = "movie"; discoveryLimit = 24; if (discoverySort === 'episodes') discoverySort = 'rating'; }}
-                            >Movies</button
+                            class="btn btn-xs"
+                            class:btn-active={discoveryViewMode === 'grid'}
+                            onclick={() => discoveryViewMode = 'grid'}
+                            title="Grid view"
                         >
-                        <button
-                            class="join-item btn btn-xs"
-                            class:btn-active={discoveryFilter === "show"}
-                            onclick={() => { discoveryFilter = "show"; discoveryLimit = 24; }}>TV</button
-                        >
+                            <MdiIcon icon={mdiViewGrid} size={14} />
+                        </button>
                     </div>
                 </div>
             </div>
 
             {#if filteredDiscovery.length === 0}
                 <div class="text-center py-6 text-base-content/40">
-                    <div class="text-3xl mb-2">🎉</div>
-                    <p>You already have everything! Nothing to discover.</p>
+                    <p>Nothing to discover — you have it all!</p>
+                </div>
+            {:else if discoveryViewMode === 'list'}
+                <!-- Timeline List View: Grouped by Department -->
+                <div class="space-y-4">
+                    {#each groupedByDepartment as [dept, items]}
+                        <div class="filmography-group">
+                            <!-- svelte-ignore a11y_click_events_have_key_events -->
+                            <!-- svelte-ignore a11y_no_static_element_interactions -->
+                            <div class="filmography-dept-header" onclick={() => toggleRole(dept)}>
+                                <span class="filmography-dept-name">{dept}</span>
+                                <span class="filmography-dept-count">{items.length}</span>
+                                <MdiIcon icon={collapsedRoles.has(dept) ? mdiChevronDown : mdiChevronUp} size={16} />
+                            </div>
+                            {#if !collapsedRoles.has(dept)}
+                                <div class="filmography-items">
+                                    {#each items as item}
+                                        <div
+                                            class="filmography-row"
+                                            onclick={() => {
+                                                if (item.in_library) {
+                                                    const path = item.media_type === 'movie' ? 'movies' : 'tv';
+                                                    window.open(`/${path}/${item.library_id}`, '_blank');
+                                                } else {
+                                                    openDiscoveryItem(item);
+                                                }
+                                            }}
+                                        >
+                                            <div class="filmography-poster">
+                                                {#if item.poster_url}
+                                                    <img src={imgUrl(item.poster_url)} alt="" loading="lazy" />
+                                                {:else}
+                                                    <div class="filmography-poster-placeholder">
+                                                        <MdiIcon icon={item.media_type === 'show' ? mdiTelevision : mdiMovieOpen} size={18} />
+                                                    </div>
+                                                {/if}
+                                                {#if item.in_library}
+                                                    <span class="filmography-lib-badge"><MdiIcon icon={mdiCheckCircle} size={12} /></span>
+                                                {/if}
+                                            </div>
+                                            <div class="filmography-info">
+                                                <div class="filmography-title-line">
+                                                    <span class="filmography-title">{item.title}{#if item.release_year}&nbsp;({item.release_year}){/if}</span>
+                                                    {#if item.vote_average > 0}
+                                                        <span class="filmography-rating">
+                                                            <MdiIcon icon={mdiStar} size={11} />
+                                                            {item.vote_average.toFixed(1)}
+                                                        </span>
+                                                    {/if}
+                                                    {#if item.media_type === 'show'}
+                                                        <span class="filmography-type-badge badge-tv"><MdiIcon icon={mdiTelevision} size={10} /></span>
+                                                    {/if}
+                                                </div>
+                                                <div class="filmography-meta">
+                                                    {#if item.roles?.length}
+                                                        <span class="filmography-role">{item.roles.join(', ')}</span>
+                                                    {/if}
+                                                    {#if item.episode_count && item.media_type === 'show'}
+                                                        <span class="filmography-episodes">{item.episode_count} ep</span>
+                                                    {/if}
+                                                </div>
+                                                {#if !item.in_library}
+                                                    <!-- svelte-ignore a11y_click_events_have_key_events -->
+                                                    <!-- svelte-ignore a11y_no_static_element_interactions -->
+                                                    <div class="filmography-action" onclick={(e) => e.stopPropagation()}>
+                                                        {#if navigatingItem === item.tmdb_id}
+                                                            <span class="loading loading-spinner loading-xs"></span>
+                                                        {:else}
+                                                            <ArrAddDialog
+                                                                discoveryItem={{
+                                                                    tmdb_id: item.tmdb_id,
+                                                                    media_type: item.media_type,
+                                                                    title: item.title,
+                                                                    release_year: item.release_year,
+                                                                    poster_url: item.poster_url,
+                                                                    overview: item.overview,
+                                                                }}
+                                                                buttonClass="btn btn-xs btn-primary gap-1"
+                                                                buttonLabel="Download"
+                                                                onComplete={() => {}}
+                                                            />
+                                                        {/if}
+                                                    </div>
+                                                {/if}
+                                            </div>
+                                        </div>
+                                    {/each}
+                                </div>
+                            {/if}
+                        </div>
+                    {/each}
                 </div>
             {:else}
-                <div
-                    class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3"
-                >
+                <!-- Grid View (existing poster grid) -->
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                     {#each filteredDiscovery.slice(0, discoveryLimit) as item}
                         {@const localUrl = item.in_library
                             ? `/${item.media_type === "movie" ? "movies" : "tv"}/${item.library_id}`
                             : null}
-                        <div
-                            class="card bg-base-200 card-compact border border-base-300/50 overflow-hidden group"
-                        >
+                        <div class="card bg-base-200 card-compact border border-base-300/50 overflow-hidden group">
                             {#if localUrl}
-                                <a
-                                    href={localUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    class="block"
-                                >
+                                <a href={localUrl} target="_blank" rel="noopener noreferrer" class="block">
                                     {#if item.poster_url}
                                         <figure class="aspect-[2/3]">
-                                            <img
-                                                src={imgUrl(item.poster_url)}
-                                                alt={item.title}
-                                                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                            />
+                                            <img src={imgUrl(item.poster_url)} alt={item.title} class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                                         </figure>
                                     {:else}
-                                        <div
-                                            class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl"
-                                        >
-                                            🎬
-                                        </div>
+                                        <div class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl"><MdiIcon icon={mdiMovieOpen} size={32} /></div>
                                     {/if}
                                 </a>
                             {:else}
                                 <!-- svelte-ignore a11y_click_events_have_key_events -->
                                 <!-- svelte-ignore a11y_no_static_element_interactions -->
-                                <div
-                                    class="cursor-pointer"
-                                    onclick={() => openDiscoveryItem(item)}
-                                >
+                                <div class="cursor-pointer" onclick={() => openDiscoveryItem(item)}>
                                     {#if item.poster_url}
                                         <figure class="aspect-[2/3] relative">
-                                            <img
-                                                src={imgUrl(item.poster_url)}
-                                                alt={item.title}
-                                                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                            />
+                                            <img src={imgUrl(item.poster_url)} alt={item.title} class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                                             {#if navigatingItem === item.tmdb_id}
-                                                <div
-                                                    class="absolute inset-0 bg-black/50 flex items-center justify-center"
-                                                >
-                                                    <span
-                                                        class="loading loading-spinner loading-md text-white"
-                                                    ></span>
+                                                <div class="absolute inset-0 bg-black/50 flex items-center justify-center">
+                                                    <span class="loading loading-spinner loading-md text-white"></span>
                                                 </div>
                                             {/if}
                                         </figure>
                                     {:else}
-                                        <div
-                                            class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl"
-                                        >
-                                            🎬
-                                        </div>
+                                        <div class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl"><MdiIcon icon={mdiMovieOpen} size={32} /></div>
                                     {/if}
                                 </div>
                             {/if}
                             <div class="card-body !p-2 !gap-1">
-                                {#if localUrl}
-                                    <a
-                                        href={localUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        class="font-medium text-xs leading-tight line-clamp-2 hover:text-primary transition-colors cursor-pointer"
-                                        title={item.title}>{item.title}</a
-                                    >
-                                {:else}
-                                    <!-- svelte-ignore a11y_click_events_have_key_events -->
-                                    <!-- svelte-ignore a11y_no_static_element_interactions -->
-                                    <span
-                                        class="font-medium text-xs leading-tight line-clamp-2 hover:text-primary transition-colors cursor-pointer"
-                                        title={item.title}
-                                        onclick={() => openDiscoveryItem(item)}
-                                        >{item.title}</span
-                                    >
-                                {/if}
+                                <span class="font-medium text-xs leading-tight line-clamp-2" title={item.title}>{item.title}</span>
                                 <div class="flex items-center gap-1 flex-wrap">
                                     {#if item.release_year}
-                                        <span
-                                            class="text-[10px] text-base-content/50"
-                                            >{item.release_year}</span
-                                        >
+                                        <span class="text-[10px] text-base-content/50">{item.release_year}</span>
                                     {/if}
-                                    <span
-                                        class="badge badge-xs"
-                                        class:badge-info={item.media_type ===
-                                            "movie"}
-                                        class:badge-accent={item.media_type ===
-                                            "show"}
-                                    >
-                                        {item.media_type === "movie"
-                                            ? "🎬"
-                                            : "📺"}
+                                    <span class="badge badge-xs" class:badge-info={item.media_type === "movie"} class:badge-accent={item.media_type === "show"}>
+                                        {#if item.media_type === "movie"}
+                                            <MdiIcon icon={mdiMovieOpen} size={12} />
+                                        {:else}
+                                            <MdiIcon icon={mdiTelevision} size={12} />
+                                        {/if}
                                     </span>
                                     {#if item.vote_average > 0}
-                                        <span class="text-[10px] text-warning"
-                                            >★ {item.vote_average.toFixed(
-                                                1,
-                                            )}</span
-                                        >
-                                    {/if}
-                                    {#if item.episode_count && item.media_type === 'show'}
-                                        <span class="text-[10px] text-base-content/40"
-                                            >{item.episode_count} ep</span
-                                        >
+                                        <span class="text-[10px] text-warning">★ {item.vote_average.toFixed(1)}</span>
                                     {/if}
                                 </div>
                                 {#if item.roles?.length}
-                                    <div
-                                        class="text-[10px] text-base-content/40 line-clamp-1"
-                                        title={item.roles.join(", ")}
-                                    >
-                                        {item.roles.join(", ")}
-                                    </div>
+                                    <div class="text-[10px] text-base-content/40 line-clamp-1" title={item.roles.join(", ")}>{item.roles.join(", ")}</div>
                                 {/if}
                                 {#if item.in_library}
-                                    <a
-                                        href="/{item.media_type === 'movie'
-                                            ? 'movies'
-                                            : 'tv'}/{item.library_id}"
-                                        class="btn btn-xs btn-success gap-1 mt-1"
-                                    >
-                                        ✅ In Library
+                                    <a href="/{item.media_type === 'movie' ? 'movies' : 'tv'}/{item.library_id}" class="btn btn-xs btn-success gap-1 mt-1">
+                                        <MdiIcon icon={mdiCheckCircle} size={12} /> In Library
                                     </a>
                                 {:else}
                                     <ArrAddDialog
-                                        discoveryItem={{
-                                            tmdb_id: item.tmdb_id,
-                                            media_type: item.media_type,
-                                            title: item.title,
-                                            release_year: item.release_year,
-                                            poster_url: item.poster_url,
-                                            overview: item.overview,
-                                        }}
+                                        discoveryItem={{ tmdb_id: item.tmdb_id, media_type: item.media_type, title: item.title, release_year: item.release_year, poster_url: item.poster_url, overview: item.overview }}
                                         buttonClass="btn btn-xs btn-primary gap-1 mt-1"
                                         buttonLabel="Download"
-                                        onComplete={() => invalidateAll()}
+                                        onComplete={() => {}}
                                     />
                                 {/if}
                             </div>
@@ -1287,10 +1357,7 @@
                     {/each}
                 </div>
                 {#if filteredDiscovery.length > discoveryLimit}
-                    <button
-                        class="btn btn-ghost btn-sm w-full"
-                        onclick={() => (discoveryLimit += 24)}
-                    >
+                    <button class="btn btn-ghost btn-sm w-full" onclick={() => (discoveryLimit += 24)}>
                         Show more ({filteredDiscovery.length - discoveryLimit} remaining)
                     </button>
                 {/if}
@@ -1302,6 +1369,7 @@
         </div>
     {/if}
 </div>
+{/if}
 
 
 
@@ -1309,7 +1377,7 @@
 {#if showBorderInfo}
     <div class="modal modal-open">
         <div class="modal-box max-w-lg">
-            <h3 class="font-bold text-lg mb-3">🎨 Border Guide</h3>
+            <h3 class="font-bold text-lg mb-3"><MdiIcon icon={mdiPalette} size={20} /> Border Guide</h3>
             <div class="space-y-4">
                 <div>
                     <h4 class="font-semibold text-sm text-base-content/70 mb-2">Watch Status → Border Color</h4>
@@ -1392,6 +1460,8 @@
                 <button class="btn btn-sm" onclick={() => (showBorderInfo = false)}>Close</button>
             </div>
         </div>
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
         <div class="modal-backdrop" onclick={() => (showBorderInfo = false)}></div>
     </div>
 {/if}
@@ -1454,4 +1524,189 @@
         background: rgba(239, 68, 68, 0.15);
         border: 2px dashed rgba(239, 68, 68, 0.8);
     }
+    /* ── Discovery media-chip filters ── */
+    .discovery-chips {
+        display: flex;
+        gap: 0.3rem;
+    }
+    .media-chip {
+        font-size: 0.65rem;
+        font-weight: 600;
+        padding: 0.15rem 0.5rem;
+        border-radius: 999px;
+        border: 1px solid oklch(var(--bc) / 0.15);
+        background: oklch(var(--b2) / 0.5);
+        color: oklch(var(--bc) / 0.6);
+        cursor: pointer;
+        transition: all 0.15s;
+        white-space: nowrap;
+        display: inline-flex;
+        align-items: center;
+    }
+    .media-chip:hover {
+        border-color: oklch(var(--bc) / 0.3);
+        color: oklch(var(--bc) / 0.8);
+    }
+    .media-chip.active {
+        background: oklch(var(--bc) / 0.12);
+        border-color: oklch(var(--bc) / 0.3);
+        color: oklch(var(--bc));
+    }
+    .chip-tv.active {
+        background: oklch(0.55 0.15 160 / 0.2);
+        border-color: oklch(0.55 0.15 160 / 0.5);
+        color: oklch(0.75 0.15 160);
+    }
+    .chip-movie.active {
+        background: oklch(0.65 0.15 85 / 0.2);
+        border-color: oklch(0.65 0.15 85 / 0.5);
+        color: oklch(0.8 0.15 85);
+    }
+
+    /* ── Filmography Timeline View ── */
+    .filmography-group {
+        border: 1px solid oklch(var(--bc) / 0.08);
+        border-radius: 0.5rem;
+        overflow: hidden;
+        background: oklch(var(--b2) / 0.3);
+    }
+    .filmography-dept-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0.75rem;
+        background: oklch(var(--b2) / 0.5);
+        cursor: pointer;
+        user-select: none;
+        transition: background 0.15s;
+    }
+    .filmography-dept-header:hover {
+        background: oklch(var(--b2) / 0.8);
+    }
+    .filmography-dept-name {
+        font-size: 0.8rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: oklch(var(--bc) / 0.7);
+    }
+    .filmography-dept-count {
+        font-size: 0.65rem;
+        font-weight: 600;
+        padding: 0.05rem 0.4rem;
+        border-radius: 999px;
+        background: oklch(var(--bc) / 0.08);
+        color: oklch(var(--bc) / 0.5);
+    }
+    .filmography-items {
+        display: flex;
+        flex-direction: column;
+    }
+    .filmography-row {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        padding: 0.4rem 0.75rem;
+        border-top: 1px solid oklch(var(--bc) / 0.05);
+        cursor: pointer;
+        transition: background 0.12s;
+        position: relative;
+    }
+    .filmography-row:hover {
+        background: oklch(var(--bc) / 0.04);
+    }
+    .filmography-poster {
+        width: 42px;
+        height: 62px;
+        border-radius: 0.25rem;
+        overflow: hidden;
+        flex-shrink: 0;
+        position: relative;
+    }
+    .filmography-poster img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .filmography-poster-placeholder {
+        width: 100%;
+        height: 100%;
+        background: oklch(var(--b3));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: oklch(var(--bc) / 0.25);
+    }
+    .filmography-lib-badge {
+        position: absolute;
+        bottom: 1px;
+        right: 1px;
+        color: oklch(var(--su));
+        filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6));
+    }
+    .filmography-info {
+        flex: 1;
+        min-width: 0;
+    }
+    .filmography-title-line {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        flex-wrap: wrap;
+    }
+    .filmography-title {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: oklch(var(--bc) / 0.9);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
+    }
+    .filmography-row:hover .filmography-title {
+        color: oklch(var(--p));
+    }
+    .filmography-rating {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.15rem;
+        font-size: 0.65rem;
+        color: oklch(var(--wa, 0.8 0.15 75));
+        flex-shrink: 0;
+    }
+    .filmography-type-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.05rem 0.2rem;
+        border-radius: 0.2rem;
+        font-size: 0.55rem;
+        flex-shrink: 0;
+    }
+    .filmography-type-badge.badge-tv {
+        background: oklch(0.55 0.15 160 / 0.15);
+        color: oklch(0.7 0.12 160);
+    }
+    .filmography-meta {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        margin-top: 0.1rem;
+    }
+    .filmography-role {
+        font-size: 0.65rem;
+        color: oklch(var(--bc) / 0.4);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 300px;
+    }
+    .filmography-episodes {
+        font-size: 0.6rem;
+        color: oklch(var(--bc) / 0.3);
+    }
+    .filmography-action {
+        margin-top: 0.25rem;
+    }
 </style>
+

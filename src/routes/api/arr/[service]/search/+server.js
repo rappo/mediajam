@@ -4,7 +4,8 @@ import { json } from '@sveltejs/kit';
 
 /**
  * POST /api/arr/[service]/search — trigger a search in *arr for a specific item.
- * Body: { mediaParentId: number }
+ * Body: { mediaParentId?: number, arrId?: number }
+ * Accepts either mediaParentId (looked up in DB) or arrId (used directly).
  */
 export async function POST({ params, request, locals }) {
     if (!locals.user) return json({ error: 'Unauthorized' }, { status: 401 });
@@ -14,8 +15,8 @@ export async function POST({ params, request, locals }) {
         return json({ error: 'Invalid service' }, { status: 400 });
     }
 
-    const { mediaParentId } = await request.json();
-    if (!mediaParentId) return json({ error: 'mediaParentId required' }, { status: 400 });
+    const { mediaParentId, arrId } = await request.json();
+    if (!mediaParentId && !arrId) return json({ error: 'mediaParentId or arrId required' }, { status: 400 });
 
     const settings = /** @type {any} */ (db.prepare(
         `SELECT ${service}_url as url, ${service}_api_key as apiKey FROM app_settings WHERE id = 1`
@@ -25,12 +26,17 @@ export async function POST({ params, request, locals }) {
         return json({ error: `${service} not configured` }, { status: 400 });
     }
 
-    const idColumn = service === 'radarr' ? 'radarr_id' : service === 'sonarr' ? 'sonarr_id' : 'lidarr_id';
-    const media = /** @type {any} */ (db.prepare(
-        `SELECT ${idColumn} as arr_id FROM media_parents WHERE id = ?`
-    ).get(mediaParentId));
+    // Resolve arr_id from mediaParentId or use arrId directly
+    let resolvedArrId = arrId || null;
+    if (!resolvedArrId && mediaParentId) {
+        const idColumn = service === 'radarr' ? 'radarr_id' : service === 'sonarr' ? 'sonarr_id' : 'lidarr_id';
+        const media = /** @type {any} */ (db.prepare(
+            `SELECT ${idColumn} as arr_id FROM media_parents WHERE id = ?`
+        ).get(mediaParentId));
+        resolvedArrId = media?.arr_id || null;
+    }
 
-    if (!media?.arr_id) return json({ error: `Not in ${service}` }, { status: 400 });
+    if (!resolvedArrId) return json({ error: `Not in ${service}` }, { status: 400 });
 
     try {
         const commandName = service === 'radarr' ? 'MoviesSearch'
@@ -43,7 +49,7 @@ export async function POST({ params, request, locals }) {
 
         const body = {
             name: commandName,
-            [idField]: service === 'radarr' ? [media.arr_id] : media.arr_id,
+            [idField]: service === 'radarr' ? [resolvedArrId] : resolvedArrId,
         };
 
         await arrFetch(settings.url, settings.apiKey, service, 'command', {

@@ -1,6 +1,8 @@
 <script>
     import LogConsole from "$lib/components/LogConsole.svelte";
     import ServiceIcon from "$lib/components/ServiceIcon.svelte";
+    import MdiIcon from '$lib/components/MdiIcon.svelte';
+    import { mdiSync, mdiCamera, mdiDelete, mdiMusic, mdiMovieOpen, mdiTag, mdiTrayArrowDown, mdiChartBar, mdiStop, mdiCloseCircle, mdiCheckCircle, mdiMagnify, mdiPackageVariant, mdiFileDocument, mdiClockOutline } from '@mdi/js';
     /** @type {{ settings?: { radarrUrl?: string, sonarrUrl?: string, lidarrUrl?: string } }} */
     let { settings = {} } = $props();
 
@@ -368,14 +370,14 @@
     // ─── Computed ────────────────────────────────────────────────────────────────
     let phaseLabel = $derived(
         /** @type {Record<string,string>} */ ({
-            init: "🔄 Initializing...",
-            snapshot: "📸 Snapshotting...",
-            clearing: "🗑️ Clearing old data...",
-            matching_lastfm: "🎵 Matching Last.fm...",
-            matching_trakt: "🎬 Matching Trakt...",
-            reclassifying: "🏷️ Reclassifying...",
-            arr_sync: "📥 Syncing *arr...",
-            diffing: "📊 Generating diff...",
+            init: "Initializing...",
+            snapshot: "Snapshotting...",
+            clearing: "Clearing old data...",
+            matching_lastfm: "Matching Last.fm...",
+            matching_trakt: "Matching Trakt...",
+            reclassifying: "Reclassifying...",
+            arr_sync: "Syncing *arr...",
+            diffing: "Generating diff...",
         })[currentPhase] || currentPhase,
     );
 
@@ -429,7 +431,7 @@
     <div class="card bg-base-200/50 border border-base-300">
         <div class="card-body">
             <h2 class="card-title text-lg">
-                <span class="text-xl">🔄</span>
+                <MdiIcon icon={mdiSync} size={18} />
                 Reconciliation
             </h2>
             <p class="text-sm text-base-content/60">
@@ -454,7 +456,7 @@
                             <span class="loading loading-spinner loading-xs"
                             ></span> Stopping...
                         {:else}
-                            ⏹️ Stop
+                            <MdiIcon icon={mdiStop} size={14} /> Stop
                         {/if}
                     </button>
                 {:else}
@@ -462,7 +464,7 @@
                         class="btn btn-primary btn-sm gap-2"
                         onclick={startReconciliation}
                     >
-                        🔄 Run Full Reconciliation
+                        <MdiIcon icon={mdiSync} size={14} /> Run Full Reconciliation
                     </button>
                 {/if}
             </div>
@@ -478,7 +480,7 @@
                         {#if rebuilding}
                             <span class="loading loading-spinner loading-xs"></span> Rebuilding...
                         {:else}
-                            🔄 Rebuild Play History
+                            <MdiIcon icon={mdiSync} size={14} /> Rebuild Play History
                         {/if}
                     </button>
                     <span class="text-xs text-base-content/50">Re-import from raw Trakt/Last.fm data without deleting existing history</span>
@@ -486,13 +488,13 @@
                 {#if rebuildResult}
                     <div class="mt-2 text-xs bg-base-300/30 rounded-lg p-3 space-y-1">
                         {#if rebuildResult.error}
-                            <p class="text-error">❌ {rebuildResult.error}</p>
+                            <p class="text-error"><MdiIcon icon={mdiCloseCircle} size={13} /> {rebuildResult.error}</p>
                         {:else}
                             {#if rebuildResult.results?.trakt}
-                                <p>🎬 <strong>Trakt:</strong> {rebuildResult.results.trakt.imported} imported, {rebuildResult.results.trakt.external} external, {rebuildResult.results.trakt.skipped} skipped{rebuildResult.results.trakt.consolidated ? `, ${rebuildResult.results.trakt.consolidated} consolidated` : ''}</p>
+                                <p><MdiIcon icon={mdiMovieOpen} size={13} /> <strong>Trakt:</strong> {rebuildResult.results.trakt.imported} imported, {rebuildResult.results.trakt.external} external, {rebuildResult.results.trakt.skipped} skipped{rebuildResult.results.trakt.consolidated ? `, ${rebuildResult.results.trakt.consolidated} consolidated` : ''}</p>
                             {/if}
                             {#if rebuildResult.results?.lastfm}
-                                <p>🎵 <strong>Last.fm:</strong> {rebuildResult.results.lastfm.imported} imported, {rebuildResult.results.lastfm.external} external, {rebuildResult.results.lastfm.skipped} skipped</p>
+                                <p><MdiIcon icon={mdiMusic} size={13} /> <strong>Last.fm:</strong> {rebuildResult.results.lastfm.imported} imported, {rebuildResult.results.lastfm.external} external, {rebuildResult.results.lastfm.skipped} skipped</p>
                             {/if}
                         {/if}
                     </div>
@@ -510,7 +512,7 @@
                         {#if jellyfinSyncing}
                             <span class="loading loading-spinner loading-xs"></span> Syncing...
                         {:else}
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            <MdiIcon icon={mdiClockOutline} size={16} />
                             Sync Jellyfin History
                         {/if}
                     </button>
@@ -524,9 +526,9 @@
                 {#if jellyfinSyncResult && !jellyfinSyncResult.error}
                     <div class="mt-2 text-xs bg-base-300/30 rounded-lg p-3 space-y-1">
                         {#if jellyfinSyncResult.cleaned > 0}
-                            <p>🗑️ Cleaned <strong>{jellyfinSyncResult.cleaned}</strong> previous entries</p>
+                            <p><MdiIcon icon={mdiDelete} size={13} /> Cleaned <strong>{jellyfinSyncResult.cleaned}</strong> previous entries</p>
                         {/if}
-                        <p>✅ <strong>{jellyfinSyncResult.synced}</strong> new entries synced from <strong>{jellyfinSyncResult.total}</strong> played items</p>
+                        <p><MdiIcon icon={mdiCheckCircle} size={13} /> <strong>{jellyfinSyncResult.synced}</strong> new entries synced from <strong>{jellyfinSyncResult.total}</strong> played items</p>
                         <p class="text-base-content/50">
                             {#if jellyfinSyncResult.traktMatched > 0}{jellyfinSyncResult.traktMatched} dates from Trakt, {/if}
                             {jellyfinSyncResult.noDate || 0} unknown date, {jellyfinSyncResult.skipped} duplicates, {jellyfinSyncResult.notFound} not in library
@@ -534,7 +536,7 @@
                     </div>
                 {:else if jellyfinSyncResult?.error}
                     <div class="mt-2 text-xs bg-base-300/30 rounded-lg p-3">
-                        <p class="text-error">❌ {jellyfinSyncResult.error}</p>
+                        <p class="text-error"><MdiIcon icon={mdiCloseCircle} size={13} /> {jellyfinSyncResult.error}</p>
                     </div>
                 {/if}
             </div>
@@ -543,19 +545,7 @@
 
     {#if error}
         <div class="alert alert-error">
-            <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="stroke-current shrink-0 h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-            >
-                <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-            </svg>
+            <MdiIcon icon={mdiCloseCircle} size={20} />
             <span>{error}</span>
         </div>
     {/if}
@@ -565,13 +555,13 @@
         <div class="card-body py-4">
             {#if running || stats}
                 {@const phases = [
-                    { id: "snapshot", icon: "📸", label: "Snapshot" },
-                    { id: "clearing", icon: "🗑️", label: "Clear" },
+                    { id: "snapshot", mdiIcon: mdiCamera, label: "Snapshot" },
+                    { id: "clearing", mdiIcon: mdiDelete, label: "Clear" },
                     { id: "matching_lastfm", icon: "lastfm", label: "Last.fm" },
                     { id: "matching_trakt", icon: "trakt", label: "Trakt" },
-                    { id: "reclassifying", icon: "🏷️", label: "Reclassify" },
-                    { id: "arr_sync", icon: "📥", label: "*arr" },
-                    { id: "diffing", icon: "📊", label: "Diff" },
+                    { id: "reclassifying", mdiIcon: mdiTag, label: "Reclassify" },
+                    { id: "arr_sync", mdiIcon: mdiTrayArrowDown, label: "*arr" },
+                    { id: "diffing", mdiIcon: mdiChartBar, label: "Diff" },
                 ]}
                 {@const phaseOrder = phases.map((p) => p.id)}
                 {@const currentIdx = phaseOrder.indexOf(currentPhase)}
@@ -596,14 +586,14 @@
                                 >{#if ["lastfm", "trakt", "tmdb", "musicbrainz"].includes(phase.icon)}<ServiceIcon
                                         service={phase.icon}
                                         size="w-4 h-4"
-                                    />{:else}{phase.icon}{/if}
+                                    />{:else if phase.mdiIcon}<MdiIcon icon={phase.mdiIcon} size={16} />{:else}{phase.icon}{/if}
                                 {phase.label}</span
                             >
                             <span class="sm:hidden"
                                 >{#if ["lastfm", "trakt", "tmdb", "musicbrainz"].includes(phase.icon)}<ServiceIcon
                                         service={phase.icon}
                                         size="w-4 h-4"
-                                    />{:else}{phase.icon}{/if}</span
+                                    />{:else if phase.mdiIcon}<MdiIcon icon={phase.mdiIcon} size={16} />{:else}{phase.icon}{/if}</span
                             >
                         </li>
                     {/each}
@@ -644,7 +634,7 @@
                     Toggle off any phases you don't want to run.
                 </p>
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {#each [{ id: "snapshot", icon: "📸", label: "Snapshot" }, { id: "clearing", icon: "🗑️", label: "Clear" }, { id: "matching_lastfm", icon: "lastfm", label: "Last.fm" }, { id: "matching_trakt", icon: "trakt", label: "Trakt" }, { id: "reclassifying", icon: "🏷️", label: "Reclassify" }, { id: "arr_sync", icon: "📥", label: "*arr" }, { id: "diffing", icon: "📊", label: "Diff" }] as phase}
+                    {#each [{ id: "snapshot", mdiIcon: mdiCamera, label: "Snapshot" }, { id: "clearing", mdiIcon: mdiDelete, label: "Clear" }, { id: "matching_lastfm", icon: "lastfm", label: "Last.fm" }, { id: "matching_trakt", icon: "trakt", label: "Trakt" }, { id: "reclassifying", mdiIcon: mdiTag, label: "Reclassify" }, { id: "arr_sync", mdiIcon: mdiTrayArrowDown, label: "*arr" }, { id: "diffing", mdiIcon: mdiChartBar, label: "Diff" }] as phase}
                         <label
                             class="flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors
                                 {requiredPhases.includes(phase.id)
@@ -665,6 +655,8 @@
                                         service={phase.icon}
                                         size="w-3.5 h-3.5"
                                     />
+                                {:else if phase.mdiIcon}
+                                    <MdiIcon icon={phase.mdiIcon} size={14} />
                                 {:else}
                                     {phase.icon}
                                 {/if}
@@ -798,7 +790,7 @@
     <div class="card bg-base-200/50 border border-base-300">
         <div class="card-body py-3">
             <div class="flex items-center justify-between">
-                <h3 class="font-semibold text-sm">📦 Unmatched Items</h3>
+                <h3 class="font-semibold text-sm flex items-center gap-1"><MdiIcon icon={mdiPackageVariant} size={14} /> Unmatched Items</h3>
                 <div class="flex gap-2">
                     {#if !enrichRunning}
                         <button
@@ -814,7 +806,7 @@
                     {:else}
                         <button
                             class="btn btn-xs btn-error"
-                            onclick={stopEnrichment}>⏹ Stop</button
+                            onclick={stopEnrichment}><MdiIcon icon={mdiStop} size={13} /> Stop</button
                         >
                     {/if}
                     {#if !unmatched}
@@ -975,7 +967,7 @@
                                                 class="badge badge-xs badge-outline badge-primary gap-0.5 hover:brightness-125 transition-all"
                                                 title="View in Mediajam (create stub)"
                                             >
-                                                📄 View
+                                                <MdiIcon icon={mdiFileDocument} size={12} /> View
                                             </a>
                                             <!-- *arr search link -->
                                             {#if unmatchedType === 'artist'}
@@ -1051,7 +1043,7 @@
                                                     </td>
                                                     <td colspan="2" class="text-xs text-base-content/40">
                                                         {#if child.watch_status === 'watched'}
-                                                            ✅ watched
+                                                            <MdiIcon icon={mdiCheckCircle} size={12} /> watched
                                                         {:else if child.watch_status}
                                                             {child.watch_status}
                                                         {/if}
@@ -1103,7 +1095,7 @@
                 {#if enrichProgress.total > 0}
                     <div class="mt-2">
                         <div class="flex justify-between text-xs mb-1">
-                            <span>🔍 Enriching...</span>
+                            <span><MdiIcon icon={mdiMagnify} size={13} /> Enriching...</span>
                             <span
                                 >{enrichProgress.done}/{enrichProgress.total}</span
                             >
@@ -1131,7 +1123,7 @@
         <div class="card bg-base-200/50 border border-base-300">
             <div class="card-body">
                 <div class="flex items-center justify-between">
-                    <h3 class="font-semibold text-sm">📊 Diff Report</h3>
+                    <h3 class="font-semibold text-sm flex items-center gap-1"><MdiIcon icon={mdiChartBar} size={14} /> Diff Report</h3>
                     <button
                         class="btn btn-ghost btn-xs"
                         onclick={() => (showDiff = !showDiff)}

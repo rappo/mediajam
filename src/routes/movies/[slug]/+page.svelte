@@ -1,15 +1,20 @@
 <script>
+    import MdiIcon from "$lib/components/MdiIcon.svelte";
+    import { mdiSatelliteUplink, mdiCheckCircle, mdiCloseCircle, mdiSync, mdiChartBar, mdiLightbulb, mdiMagnify, mdiMovieOpen, mdiAlert, mdiPlaylistCheck, mdiPlaylistPlus, mdiBookmark, mdiBookmarkOutline, mdiDramaMasks, mdiHistory, mdiDelete, mdiInboxOutline } from '@mdi/js';
     import FavoriteButton from "$lib/components/FavoriteButton.svelte";
     import ExternalLinks from "$lib/components/ExternalLinks.svelte";
     import ArrAddDialog from "$lib/components/ArrAddDialog.svelte";
     import HeartBorder from "$lib/components/HeartBorder.svelte";
     import RemotePlayButton from "$lib/components/RemotePlayButton.svelte";
+    import { playerStatus, quickPlay } from '$lib/stores/player.js';
     import StatCard from "$lib/components/StatCard.svelte";
     import ServiceIcon from "$lib/components/ServiceIcon.svelte";
     import InteractiveSearchDialog from "$lib/components/InteractiveSearchDialog.svelte";
     import MediaDetailHeader from "$lib/components/MediaDetailHeader.svelte";
     import CollectionStatusBanner from "$lib/components/CollectionStatusBanner.svelte";
     import PosterRow from "$lib/components/PosterRow.svelte";
+    import CreditRow from "$lib/components/CreditRow.svelte";
+    import DashSection from "$lib/components/DashSection.svelte";
     import { invalidateAll, goto } from "$app/navigation";
     import { page } from "$app/stores";
     import { imgUrl } from "$lib/utils.js";
@@ -77,11 +82,19 @@
         return null;
     }
 
-    const badge = watchStatusBadge(data.movie.watch_status);
+    const badge = $derived(watchStatusBadge(data.movie.watch_status));
 
     // Watchlist toggle
+    // svelte-ignore state_referenced_locally
     let inWatchlist = $state(data.inWatchlist);
     let watchlistLoading = $state(false);
+
+    // Reset watchlist state when navigating to a different movie
+    $effect(() => {
+        // Access data.movie.id to track changes
+        data.movie.id;
+        inWatchlist = data.inWatchlist;
+    });
 
     async function toggleWatchlist() {
         watchlistLoading = true;
@@ -123,8 +136,6 @@
     });
 
     let showDeleteConfirm = $state(false);
-    let showAllCast = $state(false);
-    let showAllCrew = $state(false);
     let deleting = $state(false);
 
     async function deleteItem() {
@@ -146,6 +157,7 @@
     }
 
     // External ratings
+    // svelte-ignore state_referenced_locally
     let externalRatings = $state(data.externalRatings || []);
     let ratingsLoading = $state(false);
 
@@ -191,6 +203,7 @@
     // *arr state
     let arrLoading = $state("");
     let arrError = $state("");
+    // svelte-ignore state_referenced_locally
     let arrMonitored = $state(!!data.movie.arr_monitored);
     let searchDialog = $state(/** @type {any} */ (null));
 
@@ -398,6 +411,9 @@
             favoriteType="media"
             favoriteId={data.movie.id}
             heartBorderEnabled={!!data.settings?.heartBorderMovies}
+            onPlay={data.movie.jellyfin_id && $playerStatus?.status !== 'offline' ? () => quickPlay(data.movie.jellyfin_id) : null}
+            playerStatus={$playerStatus?.status}
+            playerDeviceName={$playerStatus?.deviceName}
             stats={[
                 ...(data.stats.totalPlays === 1 && data.stats.lastWatched
                     ? [{ label: `watched ${timeAgo(data.stats.lastWatched)}`, value: '' }]
@@ -429,7 +445,7 @@
                 mediaType: 'movie'
             }}
             extraBadges={[
-                ...(data.movie.collection_status === 'external' && !data.movie.jellyfin_id ? [{ label: '📡 Not in library', cls: 'badge-warning' }] : []),
+                ...(data.movie.collection_status === 'external' && !data.movie.jellyfin_id ? [{ label: 'Not downloaded', cls: 'badge-warning', icon: 'satellite-uplink' }] : []),
             ]}
         >
             {#snippet watchlistAction()}
@@ -440,9 +456,9 @@
                     title={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
                 >
                     {#if inWatchlist}
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zM2 16h8v-2H2v2zm19.5-4.5L23 13l-6.99 7-4.51-4.5L13 14l3.01 3z"/></svg>
+                        <MdiIcon icon={mdiPlaylistCheck} size={16} />
                     {:else}
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM2 16h8v-2H2v2z"/></svg>
+                        <MdiIcon icon={mdiPlaylistPlus} size={16} />
                     {/if}
                 </button>
             {/snippet}
@@ -498,11 +514,11 @@
                     {#if syncing}
                         <span class="loading loading-spinner loading-xs"></span> Syncing…
                     {:else if syncStatus === 'success'}
-                        ✅ Synced
+                        <MdiIcon icon={mdiCheckCircle} size={14} /> Synced
                     {:else if syncStatus === 'failed'}
-                        ❌ {syncError || 'Failed'}
+                        <MdiIcon icon={mdiCloseCircle} size={14} /> {syncError || 'Failed'}
                     {:else}
-                        🔄 {data.movie.jellyfin_id ? 'Update from Jellyfin' : 'Update from TMDb'}
+                        <MdiIcon icon={mdiSync} size={14} /> {data.movie.jellyfin_id ? 'Update from Jellyfin' : 'Update from TMDb'}
                     {/if}
                 </button>
                 {#if data.movie.radarr_id}
@@ -520,9 +536,9 @@
                         {#if arrLoading === 'monitor'}
                             <span class="loading loading-spinner loading-xs"></span>
                         {:else if arrMonitored}
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg>
+                            <MdiIcon icon={mdiBookmark} size={16} />
                         {:else}
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+                            <MdiIcon icon={mdiBookmarkOutline} size={16} />
                         {/if}
                         {arrMonitored ? 'Unmonitor' : 'Monitor'}
                     </button>
@@ -541,7 +557,7 @@
                     {#if ratingsLoading}
                         <span class="loading loading-spinner loading-xs"></span> Fetching…
                     {:else}
-                        📊 Fetch Ratings
+                        <MdiIcon icon={mdiChartBar} size={14} /> Fetch Ratings
                     {/if}
                 </button>
                 {#if data.movie.jellyfin_id}
@@ -648,151 +664,183 @@
 
     <!-- Cast & Crew -->
     {#if data.cast.length > 0 || data.crew.length > 0}
-        {@const CAST_LIMIT = 16}
-        {@const CREW_LIMIT = 16}
-        <div class="card bg-base-200/50 border border-base-300">
-            <div class="card-body">
-                <h2 class="card-title text-lg">
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="h-5 w-5 text-accent"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                    >
-                        <path
-                            d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"
-                        /><circle cx="9" cy="7" r="4" /><path
-                            d="M23 21v-2a4 4 0 0 0-3-3.87"
-                        /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                    </svg>
-                    Cast & Crew
-                    <span class="badge badge-ghost badge-sm"
-                        >{data.cast.length + data.crew.length}</span
-                    >
-                </h2>
-
-                {#if data.cast.length > 0}
-                    <h3 class="text-sm font-semibold text-base-content/60 mt-2">
-                        Cast
-                    </h3>
-                    <div class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-3">
-                        {#each (showAllCast ? data.cast : data.cast.slice(0, CAST_LIMIT)) as person}
-                            <a
-                                href="/people/{person.id}"
-                                class="flex flex-col items-center gap-1 group"
-                            >
-                                {#if person.photo_url}
-                                    <img
-                                        src={imgUrl(person.photo_url, 200)}
-                                        alt={person.name}
-                                        class="w-20 h-20 rounded-full object-cover border-2 border-base-300 group-hover:border-primary transition-colors"
-                                    />
-                                {:else}
-                                    <div
-                                        class="w-20 h-20 rounded-full bg-base-300 flex items-center justify-center text-2xl"
-                                    >
-                                        👤
-                                    </div>
-                                {/if}
-                                <span
-                                    class="text-xs font-medium text-center leading-tight truncate w-full group-hover:text-primary transition-colors"
-                                    >{person.name}</span
-                                >
-                                {#if person.character_name}
-                                    <span
-                                        class="text-[10px] text-base-content/40 text-center leading-tight truncate w-full"
-                                        >{person.character_name}</span
-                                    >
-                                {/if}
-                            </a>
-                        {/each}
-                    </div>
-                    {#if data.cast.length > CAST_LIMIT}
-                        <button
-                            class="text-xs text-primary/70 hover:text-primary mt-1 self-start"
-                            onclick={() => showAllCast = !showAllCast}
-                        >
-                            {showAllCast ? '← Show less' : `Show all ${data.cast.length} →`}
-                        </button>
-                    {/if}
-                {/if}
-
-                {#if data.crew.length > 0}
-                    <h3 class="text-sm font-semibold text-base-content/60 mt-3">
-                        Crew
-                    </h3>
-                    <div class="flex flex-wrap gap-2 mt-1">
-                        {#each (showAllCrew ? data.crew : data.crew.slice(0, CREW_LIMIT)) as person}
-                            <a
-                                href="/people/{person.id}"
-                                class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-base-300/50 hover:bg-base-300 transition-colors text-sm group"
-                            >
-                                {#if person.photo_url}
-                                    <img
-                                        src={imgUrl(person.photo_url, 80)}
-                                        alt={person.name}
-                                        class="w-6 h-6 rounded-full object-cover"
-                                    />
-                                {:else}
-                                    <div
-                                        class="w-6 h-6 rounded-full bg-base-300 flex items-center justify-center text-xs"
-                                    >
-                                        👤
-                                    </div>
-                                {/if}
-                                <span
-                                    class="group-hover:text-primary transition-colors"
-                                    >{person.name}</span
-                                >
-                                <span
-                                    class="badge badge-ghost badge-xs capitalize"
-                                    >{person.role_type}</span
-                                >
-                            </a>
-                        {/each}
-                    </div>
-                    {#if data.crew.length > CREW_LIMIT}
-                        <button
-                            class="text-xs text-primary/70 hover:text-primary mt-1 self-start"
-                            onclick={() => showAllCrew = !showAllCrew}
-                        >
-                            {showAllCrew ? '← Show less' : `Show all ${data.crew.length} →`}
-                        </button>
-                    {/if}
-                {/if}
-            </div>
-        </div>
+        <DashSection title="Cast & Crew" icon={mdiDramaMasks} noGlow>
+            {#if data.cast.length > 0}
+                <CreditRow title="Cast" items={data.cast} limit={20} />
+            {/if}
+            {#if data.crew.length > 0}
+                <CreditRow title="Crew" items={data.crew} limit={20} />
+            {/if}
+        </DashSection>
     {/if}
 
-    <!-- Similar Items -->
-    <PosterRow
-        title="Similar In Your Library"
-        items={data.similarInLibrary}
-    />
-    <PosterRow
-        title="💡 You Might Like"
-        items={data.similarYouMightLike}
-    />
+    <!-- Similar Movies -->
+    {#if data.similarInLibrary.length > 0 || data.similarYouMightLike.length > 0 || data.movie.tmdb_id}
+        <DashSection title="Similar Movies" icon={mdiLightbulb} noGlow>
+            {#if data.similarInLibrary.length > 0}
+                <h4 class="text-sm font-semibold text-base-content/60 mb-2">In Your Library</h4>
+                <div class="grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-3">
+                    {#each data.similarInLibrary as item}
+                        <a href={item.href} class="no-underline text-inherit transition-transform duration-150 hover:-translate-y-1" title={item.title}>
+                            <div class="relative aspect-[2/3] rounded-lg overflow-hidden bg-base-300 shadow-md">
+                                {#if item.poster_url}
+                                    <img src={imgUrl(item.poster_url)} alt={item.title} class="w-full h-full object-cover" loading="lazy" />
+                                {/if}
+                            </div>
+                            <div class="mt-1.5 flex flex-col gap-px">
+                                <span class="text-[0.72rem] font-semibold leading-tight truncate">{item.title}</span>
+                                {#if item.subtitle}
+                                    <span class="text-[0.62rem] text-base-content/40">{item.subtitle}</span>
+                                {/if}
+                            </div>
+                        </a>
+                    {/each}
+                </div>
+            {/if}
+            {#if data.similarYouMightLike.length > 0}
+                <h4 class="text-sm font-semibold text-base-content/60 mb-2 mt-4">You Might Also Like</h4>
+                <div class="grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-3">
+                    {#each data.similarYouMightLike as item}
+                        <a href={item.href} class="no-underline text-inherit transition-transform duration-150 hover:-translate-y-1" title={item.title}>
+                            <div class="relative aspect-[2/3] rounded-lg overflow-hidden bg-base-300 shadow-md">
+                                {#if item.poster_url}
+                                    <img src={imgUrl(item.poster_url)} alt={item.title} class="w-full h-full object-cover" loading="lazy" />
+                                {/if}
+                            </div>
+                            <div class="mt-1.5 flex flex-col gap-px">
+                                <span class="text-[0.72rem] font-semibold leading-tight truncate">{item.title}</span>
+                                {#if item.subtitle}
+                                    <span class="text-[0.62rem] text-base-content/40">{item.subtitle}</span>
+                                {/if}
+                            </div>
+                        </a>
+                    {/each}
+                </div>
+            {/if}
+
+            <!-- Discover Related (inline) -->
+            {#if data.movie.tmdb_id}
+                {#if !discoveryLoaded && !discoveryLoading}
+                    <button class="btn btn-ghost btn-sm gap-2 w-full mt-2" onclick={loadDiscovery}>
+                        <MdiIcon icon={mdiMagnify} size={16} /> Discover More Related Movies
+                    </button>
+                {:else if discoveryLoading}
+                    <div class="flex justify-center py-4">
+                        <span class="loading loading-spinner loading-md"></span>
+                        <span class="ml-2 text-sm text-base-content/50">Finding related movies…</span>
+                    </div>
+                {:else if discoveryError}
+                    <div class="alert alert-error text-sm">{discoveryError}</div>
+                {:else}
+                    <div class="mt-3">
+                        <div class="flex items-center justify-between mb-2">
+                            <h3 class="text-sm font-semibold text-base-content/60">
+                                Discover
+                                <span class="badge badge-sm badge-ghost ml-1">{filteredDiscoveryItems(discoveryItems).length} not in library</span>
+                            </h3>
+                            <div class="flex items-center gap-2">
+                                <label class="flex items-center gap-1.5 cursor-pointer text-xs text-base-content/60">
+                                    <input type="checkbox" class="toggle toggle-xs toggle-primary" bind:checked={hideDocumentaries} />
+                                    Hide docs/making-of
+                                </label>
+                                {#if discoveryInLibrary.length > 0}
+                                    <button
+                                        class="btn btn-ghost btn-xs"
+                                        onclick={() => showDiscoverInLib = !showDiscoverInLib}
+                                    >
+                                        {showDiscoverInLib ? 'Hide' : 'Show'} {discoveryInLibrary.length} in library
+                                    </button>
+                                {/if}
+                            </div>
+                        </div>
+
+                        {#if filteredDiscoveryItems(discoveryItems).length === 0 && !showDiscoverInLib}
+                            <div class="text-center py-4 text-base-content/40">
+                                <p>You have all the related movies!</p>
+                            </div>
+                        {:else}
+                            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                                {#each filteredDiscoveryItems(discoveryItems).slice(0, discoveryLimit) as item}
+                                    <div class="card bg-base-300/30 card-compact overflow-hidden group">
+                                        {#if item.poster_url}
+                                            <figure class="aspect-[2/3] relative">
+                                                <img
+                                                    src={imgUrl(item.poster_url)}
+                                                    alt={item.title}
+                                                    class="w-full h-full object-cover"
+                                                />
+                                                {#if item.vote_average > 0}
+                                                    <div class="absolute top-1 right-1 badge badge-sm bg-black/60 border-0 text-warning">
+                                                        ★ {item.vote_average.toFixed(1)}
+                                                    </div>
+                                                {/if}
+                                            </figure>
+                                        {:else}
+                                            <div class="aspect-[2/3] bg-base-300 flex items-center justify-center"><MdiIcon icon={mdiMovieOpen} size={32} /></div>
+                                        {/if}
+                                        <div class="card-body !p-2 !gap-1">
+                                            <h3 class="font-medium text-xs leading-tight line-clamp-2" title={item.title}>{item.title}</h3>
+                                            {#if item.release_year}
+                                                <span class="text-[10px] text-base-content/40">{item.release_year}</span>
+                                            {/if}
+                                            <ArrAddDialog
+                                                discoveryItem={{
+                                                    tmdb_id: item.tmdb_id,
+                                                    media_type: 'movie',
+                                                    title: item.title,
+                                                    release_year: item.release_year,
+                                                    poster_url: item.poster_url,
+                                                    overview: item.overview,
+                                                }}
+                                                buttonClass="btn btn-xs btn-primary gap-1 mt-1 w-full"
+                                                buttonLabel="Download"
+                                                onComplete={() => invalidateAll()}
+                                            />
+                                        </div>
+                                    </div>
+                                {/each}
+
+                                {#if showDiscoverInLib}
+                                    {#each discoveryInLibrary as item}
+                                        <a href="/movies/{item.library_id}" class="card bg-base-300/30 card-compact overflow-hidden group opacity-60 ring-2 ring-success/30">
+                                            {#if item.poster_url}
+                                                <figure class="aspect-[2/3]">
+                                                    <img src={imgUrl(item.poster_url)} alt={item.title} class="w-full h-full object-cover" />
+                                                </figure>
+                                            {:else}
+                                                <div class="aspect-[2/3] bg-base-300 flex items-center justify-center"><MdiIcon icon={mdiMovieOpen} size={32} /></div>
+                                            {/if}
+                                            <div class="card-body !p-2 !gap-1">
+                                                <span class="badge badge-xs badge-success">✓ In Library</span>
+                                                <h3 class="font-medium text-xs leading-tight line-clamp-2">{item.title}</h3>
+                                            </div>
+                                        </a>
+                                    {/each}
+                                {/if}
+                            </div>
+
+                            {#if discoveryItems.length > discoveryLimit}
+                                <button class="btn btn-ghost btn-sm w-full mt-2" onclick={() => discoveryLimit += 12}>
+                                    Show more ({discoveryItems.length - discoveryLimit} remaining)
+                                </button>
+                            {/if}
+                        {/if}
+
+                        {#if discAddError}
+                            <div class="alert alert-error text-sm mt-2">{discAddError}</div>
+                        {/if}
+                    </div>
+                {/if}
+            {/if}
+        </DashSection>
+    {/if}
 
     <!-- Playback History -->
     {#if data.history.length > 0}
         <div class="card bg-base-200/50 border border-base-300">
             <div class="card-body">
                 <h2 class="card-title text-lg">
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="h-5 w-5 text-secondary"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                    >
-                        <circle cx="12" cy="12" r="10" /><polyline
-                            points="12 6 12 12 16 14"
-                        />
-                    </svg>
+                    <MdiIcon icon={mdiHistory} size={20} class="text-secondary" />
                     Watch History
                     <span class="badge badge-ghost badge-sm"
                         >{data.history.length} plays</span
@@ -881,7 +929,7 @@
                                                 } catch { /* ignore */ }
                                             }}
                                         >
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                            <MdiIcon icon={mdiDelete} size={14} />
                                         </button>
                                     </td>
                                 </tr>
@@ -894,7 +942,7 @@
     {:else}
         <div class="card bg-base-200/30 border border-base-300/50">
             <div class="card-body items-center text-center py-10">
-                <div class="text-4xl mb-2">📭</div>
+                <div class="text-4xl mb-2"><MdiIcon icon={mdiInboxOutline} size={36} /></div>
                 <p class="text-base-content/50 text-sm">
                     No watch history recorded for this movie yet.
                 </p>
@@ -903,122 +951,8 @@
     {/if}
 </div>
 
-<!-- Discovery: Related Movies from TMDb -->
-{#if data.movie.tmdb_id}
-    <div class="card bg-base-200/50 border border-base-300 max-w-5xl mx-auto">
-        <div class="card-body">
-            {#if !discoveryLoaded && !discoveryLoading}
-                <button class="btn btn-ghost btn-sm gap-2 self-center" onclick={loadDiscovery}>
-                    🔍 Discover Related Movies
-                </button>
-            {:else if discoveryLoading}
-                <div class="flex justify-center py-6">
-                    <span class="loading loading-spinner loading-md"></span>
-                    <span class="ml-2 text-sm text-base-content/50">Finding related movies…</span>
-                </div>
-            {:else if discoveryError}
-                <div class="alert alert-error text-sm">{discoveryError}</div>
-            {:else}
-                <div class="flex items-center justify-between mb-3">
-                    <h2 class="text-lg font-bold flex items-center gap-2">
-                        🔍 Related Movies
-                        <span class="badge badge-sm badge-ghost">{filteredDiscoveryItems(discoveryItems).length} not in library</span>
-                    </h2>
-                    <div class="flex items-center gap-2">
-                        <label class="flex items-center gap-1.5 cursor-pointer text-xs text-base-content/60">
-                            <input type="checkbox" class="toggle toggle-xs toggle-primary" bind:checked={hideDocumentaries} />
-                            Hide docs/making-of
-                        </label>
-                        {#if discoveryInLibrary.length > 0}
-                            <button
-                                class="btn btn-ghost btn-xs"
-                                onclick={() => showDiscoverInLib = !showDiscoverInLib}
-                            >
-                                {showDiscoverInLib ? 'Hide' : 'Show'} {discoveryInLibrary.length} in library
-                            </button>
-                        {/if}
-                    </div>
-                </div>
 
-                {#if filteredDiscoveryItems(discoveryItems).length === 0 && !showDiscoverInLib}
-                    <div class="text-center py-4 text-base-content/40">
-                        <p>🎉 You have all the related movies!</p>
-                    </div>
-                {:else}
-                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                        {#each filteredDiscoveryItems(discoveryItems).slice(0, discoveryLimit) as item}
-                            <div class="card bg-base-300/30 card-compact overflow-hidden group">
-                                {#if item.poster_url}
-                                    <figure class="aspect-[2/3] relative">
-                                        <img
-                                            src={imgUrl(item.poster_url)}
-                                            alt={item.title}
-                                            class="w-full h-full object-cover"
-                                        />
-                                        {#if item.vote_average > 0}
-                                            <div class="absolute top-1 right-1 badge badge-sm bg-black/60 border-0 text-warning">
-                                                ★ {item.vote_average.toFixed(1)}
-                                            </div>
-                                        {/if}
-                                    </figure>
-                                {:else}
-                                    <div class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl">🎬</div>
-                                {/if}
-                                <div class="card-body !p-2 !gap-1">
-                                    <h3 class="font-medium text-xs leading-tight line-clamp-2" title={item.title}>{item.title}</h3>
-                                    {#if item.release_year}
-                                        <span class="text-[10px] text-base-content/40">{item.release_year}</span>
-                                    {/if}
-                                    <ArrAddDialog
-                                        discoveryItem={{
-                                            tmdb_id: item.tmdb_id,
-                                            media_type: 'movie',
-                                            title: item.title,
-                                            release_year: item.release_year,
-                                            poster_url: item.poster_url,
-                                            overview: item.overview,
-                                        }}
-                                        buttonClass="btn btn-xs btn-primary gap-1 mt-1 w-full"
-                                        buttonLabel="Download"
-                                        onComplete={() => invalidateAll()}
-                                    />
-                                </div>
-                            </div>
-                        {/each}
 
-                        {#if showDiscoverInLib}
-                            {#each discoveryInLibrary as item}
-                                <a href="/movies/{item.library_id}" class="card bg-base-300/30 card-compact overflow-hidden group opacity-60 ring-2 ring-success/30">
-                                    {#if item.poster_url}
-                                        <figure class="aspect-[2/3]">
-                                            <img src={imgUrl(item.poster_url)} alt={item.title} class="w-full h-full object-cover" />
-                                        </figure>
-                                    {:else}
-                                        <div class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl">🎬</div>
-                                    {/if}
-                                    <div class="card-body !p-2 !gap-1">
-                                        <span class="badge badge-xs badge-success">✓ In Library</span>
-                                        <h3 class="font-medium text-xs leading-tight line-clamp-2">{item.title}</h3>
-                                    </div>
-                                </a>
-                            {/each}
-                        {/if}
-                    </div>
-
-                    {#if discoveryItems.length > discoveryLimit}
-                        <button class="btn btn-ghost btn-sm w-full mt-2" onclick={() => discoveryLimit += 12}>
-                            Show more ({discoveryItems.length - discoveryLimit} remaining)
-                        </button>
-                    {/if}
-                {/if}
-
-                {#if discAddError}
-                    <div class="alert alert-error text-sm mt-2">{discAddError}</div>
-                {/if}
-            {/if}
-        </div>
-    </div>
-{/if}
 
 
 
@@ -1033,7 +967,7 @@
             </p>
             {#if data.movie.jellyfin_id}
                 <div class="alert alert-warning text-sm py-2">
-                    <span>⚠️ This movie is tracked in Jellyfin and will reappear on the next sync.</span>
+                    <span><MdiIcon icon={mdiAlert} size={16} /> This movie is tracked in Jellyfin and will reappear on the next sync.</span>
                 </div>
             {/if}
             <div class="modal-action">
@@ -1052,6 +986,8 @@
                 </button>
             </div>
         </div>
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
         <div class="modal-backdrop" onclick={() => showDeleteConfirm = false}></div>
     </div>
 {/if}

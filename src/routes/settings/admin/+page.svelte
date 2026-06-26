@@ -2,6 +2,9 @@
     import ServiceIcon from "$lib/components/ServiceIcon.svelte";
     import LogConsole from "$lib/components/LogConsole.svelte";
     import ReconciliationPanel from "$lib/components/ReconciliationPanel.svelte";
+    import MdiIcon from "$lib/components/MdiIcon.svelte";
+    import { mdiMagnify, mdiAlert, mdiRocketLaunch, mdiCheckCircle, mdiCloseCircle, mdiTelevision, mdiMovieOpen, mdiMusic, mdiFolder, mdiStar, mdiSync, mdiSatelliteUplink, mdiTrayArrowDown, mdiImage, mdiKey, mdiAccountGroup, mdiChevronDown, mdiCheck, mdiClose, mdiInformation, mdiLock, mdiShieldStarOutline, mdiLinkVariant, mdiBrain, mdiServerNetwork, mdiDatabase, mdiTag, mdiViewGrid, mdiMapMarkerRadius, mdiConnection, mdiDelete, mdiContentCopy, mdiBookOpenPageVariant, mdiPlusCircleOutline, mdiPause, mdiWebhook } from '@mdi/js';
+    import { addToast } from '$lib/stores/toast.js';
     import { copyToClipboard } from "$lib/utils.js";
     import { page } from "$app/stores";
     import { goto } from "$app/navigation";
@@ -29,7 +32,10 @@
     let { data } = $props();
 
     // ─── Form State ──────────────────────────────────────────────────────────────
+    // svelte-ignore state_referenced_locally
     let jellyfinUrl = $state(data.settings.jellyfinUrl || "");
+    // svelte-ignore state_referenced_locally
+    let jellyfinExternalUrl = $state(data.settings.jellyfinExternalUrl || "");
     let tvdbApiKey = $state("");
     let tmdbApiKey = $state("");
     let musicbrainzApiKey = $state("");
@@ -37,8 +43,11 @@
     let traktClientSecret = $state("");
     let lastfmApiKey = $state("");
     let lastfmSharedSecret = $state("");
+    // svelte-ignore state_referenced_locally
     let jellyfinPrDbPath = $state(data.settings.jellyfinPrDbPath || "/app/jellyfin/playback_reporting.db");
+    // svelte-ignore state_referenced_locally
     let jellyfinTimezone = $state(data.settings.jellyfinTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
+    // svelte-ignore state_referenced_locally
     let jellyfinSyncCheck = $state(!!data.settings.jellyfinSyncCheck);
 
     // Jellyfin PR DB Validation
@@ -89,19 +98,28 @@
 
 
     // LLM Integration
+    // svelte-ignore state_referenced_locally
     let ollamaUrl = $state(data.settings.ollamaUrl || "");
+    // svelte-ignore state_referenced_locally
     let ollamaEmbedModel = $state(
         data.settings.ollamaEmbedModel || "nomic-embed-text",
     );
+    // svelte-ignore state_referenced_locally
     let ollamaChatModel = $state(
         data.settings.ollamaChatModel || "llama3.2:3b",
     );
     // Multi-provider LLM
+    // svelte-ignore state_referenced_locally
     let llmProvider = $state(data.settings.llmProvider || 'ollama');
+    // svelte-ignore state_referenced_locally
     let llmApiKey = $state(data.settings.llmApiKey || '');
+    // svelte-ignore state_referenced_locally
     let llmApiUrl = $state(data.settings.llmApiUrl || '');
+    // svelte-ignore state_referenced_locally
     let llmChatModel = $state(data.settings.llmChatModel || '');
+    // svelte-ignore state_referenced_locally
     let llmEmbedProvider = $state(data.settings.llmEmbedProvider || 'ollama');
+    // svelte-ignore state_referenced_locally
     let llmEmbedModel = $state(data.settings.llmEmbedModel || '');
     // LiteLLM-specific
     /** @type {string} */
@@ -111,7 +129,9 @@
     let litellmTestError = $state('');
 
     // MCP Server
+    // svelte-ignore state_referenced_locally
     let mcpEnabled = $state(!!data.settings.mcpEnabled);
+    // svelte-ignore state_referenced_locally
     let mcpPort = $state(data.settings.mcpPort || 7332);
     /** @type {{ running: boolean, port: number|null, pid: number|null } | null} */
     let mcpStatus = $state(null);
@@ -153,14 +173,20 @@
         { service: "sonarr", label: "Sonarr (TV)", defaultPort: 8989 },
         { service: "lidarr", label: "Lidarr (music)", defaultPort: 8686 },
     ];
+    // svelte-ignore state_referenced_locally
     let radarrUrl = $state(data.settings.radarrUrl || "");
     let radarrApiKey = $state("");
+    // svelte-ignore state_referenced_locally
     let radarrExternalUrl = $state(data.settings.radarrExternalUrl || "");
+    // svelte-ignore state_referenced_locally
     let sonarrUrl = $state(data.settings.sonarrUrl || "");
     let sonarrApiKey = $state("");
+    // svelte-ignore state_referenced_locally
     let sonarrExternalUrl = $state(data.settings.sonarrExternalUrl || "");
+    // svelte-ignore state_referenced_locally
     let lidarrUrl = $state(data.settings.lidarrUrl || "");
     let lidarrApiKey = $state("");
+    // svelte-ignore state_referenced_locally
     let lidarrExternalUrl = $state(data.settings.lidarrExternalUrl || "");
     /** @type {Record<string, string>} */
     let arrTestStatus = $state({
@@ -171,12 +197,13 @@
     /** @type {Record<string, string>} */
     let arrTestInfo = $state({ radarr: "", sonarr: "", lidarr: "" });
     let arrScanStatus = $state("idle"); // idle | scanning | done
+    let arrWebhookStatus = $state("idle"); // idle | setting-up | done
     let arrSyncRunning = $state(false);
     /** @type {{ time: string, message: string, type: string }[]} */
     let arrSyncLogs = $state([]);
 
     // ─── Tab Navigation ─────────────────────────────────────────────────────────
-    const VALID_TABS = /** @type {const} */ (['server', 'creds-local', 'creds-metadata', 'creds-scrobblers', 'sync', 'cleanup', 'import-export', 'api-keys']);
+    const VALID_TABS = /** @type {const} */ (['server', 'creds-local', 'creds-metadata', 'creds-scrobblers', 'sync', 'cleanup', 'api-keys']);
     /** @type {string} */
     let activeTab = $state(
         VALID_TABS.includes(/** @type {any} */ ($page.url.searchParams.get('tab')))
@@ -208,6 +235,7 @@
     const TABS = [];
 
     // ─── API Keys State ──────────────────────────────────────────────────────────
+    // svelte-ignore state_referenced_locally
     let apiKeysList = $state(data.apiKeys || []);
     let newKeyName = $state('');
     let newKeyPermissions = $state({ 'read:media': true, 'write:media': false, 'read:sync': true, 'write:sync': false, 'admin': false });
@@ -288,8 +316,11 @@
     }
 
     // Snapshot initial values for dirty detection and undo
+    // svelte-ignore state_referenced_locally
+    const s = data.settings;
     let initialValues = $state({
-        jellyfinUrl: data.settings.jellyfinUrl || "",
+        jellyfinUrl: s.jellyfinUrl || "",
+        jellyfinExternalUrl: s.jellyfinExternalUrl || "",
         tvdbApiKey: "",
         tmdbApiKey: "",
         musicbrainzApiKey: "",
@@ -297,35 +328,38 @@
         traktClientSecret: "",
         lastfmApiKey: "",
         lastfmSharedSecret: "",
-        jellyfinPrDbPath: data.settings.jellyfinPrDbPath || "/app/jellyfin/playback_reporting.db",
-        jellyfinSyncCheck: !!data.settings.jellyfinSyncCheck,
-        ollamaUrl: data.settings.ollamaUrl || "",
-        ollamaEmbedModel: data.settings.ollamaEmbedModel || "nomic-embed-text",
-        ollamaChatModel: data.settings.ollamaChatModel || "llama3.2:3b",
-        llmProvider: data.settings.llmProvider || 'ollama',
-        llmApiKey: data.settings.llmApiKey || '',
-        llmApiUrl: data.settings.llmApiUrl || '',
-        llmChatModel: data.settings.llmChatModel || '',
-        llmEmbedProvider: data.settings.llmEmbedProvider || 'ollama',
-        llmEmbedModel: data.settings.llmEmbedModel || '',
+        jellyfinPrDbPath: s.jellyfinPrDbPath || "/app/jellyfin/playback_reporting.db",
+        jellyfinSyncCheck: !!s.jellyfinSyncCheck,
+        ollamaUrl: s.ollamaUrl || "",
+        ollamaEmbedModel: s.ollamaEmbedModel || "nomic-embed-text",
+        ollamaChatModel: s.ollamaChatModel || "llama3.2:3b",
+        llmProvider: s.llmProvider || 'ollama',
+        llmApiKey: s.llmApiKey || '',
+        llmApiUrl: s.llmApiUrl || '',
+        llmChatModel: s.llmChatModel || '',
+        llmEmbedProvider: s.llmEmbedProvider || 'ollama',
+        llmEmbedModel: s.llmEmbedModel || '',
         omdbApiKey: "",
         discogsToken: "",
         fanartApiKey: "",
         // *arr settings
-        radarrUrl: data.settings.radarrUrl || "",
+        radarrUrl: s.radarrUrl || "",
         radarrApiKey: "",
-        radarrExternalUrl: data.settings.radarrExternalUrl || "",
-        sonarrUrl: data.settings.sonarrUrl || "",
+        radarrExternalUrl: s.radarrExternalUrl || "",
+        sonarrUrl: s.sonarrUrl || "",
         sonarrApiKey: "",
-        sonarrExternalUrl: data.settings.sonarrExternalUrl || "",
-        lidarrUrl: data.settings.lidarrUrl || "",
+        sonarrExternalUrl: s.sonarrExternalUrl || "",
+        lidarrUrl: s.lidarrUrl || "",
         lidarrApiKey: "",
-        lidarrExternalUrl: data.settings.lidarrExternalUrl || "",
+        lidarrExternalUrl: s.lidarrExternalUrl || "",
         // Download defaults (updated after async fetch)
         arrDefaultQualityProfileId: { radarr: 0, sonarr: 0, lidarr: 0 },
         arrDefaultRootFolder: { radarr: '', sonarr: '', lidarr: '' },
         arrDefaultMonitor: { radarr: 'movieOnly', sonarr: 'all', lidarr: 'all' },
         arrSkipDialog: { radarr: false, sonarr: false, lidarr: false },
+        // MCP
+        mcpEnabled: !!s.mcpEnabled,
+        mcpPort: s.mcpPort || 7332,
     });
 
     let saving = $state(false);
@@ -334,6 +368,7 @@
     // ─── Dirty Detection ─────────────────────────────────────────────────────────
     let isDirty = $derived(
         jellyfinUrl !== initialValues.jellyfinUrl ||
+        jellyfinExternalUrl !== initialValues.jellyfinExternalUrl ||
             tvdbApiKey !== initialValues.tvdbApiKey ||
             tmdbApiKey !== initialValues.tmdbApiKey ||
             musicbrainzApiKey !== initialValues.musicbrainzApiKey ||
@@ -367,7 +402,9 @@
             JSON.stringify(arrDefaultQualityProfileId) !== JSON.stringify(initialValues.arrDefaultQualityProfileId) ||
             JSON.stringify(arrDefaultRootFolder) !== JSON.stringify(initialValues.arrDefaultRootFolder) ||
             JSON.stringify(arrDefaultMonitor) !== JSON.stringify(initialValues.arrDefaultMonitor) ||
-            JSON.stringify(arrSkipDialog) !== JSON.stringify(initialValues.arrSkipDialog),
+            JSON.stringify(arrSkipDialog) !== JSON.stringify(initialValues.arrSkipDialog) ||
+            mcpEnabled !== initialValues.mcpEnabled ||
+            mcpPort !== initialValues.mcpPort,
     );
 
     // ─── Undo Toast ──────────────────────────────────────────────────────────────
@@ -375,65 +412,6 @@
     let undoSnapshot = $state(null);
     let undoTimer = $state(null);
 
-    // ─── Data Management ───────────────────────────────────────────────────────────────
-    let exporting = $state(false);
-    let exportSensitive = $state(false);
-    let exportPasswords = $state(false);
-    let exportTokens = $state(false);
-    let exportApiKeys = $state(false);
-    let exportImages = $state(false);
-
-    let importFile = $state(null);
-    let importMode = $state("merge");
-    let importPrefer = $state("new");
-    let importing = $state(false);
-    let importResult = $state(null);
-
-    async function exportData() {
-        exporting = true;
-        try {
-            const params = new URLSearchParams();
-            if (exportPasswords) params.set("includePasswords", "1");
-            if (exportTokens) params.set("includeTokens", "1");
-            if (exportApiKeys) params.set("includeApiKeys", "1");
-            if (exportImages) params.set("includeImages", "1");
-            const url = `/api/backup${params.toString() ? "?" + params.toString() : ""}`;
-            const res = await fetch(url);
-            if (!res.ok) throw new Error("Export failed");
-            const blob = await res.blob();
-            const a = document.createElement("a");
-            a.href = URL.createObjectURL(blob);
-            const now = new Date();
-            const ts = `${now.toISOString().split("T")[0]}_${String(now.getHours()).padStart(2, "0")}-${String(now.getMinutes()).padStart(2, "0")}`;
-            a.download = `mediajam-backup-${ts}.zip`;
-            a.click();
-            URL.revokeObjectURL(a.href);
-        } catch (e) {
-            error = e instanceof Error ? e.message : "Export failed";
-        }
-        exporting = false;
-    }
-
-    async function importData() {
-        if (!importFile) return;
-        importing = true;
-        importResult = null;
-        try {
-            const params = new URLSearchParams({ mode: importMode });
-            if (importMode === "merge") params.set("prefer", importPrefer);
-            const res = await fetch(`/api/backup/import?${params.toString()}`, {
-                method: "POST",
-                body: importFile,
-            });
-            importResult = await res.json();
-        } catch (e) {
-            importResult = {
-                success: false,
-                error: e instanceof Error ? e.message : "Import failed",
-            };
-        }
-        importing = false;
-    }
 
     // ─── Factory Reset ──────────────────────────────────────────────────────────
     let resetExpanded = $state(false);
@@ -469,6 +447,7 @@
     function snapshotCurrentValues() {
         return {
             jellyfinUrl,
+            jellyfinExternalUrl,
             tvdbApiKey,
             tmdbApiKey,
             musicbrainzApiKey,
@@ -503,11 +482,14 @@
             arrDefaultRootFolder: { ...arrDefaultRootFolder },
             arrDefaultMonitor: { ...arrDefaultMonitor },
             arrSkipDialog: { ...arrSkipDialog },
+            mcpEnabled,
+            mcpPort,
         };
     }
 
     function restoreValues(snapshot) {
         jellyfinUrl = snapshot.jellyfinUrl;
+        jellyfinExternalUrl = snapshot.jellyfinExternalUrl;
         tvdbApiKey = snapshot.tvdbApiKey;
         tmdbApiKey = snapshot.tmdbApiKey;
         musicbrainzApiKey = snapshot.musicbrainzApiKey;
@@ -542,6 +524,8 @@
         if (snapshot.arrDefaultRootFolder) arrDefaultRootFolder = { ...snapshot.arrDefaultRootFolder };
         if (snapshot.arrDefaultMonitor) arrDefaultMonitor = { ...snapshot.arrDefaultMonitor };
         if (snapshot.arrSkipDialog) arrSkipDialog = { ...snapshot.arrSkipDialog };
+        if (snapshot.mcpEnabled != null) mcpEnabled = snapshot.mcpEnabled;
+        if (snapshot.mcpPort != null) mcpPort = snapshot.mcpPort;
     }
 
     // ─── Validation ──────────────────────────────────────────────────────────────
@@ -617,7 +601,7 @@
         const preSnapshot = snapshotCurrentValues();
 
         try {
-            const payload = { jellyfin_url: jellyfinUrl };
+            const payload = { jellyfin_url: jellyfinUrl, jellyfin_external_url: jellyfinExternalUrl };
 
             if (tvdbApiKey && tvdbApiKey !== "••••••••")
                 payload.tvdb_api_key = tvdbApiKey;
@@ -785,6 +769,7 @@
 
     // Reactive local sync history — seeded from server data, updated on completion
     /** @type {Record<string, {status: string, finishedAt: string|null, summary: string|null}>} */
+    // svelte-ignore state_referenced_locally
     let syncHistoryLocal = $state({
         ...data.syncHistory,
         // Fallback: if no jellyfin history exists but legacy lastSync does, seed it
@@ -1682,10 +1667,10 @@
     let runAllStep = $state(0); // 0=not started, 1=jellyfin, 2=people, 3=musicbrainz, 4=reconcile, 5=done
     let runAllLogs = $state([]);
     const RUN_ALL_STEPS = [
-        { num: 1, label: "Jellyfin Sync", emoji: "📚" },
-        { num: 2, label: "People Sync", emoji: "👥" },
-        { num: 3, label: "MusicBrainz Enrich", emoji: "🎵" },
-        { num: 4, label: "Reconciliation", emoji: "🔄" },
+        { num: 1, label: "Jellyfin Sync", icon: mdiBookOpenPageVariant },
+        { num: 2, label: "People Sync", icon: mdiAccountGroup },
+        { num: 3, label: "MusicBrainz Enrich", icon: mdiMusic },
+        { num: 4, label: "Reconciliation", icon: mdiSync },
     ];
 
     function addRunAllLog(message, type = "info") {
@@ -1966,6 +1951,40 @@
         } catch {
             arrScanStatus = "done";
         }
+    }
+
+    async function setupArrWebhooks() {
+        arrWebhookStatus = 'setting-up';
+        try {
+            const webhookUrl = window.location.origin;
+            const res = await fetch('/api/arr/webhook/setup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ webhookUrl }),
+            });
+            const d = await res.json();
+            if (!res.ok) throw new Error(d.error || 'Setup failed');
+
+            const results = d.results || {};
+            const services = Object.keys(results);
+            if (services.length === 0) {
+                addToast({ type: 'warning', message: 'No *arr services configured' });
+            } else {
+                for (const svc of services) {
+                    const r = results[svc];
+                    if (r.status === 'created') {
+                        addToast({ type: 'success', message: `Webhook configured in ${svc}` });
+                    } else if (r.status === 'exists') {
+                        addToast({ type: 'info', message: `Webhook already exists in ${svc}` });
+                    } else if (r.status === 'error') {
+                        addToast({ type: 'error', message: `Failed to setup ${svc}`, detail: r.error });
+                    }
+                }
+            }
+        } catch (e) {
+            addToast({ type: 'error', message: 'Webhook setup failed', detail: e instanceof Error ? e.message : String(e) });
+        }
+        arrWebhookStatus = 'idle';
     }
 
     /**
@@ -2254,21 +2273,7 @@
     style="max-height: {isDirty ? '80px' : '0px'}; opacity: {isDirty ? 1 : 0};"
 >
     <div class="alert alert-warning shadow-lg rounded-xl py-2 px-4">
-        <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-5 w-5 shrink-0"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-        >
-            <circle cx="12" cy="12" r="10" /><line
-                x1="12"
-                y1="8"
-                x2="12"
-                y2="12"
-            /><line x1="12" y1="16" x2="12.01" y2="16" />
-        </svg>
+        <MdiIcon icon={mdiInformation} size={20} class="shrink-0" />
         <span class="text-sm font-medium">You have unsaved changes</span>
         <button
             class="btn btn-sm btn-primary gap-1"
@@ -2289,23 +2294,7 @@
         <div class="card bg-error/10 border border-error/30">
             <div class="card-body py-4">
                 <div class="flex items-center gap-3">
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="h-5 w-5 text-error shrink-0"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                    >
-                        <rect
-                            x="3"
-                            y="11"
-                            width="18"
-                            height="11"
-                            rx="2"
-                            ry="2"
-                        /><path d="M7 11V7a5 5 0 0110 0v4" />
-                    </svg>
+                    <MdiIcon icon={mdiLock} size={20} class="text-error shrink-0" />
                     <div>
                         <p class="font-semibold text-sm">
                             Admin access required
@@ -2322,20 +2311,7 @@
         <div class="card bg-warning/5 border border-warning/20">
             <div class="card-body py-4">
                 <div class="flex items-center gap-3">
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        class="h-5 w-5 text-warning shrink-0"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                    >
-                        <path
-                            d="M12 2l2.4 3.6L18 6l-1 4 2.5 3H15l-3 5-3-5H4.5L7 10l-1-4 3.6-.4z"
-                        />
-                    </svg>
+                    <MdiIcon icon={mdiShieldStarOutline} size={20} class="text-warning shrink-0" />
                     <div>
                         <p class="font-semibold text-sm">
                             This is an admin-only section
@@ -2374,6 +2350,18 @@
                     class="input input-bordered"
                     bind:value={jellyfinUrl}
                     placeholder="http://localhost:8096"
+                />
+            </div>
+            <div class="form-control">
+                <label class="label" for="settings-jellyfin-external-url"
+                    ><span class="label-text">External URL <span class="text-xs opacity-50">(optional, for sidebar link)</span></span></label
+                >
+                <input
+                    id="settings-jellyfin-external-url"
+                    type="url"
+                    class="input input-bordered"
+                    bind:value={jellyfinExternalUrl}
+                    placeholder="https://jellyfin.example.com"
                 />
             </div>
 
@@ -2427,7 +2415,7 @@
                         {#if prDbStatus === 'checking'}
                             <span class="loading loading-spinner loading-xs"></span>
                         {:else}
-                            🔍 Test
+                            <MdiIcon icon={mdiMagnify} size={14} /> Test
                         {/if}
                     </button>
                 </div>
@@ -2438,7 +2426,7 @@
                     </div>
                 {:else if prDbStatus === 'error'}
                     <div class="mt-2 text-xs text-error flex items-start gap-1.5">
-                        <span>⚠️</span>
+                        <span><MdiIcon icon={mdiAlert} size={14} /></span>
                         <div>
                             <p>{prDbMessage}</p>
                             <p class="text-base-content/40 mt-1">
@@ -2492,18 +2480,7 @@
     >
         <div class="card-body">
             <h2 class="card-title text-lg">
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5 text-secondary"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                >
-                    <path
-                        d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"
-                    />
-                </svg>
+                <MdiIcon icon={mdiKey} size={20} class="text-secondary" />
                 Metadata & Ratings
             </h2>
             <p class="text-xs text-base-content/50">API keys for fetching metadata, artwork, IMDb/RT/Metacritic scores, and Discogs community ratings.</p>
@@ -2655,20 +2632,7 @@
     >
         <div class="card-body">
             <h2 class="card-title text-lg">
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5 text-accent"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                >
-                    <path
-                        d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"
-                    /><path
-                        d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"
-                    />
-                </svg>
+                <MdiIcon icon={mdiLinkVariant} size={20} class="text-accent" />
                 Tracker App Credentials
             </h2>
             <p class="text-sm text-base-content/60">
@@ -2698,40 +2662,12 @@
                                 <span
                                     class="badge badge-success badge-sm gap-1"
                                 >
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        class="h-3 w-3"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="3"
-                                        ><polyline
-                                            points="20 6 9 17 4 12"
-                                        /></svg
-                                    >
+                                    <MdiIcon icon={mdiCheck} size={12} />
                                     Valid
                                 </span>
                             {:else}
                                 <span class="badge badge-error badge-sm gap-1">
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        class="h-3 w-3"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="3"
-                                        ><line
-                                            x1="18"
-                                            y1="6"
-                                            x2="6"
-                                            y2="18"
-                                        /><line
-                                            x1="6"
-                                            y1="6"
-                                            x2="18"
-                                            y2="18"
-                                        /></svg
-                                    >
+                                    <MdiIcon icon={mdiClose} size={12} />
                                     Invalid
                                 </span>
                             {/if}
@@ -2819,40 +2755,12 @@
                                 <span
                                     class="badge badge-success badge-sm gap-1"
                                 >
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        class="h-3 w-3"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="3"
-                                        ><polyline
-                                            points="20 6 9 17 4 12"
-                                        /></svg
-                                    >
+                                    <MdiIcon icon={mdiCheck} size={12} />
                                     Valid
                                 </span>
                             {:else}
                                 <span class="badge badge-error badge-sm gap-1">
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        class="h-3 w-3"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        stroke-width="3"
-                                        ><line
-                                            x1="18"
-                                            y1="6"
-                                            x2="6"
-                                            y2="18"
-                                        /><line
-                                            x1="6"
-                                            y1="6"
-                                            x2="18"
-                                            y2="18"
-                                        /></svg
-                                    >
+                                    <MdiIcon icon={mdiClose} size={12} />
                                     Invalid
                                 </span>
                             {/if}
@@ -2923,16 +2831,7 @@
     >
         <div class="card-body">
             <h2 class="card-title text-lg">
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5 text-info"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                >
-                    <path
-                        d="M4 3a2 2 0 100 4h12a2 2 0 100-4H4zM3 8h14v7a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"
-                    />
-                </svg>
+                <MdiIcon icon={mdiDatabase} size={20} class="text-info" />
                 Media Management
             </h2>
             <p class="text-sm text-base-content/60">
@@ -2951,11 +2850,30 @@
                         <span class="loading loading-spinner loading-xs"></span>
                         Scanning...
                     {:else}
-                        🔍 Scan Network
+                        <MdiIcon icon={mdiMagnify} size={14} /> Scan Network
                     {/if}
                 </button>
                 <span class="text-xs text-base-content/50"
                     >Scan local network for *arr instances</span
+                >
+            </div>
+
+            <!-- Setup Webhooks button -->
+            <div class="flex items-center gap-2">
+                <button
+                    class="btn btn-xs btn-outline gap-1"
+                    disabled={arrWebhookStatus === "setting-up"}
+                    onclick={setupArrWebhooks}
+                >
+                    {#if arrWebhookStatus === "setting-up"}
+                        <span class="loading loading-spinner loading-xs"></span>
+                        Setting up...
+                    {:else}
+                        <MdiIcon icon={mdiWebhook} size={14} /> Setup Webhooks
+                    {/if}
+                </button>
+                <span class="text-xs text-base-content/50"
+                    >Auto-configure *arr to push download events</span
                 >
             </div>
 
@@ -3093,7 +3011,7 @@
                                         class="loading loading-spinner loading-xs"
                                     ></span>
                                 {:else}
-                                    🔌 Test
+                                    <MdiIcon icon={mdiConnection} size={14} /> Test
                                 {/if}
                             </button>
                         </div>
@@ -3216,17 +3134,7 @@
     >
         <div class="card-body">
             <h2 class="card-title text-lg">
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5 text-accent"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    ><path
-                        d="M12 2a4 4 0 0 0-4 4v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2h-2V6a4 4 0 0 0-4-4zm-2 4a2 2 0 1 1 4 0v2h-4V6z"
-                    /><circle cx="12" cy="15" r="2" /></svg
-                >
+                <MdiIcon icon={mdiBrain} size={20} class="text-accent" />
                 LLM Integration
                 <span class="badge badge-ghost badge-sm">optional</span>
             </h2>
@@ -3421,7 +3329,7 @@ cat ~/.codex/auth.json</pre>
                             </select>
                             {#if llmEmbedProvider !== 'ollama'}
                                 <p class="text-[10px] text-warning mt-1">
-                                    ⚠️ Switching embed providers requires re-embedding all items
+                                    <MdiIcon icon={mdiAlert} size={14} class="text-warning" /> Switching embed providers requires re-embedding all items
                                 </p>
                             {/if}
                         </label>
@@ -3483,9 +3391,9 @@ cat ~/.codex/auth.json</pre>
                                     {#if litellmTestStatus === 'checking'}
                                         <span class="loading loading-spinner loading-xs"></span>
                                     {:else if litellmTestStatus === 'ok'}
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-success" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
+                                        <MdiIcon icon={mdiCheck} size={16} class="text-success" />
                                     {:else if litellmTestStatus === 'error'}
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-error" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+                                        <MdiIcon icon={mdiClose} size={16} class="text-error" />
                                     {/if}
                                     Test
                                 </button>
@@ -3551,7 +3459,7 @@ cat ~/.codex/auth.json</pre>
                             </select>
                             {#if llmEmbedProvider !== 'ollama'}
                                 <p class="text-[10px] text-warning mt-1">
-                                    ⚠️ Switching embed providers requires re-embedding all items
+                                    <MdiIcon icon={mdiAlert} size={14} class="text-warning" /> Switching embed providers requires re-embedding all items
                                 </p>
                             {/if}
                         </label>
@@ -3583,29 +3491,9 @@ cat ~/.codex/auth.json</pre>
                                 <span class="loading loading-spinner loading-xs"
                                 ></span>
                             {:else if ollamaHealthStatus === "ok"}
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    class="h-4 w-4 text-success"
-                                    viewBox="0 0 20 20"
-                                    fill="currentColor"
-                                    ><path
-                                        fill-rule="evenodd"
-                                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                        clip-rule="evenodd"
-                                    /></svg
-                                >
+                                <MdiIcon icon={mdiCheck} size={16} class="text-success" />
                             {:else if ollamaHealthStatus === "error"}
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    class="h-4 w-4 text-error"
-                                    viewBox="0 0 20 20"
-                                    fill="currentColor"
-                                    ><path
-                                        fill-rule="evenodd"
-                                        d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                                        clip-rule="evenodd"
-                                    /></svg
-                                >
+                                <MdiIcon icon={mdiClose} size={16} class="text-error" />
                             {/if}
                             Test
                         </button>
@@ -3619,17 +3507,7 @@ cat ~/.codex/auth.json</pre>
                                 <span class="loading loading-spinner loading-xs"
                                 ></span>
                             {:else}
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    class="h-4 w-4"
-                                    viewBox="0 0 20 20"
-                                    fill="currentColor"
-                                    ><path
-                                        fill-rule="evenodd"
-                                        d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z"
-                                        clip-rule="evenodd"
-                                    /></svg
-                                >
+                                <MdiIcon icon={mdiMapMarkerRadius} size={16} />
                             {/if}
                             Scan
                         </button>
@@ -3753,15 +3631,7 @@ cat ~/.codex/auth.json</pre>
                                 <span class="loading loading-spinner loading-xs"
                                 ></span>
                             {:else}
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    class="h-4 w-4"
-                                    viewBox="0 0 20 20"
-                                    fill="currentColor"
-                                    ><path
-                                        d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"
-                                    /></svg
-                                >
+                                <MdiIcon icon={mdiViewGrid} size={16} />
                             {/if}
                             Generate Embeddings
                         </button>
@@ -3807,17 +3677,7 @@ cat ~/.codex/auth.json</pre>
                                 <span class="loading loading-spinner loading-xs"
                                 ></span>
                             {:else}
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    class="h-4 w-4"
-                                    viewBox="0 0 20 20"
-                                    fill="currentColor"
-                                    ><path
-                                        fill-rule="evenodd"
-                                        d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7A.997.997 0 012 10V5a3 3 0 013-3h5c.256 0 .512.098.707.293l7 7zM5 6a1 1 0 100-2 1 1 0 000 2z"
-                                        clip-rule="evenodd"
-                                    /></svg
-                                >
+                                <MdiIcon icon={mdiTag} size={16} />
                             {/if}
                             Generate Tags
                         </button>
@@ -3865,15 +3725,7 @@ cat ~/.codex/auth.json</pre>
     >
         <div class="card-body">
             <h2 class="card-title text-lg">
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5 text-accent"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    ><path d="M4 6h16M4 12h16M4 18h16" /><circle cx="20" cy="6" r="1.5" /><circle cx="20" cy="12" r="1.5" /><circle cx="20" cy="18" r="1.5" /></svg
-                >
+                <MdiIcon icon={mdiServerNetwork} size={20} class="text-accent" />
                 MCP Server
                 <span class="badge badge-ghost badge-sm">optional</span>
             </h2>
@@ -3959,18 +3811,7 @@ cat ~/.codex/auth.json</pre>
     >
         <div class="card-body">
             <h2 class="card-title text-lg">
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5 text-info"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                >
-                    <polyline points="23 4 23 10 17 10" /><polyline
-                        points="1 20 1 14 7 14"
-                    />
-                </svg>
+                <MdiIcon icon={mdiSync} size={20} class="text-info" />
                 Data Sync
             </h2>
             <p class="text-sm text-base-content/50 mt-1">
@@ -4996,307 +4837,8 @@ cat ~/.codex/auth.json</pre>
 
     {/if}
 
-    <!-- ═══════════════════════ TAB: IMPORT / EXPORT ═══════════════════════ -->
-    {#if activeTab === 'import-export'}
-    <!-- Data Management -->
-    <div
-        id="data-management"
-        class="card bg-base-200/50 border border-base-300 scroll-mt-20"
-    >
-        <div class="card-body">
-            <h2 class="card-title text-lg">
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5 text-info"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                >
-                    <path
-                        d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"
-                    /><polyline points="7 10 12 15 17 10" /><line
-                        x1="12"
-                        y1="15"
-                        x2="12"
-                        y2="3"
-                    />
-                </svg>
-                Data Management
-            </h2>
-
-            <!-- Export Section -->
-            <div class="space-y-3 mt-2">
-                <h3 class="text-sm font-medium">Export Data</h3>
-                <p class="text-xs text-base-content/50">
-                    Download a complete backup of all data including history,
-                    metadata, settings, and uploads.
-                </p>
-
-                <!-- Sensitive data opt-in -->
-                <div class="bg-base-300/30 rounded-lg p-3 space-y-2">
-                    <label class="flex items-start gap-2 cursor-pointer">
-                        <input
-                            type="checkbox"
-                            class="checkbox checkbox-sm checkbox-warning mt-0.5"
-                            bind:checked={exportSensitive}
-                        />
-                        <span class="text-xs text-base-content/70">
-                            <span class="font-semibold text-warning"
-                                >Include encrypted data.</span
-                            > I understand including passwords/keys is risky. Include:
-                        </span>
-                    </label>
-
-                    {#if exportSensitive}
-                        <div class="ml-7 space-y-1.5">
-                            <label
-                                class="flex items-center gap-2 cursor-pointer"
-                            >
-                                <input
-                                    type="checkbox"
-                                    class="checkbox checkbox-xs"
-                                    bind:checked={exportPasswords}
-                                />
-                                <span class="text-xs"
-                                    >Password hashes <span
-                                        class="text-base-content/40"
-                                        >(all accounts)</span
-                                    ></span
-                                >
-                            </label>
-                            <label
-                                class="flex items-center gap-2 cursor-pointer"
-                            >
-                                <input
-                                    type="checkbox"
-                                    class="checkbox checkbox-xs"
-                                    bind:checked={exportTokens}
-                                />
-                                <span class="text-xs"
-                                    >Access tokens <span
-                                        class="text-base-content/40"
-                                        >(Trakt, Last.fm, Jellyfin)</span
-                                    ></span
-                                >
-                            </label>
-                            <label
-                                class="flex items-center gap-2 cursor-pointer"
-                            >
-                                <input
-                                    type="checkbox"
-                                    class="checkbox checkbox-xs"
-                                    bind:checked={exportApiKeys}
-                                />
-                                <span class="text-xs"
-                                    >API keys <span class="text-base-content/40"
-                                        >(TVDB, TMDB, MusicBrainz, OMDb, Discogs,
-                                        Trakt, Last.fm, Radarr, Sonarr, Lidarr)</span
-                                    ></span
-                                >
-                            </label>
-                        </div>
-                    {/if}
-                </div>
-
-                <!-- Cached images opt-in -->
-                <div class="bg-base-300/30 rounded-lg p-3">
-                    <label class="flex items-start gap-2 cursor-pointer">
-                        <input
-                            type="checkbox"
-                            class="checkbox checkbox-sm mt-0.5"
-                            bind:checked={exportImages}
-                        />
-                        <span class="text-xs text-base-content/70">
-                            <span class="font-semibold">Include cached images.</span>
-                            Adds all locally cached poster/photo images to the backup.
-                            <span class="text-base-content/40">This may significantly increase the backup file size.</span>
-                        </span>
-                    </label>
-                </div>
-
-                <button
-                    class="btn btn-sm btn-info gap-2"
-                    onclick={exportData}
-                    disabled={exporting}
-                >
-                    {#if exporting}
-                        <span class="loading loading-spinner loading-xs"></span>
-                    {:else}
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            class="w-4 h-4"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            ><path
-                                d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"
-                            /><polyline points="7 10 12 15 17 10" /><line
-                                x1="12"
-                                y1="15"
-                                x2="12"
-                                y2="3"
-                            /></svg
-                        >
-                    {/if}
-                    Download Backup
-                </button>
-            </div>
-
-            <div class="divider my-2"></div>
-
-            <!-- Import Section -->
-            <div class="space-y-3">
-                <h3 class="text-sm font-medium">Import Data</h3>
-                <p class="text-xs text-base-content/50">
-                    Restore data from a Mediajam backup ZIP file.
-                </p>
-
-                <input
-                    type="file"
-                    accept=".zip"
-                    class="file-input file-input-sm file-input-bordered w-full max-w-xs"
-                    onchange={(e) => {
-                        importFile = e.target?.files?.[0] || null;
-                        importResult = null;
-                    }}
-                />
-
-                {#if importFile}
-                    <div class="flex flex-wrap gap-3 items-center">
-                        <div class="form-control">
-                            <label class="label py-0">
-                                <span class="label-text text-xs">Mode</span>
-                            </label>
-                            <select
-                                class="select select-sm select-bordered"
-                                bind:value={importMode}
-                            >
-                                <option value="overwrite">Overwrite all</option>
-                                <option value="merge">Merge data</option>
-                            </select>
-                        </div>
-
-                        {#if importMode === "merge"}
-                            <div class="form-control">
-                                <label class="label py-0">
-                                    <span class="label-text text-xs"
-                                        >Prefer</span
-                                    >
-                                </label>
-                                <select
-                                    class="select select-sm select-bordered"
-                                    bind:value={importPrefer}
-                                >
-                                    <option value="new">New data wins</option>
-                                    <option value="old"
-                                        >Existing data wins</option
-                                    >
-                                </select>
-                            </div>
-                        {/if}
-
-                        <button
-                            class="btn btn-sm btn-warning gap-2 self-end"
-                            onclick={importData}
-                            disabled={importing}
-                        >
-                            {#if importing}
-                                <span class="loading loading-spinner loading-xs"
-                                ></span>
-                            {/if}
-                            Import
-                        </button>
-                    </div>
-
-                    {#if importMode === "overwrite"}
-                        <div class="alert alert-warning alert-sm">
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                class="h-4 w-4 shrink-0"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                ><path
-                                    d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
-                                /><line x1="12" y1="9" x2="12" y2="13" /><line
-                                    x1="12"
-                                    y1="17"
-                                    x2="12.01"
-                                    y2="17"
-                                /></svg
-                            >
-                            <span class="text-xs"
-                                >This will delete all existing data and replace
-                                it with the backup.</span
-                            >
-                        </div>
-                    {/if}
-                {/if}
-
-                {#if importResult}
-                    <div
-                        class="rounded-xl p-4 border {importResult.success
-                            ? 'bg-success/5 border-success/20 text-base-content'
-                            : 'bg-error/5 border-error/20 text-base-content'}"
-                    >
-                        <div class="w-full">
-                            {#if importResult.success}
-                                <p class="text-sm font-medium">
-                                    Import complete ({importResult.mode})
-                                </p>
-                                <div
-                                    class="text-xs mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5"
-                                >
-                                    {#each Object.entries(importResult.results?.imported || {}) as [table, count]}
-                                        <span class="text-base-content/60"
-                                            >{table}:</span
-                                        >
-                                        <span>{count}</span>
-                                    {/each}
-                                </div>
-                                {#if importResult.results?.errors?.length > 0}
-                                    <p class="text-xs text-error mt-1">
-                                        {importResult.results.errors.join(", ")}
-                                    </p>
-                                {/if}
-                            {:else}
-                                <p class="text-sm">
-                                    {importResult.error || "Import failed"}
-                                </p>
-                            {/if}
-                        </div>
-                    </div>
-                {/if}
-            </div>
-        </div>
-    </div>
-
-    <!-- Database Backups — moved to Settings > Backups -->
-    <div class="card bg-base-200/50 border border-base-300 mt-6">
-        <div class="card-body py-4">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                    </svg>
-                    <span class="text-sm font-medium">Database Backups</span>
-                </div>
-                <a href="/settings/backups" class="btn btn-ghost btn-sm gap-1">
-                    Manage Backups
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
-                </a>
-            </div>
-        </div>
-    </div>
-
-    <!-- Factory Reset (Danger Zone) -->
+    <!-- Factory Reset (Danger Zone) — shown on cleanup tab -->
+    {#if activeTab === 'cleanup'}
     <div class="card bg-base-200/50 border border-error/20 mt-6">
         <div class="card-body">
             <button
@@ -5378,6 +4920,7 @@ cat ~/.codex/auth.json</pre>
         </div>
     </div>
     {/if}
+
 
     <!-- Save Button (visible on server + credentials tabs) -->
     {#if activeTab === 'server' || activeTab === 'creds-local' || activeTab === 'creds-metadata' || activeTab === 'creds-scrobblers'}

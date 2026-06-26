@@ -1,4 +1,7 @@
 <script>
+    import MdiIcon from "$lib/components/MdiIcon.svelte";
+    import { mdiWhiteBalanceSunny, mdiViewList, mdiCalendar, mdiClockOutline, mdiMovieOpen, mdiTelevision, mdiMusic, mdiHeart, mdiAccount } from '@mdi/js';
+
     /** @type {{ data: import('./$types').PageData }} */
     let { data } = $props();
 
@@ -37,7 +40,9 @@
         "sunset",
     ];
 
+    // svelte-ignore state_referenced_locally
     let currentTheme = $state(data.settings.theme || "dark");
+    // svelte-ignore state_referenced_locally
     let includeSpecials = $state(data.settings.includeSpecials || false);
     let savingSpecials = $state(false);
 
@@ -61,6 +66,7 @@
         'UTC',
     ];
     const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    // svelte-ignore state_referenced_locally
     let timezone = $state(data.userPreferences?.timezone || browserTz || 'UTC');
     let savingTimezone = $state(false);
     let tzSaved = $state(false);
@@ -79,9 +85,13 @@
     }
 
     // Heart border toggles
+    // svelte-ignore state_referenced_locally
     let heartBorderMovies = $state(data.settings.heartBorderMovies ?? true);
+    // svelte-ignore state_referenced_locally
     let heartBorderShows = $state(data.settings.heartBorderShows ?? true);
+    // svelte-ignore state_referenced_locally
     let heartBorderMusic = $state(data.settings.heartBorderMusic ?? true);
+    // svelte-ignore state_referenced_locally
     let heartBorderPeople = $state(data.settings.heartBorderPeople ?? true);
     let savingHeartBorder = $state(false);
 
@@ -120,9 +130,14 @@
         savingHeartBorder = false;
     }
     // Calendar display settings
+    // svelte-ignore state_referenced_locally
     let calendarShowMovies = $state(data.settings.calendarShowMovies ?? true);
+    // svelte-ignore state_referenced_locally
     let calendarShowShows = $state(data.settings.calendarShowShows ?? true);
+    // svelte-ignore state_referenced_locally
     let calendarShowMusic = $state(data.settings.calendarShowMusic ?? true);
+    // svelte-ignore state_referenced_locally
+    let calendarMaxPerDay = $state(data.settings.calendarMaxPerDay ?? 2);
     let savingCalendar = $state(false);
 
     async function saveCalendarSettings() {
@@ -134,6 +149,7 @@
                 calendar_show_movies: calendarShowMovies ? 1 : 0,
                 calendar_show_shows: calendarShowShows ? 1 : 0,
                 calendar_show_music: calendarShowMusic ? 1 : 0,
+                calendar_max_per_day: calendarMaxPerDay,
             }),
         });
         savingCalendar = false;
@@ -145,36 +161,7 @@
     <div class="card bg-base-200/50 border border-base-300">
         <div class="card-body">
             <h2 class="card-title text-lg">
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5 text-accent"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                >
-                    <circle cx="12" cy="12" r="5" /><line
-                        x1="12"
-                        y1="1"
-                        x2="12"
-                        y2="3"
-                    /><line x1="12" y1="21" x2="12" y2="23" /><line
-                        x1="4.22"
-                        y1="4.22"
-                        x2="5.64"
-                        y2="5.64"
-                    /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line
-                        x1="1"
-                        y1="12"
-                        x2="3"
-                        y2="12"
-                    /><line x1="21" y1="12" x2="23" y2="12" /><line
-                        x1="4.22"
-                        y1="19.78"
-                        x2="5.64"
-                        y2="18.36"
-                    /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-                </svg>
+                <MdiIcon icon={mdiWhiteBalanceSunny} size={20} class="text-accent" />
                 Appearance
             </h2>
             <p class="text-sm text-base-content/60 mb-3">
@@ -207,31 +194,7 @@
     <div class="card bg-base-200/50 border border-base-300">
         <div class="card-body">
             <h2 class="card-title text-lg">
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="h-5 w-5 text-info"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                >
-                    <line x1="8" y1="6" x2="21" y2="6" /><line
-                        x1="8"
-                        y1="12"
-                        x2="21"
-                        y2="12"
-                    /><line x1="8" y1="18" x2="21" y2="18" /><line
-                        x1="3"
-                        y1="6"
-                        x2="3.01"
-                        y2="6"
-                    /><line x1="3" y1="12" x2="3.01" y2="12" /><line
-                        x1="3"
-                        y1="18"
-                        x2="3.01"
-                        y2="18"
-                    />
-                </svg>
+                <MdiIcon icon={mdiViewList} size={20} class="text-info" />
                 Data Display
             </h2>
             <div class="form-control">
@@ -261,9 +224,7 @@
     <div class="card bg-base-200/50 border border-base-300">
         <div class="card-body">
             <h2 class="card-title text-lg">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-secondary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
-                </svg>
+                <MdiIcon icon={mdiCalendar} size={20} class="text-secondary" />
                 Calendar
             </h2>
             <p class="text-sm text-base-content/60 mb-2">
@@ -278,7 +239,7 @@
                         onchange={saveCalendarSettings}
                         disabled={savingCalendar}
                     />
-                    <span class="label-text">🎬 Movies</span>
+                    <span class="label-text"><MdiIcon icon={mdiMovieOpen} size={16} /> Movies</span>
                 </label>
                 <label class="label cursor-pointer justify-start gap-3">
                     <input
@@ -288,7 +249,7 @@
                         onchange={saveCalendarSettings}
                         disabled={savingCalendar}
                     />
-                    <span class="label-text">📺 TV Shows</span>
+                    <span class="label-text"><MdiIcon icon={mdiTelevision} size={16} /> TV Shows</span>
                 </label>
                 <label class="label cursor-pointer justify-start gap-3">
                     <input
@@ -298,7 +259,24 @@
                         onchange={saveCalendarSettings}
                         disabled={savingCalendar}
                     />
-                    <span class="label-text">🎵 Music / Albums</span>
+                    <span class="label-text"><MdiIcon icon={mdiMusic} size={16} /> Music / Albums</span>
+                </label>
+            </div>
+            <div class="divider my-1"></div>
+            <div class="form-control">
+                <label class="label cursor-pointer justify-start gap-3">
+                    <span class="label-text">Events per day</span>
+                    <select
+                        class="select select-bordered select-sm w-20"
+                        bind:value={calendarMaxPerDay}
+                        onchange={saveCalendarSettings}
+                        disabled={savingCalendar}
+                    >
+                        {#each [1, 2, 3, 4, 5] as n}
+                            <option value={n}>{n}</option>
+                        {/each}
+                    </select>
+                    <span class="text-xs text-base-content/50">shown before "show more"</span>
                 </label>
             </div>
         </div>
@@ -308,9 +286,7 @@
     <div class="card bg-base-200/50 border border-base-300">
         <div class="card-body">
             <h2 class="card-title text-lg">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-warning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
-                </svg>
+                <MdiIcon icon={mdiClockOutline} size={20} class="text-warning" />
                 Timezone
             </h2>
             <p class="text-sm text-base-content/60 mb-2">
@@ -347,7 +323,7 @@
     <div class="card bg-base-200/50 border border-base-300">
         <div class="card-body">
             <h2 class="card-title text-lg">
-                <span class="text-lg">💗</span>
+                <MdiIcon icon={mdiHeart} size={20} class="text-error" />
                 Favorite Heart Border
             </h2>
             <p class="text-sm text-base-content/60 mb-2">
@@ -363,7 +339,7 @@
                         onchange={saveHeartBorder}
                         disabled={savingHeartBorder}
                     />
-                    <span class="label-text">🎬 Movies</span>
+                    <span class="label-text"><MdiIcon icon={mdiMovieOpen} size={16} /> Movies</span>
                 </label>
                 <label class="label cursor-pointer justify-start gap-3">
                     <input
@@ -373,7 +349,7 @@
                         onchange={saveHeartBorder}
                         disabled={savingHeartBorder}
                     />
-                    <span class="label-text">📺 TV Shows</span>
+                    <span class="label-text"><MdiIcon icon={mdiTelevision} size={16} /> TV Shows</span>
                 </label>
                 <label class="label cursor-pointer justify-start gap-3">
                     <input
@@ -383,7 +359,7 @@
                         onchange={saveHeartBorder}
                         disabled={savingHeartBorder}
                     />
-                    <span class="label-text">🎵 Music / Artists</span>
+                    <span class="label-text"><MdiIcon icon={mdiMusic} size={16} /> Music / Artists</span>
                 </label>
                 <label class="label cursor-pointer justify-start gap-3">
                     <input
@@ -393,7 +369,7 @@
                         onchange={saveHeartBorder}
                         disabled={savingHeartBorder}
                     />
-                    <span class="label-text">👤 People</span>
+                    <span class="label-text"><MdiIcon icon={mdiAccount} size={16} /> People</span>
                 </label>
             </div>
         </div>

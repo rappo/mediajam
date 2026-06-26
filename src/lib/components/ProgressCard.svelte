@@ -3,10 +3,12 @@
   Usage: <ProgressCard title="South Park" watched={32} total={331} posterUrl="..." link="/tv/123" reason="..." />
 -->
 <script>
+    import MdiIcon from '$lib/components/MdiIcon.svelte';
+    import { mdiFolder } from '@mdi/js';
     /** @type {{ title: string, watched: number, total: number, posterUrl?: string|null, link?: string|null, reason?: string|null }} */
     let { title, watched, total, posterUrl = null, link = null, reason = null } = $props();
 
-    const pct = total > 0 ? Math.round((watched / total) * 100) : 0;
+    const pct = $derived(total > 0 ? Math.round((watched / total) * 100) : 0);
 </script>
 
 {#if link}
@@ -14,7 +16,7 @@
         {#if posterUrl}
             <img src={posterUrl} alt="" class="card-poster" loading="lazy" />
         {:else}
-            <div class="card-poster placeholder">📁</div>
+            <div class="card-poster placeholder"><MdiIcon icon={mdiFolder} size={20} /></div>
         {/if}
         <div class="card-body">
             <span class="card-title">{title}</span>
@@ -35,7 +37,7 @@
         {#if posterUrl}
             <img src={posterUrl} alt="" class="card-poster" loading="lazy" />
         {:else}
-            <div class="card-poster placeholder">📁</div>
+            <div class="card-poster placeholder"><MdiIcon icon={mdiFolder} size={20} /></div>
         {/if}
         <div class="card-body">
             <span class="card-title">{title}</span>

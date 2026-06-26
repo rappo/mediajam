@@ -4,16 +4,25 @@
      * a badge for unread count. Clicking items can trigger actions (e.g. open
      * conflict dialog, navigate to settings).
      *
+     * Modes:
+     *   - default: bell button + dropdown panel
+     *   - badgeOnly: just a notification count dot (for avatar overlay)
+     *   - inline: renders the activity list directly (for embedding in menus)
+     *
      * @component
      */
     import { invalidateAll } from "$app/navigation";
+    import MdiIcon from '$lib/components/MdiIcon.svelte';
+    import { mdiBell, mdiClipboardList } from '@mdi/js';
+    import { notificationCount } from '$lib/stores/notifications.js';
 
     import { onMount } from "svelte";
 
-    /** @type {{ initialUnread?: number, conflictDialog?: any }} */
-    let { initialUnread = 0, conflictDialog } = $props();
+    /** @type {{ initialUnread?: number, conflictDialog?: any, badgeOnly?: boolean, inline?: boolean }} */
+    let { initialUnread = 0, conflictDialog, badgeOnly = false, inline = false } = $props();
 
     let open = $state(false);
+    // svelte-ignore state_referenced_locally
     let unreadCount = $state(initialUnread);
     /** @type {any[]} */
     let activities = $state([]);
@@ -29,6 +38,13 @@
         pollUnread();
         pollInterval = setInterval(pollUnread, 30000); // Every 30s
         return () => clearInterval(pollInterval);
+    });
+
+    // If inline, fetch activities on mount
+    $effect(() => {
+        if (inline) {
+            fetchActivities();
+        }
     });
 
     // Click-outside to close
@@ -48,6 +64,7 @@
             const res = await fetch("/api/activity?limit=1");
             const data = await res.json();
             unreadCount = data.unreadCount;
+            notificationCount.set(unreadCount);
         } catch { /* silent */ }
     }
 
@@ -188,6 +205,89 @@
     }
 </script>
 
+{#if badgeOnly}
+    {#if unreadCount > 0}
+        <span class="notif-badge-dot">{unreadCount > 9 ? '9+' : unreadCount}</span>
+    {/if}
+{:else if inline}
+    <!-- Inline mode: renders activity list directly for embedding -->
+    <div class="inline-activity">
+        <!-- Header -->
+        <div class="flex items-center justify-between px-4 py-3 border-b border-base-300">
+            <h3 class="font-semibold text-sm">Notifications</h3>
+            <div class="flex gap-1">
+                {#if activities.some(a => a.read)}
+                    <button
+                        class="btn btn-ghost btn-xs text-base-content/50"
+                        onclick={clearReadEntries}>Clear read</button
+                    >
+                {/if}
+                {#if unreadCount > 0}
+                    <button
+                        class="btn btn-ghost btn-xs text-primary"
+                        onclick={markAllRead}>Mark all read</button
+                    >
+                {/if}
+            </div>
+        </div>
+
+        <!-- Body -->
+        <div class="overflow-y-auto flex-1 max-h-[50vh]">
+            {#if loading}
+                <div class="flex justify-center py-8">
+                    <span class="loading loading-spinner loading-sm"></span>
+                </div>
+            {:else if activities.length === 0}
+                <div class="text-center py-10 text-base-content/40 text-sm">
+                    No recent activity
+                </div>
+            {:else}
+                {#each activities as activity}
+                    <!-- svelte-ignore a11y_click_events_have_key_events -->
+                    <!-- svelte-ignore a11y_no_static_element_interactions -->
+                    <div
+                        class="flex items-start gap-3 px-4 py-3 border-b border-base-content/5 transition-colors {activity.read
+                            ? 'opacity-60'
+                            : 'bg-primary/5'} {activity.actionable
+                            ? 'cursor-pointer hover:bg-base-300/50'
+                            : ''}"
+                        onclick={() => handleClick(activity)}
+                    >
+                        <span class="text-base mt-0.5 shrink-0"><MdiIcon icon={mdiClipboardList} size={16} /></span>
+                        <div class="flex-1 min-w-0">
+                            <div class="text-sm {activity.read ? '' : 'font-medium'}">
+                                {#if activity.action === 'arr_item_added'}
+                                    {@const ad = getActionData(activity)}
+                                    {#if ad?.href}
+                                        <a href={ad.href} class="hover:text-primary transition-colors">{activity.title}</a>
+                                    {:else}
+                                        {activity.title}
+                                    {/if}
+                                {:else}
+                                    {activity.title}
+                                {/if}
+                            </div>
+                            {#if activity.detail}
+                                <div class="text-xs text-base-content/50 mt-0.5 truncate">
+                                    {formatDetail(activity.detail)}
+                                </div>
+                            {/if}
+                        </div>
+                        <div class="text-right shrink-0">
+                            <div class="text-xs text-base-content/40">{timeAgo(activity.created_at)}</div>
+                            {#if activity.status !== "info"}
+                                <span class="badge badge-xs mt-0.5 {activity.status === 'success' ? 'badge-success' : activity.status === 'error' ? 'badge-error' : activity.status === 'warning' ? 'badge-warning' : ''}">{activity.status}</span>
+                            {/if}
+                        </div>
+                        {#if !activity.read}
+                            <span class="w-2 h-2 rounded-full bg-primary shrink-0 mt-2"></span>
+                        {/if}
+                    </div>
+                {/each}
+            {/if}
+        </div>
+    </div>
+{:else}
 <div class="relative" bind:this={containerEl}>
     <button
         class="btn btn-ghost btn-sm btn-circle indicator"
@@ -199,17 +299,7 @@
                 >{unreadCount > 99 ? "99+" : unreadCount}</span
             >
         {/if}
-        <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-5 w-5"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-        >
-            <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" />
-            <path d="M13.73 21a2 2 0 01-3.46 0" />
-        </svg>
+        <MdiIcon icon={mdiBell} size={20} />
     </button>
 
     {#if open}
@@ -264,7 +354,7 @@
                         >
                             <!-- Icon -->
                             <span class="text-base mt-0.5 shrink-0"
-                                >{activity.icon || "📋"}</span
+                                ><MdiIcon icon={mdiClipboardList} size={16} /></span
                             >
 
                             <!-- Content -->
@@ -393,3 +483,25 @@
         </div>
     {/if}
 </div>
+{/if}
+
+<style>
+    .notif-badge-dot {
+        position: absolute;
+        top: -2px;
+        right: -2px;
+        min-width: 14px;
+        height: 14px;
+        border-radius: 7px;
+        background: oklch(var(--p));
+        color: oklch(var(--pc));
+        font-size: 0.55rem;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 3px;
+        line-height: 1;
+        pointer-events: none;
+    }
+</style>

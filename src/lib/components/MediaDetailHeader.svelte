@@ -27,6 +27,9 @@
      *   extraBadges?: { label: string, cls?: string }[],
      *   actions?: any,
      *   watchlistAction?: any,
+     *   onPlay?: (() => void) | null,
+     *   playerStatus?: string | null,
+     *   playerDeviceName?: string | null,
      *   children?: any
      * }}
      */
@@ -56,15 +59,20 @@
         actions,
         watchlistAction,
         ratingsBar,
+        onPlay = null,
+        playerStatus = null,
+        playerDeviceName = null,
         children,
     } = $props();
 
     import FavoriteButton from '$lib/components/FavoriteButton.svelte';
     import HeartBorder from '$lib/components/HeartBorder.svelte';
     import ServiceIcon from '$lib/components/ServiceIcon.svelte';
+    import MdiIcon from '$lib/components/MdiIcon.svelte';
+    import { mdiMovieOpen, mdiTelevision, mdiMusic, mdiAccount, mdiChevronLeft, mdiCog, mdiPlay } from '@mdi/js';
     import { imgUrl } from '$lib/utils.js';
 
-    const isPerson = mediaType === 'person';
+    const isPerson = $derived(mediaType === 'person');
     // Use poster as backdrop fallback for pages without explicit backdrops (e.g. music)
     const effectiveBackdrop = $derived((backdropUrl || posterUrl) ? imgUrl(backdropUrl || posterUrl) : null);
     let backdropBroken = $state(false);
@@ -100,7 +108,7 @@
         }
         const imdb = el.imdb_id || el.imdb_person_id;
         if (imdb) {
-            const p = el.imdb_person_id || mt === 'person' ? 'name' : 'title';
+            const p = el.imdb_person_id ? 'name' : mt === 'person' ? 'name' : 'title';
             result.push({ label: 'IMDb', url: `https://www.imdb.com/${p}/${imdb}`, service: 'imdb' });
         }
         if (el.tvdb_id) {
@@ -133,8 +141,7 @@
     const hasVisibleStats = $derived(visibleStats.length > 0);
 </script>
 
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<!-- svelte-ignore a11y_no_static_element_interactions -->
+
 
 <!-- Ambient glow container -->
 <div class="ambient-glow-wrap">
@@ -154,7 +161,7 @@
     <!-- Back button (top-left of hero) -->
     {#if backHref}
         <a href={backHref} class="back-btn">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+            <MdiIcon icon={mdiChevronLeft} size={16} />
             {backLabel || 'Back'}
         </a>
     {/if}
@@ -163,12 +170,10 @@
     {#if actions}
         <div class="gear-menu-wrap">
             <button class="gear-btn" onclick={() => gearOpen = !gearOpen} title="Actions">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                </svg>
+                <MdiIcon icon={mdiCog} size={20} />
             </button>
             {#if gearOpen}
-                <div class="gear-backdrop" onclick={() => gearOpen = false}></div>
+                <button class="gear-backdrop" onclick={() => gearOpen = false} aria-label="Close actions menu"></button>
                 <div class="gear-dropdown">
                     <div class="gear-dropdown-label">Actions</div>
                     <div class="gear-dropdown-items">
@@ -187,7 +192,7 @@
                     <img src={imgUrl(posterUrl)} alt={title} class="poster-img" onerror={() => posterBroken = true} />
                 {:else}
                     <div class="poster-placeholder">
-                        {#if mediaType === 'movie'}🎬{:else if mediaType === 'show'}📺{:else if mediaType === 'artist'}🎵{:else}👤{/if}
+                        {#if mediaType === 'movie'}<MdiIcon icon={mdiMovieOpen} size={48} />{:else if mediaType === 'show'}<MdiIcon icon={mdiTelevision} size={48} />{:else if mediaType === 'artist'}<MdiIcon icon={mdiMusic} size={48} />{:else}<MdiIcon icon={mdiAccount} size={48} />{/if}
                     </div>
                 {/if}
             </HeartBorder>
@@ -198,6 +203,18 @@
             <h1 class="detail-title">
                 {title}
                 {#if year}<span class="title-year">({year})</span>{/if}
+                {#if onPlay && playerStatus && playerStatus !== 'offline'}
+                    <button
+                        class="quick-play-btn"
+                        class:qp-playing={playerStatus === 'playing'}
+                        class:qp-busy={playerStatus === 'busy'}
+                        onclick={onPlay}
+                        title={playerStatus === 'busy' ? `${playerDeviceName || 'Player'} is busy` : `Play on ${playerDeviceName || 'Default Player'}`}
+                        disabled={playerStatus === 'busy'}
+                    >
+                        <MdiIcon icon={mdiPlay} size={16} />
+                    </button>
+                {/if}
                 <FavoriteButton type={favoriteType} id={favoriteId} {isFavorite} />
             </h1>
             <div class="meta-row">
@@ -207,6 +224,9 @@
                     <span class="badge badge-sm {hb.cls || 'badge-outline'}">{hb.label}</span>
                 {/each}
                 {#if watchStatusBadge}<span class="badge {watchStatusBadge.cls} badge-sm watch-badge">{watchStatusBadge.label}</span>{/if}
+                {#each extraBadges as badge}
+                    <span class="badge badge-sm {badge.cls || 'badge-ghost'}">{badge.label}</span>
+                {/each}
                 {#if watchlistAction}{@render watchlistAction()}{/if}
             </div>
             {#if ratingsBar}{@render ratingsBar()}{/if}
@@ -239,9 +259,8 @@
                 </div>
             {/if}
             {#if hasVisibleStats || hasFileInfo}
-                <!-- svelte-ignore a11y_click_events_have_key_events -->
-                <!-- svelte-ignore a11y_no_static_element_interactions -->
-                <div class="hero-stats-bar" class:clickable-bar={hasFileInfo && !!onFileInfoClick} onclick={hasFileInfo && onFileInfoClick ? onFileInfoClick : undefined}>
+                <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+                <div class="hero-stats-bar" class:clickable-bar={hasFileInfo && !!onFileInfoClick} onclick={hasFileInfo && onFileInfoClick ? onFileInfoClick : undefined} onkeydown={hasFileInfo && onFileInfoClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') onFileInfoClick(); } : undefined} role={hasFileInfo && onFileInfoClick ? 'button' : undefined} tabindex={hasFileInfo && onFileInfoClick ? 0 : undefined}>
                     {#if hasVisibleStats}
                         {#each visibleStats as stat}
                             <span class="hero-stat-item">
@@ -264,16 +283,7 @@
     </div>
 </div>
 
-<!-- ═══ TOOLBAR RIBBON (extra badges only) ═══ -->
-{#if extraBadges.length > 0}
-<div class="toolbar-ribbon">
-    <div class="ribbon-badges">
-        {#each extraBadges as badge}
-            <span class="badge badge-sm {badge.cls || 'badge-ghost'}">{badge.label}</span>
-        {/each}
-    </div>
-</div>
-{/if}
+
 
 {#if children}{@render children()}{/if}
 </div> <!-- end ambient-glow-wrap -->
@@ -363,6 +373,9 @@
         position: fixed;
         inset: 0;
         z-index: 9;
+        background: transparent;
+        border: none;
+        cursor: default;
     }
     .gear-dropdown {
         position: absolute;
@@ -439,6 +452,42 @@
         text-shadow: 0 0 20px rgba(0,0,0,0.8), 0 0 40px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.9);
     }
     @media (min-width: 768px) { .detail-title { font-size: 2.5rem; } }
+
+    /* Quick play button */
+    .quick-play-btn {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 1.6em; height: 1.6em; border-radius: 50%;
+        background: oklch(0.55 0.18 145 / 0.85);
+        color: white;
+        border: none; cursor: pointer;
+        transition: all 0.2s ease;
+        flex-shrink: 0;
+        text-shadow: none;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    .quick-play-btn:hover:not(:disabled) {
+        background: oklch(0.60 0.20 145);
+        transform: scale(1.12);
+        box-shadow: 0 2px 12px oklch(0.55 0.18 145 / 0.5);
+    }
+    .quick-play-btn:active:not(:disabled) {
+        transform: scale(0.95);
+    }
+    .quick-play-btn.qp-playing {
+        background: oklch(0.55 0.15 250 / 0.85);
+    }
+    .quick-play-btn.qp-playing:hover {
+        background: oklch(0.60 0.17 250);
+        box-shadow: 0 2px 12px oklch(0.55 0.15 250 / 0.5);
+    }
+    .quick-play-btn.qp-busy {
+        background: oklch(0.50 0.10 60 / 0.5);
+        cursor: not-allowed;
+        opacity: 0.6;
+    }
+    .quick-play-btn:disabled {
+        pointer-events: auto; /* allow tooltip on disabled */
+    }
     .title-year {
         font-weight: 300;
         font-size: 0.6em;
@@ -459,6 +508,21 @@
         background-color: #16a34a !important;
         color: #fff !important;
         border-color: #16a34a !important;
+        text-shadow: none !important;
+        opacity: 1 !important;
+    }
+
+    /* Extra badges in hero (e.g. "Not downloaded") — solid opaque for legibility */
+    .meta-row :global(.badge-warning) {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        text-shadow: none !important;
+        opacity: 1 !important;
+        font-weight: 600;
+    }
+    .meta-row :global(.badge-ghost) {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
         text-shadow: none !important;
         opacity: 1 !important;
     }

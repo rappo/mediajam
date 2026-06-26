@@ -1,8 +1,14 @@
 <script>
+    import MdiIcon from "$lib/components/MdiIcon.svelte";
+    import { mdiLinkVariant, mdiCheckCircle, mdiMusic, mdiAlbum, mdiInformation, mdiAlert, mdiPartyPopper } from '@mdi/js';
+
     let { data } = $props();
 
+    // svelte-ignore state_referenced_locally
     let suggestions = $state(data.suggestions);
+    // svelte-ignore state_referenced_locally
     let stats = $state(data.stats);
+    // svelte-ignore state_referenced_locally
     let totalSuggestions = $state(data.totalSuggestions);
 
     let merging = $state(new Set());
@@ -198,7 +204,7 @@
     <div class="flex items-center justify-between">
         <div>
             <h1 class="text-2xl font-bold flex items-center gap-2">
-                🔗 Album Matching
+                <MdiIcon icon={mdiLinkVariant} size={24} /> Album Matching
             </h1>
             <p class="text-sm text-base-content/60 mt-1">
                 Match imported albums from Last.fm to your Jellyfin library.
@@ -267,17 +273,7 @@
     <!-- Auto-merge button -->
     {#if stats.exactMatches > 0}
         <div class="alert alert-success shadow-sm">
-            <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="w-5 h-5 shrink-0"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                ><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path
-                    d="M12 8h.01"
-                /></svg
-            >
+            <MdiIcon icon={mdiInformation} size={20} class="shrink-0" />
             <div class="flex-1">
                 <p class="font-semibold">
                     {stats.exactMatches} exact matches ready to auto-merge
@@ -306,22 +302,7 @@
     <!-- Auto-merge medium+ button -->
     {#if totalSuggestions > 0}
         <div class="alert alert-warning shadow-sm">
-            <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="w-5 h-5 shrink-0"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                ><path
-                    d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
-                /><line x1="12" y1="9" x2="12" y2="13" /><line
-                    x1="12"
-                    y1="17"
-                    x2="12.01"
-                    y2="17"
-                /></svg
-            >
+            <MdiIcon icon={mdiAlert} size={20} class="shrink-0" />
             <div class="flex-1">
                 <p class="font-semibold">
                     {totalSuggestions} suggestions with medium+ confidence
@@ -349,7 +330,7 @@
     {#if autoMergeResult}
         <div class="alert alert-info shadow-sm">
             <span
-                >✅ Auto-merged <strong>{autoMergeResult.merged}</strong>
+                ><MdiIcon icon={mdiCheckCircle} size={16} /> Auto-merged <strong>{autoMergeResult.merged}</strong>
                 albums, migrated <strong>{autoMergeResult.totalPlays}</strong> plays.</span
             >
         </div>
@@ -358,7 +339,7 @@
     {#if autoMergeMediumResult}
         <div class="alert alert-info shadow-sm">
             <span
-                >✅ Auto-merged <strong>{autoMergeMediumResult.merged}</strong>
+                ><MdiIcon icon={mdiCheckCircle} size={16} /> Auto-merged <strong>{autoMergeMediumResult.merged}</strong>
                 albums (medium+), migrated
                 <strong>{autoMergeMediumResult.totalPlays}</strong> plays.</span
             >
@@ -487,9 +468,7 @@
                                     <div
                                         class="text-[10px] text-base-content/40 mt-0.5"
                                     >
-                                        {suggestion.matchType === "track"
-                                            ? "🎵"
-                                            : "📀"}
+                                        {#if suggestion.matchType === "track"}<MdiIcon icon={mdiMusic} size={10} />{:else}<MdiIcon icon={mdiAlbum} size={10} />{/if}
                                         {suggestion.matchType}
                                         {#if suggestion.trackOverlap}
                                             ({suggestion.trackOverlap})
@@ -508,7 +487,7 @@
                                             class="loading loading-spinner loading-xs"
                                         ></span>
                                     {:else}
-                                        ✅ Merge
+                                        <MdiIcon icon={mdiCheckCircle} size={12} /> Merge
                                     {/if}
                                 </button>
                             </td>
@@ -526,7 +505,7 @@
         {/if}
     {:else}
         <div class="text-center py-16 text-base-content/40">
-            <p class="text-5xl mb-3">🎉</p>
+            <p class="text-5xl mb-3"><MdiIcon icon={mdiPartyPopper} size={48} /></p>
             <p class="text-lg font-medium">No match suggestions</p>
             <p class="text-sm mt-1">
                 {#if stats.totalUnmatched > 0}

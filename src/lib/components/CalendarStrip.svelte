@@ -4,7 +4,10 @@
   Use `mode="tv"` (default) or `mode="music"` to control rendering.
 -->
 <script>
-    import { imgUrl } from "$lib/utils.js";
+    import { imgUrl, getTodayISO } from "$lib/utils.js";
+    import { page } from "$app/stores";
+    import MdiIcon from '$lib/components/MdiIcon.svelte';
+    import { mdiMusic, mdiTelevision, mdiChevronLeft, mdiChevronRight } from '@mdi/js';
 
     /** @type {{ days: Array<{ date: string, episodes: any[] }>, onNavigate?: (offset: number) => void, weekOffset?: number, mode?: 'tv' | 'music' }} */
     let { days, onNavigate, weekOffset = 0, mode = 'tv' } = $props();
@@ -16,7 +19,7 @@
      */
     function formatDay(dateStr) {
         const d = new Date(dateStr + 'T12:00:00');
-        const today = new Date().toISOString().split('T')[0];
+        const today = getTodayISO($page.data.userPreferences?.timezone);
         const isPast = dateStr < today;
         return {
             name: dayNames[(d.getDay() + 6) % 7],
@@ -91,7 +94,7 @@
                 {#if wi === 0}
                     <div class="cal-nav">
                         <button class="nav-btn" onclick={() => onNavigate?.(weekOffset - 3)} title="Previous 3 weeks">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                            <MdiIcon icon={mdiChevronLeft} size={14} />
                             Prev
                         </button>
                         {#if weekOffset !== 0}
@@ -99,7 +102,7 @@
                         {/if}
                         <button class="nav-btn" onclick={() => onNavigate?.(weekOffset + 3)} title="Next 3 weeks">
                             Next
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                            <MdiIcon icon={mdiChevronRight} size={14} />
                         </button>
                     </div>
                 {/if}
@@ -131,7 +134,7 @@
                                             {#if item.poster_url}
                                                 <img src={imgUrl(item.poster_url, 80)} alt="" loading="lazy" />
                                             {:else}
-                                                <div class="poster-fallback">{mode === 'music' ? '🎵' : '📺'}</div>
+                                                <div class="poster-fallback"><MdiIcon icon={mode === 'music' ? mdiMusic : mdiTelevision} size={12} /></div>
                                             {/if}
                                         </div>
                                         <!-- Info -->
@@ -239,6 +242,9 @@
         flex-direction: column;
         min-width: 0; /* allow columns to shrink equally */
         min-height: 80px;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        padding: 4px;
     }
 
     .col-past {
@@ -246,7 +252,9 @@
     }
 
     .col-today {
-        /* subtle column highlight */
+        border-color: rgba(255, 255, 255, 0.35);
+        background: rgba(255, 255, 255, 0.03);
+        box-shadow: 0 0 12px rgba(255, 255, 255, 0.08);
     }
 
     /* ── Day header ── */

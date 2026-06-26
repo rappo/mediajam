@@ -51,6 +51,7 @@ export async function GET() {
         calendarShowMovies: settings?.calendar_show_movies !== 0,
         calendarShowShows: settings?.calendar_show_shows !== 0,
         calendarShowMusic: settings?.calendar_show_music !== 0,
+        calendarMaxPerDay: settings?.calendar_max_per_day ?? 2,
         // MCP server
         mcpEnabled: settings?.mcp_enabled === 1,
         mcpPort: settings?.mcp_port ?? 7332,
@@ -127,6 +128,7 @@ export async function PUT({ request }) {
             calendar_show_movies: 'calendar_show_movies',
             calendar_show_shows: 'calendar_show_shows',
             calendar_show_music: 'calendar_show_music',
+            calendar_max_per_day: 'calendar_max_per_day',
             // MCP server
             mcp_enabled: 'mcp_enabled',
             mcp_port: 'mcp_port',

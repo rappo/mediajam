@@ -46,3 +46,28 @@ export async function copyToClipboard(text) {
         return false;
     }
 }
+
+/**
+ * Get the current date in YYYY-MM-DD format for a given timezone.
+ * Falls back to browser timezone, then UTC.
+ * @param {string} [timezone]
+ * @returns {string}
+ */
+export function getTodayISO(timezone) {
+    const tz = timezone || (typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC');
+    try {
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: tz,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        });
+        const parts = formatter.formatToParts(new Date());
+        const year = parts.find(p => p.type === 'year').value;
+        const month = parts.find(p => p.type === 'month').value;
+        const day = parts.find(p => p.type === 'day').value;
+        return `${year}-${month}-${day}`;
+    } catch (e) {
+        return new Date().toISOString().split('T')[0];
+    }
+}

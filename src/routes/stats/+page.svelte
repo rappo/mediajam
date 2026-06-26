@@ -4,6 +4,8 @@
     import SankeyChart from '$lib/components/SankeyChart.svelte';
     import TreemapChart from '$lib/components/TreemapChart.svelte';
     import StackedBarChart from '$lib/components/StackedBarChart.svelte';
+    import MdiIcon from '$lib/components/MdiIcon.svelte';
+    import { mdiBookshelf, mdiMovieOpen, mdiMusic, mdiTimerOutline, mdiCalendar, mdiTrendingUp, mdiChartBar } from '@mdi/js';
 
     let loaded = $state(false);
     let loadError = $state('');
@@ -68,19 +70,31 @@
     {:else if stats}
         <!-- ── Overview Cards ── -->
         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-10">
-            <StatCard icon="📚" label="Total Items" value={stats.cards.total} color="primary" />
-            <StatCard icon="🎬" label="Movies" value={stats.cards.movies} sub="{stats.cards.shows} shows" color="secondary" />
-            <StatCard icon="🎵" label="Music" value={stats.cards.artists} sub="{stats.cards.albums} albums" color="accent" />
-            <StatCard icon="⏱" label="Play Time" value={formatHours(stats.cards.watchHours)} color="info" />
-            <StatCard icon="📅" label="This Month" value={stats.cards.thisMonth} sub="items played" color="warning" />
-            <StatCard icon="📈" label="Growth" value="+{stats.cards.growthRate}/wk" sub={stats.cards.avgRating ? `avg ${stats.cards.avgRating}★` : ''} color="error" />
+            <StatCard label="Total Items" value={stats.cards.total} color="primary">
+                <MdiIcon icon={mdiBookshelf} size={16} />
+            </StatCard>
+            <StatCard label="Movies" value={stats.cards.movies} sub="{stats.cards.shows} shows" color="secondary">
+                <MdiIcon icon={mdiMovieOpen} size={16} />
+            </StatCard>
+            <StatCard label="Music" value={stats.cards.artists} sub="{stats.cards.albums} albums" color="accent">
+                <MdiIcon icon={mdiMusic} size={16} />
+            </StatCard>
+            <StatCard label="Play Time" value={formatHours(stats.cards.watchHours)} color="info">
+                <MdiIcon icon={mdiTimerOutline} size={16} />
+            </StatCard>
+            <StatCard label="This Month" value={stats.cards.thisMonth} sub="items played" color="warning">
+                <MdiIcon icon={mdiCalendar} size={16} />
+            </StatCard>
+            <StatCard label="Growth" value="+{stats.cards.growthRate}/wk" sub={stats.cards.avgRating ? `avg ${stats.cards.avgRating}★` : ''} color="error">
+                <MdiIcon icon={mdiTrendingUp} size={16} />
+            </StatCard>
         </div>
 
         <!-- ── Library Composition ── -->
         <section>
             <div class="flex items-center justify-between mb-3">
                 <h2 class="text-lg font-semibold flex items-center gap-2">
-                    <span>📊</span> Library Composition
+                    <MdiIcon icon={mdiChartBar} size={18} /> Library Composition
                 </h2>
                 <div class="join">
                     <button class="join-item btn btn-xs" class:btn-active={viewMode === 'sankey'} onclick={() => viewMode = 'sankey'}>Flow</button>
@@ -108,7 +122,7 @@
                     {/if}
                 {:else}
                     <div class="flex flex-col items-center justify-center py-16 text-base-content/40">
-                        <span class="text-4xl mb-4">📊</span>
+                        <span class="text-4xl mb-4"><MdiIcon icon={mdiChartBar} size={40} /></span>
                         <p>No data yet. Sync your library to see the flow.</p>
                     </div>
                 {/if}
@@ -122,7 +136,7 @@
     {:else}
         <div class="card bg-base-200/30 border border-base-300/50">
             <div class="card-body items-center text-center py-16">
-                <div class="text-5xl mb-4">📊</div>
+                <div class="text-5xl mb-4"><MdiIcon icon={mdiChartBar} size={48} /></div>
                 <h2 class="text-xl font-bold">No stats yet</h2>
                 <p class="text-base-content/60 max-w-md">
                     Start watching and listening to build your stats. Sync your library in Settings to get started.

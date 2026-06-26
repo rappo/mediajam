@@ -1,4 +1,6 @@
 <script>
+    import MdiIcon from "$lib/components/MdiIcon.svelte";
+    import { mdiAlbum, mdiCalendar, mdiPlay, mdiClockOutline, mdiTimerSand, mdiDownload, mdiEye, mdiEyeOff, mdiMusic, mdiMusicOff, mdiAlert } from '@mdi/js';
     import { imgUrl } from "$lib/utils.js";
     import InteractiveSearchDialog from "$lib/components/InteractiveSearchDialog.svelte";
 
@@ -38,6 +40,7 @@
         return `${mins}:${String(secs).padStart(2, "0")}`;
     }
 
+    // svelte-ignore state_referenced_locally
     let isHidden = $state(!!data.album.is_hidden);
     let toggling = $state(false);
 
@@ -118,7 +121,7 @@
             <div
                 class="w-44 h-44 rounded-xl bg-base-300 flex items-center justify-center shrink-0"
             >
-                <span class="text-6xl opacity-20">💿</span>
+                <span class="text-6xl opacity-20"><MdiIcon icon={mdiAlbum} size={48} /></span>
             </div>
         {/if}
         <div class="space-y-3 min-w-0">
@@ -134,44 +137,28 @@
             <div class="flex flex-wrap gap-3">
                 {#if data.album.release_year}
                     <div class="badge badge-lg badge-ghost gap-1">
-                        📅 {data.album.release_year}
+                        <MdiIcon icon={mdiCalendar} size={14} /> {data.album.release_year}
                     </div>
                 {/if}
                 {#if data.albumStats.totalPlays > 0}
                     <div class="badge badge-lg badge-accent gap-1">
-                        ▶️ {data.albumStats.totalPlays} plays
+                        <MdiIcon icon={mdiPlay} size={14} /> {data.albumStats.totalPlays} plays
                     </div>
                 {/if}
                 {#if data.albumStats.lastPlayed}
                     <div class="badge badge-lg badge-info gap-1">
-                        🕐 {timeAgo(data.albumStats.lastPlayed)}
+                        <MdiIcon icon={mdiClockOutline} size={14} /> {timeAgo(data.albumStats.lastPlayed)}
                     </div>
                 {/if}
                 {#if data.runtimeMinutes > 0}
                     <div class="badge badge-lg badge-ghost gap-1">
-                        ⏱️ {formatRuntime(data.runtimeMinutes)}
+                        <MdiIcon icon={mdiTimerSand} size={14} /> {formatRuntime(data.runtimeMinutes)}
                     </div>
                 {/if}
                 {#if data.artist.collection_status === "external"}
                     <div class="badge badge-lg badge-warning gap-1">
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            class="w-4 h-4"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            ><line x1="2" y1="2" x2="22" y2="22" /><path
-                                d="M9 18V5l12-2v13"
-                            /><circle cx="6" cy="18" r="3" /><circle
-                                cx="18"
-                                cy="16"
-                                r="3"
-                            /></svg
-                        >
-                        Not in library
+                        <MdiIcon icon={mdiMusicOff} size={16} />
+                        Not downloaded
                     </div>
                 {/if}
                 {#if data.isInLidarr}
@@ -201,7 +188,7 @@
                             {#if downloading}
                                 <span class="loading loading-spinner loading-xs"></span>
                             {:else}
-                                ⬇
+                                <MdiIcon icon={mdiDownload} size={14} />
                             {/if}
                             Auto Search
                         </button>
@@ -209,7 +196,7 @@
                     <InteractiveSearchDialog
                         service="lidarr"
                         mediaParentId={data.artist.id}
-                        title="{data.album.title}"
+                        title={data.album.title}
                     />
                 </div>
                 {#if downloadError}
@@ -222,7 +209,7 @@
     <!-- Hidden Album Banner -->
     {#if isHidden}
         <div class="alert alert-info shadow-sm">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+            <MdiIcon icon={mdiEyeOff} size={20} class="shrink-0" />
             <div>
                 <p class="font-semibold">This album is hidden</p>
                 <p class="text-sm opacity-80">It won't appear on the artist page.</p>
@@ -231,7 +218,7 @@
                 {#if toggling}
                     <span class="loading loading-spinner loading-xs"></span>
                 {:else}
-                    👁️ Unhide
+                    <MdiIcon icon={mdiEye} size={16} /> Unhide
                 {/if}
             </button>
         </div>
@@ -240,24 +227,7 @@
     <!-- Unmatched Warning -->
     {#if data.isUnmatched && !data.lidarrEnriched}
         <div class="alert alert-warning shadow-sm">
-            <svg
-                xmlns="http://www.w3.org/2000/svg"
-                class="w-5 h-5 shrink-0"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                ><path
-                    d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"
-                /><line x1="12" y1="9" x2="12" y2="13" /><line
-                    x1="12"
-                    y1="17"
-                    x2="12.01"
-                    y2="17"
-                /></svg
-            >
+            <MdiIcon icon={mdiAlert} size={20} class="shrink-0" />
             <div>
                 <p class="font-semibold">Unmatched Album</p>
                 <p class="text-sm opacity-80">
@@ -271,7 +241,7 @@
                     {#if toggling}
                         <span class="loading loading-spinner loading-xs"></span>
                     {:else}
-                        🙈 Hide
+                        <MdiIcon icon={mdiEyeOff} size={16} /> Hide
                     {/if}
                 </button>
             {/if}
@@ -336,7 +306,7 @@
                                 <td class="text-center">
                                     {#if stats?.play_count > 0}
                                         <span
-                                            class="badge badge-xs badge-accent"
+                                            class="text-xs text-base-content/60"
                                             >{stats.play_count}</span
                                         >
                                     {:else}
@@ -414,7 +384,7 @@
             </div>
         {:else}
             <div class="text-center py-12 text-base-content/40">
-                <p class="text-4xl mb-2">🎵</p>
+                <p class="text-4xl mb-2"><MdiIcon icon={mdiMusic} size={36} /></p>
                 {#if data.isUnmatched}
                     <p>
                         Unmatched album — no track data or listening history
@@ -449,7 +419,7 @@
                             <div
                                 class="w-full aspect-square bg-base-300 flex items-center justify-center"
                             >
-                                <span class="text-4xl opacity-20">💿</span>
+                                <span class="text-4xl opacity-20"><MdiIcon icon={mdiAlbum} size={36} /></span>
                             </div>
                         {/if}
                         <div class="p-2.5">

@@ -1,4 +1,7 @@
 <script>
+    import MdiIcon from "$lib/components/MdiIcon.svelte";
+    import { mdiCheckCircle, mdiCloseCircle, mdiSync, mdiEye, mdiCancel, mdiMerge, mdiDramaMasks, mdiMagnify, mdiTelevision, mdiAlert, mdiBookmark, mdiBookmarkOutline, mdiViewGrid, mdiStar, mdiViewList, mdiDownload, mdiMagnifyPlusOutline, mdiLightbulb } from '@mdi/js';
+    import { addToast } from '$lib/stores/toast.js';
     let { data } = $props();
     import { invalidateAll, goto } from "$app/navigation";
     import DataTable from "$lib/components/DataTable.svelte";
@@ -7,18 +10,23 @@
     import HeartBorder from "$lib/components/HeartBorder.svelte";
     import FavoriteButton from "$lib/components/FavoriteButton.svelte";
     import RemotePlayButton from "$lib/components/RemotePlayButton.svelte";
+    import { playerStatus, quickPlay } from '$lib/stores/player.js';
+    import { mdiPlay } from '@mdi/js';
     import MediaDetailHeader from "$lib/components/MediaDetailHeader.svelte";
     import CollectionStatusBanner from "$lib/components/CollectionStatusBanner.svelte";
     import InteractiveSearchDialog from "$lib/components/InteractiveSearchDialog.svelte";
     import PosterRow from "$lib/components/PosterRow.svelte";
+    import CreditRow from "$lib/components/CreditRow.svelte";
+    import DashSection from "$lib/components/DashSection.svelte";
     import { imgUrl } from "$lib/utils.js";
     import { page } from "$app/stores";
 
-    let isDashboardHidden = $state(!!data.show.is_dashboard_hidden);
+    let isDashboardHiddenLocal = $state(/** @type {boolean|null} */ (null));
+    let isDashboardHidden = $derived(isDashboardHiddenLocal !== null ? isDashboardHiddenLocal : !!data.show.is_dashboard_hidden);
 
     async function toggleDashboardHidden() {
         const newVal = !isDashboardHidden;
-        isDashboardHidden = newVal;
+        isDashboardHiddenLocal = newVal;
         try {
             await fetch(`/api/media/${data.show.id}/dashboard-hide`, {
                 method: 'PATCH',
@@ -27,7 +35,7 @@
             });
         } catch (e) {
             console.error('Failed to toggle dashboard hidden:', e);
-            isDashboardHidden = !newVal; // revert on error
+            isDashboardHiddenLocal = !newVal; // revert on error
         }
     }
 
@@ -68,11 +76,68 @@
     // *arr state
     let arrLoading = $state("");
     let arrError = $state("");
-    let arrMonitored = $state(!!data.show.arr_monitored);
+    let arrMonitoredLocal = $state(/** @type {boolean|null} */ (null));
+    let arrMonitored = $derived(arrMonitoredLocal !== null ? arrMonitoredLocal : !!data.show.arr_monitored);
 
     /** @type {'map' | 'list' | 'ratings'} */
     let episodeView = $state('map');
     let showWatchStatus = $state(false);
+
+    // ─── Episode-level download search ──────────────────────────────────────────
+    /** @type {Set<number>} */
+    let epSearching = $state(new Set());
+    /** @type {Set<number>} */
+    let epSearchDone = $state(new Set());
+    /** @type {number | null} */
+    let epInteractiveSearchId = $state(null);
+    let epInteractiveSearchTitle = $state('');
+    /** @type {import('$lib/components/InteractiveSearchDialog.svelte').default | null} */
+    let epSearchDialog = $state(null);
+
+    /**
+     * Trigger an auto-search for a single episode via Sonarr.
+     * @param {any} ep
+     */
+    async function autoSearchEpisode(ep) {
+        const next = new Set(epSearching);
+        next.add(ep.id);
+        epSearching = next;
+        try {
+            const res = await fetch('/api/arr/sonarr/episode-search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mediaParentId: data.show.id,
+                    seasonNumber: ep.season_number,
+                    episodeNumber: ep.item_number,
+                }),
+            });
+            if (!res.ok) {
+                const r = await res.json();
+                throw new Error(r.error || 'Search failed');
+            }
+            const done = new Set(epSearchDone);
+            done.add(ep.id);
+            epSearchDone = done;
+            addToast({ type: 'success', message: `Started search for S${String(ep.season_number).padStart(2,'0')}E${String(ep.item_number).padStart(2,'0')}`, detail: ep.title });
+        } catch (e) {
+            addToast({ type: 'error', message: `Episode search failed`, detail: e instanceof Error ? e.message : String(e) });
+        }
+        const rm = new Set(epSearching);
+        rm.delete(ep.id);
+        epSearching = rm;
+    }
+
+    /**
+     * Open the interactive search dialog for a specific episode.
+     * @param {any} ep
+     */
+    function browseEpisodeReleases(ep) {
+        epInteractiveSearchId = ep.id;
+        epInteractiveSearchTitle = `${data.show.title} — S${String(ep.season_number).padStart(2,'0')}E${String(ep.item_number).padStart(2,'0')}: ${ep.title || 'TBA'}`;
+        // Wait for reactivity to update the dialog props, then show
+        setTimeout(() => epSearchDialog?.show(), 0);
+    }
 
     /**
      * Get watch-status border class for rating cells
@@ -142,7 +207,7 @@
                 const r = await res.json();
                 throw new Error(r.error || "Failed");
             }
-            arrMonitored = newState;
+            arrMonitoredLocal = newState;
         } catch (e) {
             arrError = e instanceof Error ? e.message : "Failed";
             setTimeout(() => (arrError = ""), 5000);
@@ -213,8 +278,6 @@
     let mergeSearchResults = $state([]);
     let mergeSearching = $state(false);
     let merging = $state(false);
-    let showAllCast = $state(false);
-    let showAllCrew = $state(false);
     let deleting = $state(false);
 
     async function searchMergeTarget() {
@@ -424,6 +487,21 @@
             favoriteType="media"
             favoriteId={data.show.id}
             heartBorderEnabled={!!data.settings?.heartBorderShows}
+            onPlay={(() => {
+                // Find first unwatched collected episode
+                const ps = $playerStatus;
+                if (!ps || ps.status === 'offline') return null;
+                for (const s of data.seasons) {
+                    for (const ep of s.episodes) {
+                        if (ep.jellyfin_id && ep.is_collected && ep.watch_status !== 'watched') {
+                            return () => quickPlay(ep.jellyfin_id);
+                        }
+                    }
+                }
+                return null;
+            })()}
+            playerStatus={$playerStatus?.status}
+            playerDeviceName={$playerStatus?.deviceName}
             heroBadges={[]}
             stats={[
                 { label: data.seasons.length === 1 ? 'season' : 'seasons', value: data.seasons.length },
@@ -458,11 +536,11 @@
                     {#if syncing}
                         <span class="loading loading-spinner loading-xs"></span> Syncing…
                     {:else if syncStatus === 'success'}
-                        ✅ Synced
+                        <MdiIcon icon={mdiCheckCircle} size={14} /> Synced
                     {:else if syncStatus === 'failed'}
-                        ❌ {syncError || 'Failed'}
+                        <MdiIcon icon={mdiCloseCircle} size={14} /> {syncError || 'Failed'}
                     {:else}
-                        🔄 {data.show.jellyfin_id ? 'Update from Jellyfin' : 'Update from TMDb'}
+                        <MdiIcon icon={mdiSync} size={14} /> {data.show.jellyfin_id ? 'Update from Jellyfin' : 'Update from TMDb'}
                     {/if}
                 </button>
                 {#if data.show.sonarr_id}
@@ -476,7 +554,7 @@
                         onclick={toggleMonitorSonarr}
                         disabled={arrLoading === 'monitor'}
                     >
-                        {#if arrLoading === 'monitor'}<span class="loading loading-spinner loading-xs"></span>{:else if arrMonitored}<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"/></svg>{:else}<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>{/if}
+                        {#if arrLoading === 'monitor'}<span class="loading loading-spinner loading-xs"></span>{:else if arrMonitored}<MdiIcon icon={mdiBookmark} size={16} />{:else}<MdiIcon icon={mdiBookmarkOutline} size={16} />{/if}
                         {arrMonitored ? 'Unmonitor' : 'Monitor'}
                     </button>
                 {:else if data.show.tvdb_id || data.show.tmdb_id}
@@ -492,9 +570,9 @@
                     title={isDashboardHidden ? 'Show on TV dashboard' : 'Hide from TV dashboard'}
                 >
                     {#if isDashboardHidden}
-                        👁 Unignore
+                        <MdiIcon icon={mdiEye} size={14} /> Unignore
                     {:else}
-                        🚫 Ignore
+                        <MdiIcon icon={mdiCancel} size={14} /> Ignore
                     {/if}
                 </button>
                 {#if data.show.jellyfin_id}
@@ -510,7 +588,7 @@
                     onclick={() => { showMergeDialog = true; mergeSearchQuery = ''; mergeSearchResults = []; }}
                     title="Merge this show into another"
                 >
-                    🔀 Merge
+                    <MdiIcon icon={mdiMerge} size={14} /> Merge
                 </button>
             {/snippet}
         </MediaDetailHeader>
@@ -542,15 +620,15 @@
                 <button
                     class="join-item btn btn-xs gap-1 {episodeView === 'map' ? 'btn-primary' : 'btn-ghost'}"
                     onclick={() => episodeView = 'map'}
-                ><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="currentColor"><path d="M3 3h4v4H3V3m6 0h4v4H9V3m6 0h4v4h-4V3M3 9h4v4H3V9m6 0h4v4H9V9m6 0h4v4h-4V9M3 15h4v4H3v-4m6 0h4v4H9v-4m6 0h4v4h-4v-4Z"/></svg>Grid</button>
+><MdiIcon icon={mdiViewGrid} size={14} />Grid</button>
                 <button
                     class="join-item btn btn-xs gap-1 {episodeView === 'ratings' ? 'btn-primary' : 'btn-ghost'}"
                     onclick={() => episodeView = 'ratings'}
-                ><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>Ratings</button>
+><MdiIcon icon={mdiStar} size={14} />Ratings</button>
                 <button
                     class="join-item btn btn-xs gap-1 {episodeView === 'list' ? 'btn-primary' : 'btn-ghost'}"
                     onclick={() => episodeView = 'list'}
-                ><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="currentColor"><path d="M3 4h2v2H3V4m4 0h14v2H7V4M3 10h2v2H3v-2m4 0h14v2H7v-2M3 16h2v2H3v-2m4 0h14v2H7v-2Z"/></svg>List</button>
+><MdiIcon icon={mdiViewList} size={14} />List</button>
             </div>
         </div>
 
@@ -709,6 +787,12 @@
                                             <th class="w-24">Status</th>
                                             <th class="w-16">Plays</th>
                                             <th class="w-16">Duration</th>
+                                            {#if $playerStatus && $playerStatus.status !== 'offline'}
+                                                <th class="w-10"></th>
+                                            {/if}
+                                            {#if data.show.sonarr_id}
+                                                <th class="w-24">Search</th>
+                                            {/if}
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -765,11 +849,51 @@
                                                 >
                                                 <td class="text-base-content/50"
                                                     >{ep.is_collected
-                                                        ? formatRuntime(
+                                                    ? formatRuntime(
                                                               ep.runtime_ticks,
                                                           )
                                                         : ""}</td
                                                 >
+                                                {#if $playerStatus && $playerStatus.status !== 'offline'}
+                                                    <td>
+                                                        {#if ep.jellyfin_id && ep.is_collected}
+                                                            <button
+                                                                class="btn btn-xs btn-ghost btn-square ep-play-btn"
+                                                                title="Play on {$playerStatus.deviceName || 'Player'}"
+                                                                onclick={() => quickPlay(ep.jellyfin_id)}
+                                                            >
+                                                                <MdiIcon icon={mdiPlay} size={14} />
+                                                            </button>
+                                                        {/if}
+                                                    </td>
+                                                {/if}
+                                                {#if data.show.sonarr_id}
+                                                    <td>
+                                                        <div class="flex items-center gap-1">
+                                                            <button
+                                                                class="btn btn-xs btn-ghost btn-square"
+                                                                title="Auto-search for this episode"
+                                                                disabled={epSearching.has(ep.id)}
+                                                                onclick={() => autoSearchEpisode(ep)}
+                                                            >
+                                                                {#if epSearching.has(ep.id)}
+                                                                    <span class="loading loading-spinner loading-xs"></span>
+                                                                {:else if epSearchDone.has(ep.id)}
+                                                                    <MdiIcon icon={mdiCheckCircle} size={14} class="text-success" />
+                                                                {:else}
+                                                                    <MdiIcon icon={mdiDownload} size={14} />
+                                                                {/if}
+                                                            </button>
+                                                            <button
+                                                                class="btn btn-xs btn-ghost btn-square"
+                                                                title="Browse available releases"
+                                                                onclick={() => browseEpisodeReleases(ep)}
+                                                            >
+                                                                <MdiIcon icon={mdiMagnifyPlusOutline} size={14} />
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                {/if}
                                             </tr>
                                         {/each}
                                     </tbody>
@@ -782,231 +906,187 @@
         {/if}
     </div>
 
-    <!-- Cast & Crew -->
-    {#if data.cast.length > 0 || data.crew.length > 0}
-        {@const CAST_LIMIT = 16}
-        {@const CREW_LIMIT = 16}
-        <div class="card bg-base-200/50 border border-base-300">
-            <div class="card-body">
-                <h2 class="card-title text-lg">🎭 Cast & Crew</h2>
-
-                {#if data.cast.length > 0}
-                    <h3 class="text-sm font-semibold text-base-content/60 mt-2">Cast</h3>
-                    <div class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-3">
-                        {#each (showAllCast ? data.cast : data.cast.slice(0, CAST_LIMIT)) as person}
-                            <a
-                                href="/people/{person.id}"
-                                class="flex flex-col items-center gap-1 group"
-                            >
-                                {#if person.photo_url}
-                                    <img
-                                        src={imgUrl(person.photo_url, 200)}
-                                        alt={person.name}
-                                        class="w-20 h-20 rounded-full object-cover border-2 border-base-300 group-hover:border-primary transition-colors"
-                                    />
-                                {:else}
-                                    <div
-                                        class="w-20 h-20 rounded-full bg-base-300 flex items-center justify-center text-2xl"
-                                    >
-                                        👤
-                                    </div>
-                                {/if}
-                                <span
-                                    class="text-xs font-medium text-center leading-tight truncate w-full group-hover:text-primary transition-colors"
-                                    >{person.name}</span
-                                >
-                                {#if person.character_name}
-                                    <span
-                                        class="text-[10px] text-base-content/40 text-center leading-tight truncate w-full"
-                                        >{person.character_name}</span
-                                    >
-                                {/if}
-                            </a>
-                        {/each}
-                    </div>
-                    {#if data.cast.length > CAST_LIMIT}
-                        <button
-                            class="text-xs text-primary/70 hover:text-primary mt-1 self-start"
-                            onclick={() => showAllCast = !showAllCast}
-                        >
-                            {showAllCast ? '← Show less' : `Show all ${data.cast.length} →`}
-                        </button>
-                    {/if}
-                {/if}
-
-                {#if data.crew.length > 0}
-                    <h3 class="text-sm font-semibold text-base-content/60 mt-3">Crew</h3>
-                    <div class="flex flex-wrap gap-2 mt-1">
-                        {#each (showAllCrew ? data.crew : data.crew.slice(0, CREW_LIMIT)) as person}
-                            <a
-                                href="/people/{person.id}"
-                                class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-base-300/50 hover:bg-base-300 transition-colors text-sm group"
-                            >
-                                {#if person.photo_url}
-                                    <img
-                                        src={imgUrl(person.photo_url, 80)}
-                                        alt={person.name}
-                                        class="w-6 h-6 rounded-full object-cover"
-                                    />
-                                {:else}
-                                    <div
-                                        class="w-6 h-6 rounded-full bg-base-300 flex items-center justify-center text-xs"
-                                    >
-                                        👤
-                                    </div>
-                                {/if}
-                                <span
-                                    class="group-hover:text-primary transition-colors"
-                                    >{person.name}</span
-                                >
-                                <span
-                                    class="badge badge-ghost badge-xs capitalize"
-                                    >{person.role_type}</span
-                                >
-                            </a>
-                        {/each}
-                    </div>
-                    {#if data.crew.length > CREW_LIMIT}
-                        <button
-                            class="text-xs text-primary/70 hover:text-primary mt-1 self-start"
-                            onclick={() => showAllCrew = !showAllCrew}
-                        >
-                            {showAllCrew ? '← Show less' : `Show all ${data.crew.length} →`}
-                        </button>
-                    {/if}
-                {/if}
-            </div>
-        </div>
+    {#if data.show.sonarr_id}
+        <InteractiveSearchDialog
+            bind:this={epSearchDialog}
+            service="sonarr"
+            mediaParentId={data.show.id}
+            title={epInteractiveSearchTitle}
+            episodeId={epInteractiveSearchId}
+            hidden={true}
+        />
     {/if}
 
-    <!-- Similar Items -->
-    <PosterRow
-        title="Similar In Your Library"
-        items={data.similarInLibrary}
-    />
-    <PosterRow
-        title="💡 You Might Like"
-        items={data.similarYouMightLike}
-    />
-</div>
+    <!-- Cast & Crew -->
+    {#if data.cast.length > 0 || data.crew.length > 0}
+        <DashSection title="Cast & Crew" icon={mdiDramaMasks} noGlow>
+            {#if data.cast.length > 0}
+                <CreditRow title="Cast" items={data.cast} limit={20} />
+            {/if}
+            {#if data.crew.length > 0}
+                <CreditRow title="Crew" items={data.crew} limit={20} />
+            {/if}
+        </DashSection>
+    {/if}
 
-<!-- Discovery: Related Shows from TMDb -->
-{#if data.show.tmdb_id}
-    <div class="card bg-base-200/50 border border-base-300 max-w-6xl mx-auto">
-        <div class="card-body">
-            {#if !discoveryLoaded && !discoveryLoading}
-                <button class="btn btn-ghost btn-sm gap-2 self-center" onclick={loadDiscovery}>
-                    🔍 Discover Related Shows
-                </button>
-            {:else if discoveryLoading}
-                <div class="flex justify-center py-6">
-                    <span class="loading loading-spinner loading-md"></span>
-                    <span class="ml-2 text-sm text-base-content/50">Finding related shows…</span>
-                </div>
-            {:else if discoveryError}
-                <div class="alert alert-error text-sm">{discoveryError}</div>
-            {:else}
-                <div class="flex items-center justify-between mb-3">
-                    <h2 class="text-lg font-bold flex items-center gap-2">
-                        🔍 Related Shows
-                        <span class="badge badge-sm badge-ghost">{filteredDiscoveryItems(discoveryItems).length} not in library</span>
-                    </h2>
-                    <div class="flex items-center gap-2">
-                        <label class="flex items-center gap-1.5 cursor-pointer text-xs text-base-content/60">
-                            <input type="checkbox" class="toggle toggle-xs toggle-primary" bind:checked={hideDocumentaries} />
-                            Hide docs/making-of
-                        </label>
-                        {#if discoveryInLibrary.length > 0}
-                            <button
-                                class="btn btn-ghost btn-xs"
-                                onclick={() => showDiscoverInLib = !showDiscoverInLib}
-                            >
-                                {showDiscoverInLib ? 'Hide' : 'Show'} {discoveryInLibrary.length} in library
-                            </button>
-                        {/if}
-                    </div>
-                </div>
-
-                {#if filteredDiscoveryItems(discoveryItems).length === 0 && !showDiscoverInLib}
-                    <div class="text-center py-4 text-base-content/40">
-                        <p>🎉 You have all the related shows!</p>
-                    </div>
-                {:else}
-                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                        {#each filteredDiscoveryItems(discoveryItems).slice(0, discoveryLimit) as item}
-                            <div class="card bg-base-300/30 card-compact overflow-hidden group">
+    <!-- Similar Shows -->
+    {#if data.similarInLibrary.length > 0 || data.similarYouMightLike.length > 0 || data.show.tmdb_id}
+        <DashSection title="Similar Shows" icon={mdiLightbulb} noGlow>
+            {#if data.similarInLibrary.length > 0}
+                <h4 class="text-sm font-semibold text-base-content/60 mb-2">In Your Library</h4>
+                <div class="grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-3">
+                    {#each data.similarInLibrary as item}
+                        <a href={item.href} class="no-underline text-inherit transition-transform duration-150 hover:-translate-y-1" title={item.title}>
+                            <div class="relative aspect-[2/3] rounded-lg overflow-hidden bg-base-300 shadow-md">
                                 {#if item.poster_url}
-                                    <figure class="aspect-[2/3] relative">
-                                        <img
-                                            src={imgUrl(item.poster_url)}
-                                            alt={item.title}
-                                            class="w-full h-full object-cover"
-                                        />
-                                        {#if item.vote_average > 0}
-                                            <div class="absolute top-1 right-1 badge badge-sm bg-black/60 border-0 text-warning">
-                                                ★ {item.vote_average.toFixed(1)}
-                                            </div>
-                                        {/if}
-                                    </figure>
-                                {:else}
-                                    <div class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl">📺</div>
+                                    <img src={imgUrl(item.poster_url)} alt={item.title} class="w-full h-full object-cover" loading="lazy" />
                                 {/if}
-                                <div class="card-body !p-2 !gap-1">
-                                    <h3 class="font-medium text-xs leading-tight line-clamp-2" title={item.title}>{item.title}</h3>
-                                    {#if item.release_year}
-                                        <span class="text-[10px] text-base-content/40">{item.release_year}</span>
-                                    {/if}
-                                    <button
-                                        class="btn btn-xs btn-primary gap-1 mt-1 w-full"
-                                        disabled={discAddingToArr === item.tmdb_id || discAddedToArr.has(item.tmdb_id)}
-                                        onclick={() => addDiscoveryToArr(item)}
-                                    >
-                                        {#if discAddingToArr === item.tmdb_id}
-                                            <span class="loading loading-spinner loading-xs"></span>
-                                        {:else if discAddedToArr.has(item.tmdb_id)}
-                                            ✅ Added
-                                        {:else}
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                            Download
-                                        {/if}
-                                    </button>
-                                </div>
                             </div>
-                        {/each}
+                            <div class="mt-1.5 flex flex-col gap-px">
+                                <span class="text-[0.72rem] font-semibold leading-tight truncate">{item.title}</span>
+                                {#if item.subtitle}
+                                    <span class="text-[0.62rem] text-base-content/40">{item.subtitle}</span>
+                                {/if}
+                            </div>
+                        </a>
+                    {/each}
+                </div>
+            {/if}
+            {#if data.similarYouMightLike.length > 0}
+                <h4 class="text-sm font-semibold text-base-content/60 mb-2 mt-4">You Might Also Like</h4>
+                <div class="grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-3">
+                    {#each data.similarYouMightLike as item}
+                        <a href={item.href} class="no-underline text-inherit transition-transform duration-150 hover:-translate-y-1" title={item.title}>
+                            <div class="relative aspect-[2/3] rounded-lg overflow-hidden bg-base-300 shadow-md">
+                                {#if item.poster_url}
+                                    <img src={imgUrl(item.poster_url)} alt={item.title} class="w-full h-full object-cover" loading="lazy" />
+                                {/if}
+                            </div>
+                            <div class="mt-1.5 flex flex-col gap-px">
+                                <span class="text-[0.72rem] font-semibold leading-tight truncate">{item.title}</span>
+                                {#if item.subtitle}
+                                    <span class="text-[0.62rem] text-base-content/40">{item.subtitle}</span>
+                                {/if}
+                            </div>
+                        </a>
+                    {/each}
+                </div>
+            {/if}
 
-                        {#if showDiscoverInLib}
-                            {#each discoveryInLibrary as item}
-                                <a href="/tv/{item.library_id}" class="card bg-base-300/30 card-compact overflow-hidden group opacity-60 ring-2 ring-success/30">
-                                    {#if item.poster_url}
-                                        <figure class="aspect-[2/3]">
-                                            <img src={imgUrl(item.poster_url)} alt={item.title} class="w-full h-full object-cover" />
-                                        </figure>
-                                    {:else}
-                                        <div class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl">📺</div>
-                                    {/if}
-                                    <div class="card-body !p-2 !gap-1">
-                                        <span class="badge badge-xs badge-success">✓ In Library</span>
-                                        <h3 class="font-medium text-xs leading-tight line-clamp-2">{item.title}</h3>
+            <!-- Discover Related (inline) -->
+            {#if data.show.tmdb_id}
+                {#if !discoveryLoaded && !discoveryLoading}
+                    <button class="btn btn-ghost btn-sm gap-2 w-full mt-2" onclick={loadDiscovery}>
+                        <MdiIcon icon={mdiMagnify} size={16} /> Discover More Related Shows
+                    </button>
+                {:else if discoveryLoading}
+                    <div class="flex justify-center py-4">
+                        <span class="loading loading-spinner loading-md"></span>
+                        <span class="ml-2 text-sm text-base-content/50">Finding related shows…</span>
+                    </div>
+                {:else if discoveryError}
+                    <div class="alert alert-error text-sm">{discoveryError}</div>
+                {:else}
+                    <div class="mt-3">
+                        <div class="flex items-center justify-between mb-2">
+                            <h3 class="text-sm font-semibold text-base-content/60">
+                                Discover
+                                <span class="badge badge-sm badge-ghost ml-1">{filteredDiscoveryItems(discoveryItems).length} not in library</span>
+                            </h3>
+                            <div class="flex items-center gap-2">
+                                <label class="flex items-center gap-1.5 cursor-pointer text-xs text-base-content/60">
+                                    <input type="checkbox" class="toggle toggle-xs toggle-primary" bind:checked={hideDocumentaries} />
+                                    Hide docs/making-of
+                                </label>
+                                {#if discoveryInLibrary.length > 0}
+                                    <button
+                                        class="btn btn-ghost btn-xs"
+                                        onclick={() => showDiscoverInLib = !showDiscoverInLib}
+                                    >
+                                        {showDiscoverInLib ? 'Hide' : 'Show'} {discoveryInLibrary.length} in library
+                                    </button>
+                                {/if}
+                            </div>
+                        </div>
+
+                        {#if filteredDiscoveryItems(discoveryItems).length === 0 && !showDiscoverInLib}
+                            <div class="text-center py-4 text-base-content/40">
+                                <p>You have all the related shows!</p>
+                            </div>
+                        {:else}
+                            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                                {#each filteredDiscoveryItems(discoveryItems).slice(0, discoveryLimit) as item}
+                                    <div class="card bg-base-300/30 card-compact overflow-hidden group">
+                                        {#if item.poster_url}
+                                            <figure class="aspect-[2/3] relative">
+                                                <img src={imgUrl(item.poster_url)} alt={item.title} class="w-full h-full object-cover" />
+                                                {#if item.vote_average > 0}
+                                                    <div class="absolute top-1 right-1 badge badge-sm bg-black/60 border-0 text-warning">
+                                                        ★ {item.vote_average.toFixed(1)}
+                                                    </div>
+                                                {/if}
+                                            </figure>
+                                        {:else}
+                                            <div class="aspect-[2/3] bg-base-300 flex items-center justify-center"><MdiIcon icon={mdiTelevision} size={32} /></div>
+                                        {/if}
+                                        <div class="card-body !p-2 !gap-1">
+                                            <h3 class="font-medium text-xs leading-tight line-clamp-2" title={item.title}>{item.title}</h3>
+                                            {#if item.release_year}
+                                                <span class="text-[10px] text-base-content/40">{item.release_year}</span>
+                                            {/if}
+                                            <button
+                                                class="btn btn-xs btn-primary gap-1 mt-1 w-full"
+                                                disabled={discAddingToArr === item.tmdb_id || discAddedToArr.has(item.tmdb_id)}
+                                                onclick={() => addDiscoveryToArr(item)}
+                                            >
+                                                {#if discAddingToArr === item.tmdb_id}
+                                                    <span class="loading loading-spinner loading-xs"></span>
+                                                {:else if discAddedToArr.has(item.tmdb_id)}
+                                                    <MdiIcon icon={mdiCheckCircle} size={12} /> Added
+                                                {:else}
+                                                    <MdiIcon icon={mdiDownload} size={12} />
+                                                    Download
+                                                {/if}
+                                            </button>
+                                        </div>
                                     </div>
-                                </a>
-                            {/each}
+                                {/each}
+
+                                {#if showDiscoverInLib}
+                                    {#each discoveryInLibrary as item}
+                                        <a href="/tv/{item.library_id}" class="card bg-base-300/30 card-compact overflow-hidden group opacity-60 ring-2 ring-success/30">
+                                            {#if item.poster_url}
+                                                <figure class="aspect-[2/3]">
+                                                    <img src={imgUrl(item.poster_url)} alt={item.title} class="w-full h-full object-cover" />
+                                                </figure>
+                                            {:else}
+                                                <div class="aspect-[2/3] bg-base-300 flex items-center justify-center"><MdiIcon icon={mdiTelevision} size={32} /></div>
+                                            {/if}
+                                            <div class="card-body !p-2 !gap-1">
+                                                <span class="badge badge-xs badge-success">✓ In Library</span>
+                                                <h3 class="font-medium text-xs leading-tight line-clamp-2">{item.title}</h3>
+                                            </div>
+                                        </a>
+                                    {/each}
+                                {/if}
+                            </div>
+
+                            {#if discoveryItems.length > discoveryLimit}
+                                <button class="btn btn-ghost btn-sm w-full mt-2" onclick={() => discoveryLimit += 12}>
+                                    Show more ({discoveryItems.length - discoveryLimit} remaining)
+                                </button>
+                            {/if}
+                        {/if}
+
+                        {#if discAddError}
+                            <div class="alert alert-error text-sm mt-2">{discAddError}</div>
                         {/if}
                     </div>
-
-                    {#if discoveryItems.length > discoveryLimit}
-                        <button class="btn btn-ghost btn-sm w-full mt-2" onclick={() => discoveryLimit += 12}>
-                            Show more ({discoveryItems.length - discoveryLimit} remaining)
-                        </button>
-                    {/if}
-                {/if}
-
-                {#if discAddError}
-                    <div class="alert alert-error text-sm mt-2">{discAddError}</div>
                 {/if}
             {/if}
-        </div>
-    </div>
-{/if}
+        </DashSection>
+    {/if}
+</div>
 
 <!-- Discovery Quality Profile Dialog -->
 {#if discShowProfileDialog && discPendingItem}
@@ -1039,7 +1119,7 @@
                 <button class="btn btn-sm btn-primary" onclick={confirmDiscoveryAdd} disabled={!discSelectedProfileId}>Add</button>
             </div>
         </div>
-        <div class="modal-backdrop" onclick={() => { discShowProfileDialog = false; discPendingItem = null; }}></div>
+        <button class="modal-backdrop" aria-label="Close dialog" onclick={() => { discShowProfileDialog = false; discPendingItem = null; }}></button>
     </div>
 {/if}
 
@@ -1051,7 +1131,7 @@
             <p class="py-4 text-base-content/70">
                 This will remove this show and all its episodes, watch history, and ratings.
                 {#if data.show.jellyfin_id}
-                    <br /><span class="text-warning text-sm">⚠️ This item is in Jellyfin and will reappear on the next sync.</span>
+                    <br /><span class="text-warning text-sm"><MdiIcon icon={mdiAlert} size={14} /> This item is in Jellyfin and will reappear on the next sync.</span>
                 {/if}
             </p>
             <div class="modal-action">
@@ -1064,7 +1144,7 @@
                 </button>
             </div>
         </div>
-        <div class="modal-backdrop" onclick={() => (showDeleteConfirm = false)}></div>
+        <button class="modal-backdrop" aria-label="Close dialog" onclick={() => (showDeleteConfirm = false)}></button>
     </div>
 {/if}
 
@@ -1096,7 +1176,7 @@
                             {#if target.poster_url}
                                 <img src={imgUrl(target.poster_url, 80)} alt="" class="w-10 h-14 rounded object-cover shrink-0" />
                             {:else}
-                                <div class="w-10 h-14 bg-base-300 rounded flex items-center justify-center">📺</div>
+                                <div class="w-10 h-14 bg-base-300 rounded flex items-center justify-center"><MdiIcon icon={mdiTelevision} size={24} /></div>
                             {/if}
                             <div class="min-w-0">
                                 <div class="font-medium text-sm truncate">{target.title}</div>
@@ -1112,7 +1192,7 @@
                 <button class="btn btn-sm" onclick={() => (showMergeDialog = false)}>Cancel</button>
             </div>
         </div>
-        <div class="modal-backdrop" onclick={() => (showMergeDialog = false)}></div>
+        <button class="modal-backdrop" aria-label="Close dialog" onclick={() => (showMergeDialog = false)}></button>
     </div>
 {/if}
 
@@ -1195,10 +1275,20 @@
 
     .ep-watched {
         background: oklch(var(--su, 0.75 0.18 140));
+        color: oklch(var(--suc, 0.2 0.05 140));
+    }
+
+    .ep-watched .ep-num {
+        opacity: 0.9;
     }
 
     .ep-progress {
         background: oklch(var(--wa, 0.8 0.15 75));
+        color: oklch(var(--wac, 0.2 0.04 75));
+    }
+
+    .ep-progress .ep-num {
+        opacity: 0.9;
     }
 
     .ep-unwatched {

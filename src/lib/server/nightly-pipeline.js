@@ -10,7 +10,6 @@
 
 import db from '$lib/server/db.js';
 import { acquireLock, releaseLock, createBackup } from '$lib/server/backup-engine.js';
-import { takeSnapshot } from '$lib/server/data-audit.js';
 
 // ── Phase Imports ───────────────────────────────────────────────────────────
 
@@ -636,10 +635,9 @@ Only return valid JSON, no explanation.`;
 /**
  * Run the pipeline.
  * @param {'nightly' | 'weekly'} mode — 'nightly' runs only nightly phases, 'weekly' runs all
- * @param {{ audit?: boolean }} options — if audit=true, takes before/after snapshots
  * @returns {Promise<{ success: boolean, results: Array<{ phase: string, status: string, message: string, durationMs: number }>, error?: string }>}
  */
-export async function runPipeline(mode = 'nightly', { audit = false } = {}) {
+export async function runPipeline(mode = 'nightly') {
     if (running) {
         return { success: false, results: [], error: 'Pipeline is already running' };
     }
@@ -667,13 +665,6 @@ export async function runPipeline(mode = 'nightly', { audit = false } = {}) {
         console.log('[pipeline] Pre-pipeline backup created');
     } catch (e) {
         console.warn('[pipeline] Pre-pipeline backup failed:', e instanceof Error ? e.message : e);
-    }
-
-    // Audit snapshot (before)
-    if (audit) {
-        try { takeSnapshot(`pre-${mode}`); } catch (e) {
-            console.warn('[pipeline] Pre-audit snapshot failed:', e instanceof Error ? e.message : e);
-        }
     }
 
     /** @type {Array<{ phase: string, status: string, message: string, durationMs: number }>} */
@@ -740,13 +731,6 @@ export async function runPipeline(mode = 'nightly', { audit = false } = {}) {
             results.push({ phase: phase.id, status: 'error', message: errMsg, durationMs });
             console.error(`[pipeline] ✗ ${phase.label} (${(durationMs / 1000).toFixed(1)}s) — ${errMsg}`);
             // Continue to next phase (don't abort on single failure)
-        }
-    }
-
-    // Audit snapshot (after)
-    if (audit) {
-        try { takeSnapshot(`post-${mode}`); } catch (e) {
-            console.warn('[pipeline] Post-audit snapshot failed:', e instanceof Error ? e.message : e);
         }
     }
 

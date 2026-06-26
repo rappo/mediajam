@@ -1,5 +1,7 @@
 <script>
     import LogConsole from "$lib/components/LogConsole.svelte";
+    import MdiIcon from "$lib/components/MdiIcon.svelte";
+    import { mdiWeatherNight, mdiCalendar, mdiPlay, mdiStop, mdiClockOutline, mdiChevronRight } from '@mdi/js';
 
     /** Pipeline state */
     let loading = $state(true);
@@ -19,7 +21,6 @@
     /** @type {Array<{time: string, message: string, type: string}>} */
     let logs = $state([]);
     let runMode = $state('nightly');
-    let auditSnapshot = $state(false);
 
     /** Settings dirty state */
     let saving = $state(false);
@@ -157,7 +158,7 @@
             const res = await fetch('/api/pipeline', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ mode: runMode, audit: auditSnapshot })
+                body: JSON.stringify({ mode: runMode })
             });
 
             if (!res.ok) {
@@ -372,7 +373,7 @@
                         <!-- Nightly -->
                         <div class="space-y-3">
                             <div class="flex items-center gap-2">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+                                <MdiIcon icon={mdiWeatherNight} size={16} class="text-info" />
                                 <span class="font-medium text-sm">Nightly</span>
                             </div>
                             <div class="form-control">
@@ -398,7 +399,7 @@
                         <!-- Weekly -->
                         <div class="space-y-3">
                             <div class="flex items-center gap-2">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-secondary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                <MdiIcon icon={mdiCalendar} size={16} class="text-secondary" />
                                 <span class="font-medium text-sm">Weekly</span>
                             </div>
                             <div class="form-control">
@@ -446,13 +447,13 @@
                                 <th class="font-medium">Phase</th>
                                 <th class="text-center w-24 font-medium">
                                     <div class="flex items-center justify-center gap-1.5">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+                                        <MdiIcon icon={mdiWeatherNight} size={14} class="text-info" />
                                         Nightly
                                     </div>
                                 </th>
                                 <th class="text-center w-24 font-medium">
                                     <div class="flex items-center justify-center gap-1.5">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-secondary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                        <MdiIcon icon={mdiCalendar} size={14} class="text-secondary" />
                                         Weekly
                                     </div>
                                 </th>
@@ -510,20 +511,16 @@
                         </select>
                     </div>
 
-                    <label class="flex items-center gap-2 cursor-pointer pb-0.5">
-                        <input type="checkbox" class="checkbox checkbox-sm" bind:checked={auditSnapshot} disabled={running} />
-                        <span class="text-sm">Take audit snapshots</span>
-                    </label>
 
                     <div class="flex gap-2">
                         {#if running}
                             <button class="btn btn-error btn-sm" onclick={stopPipelineRun}>
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+                                <MdiIcon icon={mdiStop} size={16} />
                                 Stop
                             </button>
                         {:else}
                             <button class="btn btn-primary btn-sm" onclick={runPipeline}>
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                                <MdiIcon icon={mdiPlay} size={16} />
                                 Run Now
                             </button>
                         {/if}
@@ -547,9 +544,7 @@
             <div class="card-body gap-4">
                 <div class="flex items-center justify-between">
                     <h3 class="card-title text-lg">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                        </svg>
+                        <MdiIcon icon={mdiClockOutline} size={20} class="text-info" />
                         Run History
                     </h3>
                     <button class="btn btn-ghost btn-xs" onclick={loadHistory} disabled={historyLoading}>
@@ -576,13 +571,7 @@
                                     class="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-base-300/60 transition-colors"
                                     onclick={() => toggleRunDetail(run.id)}
                                 >
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        class="h-3.5 w-3.5 text-base-content/40 transition-transform shrink-0 {expandedRunId === run.id ? 'rotate-90' : ''}"
-                                        viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                    >
-                                        <polyline points="9 18 15 12 9 6"/>
-                                    </svg>
+                                    <MdiIcon icon={mdiChevronRight} size={14} class="text-base-content/40 transition-transform shrink-0 {expandedRunId === run.id ? 'rotate-90' : ''}" />
 
                                     <div class="flex-1 min-w-0 flex items-center gap-3 flex-wrap">
                                         <span class="badge badge-xs {badge.class}">{badge.label}</span>

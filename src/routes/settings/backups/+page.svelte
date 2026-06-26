@@ -1,5 +1,7 @@
 <script>
     import { onMount } from 'svelte';
+    import MdiIcon from "$lib/components/MdiIcon.svelte";
+    import { mdiShieldCheck, mdiContentSave, mdiChevronRight, mdiClockOutline, mdiRefresh, mdiDownload, mdiDelete, mdiAlert } from '@mdi/js';
 
     // ─── State ──────────────────────────────────────────────────────────────────
     /** @type {any[]} */
@@ -32,6 +34,24 @@
     let toastMessage = $state('');
     let toastType = $state('info');
     let toastTimer = /** @type {ReturnType<typeof setTimeout>|null} */ (null);
+
+    // Backup History accordion
+    let historyExpanded = $state(false);
+
+    // ─── Import / Export State ──────────────────────────────────────────────────
+    let exporting = $state(false);
+    let exportSensitive = $state(false);
+    let exportPasswords = $state(false);
+    let exportTokens = $state(false);
+    let exportApiKeys = $state(false);
+    let exportImages = $state(false);
+
+    let importFile = $state(null);
+    let importMode = $state("merge");
+    let importPrefer = $state("new");
+    let importing = $state(false);
+    let importResult = $state(null);
+    let importError = $state('');
 
     function showToast(message, type = 'info') {
         toastMessage = message;
@@ -164,6 +184,54 @@
         }
     }
 
+    // ─── Import / Export ─────────────────────────────────────────────────────────
+    async function exportData() {
+        exporting = true;
+        importError = '';
+        try {
+            const params = new URLSearchParams();
+            if (exportPasswords) params.set("includePasswords", "1");
+            if (exportTokens) params.set("includeTokens", "1");
+            if (exportApiKeys) params.set("includeApiKeys", "1");
+            if (exportImages) params.set("includeImages", "1");
+            const url = `/api/backup${params.toString() ? "?" + params.toString() : ""}`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error("Export failed");
+            const blob = await res.blob();
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            const now = new Date();
+            const ts = `${now.toISOString().split("T")[0]}_${String(now.getHours()).padStart(2, "0")}-${String(now.getMinutes()).padStart(2, "0")}`;
+            a.download = `mediajam-backup-${ts}.zip`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+        } catch (e) {
+            importError = e instanceof Error ? e.message : "Export failed";
+        }
+        exporting = false;
+    }
+
+    async function importData() {
+        if (!importFile) return;
+        importing = true;
+        importResult = null;
+        try {
+            const params = new URLSearchParams({ mode: importMode });
+            if (importMode === "merge") params.set("prefer", importPrefer);
+            const res = await fetch(`/api/backup/import?${params.toString()}`, {
+                method: "POST",
+                body: importFile,
+            });
+            importResult = await res.json();
+        } catch (e) {
+            importResult = {
+                success: false,
+                error: e instanceof Error ? e.message : "Import failed",
+            };
+        }
+        importing = false;
+    }
+
     // ─── Helpers ─────────────────────────────────────────────────────────────────
     function formatDate(dateStr) {
         if (!dateStr) return 'Unknown';
@@ -213,9 +281,7 @@
 <div class="card bg-base-200/50 border border-base-300">
     <div class="card-body">
         <h2 class="card-title text-lg">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-            </svg>
+            <MdiIcon icon={mdiShieldCheck} size={20} class="text-info" />
             Backup Settings
         </h2>
 
@@ -295,151 +361,322 @@
     </div>
 </div>
 
-<!-- Backup Now + Timeline -->
+<!-- Backup Now -->
 <div class="card bg-base-200/50 border border-base-300 mt-6">
     <div class="card-body">
         <div class="flex items-center justify-between">
             <h2 class="card-title text-lg">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-success" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                </svg>
-                Backup Timeline
+                <MdiIcon icon={mdiContentSave} size={20} class="text-success" />
+                Quick Backup
             </h2>
             <button class="btn btn-success btn-sm gap-2" onclick={createManualBackup} disabled={backingUp}>
                 {#if backingUp}
                     <span class="loading loading-spinner loading-xs"></span>
                 {:else}
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
-                    </svg>
+                    <MdiIcon icon={mdiContentSave} size={16} />
                 {/if}
                 Backup Now
             </button>
         </div>
-
-        {#if loading}
-            <div class="flex justify-center py-8">
-                <span class="loading loading-spinner loading-lg text-primary"></span>
-            </div>
-        {:else if backups.length === 0}
-            <div class="text-center py-8 text-base-content/40">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto mb-3 opacity-30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                </svg>
-                <p class="text-sm">No backups yet</p>
-                <p class="text-xs mt-1">Click "Backup Now" to create your first backup</p>
-            </div>
-        {:else}
-            <ul class="timeline timeline-vertical timeline-compact mt-4">
-                {#each backups as backup, idx}
-                    {@const badge = typeBadge(backup.type)}
-                    <li>
-                        {#if idx > 0}<hr class="bg-base-300"/>{/if}
-                        <div class="timeline-start text-xs text-base-content/40 min-w-[80px] text-right pr-2">
-                            {timeAgo(backup.timestamp)}
-                        </div>
-                        <div class="timeline-middle">
-                            <div class="w-3 h-3 rounded-full {backup.type === 'manual' ? 'bg-accent' : backup.type === 'boot' ? 'bg-info' : 'bg-primary'}"></div>
-                        </div>
-                        <div class="timeline-end timeline-box bg-base-300/50 border-base-300 w-full">
-                            <div class="flex items-center justify-between gap-3 flex-wrap">
-                                <div class="flex items-center gap-2 min-w-0">
-                                    <span class="badge badge-xs {badge.class}">{badge.label}</span>
-                                    <div>
-                                        <div class="text-sm font-medium">{formatDate(backup.timestamp)}</div>
-                                        <div class="text-xs text-base-content/40">{formatSize(backup.sizeBytes)}</div>
-                                    </div>
-                                </div>
-                                <div class="flex items-center gap-1.5 shrink-0">
-                                    <button
-                                        class="btn btn-ghost btn-xs tooltip tooltip-left"
-                                        data-tip="Restore from this backup"
-                                        onclick={() => openRestoreModal(backup.filename, formatDate(backup.timestamp))}
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                            <path d="M21 12a9 9 0 11-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
-                                            <polyline points="21 3 21 8 16 8"/>
-                                        </svg>
-                                    </button>
-                                    <a
-                                        href="/api/backups/download/{encodeURIComponent(backup.filename)}"
-                                        class="btn btn-ghost btn-xs tooltip tooltip-left"
-                                        data-tip="Download"
-                                        download
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-                                        </svg>
-                                    </a>
-                                    {#if backup.type === 'manual'}
-                                        <button
-                                            class="btn btn-ghost btn-xs text-error/60 tooltip tooltip-left"
-                                            data-tip="Delete"
-                                            onclick={() => deleteBackup(backup.filename)}
-                                        >
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
-                                            </svg>
-                                        </button>
-                                    {/if}
-                                </div>
-                            </div>
-                        </div>
-                        {#if idx === backups.length - 1}<hr class="bg-base-300"/>{/if}
-                    </li>
-                {/each}
-            </ul>
+        {#if backups.length > 0}
+            <p class="text-xs text-base-content/50 mt-1">Last backup: {timeAgo(backups[0]?.timestamp)} ({formatSize(backups[0]?.sizeBytes)})</p>
         {/if}
     </div>
 </div>
 
-<!-- Hidden / Diverged Backups -->
-{#if hiddenBackups.length > 0}
-    <div class="card bg-base-200/50 border border-base-300/50 mt-6">
-        <div class="card-body">
+<!-- Backup History (collapsed accordion) -->
+<div class="card bg-base-200/50 border border-base-300 mt-6">
+    <div class="card-body">
+        <button
+            class="flex items-center gap-2 w-full text-left"
+            onclick={() => historyExpanded = !historyExpanded}
+        >
+            <MdiIcon icon={mdiChevronRight} size={16} class="text-base-content/40 transition-transform {historyExpanded ? 'rotate-90' : ''}" />
+            <MdiIcon icon={mdiClockOutline} size={20} class="text-success" />
+            <span class="font-semibold">Backup History</span>
+            {#if backups.length > 0}
+                <span class="badge badge-sm badge-ghost ml-1">{backups.length}</span>
+            {/if}
+        </button>
+
+        {#if historyExpanded}
+            <div class="mt-4">
+                {#if loading}
+                    <div class="flex justify-center py-8">
+                        <span class="loading loading-spinner loading-lg text-primary"></span>
+                    </div>
+                {:else if backups.length === 0}
+                    <div class="text-center py-8 text-base-content/40">
+                        <MdiIcon icon={mdiShieldCheck} size={48} class="mx-auto mb-3 opacity-30" />
+                        <p class="text-sm">No backups yet</p>
+                        <p class="text-xs mt-1">Click "Backup Now" to create your first backup</p>
+                    </div>
+                {:else}
+                    <ul class="timeline timeline-vertical timeline-compact">
+                        {#each backups as backup, idx}
+                            {@const badge = typeBadge(backup.type)}
+                            <li>
+                                {#if idx > 0}<hr class="bg-base-300"/>{/if}
+                                <div class="timeline-start text-xs text-base-content/40 min-w-[80px] text-right pr-2">
+                                    {timeAgo(backup.timestamp)}
+                                </div>
+                                <div class="timeline-middle">
+                                    <div class="w-3 h-3 rounded-full {backup.type === 'manual' ? 'bg-accent' : backup.type === 'boot' ? 'bg-info' : 'bg-primary'}"></div>
+                                </div>
+                                <div class="timeline-end timeline-box bg-base-300/50 border-base-300 w-full">
+                                    <div class="flex items-center justify-between gap-3 flex-wrap">
+                                        <div class="flex items-center gap-2 min-w-0">
+                                            <span class="badge badge-xs {badge.class}">{badge.label}</span>
+                                            <div>
+                                                <div class="text-sm font-medium">{formatDate(backup.timestamp)}</div>
+                                                <div class="text-xs text-base-content/40">{formatSize(backup.sizeBytes)}</div>
+                                            </div>
+                                        </div>
+                                        <div class="flex items-center gap-1.5 shrink-0">
+                                            <button
+                                                class="btn btn-ghost btn-xs tooltip tooltip-left"
+                                                data-tip="Restore from this backup"
+                                                onclick={() => openRestoreModal(backup.filename, formatDate(backup.timestamp))}
+                                            >
+                                                <MdiIcon icon={mdiRefresh} size={14} />
+                                            </button>
+                                            <a
+                                                href="/api/backups/download/{encodeURIComponent(backup.filename)}"
+                                                class="btn btn-ghost btn-xs tooltip tooltip-left"
+                                                data-tip="Download"
+                                                download
+                                            >
+                                                <MdiIcon icon={mdiDownload} size={14} />
+                                            </a>
+                                            {#if backup.type === 'manual'}
+                                                <button
+                                                    class="btn btn-ghost btn-xs text-error/60 tooltip tooltip-left"
+                                                    data-tip="Delete"
+                                                    onclick={() => deleteBackup(backup.filename)}
+                                                >
+                                                    <MdiIcon icon={mdiDelete} size={14} />
+                                                </button>
+                                            {/if}
+                                        </div>
+                                    </div>
+                                </div>
+                                {#if idx === backups.length - 1}<hr class="bg-base-300"/>{/if}
+                            </li>
+                        {/each}
+                    </ul>
+                {/if}
+
+                <!-- Hidden / Diverged Backups -->
+                {#if hiddenBackups.length > 0}
+                    <div class="mt-4 pt-4 border-t border-base-300/50">
+                        <button
+                            class="flex items-center gap-2 w-full text-left"
+                            onclick={() => showHidden = !showHidden}
+                        >
+                            <MdiIcon icon={mdiChevronRight} size={16} class="text-base-content/40 transition-transform {showHidden ? 'rotate-90' : ''}" />
+                            <span class="text-sm text-base-content/50">
+                                Other database backups ({hiddenBackups.length})
+                            </span>
+                            <span class="text-xs text-base-content/30 ml-auto">
+                                From previous timeline — kept for safety
+                            </span>
+                        </button>
+
+                        {#if showHidden}
+                            <div class="mt-3 space-y-2">
+                                {#each hiddenBackups as backup}
+                                    {@const badge = typeBadge(backup.type)}
+                                    <div class="flex items-center justify-between px-3 py-2 bg-base-300/30 rounded-lg">
+                                        <div class="flex items-center gap-2">
+                                            <span class="badge badge-xs badge-ghost">{badge.label}</span>
+                                            <span class="text-sm">{formatDate(backup.timestamp)}</span>
+                                            <span class="text-xs text-base-content/30">{formatSize(backup.sizeBytes)}</span>
+                                        </div>
+                                        <div class="flex items-center gap-1.5">
+                                            <button
+                                                class="btn btn-ghost btn-xs"
+                                                onclick={() => openRestoreModal(backup.filename, formatDate(backup.timestamp))}
+                                            >
+                                                Restore
+                                            </button>
+                                            <a href="/api/backups/download/{encodeURIComponent(backup.filename)}" class="btn btn-ghost btn-xs" download>
+                                                Download
+                                            </a>
+                                        </div>
+                                    </div>
+                                {/each}
+                            </div>
+                        {/if}
+                    </div>
+                {/if}
+            </div>
+        {/if}
+    </div>
+</div>
+
+<!-- Import / Export Data -->
+<div class="card bg-base-200/50 border border-base-300 mt-6">
+    <div class="card-body">
+        <h2 class="card-title text-lg">
+            <MdiIcon icon={mdiDownload} size={20} class="text-info" />
+            Import / Export Data
+        </h2>
+
+        <!-- Export Section -->
+        <div class="space-y-3 mt-2">
+            <h3 class="text-sm font-medium">Export Data</h3>
+            <p class="text-xs text-base-content/50">
+                Download a complete backup of all data including history,
+                metadata, settings, and uploads.
+            </p>
+
+            <!-- Sensitive data opt-in -->
+            <div class="bg-base-300/30 rounded-lg p-3 space-y-2">
+                <label class="flex items-start gap-2 cursor-pointer">
+                    <input
+                        type="checkbox"
+                        class="checkbox checkbox-sm checkbox-warning mt-0.5"
+                        bind:checked={exportSensitive}
+                    />
+                    <span class="text-xs text-base-content/70">
+                        <span class="font-semibold text-warning">Include encrypted data.</span> I understand including passwords/keys is risky. Include:
+                    </span>
+                </label>
+
+                {#if exportSensitive}
+                    <div class="ml-7 space-y-1.5">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" class="checkbox checkbox-xs" bind:checked={exportPasswords} />
+                            <span class="text-xs">Password hashes <span class="text-base-content/40">(all accounts)</span></span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" class="checkbox checkbox-xs" bind:checked={exportTokens} />
+                            <span class="text-xs">Access tokens <span class="text-base-content/40">(Trakt, Last.fm, Jellyfin)</span></span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" class="checkbox checkbox-xs" bind:checked={exportApiKeys} />
+                            <span class="text-xs">API keys <span class="text-base-content/40">(TVDB, TMDB, MusicBrainz, OMDb, Discogs, Trakt, Last.fm, Radarr, Sonarr, Lidarr)</span></span>
+                        </label>
+                    </div>
+                {/if}
+            </div>
+
+            <!-- Cached images opt-in -->
+            <div class="bg-base-300/30 rounded-lg p-3">
+                <label class="flex items-start gap-2 cursor-pointer">
+                    <input type="checkbox" class="checkbox checkbox-sm mt-0.5" bind:checked={exportImages} />
+                    <span class="text-xs text-base-content/70">
+                        <span class="font-semibold">Include cached images.</span>
+                        Adds all locally cached poster/photo images to the backup.
+                        <span class="text-base-content/40">This may significantly increase the backup file size.</span>
+                    </span>
+                </label>
+            </div>
+
             <button
-                class="flex items-center gap-2 w-full text-left"
-                onclick={() => showHidden = !showHidden}
+                class="btn btn-sm btn-info gap-2"
+                onclick={exportData}
+                disabled={exporting}
             >
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-base-content/40 transition-transform {showHidden ? 'rotate-90' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="9 18 15 12 9 6"/>
-                </svg>
-                <span class="text-sm text-base-content/50">
-                    Other database backups ({hiddenBackups.length})
-                </span>
-                <span class="text-xs text-base-content/30 ml-auto">
-                    From previous timeline — kept for safety
-                </span>
+                {#if exporting}
+                    <span class="loading loading-spinner loading-xs"></span>
+                {:else}
+                    <MdiIcon icon={mdiDownload} size={16} />
+                {/if}
+                Download Backup
             </button>
 
-            {#if showHidden}
-                <div class="mt-3 space-y-2">
-                    {#each hiddenBackups as backup}
-                        {@const badge = typeBadge(backup.type)}
-                        <div class="flex items-center justify-between px-3 py-2 bg-base-300/30 rounded-lg">
-                            <div class="flex items-center gap-2">
-                                <span class="badge badge-xs badge-ghost">{badge.label}</span>
-                                <span class="text-sm">{formatDate(backup.timestamp)}</span>
-                                <span class="text-xs text-base-content/30">{formatSize(backup.sizeBytes)}</span>
-                            </div>
-                            <div class="flex items-center gap-1.5">
-                                <button
-                                    class="btn btn-ghost btn-xs"
-                                    onclick={() => openRestoreModal(backup.filename, formatDate(backup.timestamp))}
-                                >
-                                    Restore
-                                </button>
-                                <a href="/api/backups/download/{encodeURIComponent(backup.filename)}" class="btn btn-ghost btn-xs" download>
-                                    Download
-                                </a>
-                            </div>
+            {#if importError}
+                <p class="text-xs text-error">{importError}</p>
+            {/if}
+        </div>
+
+        <div class="divider my-2"></div>
+
+        <!-- Import Section -->
+        <div class="space-y-3">
+            <h3 class="text-sm font-medium">Import Data</h3>
+            <p class="text-xs text-base-content/50">
+                Restore data from a Mediajam backup ZIP file.
+            </p>
+
+            <input
+                type="file"
+                accept=".zip"
+                class="file-input file-input-sm file-input-bordered w-full max-w-xs"
+                onchange={(e) => {
+                    importFile = e.target?.files?.[0] || null;
+                    importResult = null;
+                }}
+            />
+
+            {#if importFile}
+                <div class="flex flex-wrap gap-3 items-center">
+                    <div class="form-control">
+                        <label class="label py-0" for="import-mode">
+                            <span class="label-text text-xs">Mode</span>
+                        </label>
+                        <select id="import-mode" class="select select-sm select-bordered" bind:value={importMode}>
+                            <option value="overwrite">Overwrite all</option>
+                            <option value="merge">Merge data</option>
+                        </select>
+                    </div>
+
+                    {#if importMode === "merge"}
+                        <div class="form-control">
+                            <label class="label py-0" for="import-prefer">
+                                <span class="label-text text-xs">Prefer</span>
+                            </label>
+                            <select id="import-prefer" class="select select-sm select-bordered" bind:value={importPrefer}>
+                                <option value="new">New data wins</option>
+                                <option value="old">Existing data wins</option>
+                            </select>
                         </div>
-                    {/each}
+                    {/if}
+
+                    <button
+                        class="btn btn-sm btn-warning gap-2 self-end"
+                        onclick={importData}
+                        disabled={importing}
+                    >
+                        {#if importing}
+                            <span class="loading loading-spinner loading-xs"></span>
+                        {/if}
+                        Import
+                    </button>
+                </div>
+
+                {#if importMode === "overwrite"}
+                    <div class="alert alert-warning alert-sm">
+                        <MdiIcon icon={mdiAlert} size={16} class="shrink-0" />
+                        <span class="text-xs">This will delete all existing data and replace it with the backup.</span>
+                    </div>
+                {/if}
+            {/if}
+
+            {#if importResult}
+                <div class="rounded-xl p-4 border {importResult.success ? 'bg-success/5 border-success/20 text-base-content' : 'bg-error/5 border-error/20 text-base-content'}">
+                    <div class="w-full">
+                        {#if importResult.success}
+                            <p class="text-sm font-medium">Import complete ({importResult.mode})</p>
+                            <div class="text-xs mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5">
+                                {#each Object.entries(importResult.results?.imported || {}) as [table, count]}
+                                    <span class="text-base-content/60">{table}:</span>
+                                    <span>{count}</span>
+                                {/each}
+                            </div>
+                            {#if importResult.results?.errors?.length > 0}
+                                <p class="text-xs text-error mt-1">{importResult.results.errors.join(", ")}</p>
+                            {/if}
+                        {:else}
+                            <p class="text-sm">{importResult.error || "Import failed"}</p>
+                        {/if}
+                    </div>
                 </div>
             {/if}
         </div>
     </div>
-{/if}
+</div>
 
 <!-- Restore Confirmation Modal -->
 {#if showRestoreModal}
@@ -454,9 +691,7 @@
                     {restoreTargetName}
                 </div>
                 <div class="alert alert-warning text-xs">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-                    </svg>
+                    <MdiIcon icon={mdiAlert} size={16} class="shrink-0" />
                     <div>
                         <p><strong>This is destructive.</strong> Your current database will be replaced with the backup.</p>
                         <p class="mt-1">A pre-restore backup will be created automatically so you can undo if needed.</p>
@@ -489,6 +724,8 @@
                 </button>
             </div>
         </div>
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
         <div class="modal-backdrop" onclick={() => showRestoreModal = false}></div>
     </div>
 {/if}

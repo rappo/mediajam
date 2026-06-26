@@ -459,17 +459,20 @@ export function getRecommendedMovies(userId, limit = 12) {
                COUNT(DISTINCT mt.tag_value) as tag_matches,
                GROUP_CONCAT(DISTINCT mt.tag_value) as matched_tags
         FROM media_parents mp
-        JOIN media_children mc ON mc.parent_id = mp.id
         JOIN media_tags mt ON mt.media_parent_id = mp.id
         WHERE mp.media_type = 'movie'
           AND mp.poster_url IS NOT NULL
           AND mp.collection_status != 'wanted'
           AND mt.tag_value IN (${placeholders})
-          AND NOT EXISTS (SELECT 1 FROM all_plays ap WHERE ap.media_id = mc.id)
+          AND NOT EXISTS (
+            SELECT 1 FROM media_children mc2
+            JOIN all_plays ap ON ap.media_id = mc2.id AND ap.user_id = ?
+            WHERE mc2.parent_id = mp.id
+          )
         GROUP BY mp.id
         ORDER BY tag_matches DESC
         LIMIT ?
-    `).all(...tagValues, limit * 3));
+    `).all(...tagValues, userId, limit * 3));
 
     if (candidates.length === 0) return [];
 
@@ -1087,17 +1090,21 @@ export function getItsBeenAWhile(userId, sinceMonths = 6, limit = 12) {
                mc.jellyfin_id as album_jellyfin_id, mc.poster_url as album_poster_url,
                mp.id as artist_id, mp.title as artist_name,
                mp.jellyfin_id as artist_jellyfin_id, mp.poster_url as artist_poster,
-               mc.play_count as total_plays,
+               (SELECT COUNT(*) FROM (
+                   SELECT DISTINCT CAST(strftime('%s', ph2.timestamp) / 300 AS INTEGER) as tb
+                   FROM playback_history ph2
+                   WHERE ph2.media_id = mc.id AND ph2.user_id = ?
+               )) as total_plays,
                MAX(ph.timestamp) as last_played
         FROM playback_history ph
         JOIN media_children mc ON ph.media_id = mc.id
         JOIN media_parents mp ON mc.parent_id = mp.id
         WHERE mp.media_type = 'artist' AND ph.user_id = ?
         GROUP BY mc.id
-        HAVING mc.play_count >= 3 AND last_played < ?
-        ORDER BY mc.play_count DESC, last_played ASC
+        HAVING total_plays >= 3 AND last_played < ?
+        ORDER BY total_plays DESC, last_played ASC
         LIMIT ?
-    `).all(userId, cutoffISO, limit));
+    `).all(userId, userId, cutoffISO, limit));
 
     return rows.map(r => ({
         ...r,

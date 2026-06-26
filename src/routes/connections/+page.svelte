@@ -1,8 +1,50 @@
 <script>
     import { imgUrl } from "$lib/utils.js";
+    import MdiIcon from "$lib/components/MdiIcon.svelte";
+    import { mdiAccountCircle, mdiClose, mdiMovie, mdiTelevision, mdiMusic, mdiLink, mdiBlockHelper, mdiSwapHorizontal, mdiAccount, mdiLinkOff } from "@mdi/js";
 
     /** @type {{ id: number, name: string, photo_url: string|null, slug: string|null, credit_count: number }|null} */
     let personA = $state(null);
+
+    /**
+     * Build "degree" rows from a flat path array.
+     * Path alternates: person, media, person, media, person...
+     * Each degree precomputes left/right assignments based on zigzag direction.
+     * @param {any[]} path
+     */
+    function buildDegrees(path) {
+        const degrees = [];
+        for (let i = 0; i < path.length - 2; i += 2) {
+            const pA = path[i]?.person;
+            const med = path[i + 1];
+            const pB = path[i + 2]?.person;
+            if (!pA || !med?.media || !pB) continue;
+            const di = degrees.length;
+            const isReversed = di % 2 === 1;
+            const isStartA = i === 0;
+            const isEndB = i + 2 === path.length - 1;
+            const roleFrom = med.role?.from || null;
+            const roleTo = med.role?.to || null;
+            degrees.push({
+                personA: pA,
+                media: med.media,
+                personB: pB,
+                isReversed,
+                isLast: false, // will fix after loop
+                // Precomputed for template
+                leftPerson: isReversed ? pB : pA,
+                rightPerson: isReversed ? pA : pB,
+                leftRole: isReversed ? roleTo : roleFrom,
+                rightRole: isReversed ? roleFrom : roleTo,
+                leftIsStart: isReversed ? isEndB : isStartA,
+                leftIsEnd: isReversed ? isStartA : isEndB,
+                rightIsStart: isReversed ? isStartA : isEndB,
+                rightIsEnd: isReversed ? isEndB : isStartA,
+            });
+        }
+        if (degrees.length > 0) degrees[degrees.length - 1].isLast = true;
+        return degrees;
+    }
     /** @type {{ id: number, name: string, photo_url: string|null, slug: string|null, credit_count: number }|null} */
     let personB = $state(null);
 
@@ -60,6 +102,7 @@
         searchA = person.name;
         showDropdownA = false;
         resultsA = [];
+        if (personB) findConnection();
     }
 
     /** @param {any} person */
@@ -68,6 +111,7 @@
         searchB = person.name;
         showDropdownB = false;
         resultsB = [];
+        if (personA) findConnection();
     }
 
     function clearA() {
@@ -133,6 +177,7 @@
         result = null;
         multiResults = null;
         excludedMedia = new Set();
+        if (personA && personB) findConnection();
     }
 
     /** Block a media node and re-search for an alternative route */
@@ -158,12 +203,6 @@
         return `/${typeMap[media.media_type] || 'music'}/${media.slug || media.id}`;
     }
 
-    /** @param {string} type */
-    function mediaIcon(type) {
-        if (type === 'movie') return '🎬';
-        if (type === 'show') return '📺';
-        return '🎵';
-    }
 
     // Close dropdowns on outside click
     /** @param {MouseEvent} e */
@@ -201,10 +240,10 @@
                         {#if personA.photo_url}
                             <img src={imgUrl(personA.photo_url, 40)} alt="" class="w-8 h-8 rounded-full object-cover" />
                         {:else}
-                            <div class="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-sm">👤</div>
+                            <div class="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center"><MdiIcon icon={mdiAccount} size={16} /></div>
                         {/if}
                         <span class="font-medium text-sm flex-1 truncate">{personA.name}</span>
-                        <button class="btn btn-ghost btn-xs btn-circle" onclick={clearA}>✕</button>
+                        <button class="btn btn-ghost btn-xs btn-circle" onclick={clearA}><MdiIcon icon={mdiClose} size={14} /></button>
                     </div>
                 {:else}
                     <input
@@ -215,7 +254,7 @@
                         oninput={onSearchA}
                         onfocus={() => { if (resultsA.length) showDropdownA = true; }}
                     />
-                    <span class="absolute right-3 top-1/2 -translate-y-1/2 text-base-content/30 text-sm">👤</span>
+                    <span class="absolute right-3 top-1/2 -translate-y-1/2 text-base-content/30"><MdiIcon icon={mdiAccount} size={16} /></span>
                 {/if}
             </div>
             {#if showDropdownA && resultsA.length > 0}
@@ -228,7 +267,7 @@
                             {#if person.photo_url}
                                 <img src={imgUrl(person.photo_url, 32)} alt="" class="w-6 h-6 rounded-full object-cover" />
                             {:else}
-                                <div class="w-6 h-6 rounded-full bg-base-300 flex items-center justify-center text-xs">👤</div>
+                                <div class="w-6 h-6 rounded-full bg-base-300 flex items-center justify-center"><MdiIcon icon={mdiAccount} size={12} /></div>
                             {/if}
                             <span class="text-sm flex-1 truncate">{person.name}</span>
                             <span class="text-xs text-base-content/40">{person.credit_count} credits</span>
@@ -241,7 +280,7 @@
         <!-- Swap -->
         <div class="flex items-center gap-2">
             <button class="btn btn-ghost btn-sm btn-circle" onclick={swap} title="Swap">
-                ⇄
+                <MdiIcon icon={mdiSwapHorizontal} size={18} />
             </button>
         </div>
 
@@ -253,10 +292,10 @@
                         {#if personB.photo_url}
                             <img src={imgUrl(personB.photo_url, 40)} alt="" class="w-8 h-8 rounded-full object-cover" />
                         {:else}
-                            <div class="w-8 h-8 rounded-full bg-secondary/20 flex items-center justify-center text-sm">👤</div>
+                            <div class="w-8 h-8 rounded-full bg-secondary/20 flex items-center justify-center"><MdiIcon icon={mdiAccount} size={16} /></div>
                         {/if}
                         <span class="font-medium text-sm flex-1 truncate">{personB.name}</span>
-                        <button class="btn btn-ghost btn-xs btn-circle" onclick={clearB}>✕</button>
+                        <button class="btn btn-ghost btn-xs btn-circle" onclick={clearB}><MdiIcon icon={mdiClose} size={14} /></button>
                     </div>
                 {:else}
                     <input
@@ -267,7 +306,7 @@
                         oninput={onSearchB}
                         onfocus={() => { if (resultsB.length) showDropdownB = true; }}
                     />
-                    <span class="absolute right-3 top-1/2 -translate-y-1/2 text-base-content/30 text-sm">👤</span>
+                    <span class="absolute right-3 top-1/2 -translate-y-1/2 text-base-content/30"><MdiIcon icon={mdiAccount} size={16} /></span>
                 {/if}
             </div>
             {#if showDropdownB && resultsB.length > 0}
@@ -280,7 +319,7 @@
                             {#if person.photo_url}
                                 <img src={imgUrl(person.photo_url, 32)} alt="" class="w-6 h-6 rounded-full object-cover" />
                             {:else}
-                                <div class="w-6 h-6 rounded-full bg-base-300 flex items-center justify-center text-xs">👤</div>
+                                <div class="w-6 h-6 rounded-full bg-base-300 flex items-center justify-center"><MdiIcon icon={mdiAccount} size={12} /></div>
                             {/if}
                             <span class="text-sm flex-1 truncate">{person.name}</span>
                             <span class="text-xs text-base-content/40">{person.credit_count} credits</span>
@@ -302,7 +341,7 @@
                 <span class="loading loading-spinner loading-sm"></span>
                 Searching...
             {:else}
-                🔗 Find Connection
+                <MdiIcon icon={mdiLink} size={18} /> Find Connection
             {/if}
         </button>
 
@@ -323,7 +362,7 @@
 
         {#if excludedMedia.size > 0}
             <button class="btn btn-outline btn-warning btn-sm gap-1" onclick={clearExclusions}>
-                🚫 Clear {excludedMedia.size} block{excludedMedia.size > 1 ? 's' : ''}
+                <MdiIcon icon={mdiBlockHelper} size={14} /> Clear {excludedMedia.size} block{excludedMedia.size > 1 ? 's' : ''}
             </button>
         {/if}
     </div>
@@ -349,12 +388,12 @@
     {:else if result}
         {#if result.degrees === 0}
             <div class="text-center py-8">
-                <div class="text-5xl mb-3">🪞</div>
+                <div class="mb-3 text-base-content/30"><MdiIcon icon={mdiAccountCircle} size={48} /></div>
                 <p class="text-lg font-medium">That's the same person!</p>
             </div>
         {:else if result.degrees === -1}
             <div class="text-center py-8">
-                <div class="text-5xl mb-3">🌌</div>
+                <div class="mb-3 text-base-content/30"><MdiIcon icon={mdiLinkOff} size={48} /></div>
                 <p class="text-lg font-medium">No connection found</p>
                 <p class="text-sm text-base-content/50 mt-1">
                     {#if excludedMedia.size > 0}
@@ -378,68 +417,89 @@
 </div>
 
 {#snippet pathVisualization(pathResult)}
-    <div class="connection-path">
-        {#each pathResult.path as node, i}
-            {#if node.person}
-                <!-- Person node with role arrows -->
-                <div class="person-node-wrap">
-                    <a href={personUrl(node.person)} class="person-node group">
-                        <div class="person-avatar {i === 0 ? 'avatar-start' : i === pathResult.path.length - 1 ? 'avatar-end' : ''}">
-                            {#if node.person.photo_url}
-                                <img src={imgUrl(node.person.photo_url, 120)} alt={node.person.name} class="w-full h-full object-cover" />
-                            {:else}
-                                <div class="w-full h-full flex items-center justify-center text-2xl bg-base-300">👤</div>
-                            {/if}
-                        </div>
-                        <span class="person-name group-hover:text-primary transition-colors">{node.person.name}</span>
-                    </a>
-                    <div class="role-arrows">
-                        {#if i > 0 && pathResult.path[i - 1]?.role?.to}
-                            {@const r = pathResult.path[i - 1].role.to}
-                            <span class="role-arrow role-left">
-                                <span class="arrow">←</span>
-                                <span class="role-text">{r.role_type}{#if r.character_name} <em>as {r.character_name}</em>{/if}</span>
-                            </span>
-                        {/if}
-                        {#if i < pathResult.path.length - 1 && pathResult.path[i + 1]?.role?.from}
-                            {@const r = pathResult.path[i + 1].role.from}
-                            <span class="role-arrow role-right">
-                                <span class="role-text">{r.role_type}{#if r.character_name} <em>as {r.character_name}</em>{/if}</span>
-                                <span class="arrow">→</span>
-                            </span>
+    {@const degrees = buildDegrees(pathResult.path)}
+    <div class="zigzag-wrap">
+        {#each degrees as degree, di}
+            <div class="zigzag-row" class:zigzag-reversed={degree.isReversed}>
+                <!-- Left person -->
+                <a href={personUrl(degree.leftPerson)} class="zz-person group">
+                    <div class="zz-avatar" class:zz-avatar-start={degree.leftIsStart} class:zz-avatar-end={degree.leftIsEnd}>
+                        {#if degree.leftPerson.photo_url}
+                            <img src={imgUrl(degree.leftPerson.photo_url, 120)} alt={degree.leftPerson.name} />
+                        {:else}
+                            <div class="zz-avatar-placeholder"><MdiIcon icon={mdiAccountCircle} size={40} /></div>
                         {/if}
                     </div>
+                    <span class="zz-person-name group-hover:text-primary transition-colors">{degree.leftPerson.name}</span>
+                </a>
+
+                <!-- Left role label + line -->
+                <div class="zz-connector">
+                    {#if degree.leftRole}
+                        <span class="zz-role-tag zz-role-from">
+                            {degree.leftRole.role_type}{#if degree.leftRole.character_name}<em>as {degree.leftRole.character_name}</em>{/if}
+                        </span>
+                    {/if}
+                    <div class="zz-line"></div>
                 </div>
-            {:else if node.media}
-                <!-- Media connector -->
-                <div class="media-connector">
-                    <div class="connector-line"></div>
-                    <div class="media-node-wrapper">
-                        <button
-                            class="block-btn"
-                            title="Block this connection and find alternate route"
-                            onclick={() => blockMedia(node.media.id)}
-                        >✕</button>
-                        <a href={mediaUrl(node.media)} class="media-node group">
-                            {#if node.media.poster_url}
-                                <img src={imgUrl(node.media.poster_url, 100)} alt={node.media.title} class="media-poster" />
-                            {:else}
-                                <div class="media-poster bg-base-300 flex items-center justify-center text-xl">
-                                    {mediaIcon(node.media.media_type)}
-                                </div>
-                            {/if}
-                            <div class="media-info">
-                                <span class="media-title group-hover:text-primary transition-colors">{node.media.title}</span>
-                                <div class="media-meta">
-                                    <span>{mediaIcon(node.media.media_type)}</span>
-                                    {#if node.media.release_year}
-                                        <span>{node.media.release_year}</span>
-                                    {/if}
-                                </div>
+
+                <!-- Media node -->
+                <div class="zz-media-wrap">
+                    <button
+                        class="zz-block-btn"
+                        title="Block this connection and find alternate route"
+                        onclick={() => blockMedia(degree.media.id)}
+                    ><MdiIcon icon={mdiClose} size={12} /></button>
+                    <a href={mediaUrl(degree.media)} class="zz-media group">
+                        {#if degree.media.poster_url}
+                            <img src={imgUrl(degree.media.poster_url, 200)} alt={degree.media.title} class="zz-poster" />
+                        {:else}
+                            <div class="zz-poster zz-poster-placeholder">
+                                <MdiIcon icon={degree.media.media_type === 'movie' ? mdiMovie : degree.media.media_type === 'show' ? mdiTelevision : mdiMusic} size={28} />
                             </div>
-                        </a>
+                        {/if}
+                        <span class="zz-media-title group-hover:text-primary transition-colors">{degree.media.title}</span>
+                        {#if degree.media.release_year}
+                            <span class="zz-media-year">{degree.media.release_year}</span>
+                        {/if}
+                    </a>
+                </div>
+
+                <!-- Right role label + line -->
+                <div class="zz-connector">
+                    {#if degree.rightRole}
+                        <span class="zz-role-tag zz-role-to">
+                            {degree.rightRole.role_type}{#if degree.rightRole.character_name}<em>as {degree.rightRole.character_name}</em>{/if}
+                        </span>
+                    {/if}
+                    <div class="zz-line"></div>
+                </div>
+
+                <!-- Right person -->
+                <a href={personUrl(degree.rightPerson)} class="zz-person group">
+                    <div class="zz-avatar" class:zz-avatar-start={degree.rightIsStart} class:zz-avatar-end={degree.rightIsEnd}>
+                        {#if degree.rightPerson.photo_url}
+                            <img src={imgUrl(degree.rightPerson.photo_url, 120)} alt={degree.rightPerson.name} />
+                        {:else}
+                            <div class="zz-avatar-placeholder"><MdiIcon icon={mdiAccountCircle} size={40} /></div>
+                        {/if}
                     </div>
-                    <div class="connector-line"></div>
+                    <span class="zz-person-name group-hover:text-primary transition-colors">{degree.rightPerson.name}</span>
+                </a>
+            </div>
+
+            <!-- Vertical connector between rows -->
+            {#if !degree.isLast}
+                <div class="zz-vertical-connector" class:zz-vert-right={di % 2 === 0} class:zz-vert-left={di % 2 === 1}>
+                    <svg class="zz-curve-svg" viewBox="0 0 60 48" preserveAspectRatio="none">
+                        <path d="M30 0 Q30 24 30 48" stroke="url(#zzGrad)" stroke-width="2" fill="none" />
+                        <defs>
+                            <linearGradient id="zzGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stop-color="oklch(var(--p))" stop-opacity="0.5" />
+                                <stop offset="100%" stop-color="oklch(var(--s))" stop-opacity="0.5" />
+                            </linearGradient>
+                        </defs>
+                    </svg>
                 </div>
             {/if}
         {/each}
@@ -447,132 +507,211 @@
 {/snippet}
 
 <style>
-    .connection-path {
+    /* ══════════════ ZIGZAG PATH ══════════════ */
+    .zigzag-wrap {
         display: flex;
         flex-direction: column;
         align-items: center;
+        padding: 1.5rem 0;
         gap: 0;
-        padding: 1rem 0;
     }
 
-    .person-node-wrap {
+    .zigzag-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0;
+        width: 100%;
+        max-width: 750px;
+        padding: 0.5rem 0;
+    }
+
+    .zigzag-reversed {
+        flex-direction: row-reverse;
+    }
+
+    /* Person node */
+    .zz-person {
         display: flex;
         flex-direction: column;
         align-items: center;
-        z-index: 1;
-    }
-
-    .person-node {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 0.5rem;
+        gap: 0.4rem;
         text-decoration: none;
         color: inherit;
+        flex-shrink: 0;
+        width: 100px;
     }
 
-    .person-avatar {
-        width: 80px;
-        height: 80px;
+    .zz-avatar {
+        width: 72px;
+        height: 72px;
         border-radius: 50%;
         overflow: hidden;
         box-shadow: 0 0 0 3px oklch(var(--b3));
+        transition: box-shadow 0.2s, transform 0.2s;
     }
 
-    .person-avatar.avatar-start {
-        box-shadow: 0 0 0 3px oklch(var(--p));
+    .zz-person:hover .zz-avatar {
+        transform: scale(1.05);
     }
 
-    .person-avatar.avatar-end {
-        box-shadow: 0 0 0 3px oklch(var(--s));
+    .zz-avatar img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
     }
 
-    .person-name {
-        font-size: 0.875rem;
+    .zz-avatar-placeholder {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: oklch(var(--b3));
+        color: oklch(var(--bc) / 0.3);
+    }
+
+    .zz-avatar-start {
+        box-shadow: 0 0 0 3px oklch(var(--p)), 0 0 12px oklch(var(--p) / 0.3);
+    }
+
+    .zz-avatar-end {
+        box-shadow: 0 0 0 3px oklch(var(--s)), 0 0 12px oklch(var(--s) / 0.3);
+    }
+
+    .zz-person-name {
+        font-size: 0.75rem;
         font-weight: 600;
         text-align: center;
-        max-width: 130px;
+        max-width: 100px;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+        color: oklch(var(--bc) / 0.8);
     }
 
-    .role-arrows {
+    /* Connector line + role tag */
+    .zz-connector {
         display: flex;
         flex-direction: column;
-        gap: 0.125rem;
-        margin-top: 0.25rem;
         align-items: center;
+        gap: 0.2rem;
+        flex: 1;
+        min-width: 40px;
+        max-width: 120px;
     }
 
-    .role-arrow {
-        display: flex;
-        align-items: center;
-        gap: 0.25rem;
-        font-size: 0.625rem;
-        padding: 0.125rem 0.5rem;
+    .zz-line {
+        height: 2px;
+        width: 100%;
+        background: linear-gradient(to right, oklch(var(--p) / 0.35), oklch(var(--s) / 0.35));
+        border-radius: 1px;
+    }
+
+    .zigzag-reversed .zz-line {
+        background: linear-gradient(to left, oklch(var(--p) / 0.35), oklch(var(--s) / 0.35));
+    }
+
+    .zz-role-tag {
+        font-size: 0.6rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        padding: 0.15rem 0.5rem;
         border-radius: 999px;
-        text-transform: capitalize;
         white-space: nowrap;
-        max-width: 160px;
-    }
-
-    .role-arrow .role-text {
+        max-width: 110px;
         overflow: hidden;
         text-overflow: ellipsis;
-        white-space: nowrap;
     }
 
-    .role-left {
-        background: oklch(var(--p) / 0.12);
+    .zz-role-tag em {
+        font-style: italic;
+        font-weight: 400;
+        text-transform: none;
+        opacity: 0.7;
+        margin-left: 0.15rem;
+    }
+
+    .zz-role-from {
+        background: oklch(var(--p) / 0.15);
         color: oklch(var(--p));
     }
 
-    .role-right {
-        background: oklch(var(--s) / 0.12);
+    .zz-role-to {
+        background: oklch(var(--s) / 0.15);
         color: oklch(var(--s));
     }
 
-    .arrow {
-        font-weight: 700;
+    /* Media node */
+    .zz-media-wrap {
+        position: relative;
         flex-shrink: 0;
     }
 
-    .role-arrow em {
-        font-style: italic;
-        opacity: 0.7;
-    }
-
-    .media-connector {
+    .zz-media {
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 0;
+        gap: 0.35rem;
+        text-decoration: none;
+        color: inherit;
+        width: 110px;
     }
 
-    .connector-line {
-        width: 2px;
-        height: 24px;
-        background: linear-gradient(to bottom, oklch(var(--p) / 0.3), oklch(var(--s) / 0.3));
+    .zz-poster {
+        width: 90px;
+        height: 135px;
+        border-radius: 0.5rem;
+        object-fit: cover;
+        box-shadow: 0 4px 12px oklch(0 0 0 / 0.4);
+        transition: transform 0.2s, box-shadow 0.2s;
     }
 
-    .media-node-wrapper {
-        position: relative;
+    .zz-media:hover .zz-poster {
+        transform: scale(1.05);
+        box-shadow: 0 6px 20px oklch(0 0 0 / 0.5);
     }
 
-    .block-btn {
+    .zz-poster-placeholder {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: oklch(var(--b3));
+        color: oklch(var(--bc) / 0.3);
+    }
+
+    .zz-media-title {
+        font-size: 0.7rem;
+        font-weight: 600;
+        text-align: center;
+        line-height: 1.3;
+        max-width: 110px;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        color: oklch(var(--bc) / 0.8);
+    }
+
+    .zz-media-year {
+        font-size: 0.6rem;
+        color: oklch(var(--bc) / 0.4);
+    }
+
+    /* Block button */
+    .zz-block-btn {
         position: absolute;
         top: -6px;
-        right: -6px;
+        right: -2px;
         z-index: 10;
-        width: 22px;
-        height: 22px;
+        width: 20px;
+        height: 20px;
         border-radius: 50%;
         background: oklch(var(--er));
         color: oklch(var(--erc));
         border: 2px solid oklch(var(--b1));
-        font-size: 0.625rem;
-        font-weight: 700;
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -580,116 +719,92 @@
         opacity: 0;
         transition: opacity 0.15s, transform 0.15s;
         transform: scale(0.8);
-        line-height: 1;
     }
 
-    .media-node-wrapper:hover .block-btn {
+    .zz-media-wrap:hover .zz-block-btn {
         opacity: 1;
         transform: scale(1);
     }
 
-    .media-node {
+    /* Vertical connector between zigzag rows */
+    .zz-vertical-connector {
         display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        padding: 0.75rem;
-        border-radius: 0.75rem;
-        background: oklch(var(--b2));
-        border: 1px solid oklch(var(--b3));
-        text-decoration: none;
-        color: inherit;
-        max-width: 350px;
-        transition: border-color 0.2s;
+        justify-content: flex-end;
+        width: 100%;
+        max-width: 750px;
+        padding: 0;
     }
 
-    .media-node:hover {
-        border-color: oklch(var(--p) / 0.4);
+    .zz-vert-right {
+        justify-content: flex-end;
+        padding-right: 50px;
     }
 
-    .media-poster {
-        width: 48px;
-        height: 72px;
-        border-radius: 0.375rem;
-        object-fit: cover;
-        flex-shrink: 0;
+    .zz-vert-left {
+        justify-content: flex-start;
+        padding-left: 50px;
     }
 
-    .media-info {
-        min-width: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 0.125rem;
+    .zz-curve-svg {
+        width: 60px;
+        height: 48px;
     }
 
-    .media-title {
-        font-size: 0.8125rem;
-        font-weight: 600;
-        line-height: 1.3;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-    }
-
-    .media-meta {
-        display: flex;
-        align-items: center;
-        gap: 0.375rem;
-        font-size: 0.6875rem;
-        color: oklch(var(--bc) / 0.4);
-    }
-
+    /* Path section (multi-path) */
     .path-section {
         padding-top: 0.5rem;
         border-top: 1px solid oklch(var(--b3));
     }
-
     .path-section:first-of-type {
         border-top: none;
     }
 
-    /* Responsive: horizontal on larger screens */
-    @media (min-width: 768px) {
-        .connection-path {
+    /* ── Mobile: stack vertically ── */
+    @media (max-width: 639px) {
+        .zigzag-row {
+            flex-direction: column !important;
+            gap: 0.25rem;
+        }
+        .zz-connector {
             flex-direction: row;
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: 0;
-            padding: 2rem 1rem;
+            max-width: none;
+            width: 60px;
         }
-
-        .media-connector {
-            flex-direction: row;
+        .zz-line {
+            width: 2px;
+            height: 24px;
+            background: linear-gradient(to bottom, oklch(var(--p) / 0.35), oklch(var(--s) / 0.35)) !important;
         }
-
-        .connector-line {
-            width: 32px;
-            height: 2px;
+        .zz-vertical-connector {
+            display: none;
         }
+    }
 
-        .media-node {
-            flex-direction: column;
-            text-align: center;
-            max-width: 160px;
-            padding: 0.5rem;
+    /* ── Large screens: wider ── */
+    @media (min-width: 1024px) {
+        .zigzag-row {
+            max-width: 850px;
         }
-
-        .media-poster {
-            width: 80px;
-            height: 120px;
+        .zz-vertical-connector {
+            max-width: 850px;
         }
-
-        .media-info {
-            align-items: center;
+        .zz-avatar {
+            width: 84px;
+            height: 84px;
         }
-
-
-
-
-        .person-avatar {
-            width: 96px;
-            height: 96px;
+        .zz-poster {
+            width: 100px;
+            height: 150px;
+        }
+        .zz-person {
+            width: 120px;
+        }
+        .zz-media {
+            width: 130px;
+        }
+        .zz-person-name, .zz-media-title {
+            max-width: 120px;
         }
     }
 </style>
+

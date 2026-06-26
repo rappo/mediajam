@@ -1,4 +1,6 @@
 <script>
+    import MdiIcon from '$lib/components/MdiIcon.svelte';
+    import { mdiTelevision, mdiMusic, mdiMovieOpen, mdiPause, mdiPlay, mdiSkipPrevious, mdiSkipNext, mdiStop } from '@mdi/js';
     /** @type {{ sessions?: any[], jellyfinUrl?: string, remoteControlEnabled?: boolean }} */
     let {
         sessions = [],
@@ -30,9 +32,9 @@
      * @param {string} type
      */
     function getMediaIcon(type) {
-        if (type === "episode") return "📺";
-        if (type === "track") return "🎵";
-        return "🎬";
+        if (type === "episode") return mdiTelevision;
+        if (type === "track") return mdiMusic;
+        return mdiMovieOpen;
     }
 
     /**
@@ -80,7 +82,7 @@
                             <div
                                 class="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center text-2xl"
                             >
-                                {getMediaIcon(session.media_type)}
+                                <MdiIcon icon={getMediaIcon(session.media_type)} size={28} />
                             </div>
                             {#if !session.is_paused}
                                 <div
@@ -95,9 +97,7 @@
                                 <span
                                     class="text-xs font-semibold uppercase tracking-wider text-primary/80"
                                 >
-                                    {session.is_paused
-                                        ? "⏸ Paused"
-                                        : "▶ Now Playing"}
+                                    <MdiIcon icon={session.is_paused ? mdiPause : mdiPlay} size={14} /> {session.is_paused ? "Paused" : "Now Playing"}
                                 </span>
                             </div>
                             <h3 class="font-bold text-base-content truncate">
@@ -121,14 +121,7 @@
                                     disabled={sendingCommand ===
                                         `${session.id}:prev`}
                                 >
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        class="h-4 w-4"
-                                        viewBox="0 0 24 24"
-                                        fill="currentColor"
-                                    >
-                                        <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
-                                    </svg>
+                                    <MdiIcon icon={mdiSkipPrevious} size={16} />
                                 </button>
                                 {#if session.is_paused}
                                     <button
@@ -139,16 +132,7 @@
                                         disabled={sendingCommand ===
                                             `${session.id}:unpause`}
                                     >
-                                        <svg
-                                            xmlns="http://www.w3.org/2000/svg"
-                                            class="h-5 w-5"
-                                            viewBox="0 0 24 24"
-                                            fill="currentColor"
-                                        >
-                                            <polygon
-                                                points="5 3 19 12 5 21 5 3"
-                                            />
-                                        </svg>
+                                        <MdiIcon icon={mdiPlay} size={20} />
                                     </button>
                                 {:else}
                                     <button
@@ -159,24 +143,7 @@
                                         disabled={sendingCommand ===
                                             `${session.id}:pause`}
                                     >
-                                        <svg
-                                            xmlns="http://www.w3.org/2000/svg"
-                                            class="h-5 w-5"
-                                            viewBox="0 0 24 24"
-                                            fill="currentColor"
-                                        >
-                                            <rect
-                                                x="6"
-                                                y="4"
-                                                width="4"
-                                                height="16"
-                                            /><rect
-                                                x="14"
-                                                y="4"
-                                                width="4"
-                                                height="16"
-                                            />
-                                        </svg>
+                                        <MdiIcon icon={mdiPause} size={20} />
                                     </button>
                                 {/if}
                                 <button
@@ -187,16 +154,7 @@
                                     disabled={sendingCommand ===
                                         `${session.id}:next`}
                                 >
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        class="h-4 w-4"
-                                        viewBox="0 0 24 24"
-                                        fill="currentColor"
-                                    >
-                                        <path
-                                            d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"
-                                        />
-                                    </svg>
+                                    <MdiIcon icon={mdiSkipNext} size={16} />
                                 </button>
                                 <button
                                     class="btn btn-ghost btn-sm btn-square text-error/60 hover:text-error"
@@ -206,20 +164,7 @@
                                     disabled={sendingCommand ===
                                         `${session.id}:stop`}
                                 >
-                                    <svg
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        class="h-4 w-4"
-                                        viewBox="0 0 24 24"
-                                        fill="currentColor"
-                                    >
-                                        <rect
-                                            x="6"
-                                            y="6"
-                                            width="12"
-                                            height="12"
-                                            rx="1"
-                                        />
-                                    </svg>
+                                    <MdiIcon icon={mdiStop} size={16} />
                                 </button>
                             </div>
                         {/if}

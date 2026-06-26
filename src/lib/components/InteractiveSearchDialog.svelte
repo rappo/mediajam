@@ -1,4 +1,6 @@
 <script>
+    import MdiIcon from '$lib/components/MdiIcon.svelte';
+    import { mdiMagnify, mdiSync, mdiAlert, mdiDownload, mdiClose, mdiCheck, mdiCancel } from '@mdi/js';
     /**
      * InteractiveSearchDialog — triggers an interactive search via *arr API
      * and displays results in a full-screen native dialog with download buttons.
@@ -9,8 +11,8 @@
      * @prop {string} title — media title for the dialog header
      */
 
-    /** @type {{ service: string, mediaParentId: number, title: string, episodeId?: number | null }} */
-    let { service, mediaParentId, title, episodeId = null } = $props();
+    /** @type {{ service: string, mediaParentId: number, title: string, episodeId?: number | null, hidden?: boolean }} */
+    let { service, mediaParentId, title, episodeId = null, hidden = false } = $props();
 
     let loading = $state(false);
     let error = $state('');
@@ -164,20 +166,29 @@
     function formatAge(days) {
         if (days == null) return '—';
         if (days === 0) return 'today';
-        if (days === 1) return '1 day';
-        if (days < 365) return `${days}d`;
-        return `${Math.floor(days / 365)}y ${days % 365}d`;
+        if (days === 1) return '1d';
+        if (days < 30) return `${days}d`;
+        if (days < 365) {
+            const months = Math.floor(days / 30);
+            const remainDays = days % 30;
+            return remainDays > 0 ? `${months}mo ${remainDays}d` : `${months}mo`;
+        }
+        const years = Math.floor(days / 365);
+        const remainMonths = Math.floor((days % 365) / 30);
+        return remainMonths > 0 ? `${years}y ${remainMonths}mo` : `${years}y`;
     }
 </script>
 
+{#if !hidden}
 <button
     class="btn btn-xs btn-ghost gap-1"
     onclick={show}
     title="Re-search indexers for available downloads"
 >
-    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <MdiIcon icon={mdiMagnify} size={16} />
     Search Downloads
 </button>
+{/if}
 
 <!-- Native <dialog> renders in the top-layer, immune to parent overflow:hidden -->
 <dialog
@@ -195,10 +206,10 @@
             <div class="dialog-header-actions">
                 {#if !loading}
                     <button class="btn btn-sm btn-ghost gap-1" onclick={search}>
-                        🔄 Re-Search
+                        <MdiIcon icon={mdiSync} size={14} /> Re-Search
                     </button>
                 {/if}
-                <button class="btn btn-sm btn-ghost btn-circle" onclick={close}>✕</button>
+                <button class="btn btn-sm btn-ghost btn-circle" onclick={close}><MdiIcon icon={mdiClose} size={16} /></button>
             </div>
         </div>
 
@@ -212,15 +223,15 @@
                 </div>
             {:else if error}
                 <div class="dialog-empty-state">
-                    <span class="text-4xl">⚠️</span>
+                    <span class="text-4xl"><MdiIcon icon={mdiAlert} size={36} /></span>
                     <p class="text-sm text-error max-w-md text-center whitespace-pre-line">{error}</p>
                     <button class="btn btn-sm btn-primary gap-1" onclick={search}>
-                        🔄 Re-Search Indexers
+                        <MdiIcon icon={mdiSync} size={14} /> Re-Search Indexers
                     </button>
                 </div>
             {:else if releases.length === 0}
                 <div class="dialog-empty-state">
-                    <span class="text-4xl">🔍</span>
+                    <span class="text-4xl"><MdiIcon icon={mdiMagnify} size={36} /></span>
                     <p class="text-sm text-base-content/50">No releases found</p>
                 </div>
             {:else}
@@ -245,7 +256,7 @@
                                 <!-- Download button -->
                                 <td class="col-action">
                                     {#if downloadSuccess[release.guid]}
-                                        <span class="badge badge-sm badge-success gap-1">✓</span>
+                                        <span class="badge badge-sm badge-success gap-1"><MdiIcon icon={mdiCheck} size={12} /></span>
                                     {:else}
                                         <button
                                             class="btn btn-xs {release.rejected ? 'btn-outline btn-warning' : 'btn-primary'}"
@@ -256,7 +267,7 @@
                                             {#if downloading[release.guid]}
                                                 <span class="loading loading-spinner loading-xs"></span>
                                             {:else}
-                                                ⬇
+                                                <MdiIcon icon={mdiDownload} size={14} />
                                             {/if}
                                         </button>
                                     {/if}
@@ -282,7 +293,7 @@
                                     </div>
                                     {#if release.rejected && release.rejections?.length}
                                         <div class="release-rejection">
-                                            ⛔ {release.rejections.join(' · ')}
+                                            <MdiIcon icon={mdiCancel} size={12} /> {release.rejections.join(' · ')}
                                         </div>
                                     {/if}
                                 </td>

@@ -95,7 +95,7 @@ function pollForNewPlays() {
 
         // Fetch only new rows since last poll
         const newEvents = /** @type {any[]} */ (prDb.prepare(
-            'SELECT rowid, ItemId, DateCreated, PlayDuration FROM PlaybackActivity WHERE rowid > ? ORDER BY rowid ASC'
+            'SELECT rowid, UserId, ItemId, DateCreated, PlayDuration FROM PlaybackActivity WHERE rowid > ? ORDER BY rowid ASC'
         ).all(lastPollRowid));
 
         // Detect rowid cursor desync: if our cursor is ahead of the PR DB's max rowid,
@@ -115,9 +115,14 @@ function pollForNewPlays() {
 
         if (newEvents.length === 0) return;
 
-        // Get the default user (for single-user setups)
-        const user = /** @type {any} */ (db.prepare('SELECT id FROM users LIMIT 1').get());
-        if (!user) return;
+        // Build Jellyfin UserId → MediaJam user_id mapping
+        const allUsers = /** @type {any[]} */ (db.prepare('SELECT id, jellyfin_user_id FROM users WHERE jellyfin_user_id IS NOT NULL').all());
+        /** @type {Map<string, number>} */
+        const userMap = new Map();
+        for (const u of allUsers) userMap.set(u.jellyfin_user_id, u.id);
+        // Fallback: first user (for single-user setups or events without UserId)
+        const fallbackUserId = allUsers.length > 0 ? allUsers[0].id : null;
+        if (!fallbackUserId) return;
 
         // Minimum play duration to record a history entry (filters out brief previews)
         const MIN_PLAY_SECONDS = 300; // 5 minutes
@@ -125,14 +130,14 @@ function pollForNewPlays() {
         const WATCHED_THRESHOLD_PCT = 80;
 
         const findChild = db.prepare('SELECT id FROM media_children WHERE jellyfin_id = ?');
-        const findTrack = db.prepare('SELECT t.album_id, t.title as track_title, t.runtime_ticks as track_runtime_ticks FROM tracks t WHERE t.jellyfin_id = ?');
+        const findTrack = db.prepare('SELECT t.id as track_id, t.album_id, t.title as track_title, t.runtime_ticks as track_runtime_ticks FROM tracks t WHERE t.jellyfin_id = ?');
         const findChildRuntime = db.prepare(
             'SELECT mc.runtime_ticks, mp.media_type FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mc.id = ?'
         );
         const insertHistory = db.prepare(`
             INSERT OR IGNORE INTO playback_history
-                (user_id, media_id, source, timestamp, duration_consumed_seconds, completion_pct, external_event_id, track_name)
-            VALUES (@userId, @mediaId, 'jellyfin_pr', @timestamp, @durationSeconds, @completionPct, @externalEventId, @trackName)
+                (user_id, media_id, source, timestamp, duration_consumed_seconds, completion_pct, external_event_id, track_name, track_id)
+            VALUES (@userId, @mediaId, 'jellyfin_pr', @timestamp, @durationSeconds, @completionPct, @externalEventId, @trackName, @trackId)
         `);
         const updateWatchStatus = db.prepare(
             "UPDATE media_children SET watch_status = 'watched', play_count = play_count + 1 WHERE id = ? AND watch_status != 'watched'"
@@ -153,7 +158,7 @@ function pollForNewPlays() {
 
         const txn = db.transaction(() => {
             for (const event of newEvents) {
-                if (event.rowid > maxRowid) maxRowid = event.rowid;
+                // Don't unconditionally advance cursor — unmatched events should be retried
 
                 const itemId = event.ItemId;
                 if (!itemId) { skipped++; continue; }
@@ -163,6 +168,7 @@ function pollForNewPlays() {
                 if (!child) child = /** @type {any} */ (findChild.get(itemId + '_child'));
                 let trackName = null;
                 let trackRuntimeTicks = null;
+                let trackId = null;
                 if (!child) {
                     // Music: track IDs are stored in the tracks table, not media_children
                     const track = /** @type {any} */ (findTrack.get(itemId));
@@ -170,9 +176,13 @@ function pollForNewPlays() {
                         child = { id: track.album_id };
                         trackName = track.track_title;
                         trackRuntimeTicks = track.track_runtime_ticks || null;
+                        trackId = track.track_id || null;
                     }
                 }
-                if (!child) { skipped++; continue; }
+                if (!child) { skipped++; continue; } // Don't advance cursor — retry next cycle
+
+                // Event matched — advance cursor past it
+                if (event.rowid > maxRowid) maxRowid = event.rowid;
 
                 const durationSeconds = event.PlayDuration ? Math.round(event.PlayDuration) : null;
 
@@ -181,7 +191,7 @@ function pollForNewPlays() {
                 const minPlaySeconds = isTrack ? 30 : MIN_PLAY_SECONDS;
                 if (!durationSeconds || durationSeconds < minPlaySeconds) {
                     skipped++;
-                    if (event.rowid > maxRowid) maxRowid = event.rowid; // still advance cursor
+                    if (event.rowid > maxRowid) maxRowid = event.rowid; // legitimately skipped, advance cursor
                     continue;
                 }
 
@@ -189,6 +199,7 @@ function pollForNewPlays() {
                 // Checked AFTER duration filter so 0-duration entries don't poison lastItemId
                 if (itemId === lastItemId) {
                     skipped++;
+                    if (event.rowid > maxRowid) maxRowid = event.rowid; // dedup skip, advance cursor
                     continue;
                 }
                 lastItemId = itemId;
@@ -213,6 +224,7 @@ function pollForNewPlays() {
                 // Require either 50% of the track OR 240 seconds (for very long tracks)
                 if (isTrack && runtimeSeconds > 0 && completionPct < 50 && durationSeconds < 240) {
                     skipped++;
+                    if (event.rowid > maxRowid) maxRowid = event.rowid; // completion skip, advance cursor
                     continue;
                 }
 
@@ -244,13 +256,14 @@ function pollForNewPlays() {
                 const eventId = `jellyfin_pr:${event.rowid}`;
 
                 const result = insertHistory.run({
-                    userId: user.id,
+                    userId: userMap.get(event.UserId) || fallbackUserId,
                     mediaId: child.id,
                     timestamp,
                     durationSeconds,
                     completionPct,
                     externalEventId: eventId,
-                    trackName
+                    trackName,
+                    trackId
                 });
 
                 if (result.changes > 0) {
@@ -330,4 +343,22 @@ export function stopPrPoller() {
         intervalId = null;
         console.log('[pr-poller] Stopped');
     }
+}
+
+/**
+ * Re-scan the entire PR database from rowid 0, filling in any previously
+ * missed plays (e.g., tracks that weren't synced at import time).
+ * Safe to run repeatedly — uses INSERT OR IGNORE so dupes are skipped.
+ * @returns {{ imported: number, skipped: number }}
+ */
+export function rescanAll() {
+    console.log('[pr-poller] Full rescan requested — resetting cursor to 0');
+    logInfo('pr-poller', 'Full rescan started');
+    const savedRowid = lastPollRowid;
+    lastPollRowid = 0;
+    pollForNewPlays();
+    const result = { imported: 0, skipped: 0, newCursor: lastPollRowid };
+    console.log(`[pr-poller] Rescan complete (cursor: ${savedRowid} → ${lastPollRowid})`);
+    logInfo('pr-poller', `Rescan complete (cursor: ${savedRowid} → ${lastPollRowid})`);
+    return result;
 }

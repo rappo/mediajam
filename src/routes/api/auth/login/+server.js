@@ -72,6 +72,7 @@ export async function POST({ request, cookies }) {
             const accessToken = result.data?.AccessToken;
             if (accessToken) {
                 db.prepare('UPDATE users SET jellyfin_access_token = ? WHERE id = ?').run(accessToken, user.id);
+                db.prepare("UPDATE user_identities SET access_token = ? WHERE user_id = ? AND provider = 'jellyfin'").run(accessToken, user.id);
             }
 
             cookies.set(SESSION_COOKIE, signSession(user.id), COOKIE_OPTIONS);
@@ -110,6 +111,7 @@ export async function POST({ request, cookies }) {
                 const accessToken = result.data?.AccessToken;
                 if (accessToken) {
                     db.prepare('UPDATE users SET jellyfin_access_token = ? WHERE id = ?').run(accessToken, user.id);
+                    db.prepare("UPDATE user_identities SET access_token = ? WHERE user_id = ? AND provider = 'jellyfin'").run(accessToken, user.id);
                     db.prepare("UPDATE app_settings SET jellyfin_auth_status = 'ok' WHERE id = 1").run();
                 }
             }

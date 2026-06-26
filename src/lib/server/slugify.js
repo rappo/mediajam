@@ -44,6 +44,76 @@ export function ensureUniqueSlug(db, table, baseSlug, excludeId = null) {
 }
 
 /**
+ * Resolve a slug parameter to a media_parents row ID.
+ * 1. Exact slug match
+ * 2. Fuzzy match: extract potential year from slug tail, search by title+year
+ * 3. Generate & persist slug for the matched row so future lookups are exact
+ *
+ * @param {import('better-sqlite3').Database} db
+ * @param {string} paramSlug
+ * @param {string} mediaType — 'movie' | 'show' | 'artist'
+ * @param {string} routePrefix — '/movies' | '/tv' | '/music'
+ * @returns {{ id: number, redirect?: string } | null}
+ */
+export function resolveSlug(db, paramSlug, mediaType, routePrefix) {
+    // 1. Exact slug match
+    const exact = /** @type {any} */ (
+        db.prepare('SELECT id FROM media_parents WHERE slug = ? AND media_type = ?').get(paramSlug, mediaType)
+    );
+    if (exact) return { id: exact.id };
+
+    // 2. Fuzzy: try to extract year from slug and match by title
+    //    Slug format: "some-title-2024" → title words = "some title", year = 2024
+    const yearMatch = paramSlug.match(/-(\d{4})$/);
+    const year = yearMatch ? parseInt(yearMatch[1]) : null;
+    const titlePart = yearMatch ? paramSlug.slice(0, -5) : paramSlug; // strip "-YYYY"
+    const titleWords = titlePart.replace(/-/g, ' ').trim();
+
+    if (titleWords) {
+        // Try title+year match
+        let fuzzy;
+        if (year) {
+            fuzzy = /** @type {any} */ (db.prepare(
+                `SELECT id, title, release_year, slug FROM media_parents
+                 WHERE media_type = ? AND release_year = ?
+                 AND LOWER(REPLACE(title, '''', '')) LIKE ?
+                 LIMIT 1`
+            ).get(mediaType, year, `%${titleWords.split(' ')[0]}%`));
+        }
+        // Fallback: just title match without year
+        if (!fuzzy) {
+            fuzzy = /** @type {any} */ (db.prepare(
+                `SELECT id, title, release_year, slug FROM media_parents
+                 WHERE media_type = ?
+                 AND LOWER(REPLACE(title, '''', '')) LIKE ?
+                 ${year ? 'AND release_year = ?' : ''}
+                 LIMIT 1`
+            ).get(...(year
+                ? [mediaType, `%${titleWords.split(' ')[0]}%`, year]
+                : [mediaType, `%${titleWords.split(' ')[0]}%`]
+            )));
+        }
+
+        if (fuzzy) {
+            // If the matched row has a slug, redirect to the canonical URL
+            if (fuzzy.slug && fuzzy.slug !== paramSlug) {
+                return { id: fuzzy.id, redirect: `${routePrefix}/${fuzzy.slug}` };
+            }
+            // Generate and persist slug if missing
+            if (!fuzzy.slug) {
+                const base = slugify(fuzzy.title || 'untitled', fuzzy.release_year);
+                const newSlug = ensureUniqueSlug(db, 'media_parents', base, fuzzy.id);
+                db.prepare('UPDATE media_parents SET slug = ? WHERE id = ?').run(newSlug, fuzzy.id);
+                return { id: fuzzy.id, redirect: `${routePrefix}/${newSlug}` };
+            }
+            return { id: fuzzy.id };
+        }
+    }
+
+    return null;
+}
+
+/**
  * Generate a stable episode slug: s01e05 or s01e05-episode-title.
  * The s##e## prefix is the canonical identifier; the title suffix is cosmetic.
  * @param {number} seasonNumber

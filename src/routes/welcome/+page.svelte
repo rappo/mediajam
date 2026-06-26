@@ -3,6 +3,8 @@
     import { invalidateAll } from '$app/navigation';
     import LogConsole from '$lib/components/LogConsole.svelte';
     import ServiceIcon from '$lib/components/ServiceIcon.svelte';
+    import MdiIcon from '$lib/components/MdiIcon.svelte';
+    import { mdiCheckCircle, mdiCloseCircle, mdiKey, mdiLinkVariant, mdiChartBar, mdiPackageVariant, mdiBrain, mdiSync, mdiChevronDown, mdiPartyPopper, mdiHandWave, mdiMagnify, mdiLanConnect, mdiRocketLaunch, mdiCheck } from '@mdi/js';
 
     /** @type {{ data: import('./$types').PageData }} */
     let { data } = $props();
@@ -30,45 +32,50 @@
     let expandedSection = $state(SECTIONS.find(s => !completed[s]) || null);
 
     // ─── Form State ──────────────────────────────────────────────────────────────
+    // Destructure initial settings to avoid state_referenced_locally warnings
+    // (these are form fields that intentionally capture initial values)
+    // svelte-ignore state_referenced_locally
+    const initialSettings = data.settings;
+
     // API Keys
-    let tvdbApiKey = $state(data.settings.tvdbApiKey || '');
-    let tmdbApiKey = $state(data.settings.tmdbApiKey || '');
-    let musicbrainzApiKey = $state(data.settings.musicbrainzApiKey || '');
-    let omdbApiKey = $state(data.settings.omdbApiKey || '');
-    let discogsToken = $state(data.settings.discogsToken || '');
+    let tvdbApiKey = $state(initialSettings.tvdbApiKey || '');
+    let tmdbApiKey = $state(initialSettings.tmdbApiKey || '');
+    let musicbrainzApiKey = $state(initialSettings.musicbrainzApiKey || '');
+    let omdbApiKey = $state(initialSettings.omdbApiKey || '');
+    let discogsToken = $state(initialSettings.discogsToken || '');
 
     // Integrations
-    let traktClientId = $state(data.settings.traktClientId || '');
-    let traktClientSecret = $state(data.settings.traktClientSecret || '');
-    let lastfmApiKey = $state(data.settings.lastfmApiKey || '');
-    let lastfmSharedSecret = $state(data.settings.lastfmSharedSecret || '');
+    let traktClientId = $state(initialSettings.traktClientId || '');
+    let traktClientSecret = $state(initialSettings.traktClientSecret || '');
+    let lastfmApiKey = $state(initialSettings.lastfmApiKey || '');
+    let lastfmSharedSecret = $state(initialSettings.lastfmSharedSecret || '');
 
     // *arr
-    let radarrUrl = $state(data.settings.radarrUrl || '');
-    let radarrApiKey = $state(data.settings.radarrApiKey || '');
-    let radarrExternalUrl = $state(data.settings.radarrExternalUrl || '');
-    let sonarrUrl = $state(data.settings.sonarrUrl || '');
-    let sonarrApiKey = $state(data.settings.sonarrApiKey || '');
-    let sonarrExternalUrl = $state(data.settings.sonarrExternalUrl || '');
-    let lidarrUrl = $state(data.settings.lidarrUrl || '');
-    let lidarrApiKey = $state(data.settings.lidarrApiKey || '');
-    let lidarrExternalUrl = $state(data.settings.lidarrExternalUrl || '');
+    let radarrUrl = $state(initialSettings.radarrUrl || '');
+    let radarrApiKey = $state(initialSettings.radarrApiKey || '');
+    let radarrExternalUrl = $state(initialSettings.radarrExternalUrl || '');
+    let sonarrUrl = $state(initialSettings.sonarrUrl || '');
+    let sonarrApiKey = $state(initialSettings.sonarrApiKey || '');
+    let sonarrExternalUrl = $state(initialSettings.sonarrExternalUrl || '');
+    let lidarrUrl = $state(initialSettings.lidarrUrl || '');
+    let lidarrApiKey = $state(initialSettings.lidarrApiKey || '');
+    let lidarrExternalUrl = $state(initialSettings.lidarrExternalUrl || '');
 
     // LLM
-    let ollamaUrl = $state(data.settings.ollamaUrl || '');
-    let ollamaEmbedModel = $state(data.settings.ollamaEmbedModel || 'nomic-embed-text');
-    let ollamaChatModel = $state(data.settings.ollamaChatModel || 'llama3.2:3b');
+    let ollamaUrl = $state(initialSettings.ollamaUrl || '');
+    let ollamaEmbedModel = $state(initialSettings.ollamaEmbedModel || 'nomic-embed-text');
+    let ollamaChatModel = $state(initialSettings.ollamaChatModel || 'llama3.2:3b');
 
     // ─── Inline Validation ──────────────────────────────────────────────────────
     /** @type {Record<string, 'idle'|'checking'|'valid'|'error'>} */
     let validationStatus = $state({
-        tmdb: data.settings.tmdbApiKey ? 'valid' : 'idle',
-        tvdb: data.settings.tvdbApiKey ? 'valid' : 'idle',
-        omdb: data.settings.omdbApiKey ? 'valid' : 'idle',
-        discogs: data.settings.discogsToken ? 'valid' : 'idle',
-        musicbrainz: data.settings.musicbrainzApiKey ? 'valid' : 'idle',
-        trakt: (data.settings.traktClientId && data.settings.traktClientSecret) ? 'valid' : 'idle',
-        lastfm: (data.settings.lastfmApiKey && data.settings.lastfmSharedSecret) ? 'valid' : 'idle',
+        tmdb: initialSettings.tmdbApiKey ? 'valid' : 'idle',
+        tvdb: initialSettings.tvdbApiKey ? 'valid' : 'idle',
+        omdb: initialSettings.omdbApiKey ? 'valid' : 'idle',
+        discogs: initialSettings.discogsToken ? 'valid' : 'idle',
+        musicbrainz: initialSettings.musicbrainzApiKey ? 'valid' : 'idle',
+        trakt: (initialSettings.traktClientId && initialSettings.traktClientSecret) ? 'valid' : 'idle',
+        lastfm: (initialSettings.lastfmApiKey && initialSettings.lastfmSharedSecret) ? 'valid' : 'idle',
     });
     /** @type {Record<string, string>} */
     let validationMsg = $state({});
@@ -241,8 +248,10 @@
     let importState = $state({ active: false, tier: '', status: 'idle', logs: [], progressPercent: 0, totalImported: 0, totalSkipped: 0, eventSource: null });
 
     // Auto-sync toggle state
-    let traktAutoSync = $state(data.autoSync?.trakt || false);
-    let lastfmAutoSync = $state(data.autoSync?.lastfm || false);
+    // svelte-ignore state_referenced_locally
+    const initialAutoSync = data.autoSync;
+    let traktAutoSync = $state(initialAutoSync?.trakt || false);
+    let lastfmAutoSync = $state(initialAutoSync?.lastfm || false);
 
     async function toggleAutoSync(provider, enabled) {
         try {
@@ -553,7 +562,7 @@
     {#if allComplete}
         <!-- All done! -->
         <div class="text-center py-16 space-y-6">
-            <div class="text-7xl">🎉</div>
+            <div class="text-7xl"><MdiIcon icon={mdiPartyPopper} size={72} /></div>
             <h1 class="text-4xl font-extrabold tracking-tight bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent">
                 You're all set!
             </h1>
@@ -561,9 +570,7 @@
                 Mediajam is configured and your data is syncing. Everything configured here can be changed later in Settings.
             </p>
             <button class="btn btn-primary btn-lg gap-2" onclick={finishWelcome}>
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="20 6 9 17 4 12" />
-                </svg>
+                <MdiIcon icon={mdiCheck} size={20} />
                 Go to Mediajam
             </button>
         </div>
@@ -571,7 +578,7 @@
         <!-- Header -->
         <div class="mb-8">
             <h1 class="text-3xl font-bold flex items-center gap-3">
-                <span class="text-3xl">👋</span>
+                <span class="text-3xl"><MdiIcon icon={mdiHandWave} size={30} /></span>
                 Welcome to Mediajam
             </h1>
             <p class="text-base-content/60 text-sm mt-2">
@@ -592,13 +599,13 @@
                     onclick={() => expandedSection = expandedSection === 'apiKeys' ? null : 'apiKeys'}
                 >
                     {#if completed.apiKeys}
-                        <span class="text-lg">✅</span>
+                        <span class="text-lg text-success"><MdiIcon icon={mdiCheckCircle} size={20} /></span>
                     {:else}
-                        <span class="text-lg">🔑</span>
+                        <span class="text-lg"><MdiIcon icon={mdiKey} size={20} /></span>
                     {/if}
                     <span class="font-medium flex-1">Metadata API Keys</span>
                     <span class="text-xs text-base-content/40">TVDB, TMDB, MusicBrainz, OMDb, Discogs</span>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-base-content/30 transition-transform" class:rotate-180={expandedSection === 'apiKeys'} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9" /></svg>
+                    <MdiIcon icon={mdiChevronDown} size={16} class="text-base-content/30 transition-transform {expandedSection === 'apiKeys' ? 'rotate-180' : ''}" />
                 </button>
 
                 {#if expandedSection === 'apiKeys'}
@@ -611,8 +618,8 @@
                                     <ServiceIcon service="tmdb" size="w-3.5 h-3.5" class="text-[#01B4E4]" />
                                     <span class="label-text text-xs">TMDB API Key</span>
                                     {#if validationStatus.tmdb === 'checking'}<span class="loading loading-spinner loading-xs text-info"></span>
-                                    {:else if validationStatus.tmdb === 'valid'}<span class="text-success text-xs">✅</span>
-                                    {:else if validationStatus.tmdb === 'error'}<span class="text-error text-xs tooltip tooltip-right" data-tip={validationMsg.tmdb || 'Invalid'}>❌</span>{/if}
+                                    {:else if validationStatus.tmdb === 'valid'}<span class="text-success text-xs"><MdiIcon icon={mdiCheckCircle} size={14} /></span>
+                                    {:else if validationStatus.tmdb === 'error'}<span class="text-error text-xs tooltip tooltip-right" data-tip={validationMsg.tmdb || 'Invalid'}><MdiIcon icon={mdiCloseCircle} size={14} /></span>{/if}
                                 </div>
                                 <input type="text" class="input input-sm input-bordered font-mono" placeholder="Enter key..." bind:value={tmdbApiKey} onblur={() => debouncedValidate('tmdb', { tmdb_api_key: tmdbApiKey }, 0)} />
                                 <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener" class="link link-primary text-xs mt-1 inline-block">Get API key →</a>
@@ -622,8 +629,8 @@
                                     <ServiceIcon service="tvdb" size="w-3.5 h-3.5" class="text-[#6CD491]" />
                                     <span class="label-text text-xs">TVDB API Key</span>
                                     {#if validationStatus.tvdb === 'checking'}<span class="loading loading-spinner loading-xs text-info"></span>
-                                    {:else if validationStatus.tvdb === 'valid'}<span class="text-success text-xs">✅</span>
-                                    {:else if validationStatus.tvdb === 'error'}<span class="text-error text-xs tooltip tooltip-right" data-tip={validationMsg.tvdb || 'Invalid'}>❌</span>{/if}
+                                    {:else if validationStatus.tvdb === 'valid'}<span class="text-success text-xs"><MdiIcon icon={mdiCheckCircle} size={14} /></span>
+                                    {:else if validationStatus.tvdb === 'error'}<span class="text-error text-xs tooltip tooltip-right" data-tip={validationMsg.tvdb || 'Invalid'}><MdiIcon icon={mdiCloseCircle} size={14} /></span>{/if}
                                 </div>
                                 <input type="text" class="input input-sm input-bordered font-mono" placeholder="Enter key..." bind:value={tvdbApiKey} onblur={() => debouncedValidate('tvdb', { tvdb_api_key: tvdbApiKey }, 0)} />
                                 <a href="https://thetvdb.com/dashboard/account/apikey" target="_blank" rel="noopener" class="link link-primary text-xs mt-1 inline-block">Get API key →</a>
@@ -632,7 +639,7 @@
                                 <div class="label py-1 flex items-center gap-1.5">
                                     <ServiceIcon service="musicbrainz" size="w-3.5 h-3.5" class="text-[#BA478F]" />
                                     <span class="label-text text-xs">MusicBrainz App Name</span>
-                                    {#if validationStatus.musicbrainz === 'valid'}<span class="text-success text-xs">✅</span>{/if}
+                                    {#if validationStatus.musicbrainz === 'valid'}<span class="text-success text-xs"><MdiIcon icon={mdiCheckCircle} size={14} /></span>{/if}
                                 </div>
                                 <input type="text" class="input input-sm input-bordered font-mono" placeholder="MyApp/1.0" bind:value={musicbrainzApiKey} onblur={() => validateMusicBrainz(musicbrainzApiKey)} />
                                 <a href="https://musicbrainz.org/doc/MusicBrainz_API" target="_blank" rel="noopener" class="link link-primary text-xs mt-1 inline-block">Learn more →</a>
@@ -642,8 +649,8 @@
                                     <ServiceIcon service="omdb" size="w-3.5 h-3.5" class="text-[#F5C518]" />
                                     <span class="label-text text-xs">OMDb API Key</span>
                                     {#if validationStatus.omdb === 'checking'}<span class="loading loading-spinner loading-xs text-info"></span>
-                                    {:else if validationStatus.omdb === 'valid'}<span class="text-success text-xs">✅</span>
-                                    {:else if validationStatus.omdb === 'error'}<span class="text-error text-xs tooltip tooltip-right" data-tip={validationMsg.omdb || 'Invalid'}>❌</span>{/if}
+                                    {:else if validationStatus.omdb === 'valid'}<span class="text-success text-xs"><MdiIcon icon={mdiCheckCircle} size={14} /></span>
+                                    {:else if validationStatus.omdb === 'error'}<span class="text-error text-xs tooltip tooltip-right" data-tip={validationMsg.omdb || 'Invalid'}><MdiIcon icon={mdiCloseCircle} size={14} /></span>{/if}
                                 </div>
                                 <input type="text" class="input input-sm input-bordered font-mono" placeholder="Enter key..." bind:value={omdbApiKey} onblur={() => debouncedValidate('omdb', { omdb_api_key: omdbApiKey }, 0)} />
                                 <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" rel="noopener" class="link link-primary text-xs mt-1 inline-block">Get free API key →</a>
@@ -653,8 +660,8 @@
                                     <ServiceIcon service="discogs" size="w-3.5 h-3.5" />
                                     <span class="label-text text-xs">Discogs Token</span>
                                     {#if validationStatus.discogs === 'checking'}<span class="loading loading-spinner loading-xs text-info"></span>
-                                    {:else if validationStatus.discogs === 'valid'}<span class="text-success text-xs">✅</span>
-                                    {:else if validationStatus.discogs === 'error'}<span class="text-error text-xs tooltip tooltip-right" data-tip={validationMsg.discogs || 'Invalid'}>❌</span>{/if}
+                                    {:else if validationStatus.discogs === 'valid'}<span class="text-success text-xs"><MdiIcon icon={mdiCheckCircle} size={14} /></span>
+                                    {:else if validationStatus.discogs === 'error'}<span class="text-error text-xs tooltip tooltip-right" data-tip={validationMsg.discogs || 'Invalid'}><MdiIcon icon={mdiCloseCircle} size={14} /></span>{/if}
                                 </div>
                                 <input type="text" class="input input-sm input-bordered font-mono" placeholder="Enter token..." bind:value={discogsToken} onblur={() => debouncedValidate('discogs', { discogs_token: discogsToken }, 0)} />
                                 <a href="https://www.discogs.com/settings/developers" target="_blank" rel="noopener" class="link link-primary text-xs mt-1 inline-block">Generate personal access token →</a>
@@ -681,13 +688,13 @@
                     onclick={() => expandedSection = expandedSection === 'integrations' ? null : 'integrations'}
                 >
                     {#if completed.integrations}
-                        <span class="text-lg">✅</span>
+                        <span class="text-lg text-success"><MdiIcon icon={mdiCheckCircle} size={20} /></span>
                     {:else}
-                        <span class="text-lg">🔗</span>
+                        <span class="text-lg"><MdiIcon icon={mdiLinkVariant} size={20} /></span>
                     {/if}
                     <span class="font-medium flex-1">Integrations</span>
                     <span class="text-xs text-base-content/40">Trakt, Last.fm</span>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-base-content/30 transition-transform" class:rotate-180={expandedSection === 'integrations'} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9" /></svg>
+                    <MdiIcon icon={mdiChevronDown} size={16} class="text-base-content/30 transition-transform {expandedSection === 'integrations' ? 'rotate-180' : ''}" />
                 </button>
 
                 {#if expandedSection === 'integrations'}
@@ -698,8 +705,8 @@
                             <ServiceIcon service="trakt" size="w-3.5 h-3.5" class="text-[#ED1C24]" />
                             Trakt
                             {#if validationStatus.trakt === 'checking'}<span class="loading loading-spinner loading-xs text-info"></span>
-                            {:else if validationStatus.trakt === 'valid'}<span class="text-success text-xs">✅</span>
-                            {:else if validationStatus.trakt === 'error'}<span class="text-error text-xs tooltip tooltip-right" data-tip={validationMsg.trakt || 'Invalid'}>❌</span>{/if}
+                            {:else if validationStatus.trakt === 'valid'}<span class="text-success text-xs"><MdiIcon icon={mdiCheckCircle} size={14} /></span>
+                            {:else if validationStatus.trakt === 'error'}<span class="text-error text-xs tooltip tooltip-right" data-tip={validationMsg.trakt || 'Invalid'}><MdiIcon icon={mdiCloseCircle} size={14} /></span>{/if}
                         </h4>
                         <div class="grid gap-3 sm:grid-cols-2">
                             <label class="form-control">
@@ -716,8 +723,8 @@
                             <ServiceIcon service="lastfm" size="w-3.5 h-3.5" class="text-[#D51007]" />
                             Last.fm
                             {#if validationStatus.lastfm === 'checking'}<span class="loading loading-spinner loading-xs text-info"></span>
-                            {:else if validationStatus.lastfm === 'valid'}<span class="text-success text-xs">✅</span>
-                            {:else if validationStatus.lastfm === 'error'}<span class="text-error text-xs tooltip tooltip-right" data-tip={validationMsg.lastfm || 'Invalid'}>❌</span>{/if}
+                            {:else if validationStatus.lastfm === 'valid'}<span class="text-success text-xs"><MdiIcon icon={mdiCheckCircle} size={14} /></span>
+                            {:else if validationStatus.lastfm === 'error'}<span class="text-error text-xs tooltip tooltip-right" data-tip={validationMsg.lastfm || 'Invalid'}><MdiIcon icon={mdiCloseCircle} size={14} /></span>{/if}
                         </h4>
                         <div class="grid gap-3 sm:grid-cols-2">
                             <label class="form-control">
@@ -750,13 +757,13 @@
                     onclick={() => expandedSection = expandedSection === 'history' ? null : 'history'}
                 >
                     {#if completed.history}
-                        <span class="text-lg">✅</span>
+                        <span class="text-lg text-success"><MdiIcon icon={mdiCheckCircle} size={20} /></span>
                     {:else}
-                        <span class="text-lg">📊</span>
+                        <span class="text-lg"><MdiIcon icon={mdiChartBar} size={20} /></span>
                     {/if}
                     <span class="font-medium flex-1">History Import</span>
                     <span class="text-xs text-base-content/40">Trakt & Last.fm watch/listen history</span>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-base-content/30 transition-transform" class:rotate-180={expandedSection === 'history'} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9" /></svg>
+                    <MdiIcon icon={mdiChevronDown} size={16} class="text-base-content/30 transition-transform {expandedSection === 'history' ? 'rotate-180' : ''}" />
                 </button>
 
                 {#if expandedSection === 'history'}
@@ -854,13 +861,13 @@
                     onclick={() => expandedSection = expandedSection === 'arr' ? null : 'arr'}
                 >
                     {#if completed.arr}
-                        <span class="text-lg">✅</span>
+                        <span class="text-lg text-success"><MdiIcon icon={mdiCheckCircle} size={20} /></span>
                     {:else}
-                        <span class="text-lg">📦</span>
+                        <span class="text-lg"><MdiIcon icon={mdiPackageVariant} size={20} /></span>
                     {/if}
                     <span class="font-medium flex-1">Collection Management</span>
                     <span class="text-xs text-base-content/40">Radarr, Sonarr, Lidarr</span>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-base-content/30 transition-transform" class:rotate-180={expandedSection === 'arr'} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9" /></svg>
+                    <MdiIcon icon={mdiChevronDown} size={16} class="text-base-content/30 transition-transform {expandedSection === 'arr' ? 'rotate-180' : ''}" />
                 </button>
 
                 {#if expandedSection === 'arr'}
@@ -868,7 +875,7 @@
                         <div class="flex items-center justify-between">
                             <p class="text-xs text-base-content/50">Connect your *arr instances to track collection status and manage requests.</p>
                             <button class="btn btn-xs btn-outline gap-1" onclick={scanForArr} disabled={arrScanStatus === 'scanning'}>
-                                {#if arrScanStatus === 'scanning'}<span class="loading loading-spinner loading-xs"></span>{:else}🔍{/if}
+                                {#if arrScanStatus === 'scanning'}<span class="loading loading-spinner loading-xs"></span>{:else}<MdiIcon icon={mdiMagnify} size={14} />{/if}
                                 Scan Network
                             </button>
                         </div>
@@ -941,13 +948,13 @@
                     onclick={() => expandedSection = expandedSection === 'llm' ? null : 'llm'}
                 >
                     {#if completed.llm}
-                        <span class="text-lg">✅</span>
+                        <span class="text-lg text-success"><MdiIcon icon={mdiCheckCircle} size={20} /></span>
                     {:else}
-                        <span class="text-lg">🤖</span>
+                        <span class="text-lg"><MdiIcon icon={mdiBrain} size={20} /></span>
                     {/if}
                     <span class="font-medium flex-1">AI / Local LLM</span>
                     <span class="text-xs text-base-content/40">Ollama for search & tagging</span>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-base-content/30 transition-transform" class:rotate-180={expandedSection === 'llm'} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9" /></svg>
+                    <MdiIcon icon={mdiChevronDown} size={16} class="text-base-content/30 transition-transform {expandedSection === 'llm' ? 'rotate-180' : ''}" />
                 </button>
 
                 {#if expandedSection === 'llm'}
@@ -956,20 +963,20 @@
                             <p class="text-xs text-base-content/50">Connect a local Ollama instance for AI-powered search and auto-tagging.</p>
                             <div class="flex gap-1">
                                 <button class="btn btn-xs btn-outline gap-1" onclick={scanForOllama} disabled={ollamaScanStatus === 'scanning'}>
-                                    {#if ollamaScanStatus === 'scanning'}<span class="loading loading-spinner loading-xs"></span>{:else}🔍{/if}
+                                    {#if ollamaScanStatus === 'scanning'}<span class="loading loading-spinner loading-xs"></span>{:else}<MdiIcon icon={mdiMagnify} size={14} />{/if}
                                     Scan
                                 </button>
                                 {#if ollamaUrl}
                                     <button class="btn btn-xs btn-outline gap-1" onclick={testOllamaConnection} disabled={ollamaHealthStatus === 'checking'}>
-                                        {#if ollamaHealthStatus === 'checking'}<span class="loading loading-spinner loading-xs"></span>{:else}🔌{/if}
+                                        {#if ollamaHealthStatus === 'checking'}<span class="loading loading-spinner loading-xs"></span>{:else}<MdiIcon icon={mdiLanConnect} size={14} />{/if}
                                         Test
                                     </button>
                                 {/if}
                             </div>
                         </div>
 
-                        {#if ollamaHealthStatus === 'ok'}<p class="text-xs text-success">✅ Connected — {ollamaHealthModels.length} models available</p>
-                        {:else if ollamaHealthStatus === 'error'}<p class="text-xs text-error">❌ {ollamaHealthError}</p>
+                        {#if ollamaHealthStatus === 'ok'}<p class="text-xs text-success"><MdiIcon icon={mdiCheckCircle} size={12} /> Connected — {ollamaHealthModels.length} models available</p>
+                        {:else if ollamaHealthStatus === 'error'}<p class="text-xs text-error"><MdiIcon icon={mdiCloseCircle} size={12} /> {ollamaHealthError}</p>
                         {:else if ollamaScanStatus === 'notfound'}<p class="text-xs text-warning">No Ollama instances found on the network.</p>{/if}
 
                         <label class="form-control">
@@ -1032,19 +1039,19 @@
                     onclick={() => expandedSection = expandedSection === 'finalSync' ? null : 'finalSync'}
                 >
                     {#if completed.finalSync}
-                        <span class="text-lg">✅</span>
+                        <span class="text-lg text-success"><MdiIcon icon={mdiCheckCircle} size={20} /></span>
                     {:else}
-                        <span class="text-lg">🔄</span>
+                        <span class="text-lg"><MdiIcon icon={mdiSync} size={20} /></span>
                     {/if}
                     <span class="font-medium flex-1">Finish Setup</span>
                     <span class="text-xs text-base-content/40">Sync, enrich, reconcile</span>
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-base-content/30 transition-transform" class:rotate-180={expandedSection === 'finalSync'} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9" /></svg>
+                    <MdiIcon icon={mdiChevronDown} size={16} class="text-base-content/30 transition-transform {expandedSection === 'finalSync' ? 'rotate-180' : ''}" />
                 </button>
 
                 {#if expandedSection === 'finalSync'}
                     <div class="px-5 pb-5 space-y-4 border-t border-base-content/5 pt-4">
                         <div class="text-center space-y-3 py-2">
-                            <p class="text-3xl">🎉</p>
+                            <p class="text-3xl"><MdiIcon icon={mdiPartyPopper} size={30} /></p>
                             <p class="text-sm font-medium">You're all set!</p>
                             <p class="text-xs text-base-content/50">
                                 Everything is configured. Your Jellyfin library syncs automatically in the background — it's completely safe to start browsing now.
@@ -1054,12 +1061,10 @@
                         {#if finalSyncStatus === 'idle'}
                             <div class="flex flex-col items-center gap-2">
                                 <a href="/" class="btn btn-primary gap-2" onclick={() => { markComplete('finalSync'); finishWelcome(); }}>
-                                    🚀 Start Exploring Mediajam
+                                    <MdiIcon icon={mdiRocketLaunch} size={18} /> Start Exploring Mediajam
                                 </a>
                                 <button class="btn btn-ghost btn-sm gap-2" onclick={runFinalSync}>
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
-                                    </svg>
+                                    <MdiIcon icon={mdiSync} size={14} />
                                     Or run a sync first
                                 </button>
                             </div>
@@ -1069,16 +1074,16 @@
                                     {#if finalSyncStatus === 'syncing'}
                                         <span class="loading loading-spinner loading-xs text-primary"></span>
                                     {:else if finalSyncStatus === 'complete'}
-                                        <span>✅</span>
+                                        <span class="text-success"><MdiIcon icon={mdiCheckCircle} size={16} /></span>
                                     {:else}
-                                        <span>❌</span>
+                                        <span class="text-error"><MdiIcon icon={mdiCloseCircle} size={16} /></span>
                                     {/if}
                                     <span class="font-medium">{finalSyncStep}</span>
                                 </div>
                                 <LogConsole logs={finalSyncLogs} running={finalSyncStatus === 'syncing'} title="Sync Log" height="h-48" />
                                 {#if finalSyncStatus === 'complete'}
                                     <a href="/" class="btn btn-primary gap-2 mt-2" onclick={finishWelcome}>
-                                        🚀 Start Exploring Mediajam
+                                        <MdiIcon icon={mdiRocketLaunch} size={18} /> Start Exploring Mediajam
                                     </a>
                                 {/if}
                             </div>

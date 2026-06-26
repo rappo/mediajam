@@ -4,6 +4,8 @@
     import { flushSync } from "svelte";
     import { addToast } from "$lib/stores/toast.js";
     import { imgUrl } from "$lib/utils.js";
+    import MdiIcon from '$lib/components/MdiIcon.svelte';
+    import { mdiTelevision, mdiMovieOpen, mdiMusic, mdiAlbum, mdiAccount, mdiFileDocument, mdiClockOutline, mdiMagnify, mdiWeb } from '@mdi/js';
 
     let open = $state(false);
     let query = $state("");
@@ -204,7 +206,7 @@
                 results = null;
             }
             loading = false;
-        }, 250);
+        }, 400);
     }
 
     /** @param {any} item */
@@ -235,13 +237,13 @@
 
     /** @type {Record<string, string>} */
     const TYPE_ICONS = {
-        show: "📺",
-        movie: "🎬",
-        artist: "🎵",
-        album: "💿",
-        person: "👤",
-        child: "📄",
-        history: "⏱️",
+        show: mdiTelevision,
+        movie: mdiMovieOpen,
+        artist: mdiMusic,
+        album: mdiAlbum,
+        person: mdiAccount,
+        child: mdiFileDocument,
+        history: mdiClockOutline,
     };
     /** @type {Record<string, string>} */
     const TYPE_LABELS = {
@@ -294,42 +296,22 @@
         if (theme) node.setAttribute("data-theme", theme);
         document.body.appendChild(node);
 
-        // Read actual computed colors from a real themed element (the navbar)
+        // Compute resolved background from a themed element
         const themedEl =
-            document.querySelector(".navbar") ||
+            document.querySelector(".sidebar") ||
             document.querySelector("[data-theme]") ||
             document.documentElement;
         const cs = getComputedStyle(themedEl);
-        const bgColor = cs.backgroundColor; // resolved RGB
 
-        // Get primary color from a themed element
-        const tempEl = document.createElement("div");
-        tempEl.className = "text-primary";
-        tempEl.style.display = "none";
-        document.body.appendChild(tempEl);
-        const primaryColor = getComputedStyle(tempEl).color;
-        tempEl.remove();
-
-        const dialog = /** @type {HTMLElement|null} */ (
-            node.querySelector(".search-dialog")
-        );
+        // Get base background — we need a solid, opaque version
+        // Parse the bg and force alpha to 1
+        const rawBg = cs.getPropertyValue('--b1').trim();
+        const dialog = /** @type {HTMLElement|null} */ (node.querySelector(".search-dialog"));
         if (dialog) {
-            dialog.style.backgroundColor = bgColor;
-            dialog.style.borderColor = primaryColor
-                .replace(")", " / 0.3)")
-                .replace("rgb(", "rgba(");
-            dialog.style.boxShadow = `0 0 30px 4px ${primaryColor.replace(")", " / 0.15)").replace("rgb(", "rgba(")}, 0 25px 50px -12px rgba(0,0,0,0.5)`;
+            // Use the computed backgroundColor of the document root as a reliable solid color
+            const rootBg = getComputedStyle(document.documentElement).backgroundColor;
+            dialog.style.backgroundColor = rootBg || '#1d232a';
         }
-
-        const inputRow = /** @type {HTMLElement|null} */ (
-            node.querySelector(".search-input-row")
-        );
-        if (inputRow) {
-            inputRow.style.borderBottomColor = bgColor
-                .replace(")", " / 0.5)")
-                .replace("rgb(", "rgba(");
-        }
-
 
         return {
             destroy() {
@@ -341,61 +323,37 @@
 
 
 
-<!-- Search trigger button -->
-<button
-    class="btn btn-ghost btn-sm gap-2 font-normal text-base-content/60 hover:text-base-content"
+<!-- Search trigger field -->
+<div
+    class="search-trigger-field"
+    role="button"
+    tabindex="0"
     onclick={() => {
         open = true;
         setTimeout(() => inputEl?.focus(), 50);
     }}
+    onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { open = true; setTimeout(() => inputEl?.focus(), 50); } }}
 >
-    <svg
-        xmlns="http://www.w3.org/2000/svg"
-        class="h-4 w-4"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-    >
-        <circle cx="11" cy="11" r="8" /><line
-            x1="21"
-            y1="21"
-            x2="16.65"
-            y2="16.65"
-        />
-    </svg>
-    <span class="hidden md:inline text-sm">Search</span>
-    <kbd class="kbd kbd-xs hidden lg:inline-flex">Ctrl+K</kbd>
-</button>
+    <MdiIcon icon={mdiMagnify} size={16} />
+    <span class="search-trigger-text">Search shows, movies, music…</span>
+    <kbd class="kbd kbd-xs hidden lg:inline-flex" style="opacity:0.3">Ctrl+K</kbd>
+</div>
 
 <!-- Modal overlay - portaled to body to escape navbar stacking context -->
 {#if open}
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
         class="search-overlay"
         use:portal
         onclick={(e) => {
             if (e.target === e.currentTarget) close();
         }}
+        onkeydown={(e) => { if (e.key === 'Escape') close(); }}
+        role="presentation"
     >
         <div class="search-dialog">
             <!-- Search input -->
             <div class="search-input-row">
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    class="search-icon"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                >
-                    <circle cx="11" cy="11" r="8" /><line
-                        x1="21"
-                        y1="21"
-                        x2="16.65"
-                        y2="16.65"
-                    />
-                </svg>
+                <span class="search-icon"><MdiIcon icon={mdiMagnify} size={20} /></span>
                 <input
                     bind:this={inputEl}
                     bind:value={query}
@@ -445,7 +403,7 @@
                                 />
                             {:else}
                                 <span class="search-thumb-placeholder">
-                                    {TYPE_ICONS[entry.item.type] || "🔍"}
+                                    <MdiIcon icon={TYPE_ICONS[entry.item.type] || mdiMagnify} size={16} />
                                 </span>
                             {/if}
                             <div class="search-result-text">
@@ -492,7 +450,7 @@
                     {#if !externalResults && !externalLoading}
                         <div style="padding: 0.5rem 1rem 0.75rem;">
                             <button class="btn btn-sm btn-ghost gap-2 w-full" onclick={searchExternal}>
-                                🌐 Search TMDb & MusicBrainz
+                                <MdiIcon icon={mdiWeb} size={16} /> Search TMDb & MusicBrainz
                             </button>
                         </div>
                     {:else if externalLoading}
@@ -502,13 +460,13 @@
                         </div>
                     {:else if externalResults}
                         {#if externalResults.movies?.length > 0}
-                            <div class="search-category-label">🎬 Movies (TMDb)</div>
+                            <div class="search-category-label"><MdiIcon icon={mdiMovieOpen} size={14} /> Movies (TMDb)</div>
                             {#each externalResults.movies as item}
                                 <button class="search-result-item" onclick={() => navigateToExternalResult(item)}>
                                     {#if item.poster_url}
                                         <img src={item.poster_url} alt="" class="search-thumb" />
                                     {:else}
-                                        <span class="search-thumb-placeholder">🎬</span>
+                                        <span class="search-thumb-placeholder"><MdiIcon icon={mdiMovieOpen} size={16} /></span>
                                     {/if}
                                     <div class="search-result-text">
                                         <div class="search-result-title">{item.title}</div>
@@ -519,13 +477,13 @@
                             {/each}
                         {/if}
                         {#if externalResults.shows?.length > 0}
-                            <div class="search-category-label">📺 TV Shows (TMDb)</div>
+                            <div class="search-category-label"><MdiIcon icon={mdiTelevision} size={14} /> TV Shows (TMDb)</div>
                             {#each externalResults.shows as item}
                                 <button class="search-result-item" onclick={() => navigateToExternalResult(item)}>
                                     {#if item.poster_url}
                                         <img src={item.poster_url} alt="" class="search-thumb" />
                                     {:else}
-                                        <span class="search-thumb-placeholder">📺</span>
+                                        <span class="search-thumb-placeholder"><MdiIcon icon={mdiTelevision} size={16} /></span>
                                     {/if}
                                     <div class="search-result-text">
                                         <div class="search-result-title">{item.title}</div>
@@ -536,10 +494,10 @@
                             {/each}
                         {/if}
                         {#if externalResults.artists?.length > 0}
-                            <div class="search-category-label">🎵 Artists (MusicBrainz)</div>
+                            <div class="search-category-label"><MdiIcon icon={mdiMusic} size={14} /> Artists (MusicBrainz)</div>
                             {#each externalResults.artists as item}
                                 <button class="search-result-item" onclick={() => navigateToExternalResult(item)}>
-                                    <span class="search-thumb-placeholder">🎵</span>
+                                    <span class="search-thumb-placeholder"><MdiIcon icon={mdiMusic} size={16} /></span>
                                     <div class="search-result-text">
                                         <div class="search-result-title">{item.title}</div>
                                         <div class="search-result-sub">
@@ -573,6 +531,31 @@
 {/if}
 
 <style>
+    /* ── Search Trigger Field ── */
+    .search-trigger-field {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        width: 100%;
+        padding: 0.4rem 0.75rem;
+        border-radius: 0.5rem;
+        background: oklch(var(--b1) / 0.6);
+        border: 1px solid oklch(var(--bc) / 0.1);
+        color: oklch(var(--bc) / 0.35);
+        font-size: 0.8rem;
+        cursor: text;
+        transition: all 0.15s;
+    }
+    .search-trigger-field:hover {
+        border-color: oklch(var(--bc) / 0.2);
+        background: oklch(var(--b1) / 0.8);
+    }
+    .search-trigger-text {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
     .search-overlay {
         position: fixed;
         inset: 0;
@@ -581,15 +564,16 @@
         align-items: flex-start;
         justify-content: center;
         padding-top: 15vh;
-        background: rgba(0, 0, 0, 0.4);
-        backdrop-filter: blur(8px);
+        background: transparent;
     }
     .search-dialog {
         width: 100%;
         max-width: 32rem;
         border-radius: 1rem;
-        border: 1px solid transparent;
+        border: 1px solid oklch(var(--bc) / 0.12);
         overflow: hidden;
+        background: oklch(var(--b1));
+        box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
         animation: search-in 0.15s ease-out;
     }
     .search-input-row {
@@ -597,7 +581,7 @@
         align-items: center;
         gap: 0.75rem;
         padding: 0.75rem 1rem;
-        border-bottom: 1px solid transparent;
+        border-bottom: 1px solid oklch(var(--bc) / 0.1);
     }
     .search-icon {
         width: 1.25rem;

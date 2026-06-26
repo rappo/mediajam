@@ -425,6 +425,7 @@ const newAppCols = [
     ['ollama_embed_model', "TEXT DEFAULT 'nomic-embed-text'"],
     ['ollama_chat_model', "TEXT DEFAULT 'llama3.2:3b'"],
     // *arr integration
+    ['jellyfin_external_url', 'TEXT'],
     ['radarr_url', 'TEXT'],
     ['radarr_api_key', 'TEXT'],
     ['radarr_external_url', 'TEXT'],
@@ -497,6 +498,7 @@ const newAppCols = [
     ['calendar_show_movies', 'INTEGER DEFAULT 1'],
     ['calendar_show_shows', 'INTEGER DEFAULT 1'],
     ['calendar_show_music', 'INTEGER DEFAULT 1'],
+    ['calendar_max_per_day', 'INTEGER DEFAULT 2'],
     // MCP server
     ['mcp_enabled', 'INTEGER DEFAULT 0'],
     ['mcp_port', 'INTEGER DEFAULT 7332'],
@@ -1050,6 +1052,10 @@ if (!mpCols3.has('backdrop_fetched_at')) {
     db.exec("ALTER TABLE media_parents ADD COLUMN backdrop_fetched_at TEXT");
     console.log('[db] Added backdrop_fetched_at column to media_parents');
 }
+if (!mpCols3.has('last_episode_refresh')) {
+    db.exec("ALTER TABLE media_parents ADD COLUMN last_episode_refresh TEXT");
+    console.log('[db] Added last_episode_refresh column to media_parents');
+}
 
 // -- tmdb_enriched_at on persons (tracks when TMDB enrich was last attempted) --
 const pCols3 = new Set(db.prepare("PRAGMA table_info(persons)").all().map((/** @type {any} */ c) => c.name));
@@ -1330,6 +1336,19 @@ db.exec(`
     )
 `);
 db.exec('CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash)');
+
+// ── *arr webhook events ───────────────────────────────────────────────────────
+db.exec(`
+    CREATE TABLE IF NOT EXISTS arr_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        service TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        detail TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+    )
+`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_arr_events_created ON arr_events(created_at DESC)');
 
 // -- One-time: fix jellyfin_sync timestamps that used premiere_date (movie release date) --
 // These entries had timestamps like "2000-08-30" which is the movie's release date, not the play date.

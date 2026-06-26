@@ -58,4 +58,4 @@ EXPOSE 7332
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD node -e "fetch('http://localhost:7331').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"
 
-CMD ["node", "build/index.js"]
+CMD ["node", "--max-old-space-size=512", "--disable-warning=DEP0205", "build/index.js"]

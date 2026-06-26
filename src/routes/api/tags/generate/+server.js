@@ -17,6 +17,7 @@ export async function POST({ locals }) {
     }
 
     const encoder = new TextEncoder();
+    let cancelled = false;
     const stream = new ReadableStream({
         async start(controller) {
             const send = (/** @type {any} */ data) => {
@@ -43,6 +44,7 @@ export async function POST({ locals }) {
                 let tagged = 0;
 
                 for (const parent of parents) {
+                    if (cancelled) break;
                     const mediaTypeLabel = parent.media_type === 'artist' ? 'music artist' : parent.media_type;
                     const prompt = `Categorize this ${mediaTypeLabel}:
 Title: ${parent.title}
@@ -102,6 +104,9 @@ Only return valid JSON, no explanation.`;
 
             controller.close();
         },
+        cancel() {
+            cancelled = true;
+        }
     });
 
     return new Response(stream, {

@@ -5,6 +5,7 @@
  */
 import db from '$lib/server/db.js';
 import { tmdbFetch } from '$lib/server/tmdb.js';
+import { refreshShowEpisodes } from '$lib/server/sync-engine.js';
 
 // ── TMDB genre ID → name maps ───────────────────────────────────────────────
 
@@ -503,29 +504,63 @@ async function arrCalendarFetch(primaryUrl, externalUrl, apiKey, path, apiVersio
  * @param {number} days
  * @param {string[]} types - e.g. ['movie', 'show', 'artist']
  */
-export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artist']) {
+export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artist'], timezone = 'UTC') {
     try {
         const today = new Date();
-        const currentHour = today.getHours();
+        let currentHour = today.getHours();
+        try {
+            const formatter = new Intl.DateTimeFormat('en-US', {
+                timeZone: timezone,
+                hour: 'numeric',
+                hour12: false
+            });
+            currentHour = parseInt(formatter.format(today), 10);
+        } catch { /* fallback */ }
         const isEarlyMorning = currentHour < 5;
 
-        const endDate = new Date(today);
-        endDate.setDate(today.getDate() + days - 1);
+        // Naive YYYY-MM-DD
+        const naiveISO = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 
-        // Use local date strings
-        const localISO = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-        /** Convert a UTC datetime string (e.g. '2026-06-12T00:00:00Z') to local YYYY-MM-DD */
-        const toLocalDate = (s) => { if (!s) return ''; return localISO(new Date(s)); };
-        const todayISO = localISO(today);
-        const endISO = localISO(endDate);
+        // User timezone-aware YYYY-MM-DD
+        const userISO = (d) => {
+            try {
+                const formatter = new Intl.DateTimeFormat('en-US', {
+                    timeZone: timezone,
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit'
+                });
+                const parts = formatter.formatToParts(d);
+                const year = parts.find(p => p.type === 'year').value;
+                const month = parts.find(p => p.type === 'month').value;
+                const day = parts.find(p => p.type === 'day').value;
+                return `${year}-${month}-${day}`;
+            } catch (e) {
+                return naiveISO(d);
+            }
+        };
+
+        const todayISO = userISO(today);
+
+        // Parse user local today into a starting Date object in server local time
+        const [y, m, dNum] = todayISO.split('-').map(Number);
+        const startDate = new Date(y, m - 1, dNum);
+
+        const endDate = new Date(startDate);
+        endDate.setDate(startDate.getDate() + days - 1);
+
+        const toLocalDate = (s) => { if (!s) return ''; return userISO(new Date(s)); };
+        /** Extract plain YYYY-MM-DD from an ISO string — for release dates that are date concepts, not moments */
+        const plainDate = (s) => { if (!s) return ''; return s.split('T')[0]; };
+        const endISO = naiveISO(endDate);
 
         // Extend API fetch window ±1 day to handle timezone edge cases
-        const fetchStart = new Date(today);
+        const fetchStart = new Date(startDate);
         fetchStart.setDate(fetchStart.getDate() - 1);
         const fetchEnd = new Date(endDate);
         fetchEnd.setDate(fetchEnd.getDate() + 1);
-        const fetchStartISO = localISO(fetchStart);
-        const fetchEndISO = localISO(fetchEnd);
+        const fetchStartISO = naiveISO(fetchStart);
+        const fetchEndISO = naiveISO(fetchEnd);
 
         const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -535,22 +570,23 @@ export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artis
         // If early morning, include the previous day (and show one fewer future day to keep total = days)
         const displayDays = isEarlyMorning ? days - 1 : days;
         if (isEarlyMorning) {
-            const yesterday = new Date(today);
+            const yesterday = new Date(startDate);
             yesterday.setDate(yesterday.getDate() - 1);
-            byDate[localISO(yesterday)] = [];
+            byDate[naiveISO(yesterday)] = [];
         }
 
         // Pre-populate days
         for (let i = 0; i < displayDays; i++) {
-            const d = new Date(today);
-            d.setDate(today.getDate() + i);
-            byDate[localISO(d)] = [];
+            const d = new Date(startDate);
+            d.setDate(startDate.getDate() + i);
+            byDate[naiveISO(d)] = [];
         }
 
         // Get arr connection info (internal + external URLs for fallback)
         const settings = /** @type {any} */ (db.prepare(
-            'SELECT sonarr_url, sonarr_api_key, sonarr_external_url, radarr_url, radarr_api_key, radarr_external_url, lidarr_url, lidarr_api_key, lidarr_external_url FROM app_settings WHERE id = 1'
+            'SELECT sonarr_url, sonarr_api_key, sonarr_external_url, radarr_url, radarr_api_key, radarr_external_url, lidarr_url, lidarr_api_key, lidarr_external_url, include_specials FROM app_settings WHERE id = 1'
         ).get());
+        const includeSpecials = settings?.include_specials === 1;
 
         // Build local slug lookup maps for linking
         const localShowSlugs = new Map();
@@ -573,6 +609,8 @@ export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artis
         } catch { /* optional */ }
 
         const fetches = [];
+        /** @type {Set<number>} tvdbIds of shows seen in the Sonarr calendar */
+        const calendarShowTvdbIds = new Set();
 
         // ── Sonarr calendar ────────────────────────────────────
         if (types.includes('show') && settings?.sonarr_api_key) {
@@ -584,12 +622,33 @@ export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artis
                     );
                     if (!episodes) return;
                     for (const ep of episodes) {
+                        // Skip specials (Season 0) when include_specials is off
+                        if (!includeSpecials && (ep.seasonNumber === 0 || ep.seasonNumber === undefined)) continue;
                         const dateKey = ep.airDate || (ep.airDateUtc ? toLocalDate(ep.airDateUtc) : null);
                         if (!dateKey || !byDate[dateKey]) continue;
 
                         const series = ep.series || {};
                         const tvdbId = series.tvdbId;
-                        const slug = localShowSlugs.get('tvdb:' + tvdbId) || series.titleSlug || '';
+                        if (tvdbId) calendarShowTvdbIds.add(tvdbId);
+                        // Resolve show link: prefer local slug, then look up by tvdb_id, then Sonarr titleSlug
+                        let showHref = '/calendar';
+                        const localSlug = localShowSlugs.get('tvdb:' + tvdbId);
+                        if (localSlug) {
+                            showHref = `/tv/${localSlug}`;
+                        } else if (tvdbId) {
+                            // Try direct DB lookup by tvdb_id for the parent id
+                            const row = /** @type {any} */ (db.prepare("SELECT id, slug FROM media_parents WHERE tvdb_id = ? AND media_type = 'show'").get(String(tvdbId)));
+                            if (row?.slug) {
+                                showHref = `/tv/${row.slug}`;
+                                localShowSlugs.set('tvdb:' + tvdbId, row.slug); // cache for this request
+                            } else if (row?.id) {
+                                showHref = `/tv/${row.id}`;
+                            } else if (series.titleSlug) {
+                                showHref = `/tv/${series.titleSlug}`;
+                            }
+                        } else if (series.titleSlug) {
+                            showHref = `/tv/${series.titleSlug}`;
+                        }
                         const posterImage = (series.images || []).find(i => i.coverType === 'poster');
                         const posterUrl = posterImage?.remoteUrl || posterImage?.url || '';
 
@@ -601,7 +660,7 @@ export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artis
                             item_number: ep.episodeNumber,
                             poster_url: posterUrl,
                             display_poster: posterUrl,
-                            href: slug ? `/tv/${slug}` : '/calendar',
+                            href: showHref,
                             subtitle: `S${String(ep.seasonNumber).padStart(2,'0')}E${String(ep.episodeNumber).padStart(2,'0')}`,
                             hasFile: ep.hasFile || false,
                             airTime: ep.airDateUtc ? new Date(ep.airDateUtc).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '',
@@ -623,7 +682,7 @@ export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artis
                     );
                     if (!movies) return;
                     for (const movie of movies) {
-                        const releaseDate = toLocalDate(movie.digitalRelease || movie.physicalRelease || movie.inCinemas || '');
+                        const releaseDate = plainDate(movie.digitalRelease || movie.physicalRelease || movie.inCinemas || '');
                         if (!releaseDate || !byDate[releaseDate]) continue;
 
                         const tmdbId = String(movie.tmdbId || '');
@@ -658,7 +717,7 @@ export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artis
                     );
                     if (!albums) return;
                     for (const album of albums) {
-                        const releaseDate = toLocalDate(album.releaseDate || '');
+                        const releaseDate = plainDate(album.releaseDate || '');
                         if (!releaseDate || !byDate[releaseDate]) continue;
 
                         const artist = album.artist || {};
@@ -693,6 +752,34 @@ export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artis
         // Fetch all in parallel
         if (fetches.length > 0) {
             await Promise.all(fetches);
+        }
+
+        // ── Calendar-triggered episode refresh (fire-and-forget) ──
+        // For shows appearing in the Sonarr calendar, check if their episode data
+        // is stale and refresh in the background. Max 3 shows per dashboard load.
+        if (calendarShowTvdbIds.size > 0) {
+            try {
+                const tvdbList = [...calendarShowTvdbIds];
+                const placeholders = tvdbList.map(() => '?').join(',');
+                const staleShows = /** @type {any[]} */ (db.prepare(`
+                    SELECT id, title, tvdb_id FROM media_parents
+                    WHERE media_type = 'show'
+                      AND tvdb_id IN (${placeholders})
+                      AND jellyfin_id IS NOT NULL
+                      AND (last_episode_refresh IS NULL OR last_episode_refresh < datetime('now', '-6 hours'))
+                    LIMIT 3
+                `).all(...tvdbList));
+
+                if (staleShows.length > 0) {
+                    console.log(`[discovery-engine] 🔄 Calendar-triggered episode refresh for ${staleShows.length} show(s): ${staleShows.map(s => s.title).join(', ')}`);
+                    // Fire-and-forget — don't block the calendar response
+                    Promise.allSettled(
+                        staleShows.map(show => refreshShowEpisodes(show.id))
+                    ).catch(() => { /* swallow */ });
+                }
+            } catch (err) {
+                console.error('[discovery-engine] Calendar episode refresh error:', err?.message || err);
+            }
         }
 
         // Fallback: also merge local DB data for items not from arr APIs
@@ -821,26 +908,48 @@ export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artis
  * @param {number} month - 1-indexed (1=Jan, 12=Dec)
  * @param {string[]} types
  */
-export async function getMonthCalendar(year, month, types = ['movie', 'show', 'artist']) {
+export async function getMonthCalendar(year, month, types = ['movie', 'show', 'artist'], timezone = 'UTC') {
     try {
         const firstDay = new Date(year, month - 1, 1);
         const lastDay = new Date(year, month, 0);
         const daysInMonth = lastDay.getDate();
 
-        const localISO = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-        const toLocalDate = (s) => { if (!s) return ''; return localISO(new Date(s)); };
+        // Naive YYYY-MM-DD
+        const naiveISO = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 
-        const todayISO = localISO(new Date());
-        const startISO = localISO(firstDay);
-        const endISO = localISO(lastDay);
+        // User timezone-aware YYYY-MM-DD
+        const userISO = (d) => {
+            try {
+                const formatter = new Intl.DateTimeFormat('en-US', {
+                    timeZone: timezone,
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit'
+                });
+                const parts = formatter.formatToParts(d);
+                const year = parts.find(p => p.type === 'year').value;
+                const month = parts.find(p => p.type === 'month').value;
+                const day = parts.find(p => p.type === 'day').value;
+                return `${year}-${month}-${day}`;
+            } catch (e) {
+                return naiveISO(d);
+            }
+        };
+
+        const toLocalDate = (s) => { if (!s) return ''; return userISO(new Date(s)); };
+        const plainDate = (s) => { if (!s) return ''; return s.split('T')[0]; };
+
+        const todayISO = userISO(new Date());
+        const startISO = naiveISO(firstDay);
+        const endISO = naiveISO(lastDay);
 
         // Extend fetch range ±1 day for timezone edge cases
         const fetchStart = new Date(firstDay);
         fetchStart.setDate(fetchStart.getDate() - 1);
         const fetchEnd = new Date(lastDay);
         fetchEnd.setDate(fetchEnd.getDate() + 1);
-        const fetchStartISO = localISO(fetchStart);
-        const fetchEndISO = localISO(fetchEnd);
+        const fetchStartISO = naiveISO(fetchStart);
+        const fetchEndISO = naiveISO(fetchEnd);
 
         const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -848,13 +957,14 @@ export async function getMonthCalendar(year, month, types = ['movie', 'show', 'a
         const byDate = {};
         for (let d = 1; d <= daysInMonth; d++) {
             const dt = new Date(year, month - 1, d);
-            byDate[localISO(dt)] = [];
+            byDate[naiveISO(dt)] = [];
         }
 
         // Get arr connection info
         const settings = /** @type {any} */ (db.prepare(
-            'SELECT sonarr_url, sonarr_api_key, sonarr_external_url, radarr_url, radarr_api_key, radarr_external_url, lidarr_url, lidarr_api_key, lidarr_external_url FROM app_settings WHERE id = 1'
+            'SELECT sonarr_url, sonarr_api_key, sonarr_external_url, radarr_url, radarr_api_key, radarr_external_url, lidarr_url, lidarr_api_key, lidarr_external_url, include_specials FROM app_settings WHERE id = 1'
         ).get());
+        const includeSpecials = settings?.include_specials === 1;
 
         const fetches = [];
 
@@ -868,14 +978,19 @@ export async function getMonthCalendar(year, month, types = ['movie', 'show', 'a
                     );
                     if (!episodes) return;
                     for (const ep of episodes) {
+                        // Skip specials (Season 0) when include_specials is off
+                        if (!includeSpecials && (ep.seasonNumber === 0 || ep.seasonNumber === undefined)) continue;
                         const dateKey = ep.airDate || (ep.airDateUtc ? toLocalDate(ep.airDateUtc) : null);
                         if (!dateKey || !byDate[dateKey]) continue;
 
                         const series = ep.series || {};
-                        const tvdbId = series.tvdbId;
-                        const localParent = tvdbId
+                        const tvdbId = series.tvdbId ? String(series.tvdbId) : null;
+                        let localParent = tvdbId
                             ? /** @type {any} */ (db.prepare('SELECT id, slug, poster_url FROM media_parents WHERE tvdb_id = ?').get(tvdbId))
                             : null;
+                        if (!localParent && series.title) {
+                            localParent = /** @type {any} */ (db.prepare("SELECT id, slug, poster_url FROM media_parents WHERE title = ? AND media_type = 'show'").get(series.title));
+                        }
 
                         byDate[dateKey].push({
                             title: series.title || ep.title || 'Unknown',
@@ -884,7 +999,7 @@ export async function getMonthCalendar(year, month, types = ['movie', 'show', 'a
                             poster_url: localParent?.poster_url || (series.images?.find(i => i.coverType === 'poster')?.remoteUrl) || '',
                             display_poster: localParent?.poster_url || '',
                             media_type: 'show',
-                            href: localParent ? `/tv/${localParent.slug}` : null,
+                            href: localParent ? `/tv/${localParent.slug || localParent.id}` : null,
                             premiere_date: ep.airDateUtc || dateKey,
                             season_number: ep.seasonNumber,
                             episode_number: ep.episodeNumber,
@@ -904,13 +1019,16 @@ export async function getMonthCalendar(year, month, types = ['movie', 'show', 'a
                     );
                     if (!movies) return;
                     for (const movie of movies) {
-                        const releaseDate = toLocalDate(movie.digitalRelease || movie.physicalRelease || movie.inCinemas || '');
+                        const releaseDate = plainDate(movie.digitalRelease || movie.physicalRelease || movie.inCinemas || '');
                         if (!releaseDate || !byDate[releaseDate]) continue;
 
-                        const tmdbId = movie.tmdbId;
-                        const localParent = tmdbId
+                        const tmdbId = movie.tmdbId ? String(movie.tmdbId) : null;
+                        let localParent = tmdbId
                             ? /** @type {any} */ (db.prepare('SELECT id, slug, poster_url FROM media_parents WHERE tmdb_id = ?').get(tmdbId))
                             : null;
+                        if (!localParent && movie.title) {
+                            localParent = /** @type {any} */ (db.prepare("SELECT id, slug, poster_url FROM media_parents WHERE title = ? AND media_type = 'movie'").get(movie.title));
+                        }
 
                         byDate[releaseDate].push({
                             title: movie.title || 'Unknown Movie',
@@ -919,7 +1037,7 @@ export async function getMonthCalendar(year, month, types = ['movie', 'show', 'a
                             poster_url: localParent?.poster_url || (movie.images?.find(i => i.coverType === 'poster')?.remoteUrl) || '',
                             display_poster: localParent?.poster_url || '',
                             media_type: 'movie',
-                            href: localParent ? `/movies/${localParent.slug}` : null,
+                            href: localParent ? `/movies/${localParent.slug || localParent.id}` : null,
                             premiere_date: releaseDate,
                         });
                     }
@@ -937,13 +1055,16 @@ export async function getMonthCalendar(year, month, types = ['movie', 'show', 'a
                     );
                     if (!albums) return;
                     for (const album of albums) {
-                        const releaseDate = toLocalDate(album.releaseDate || '');
+                        const releaseDate = plainDate(album.releaseDate || '');
                         if (!releaseDate || !byDate[releaseDate]) continue;
 
                         const artist = album.artist || {};
-                        const localArtist = artist.foreignArtistId
+                        let localArtist = artist.foreignArtistId
                             ? /** @type {any} */ (db.prepare('SELECT id, slug, poster_url FROM media_parents WHERE musicbrainz_id = ?').get(artist.foreignArtistId))
                             : null;
+                        if (!localArtist && artist.artistName) {
+                            localArtist = /** @type {any} */ (db.prepare("SELECT id, slug, poster_url FROM media_parents WHERE title = ? AND media_type = 'artist'").get(artist.artistName));
+                        }
 
                         const coverImg = album.images?.find(i => i.coverType === 'cover')?.remoteUrl || '';
 
@@ -954,7 +1075,7 @@ export async function getMonthCalendar(year, month, types = ['movie', 'show', 'a
                             poster_url: coverImg || localArtist?.poster_url || '',
                             display_poster: coverImg || localArtist?.poster_url || '',
                             media_type: 'artist',
-                            href: localArtist ? `/music/${localArtist.slug}` : null,
+                            href: localArtist ? `/music/${localArtist.slug || localArtist.id}` : null,
                             premiere_date: releaseDate,
                         });
                     }
@@ -1174,16 +1295,20 @@ export async function getSmartRecommendations(userId, limit = 20) {
         if (seedMovies.length === 0) return [];
 
         // Step 2: Get all unwatched movie TMDB IDs in library for fast lookup
+        // A movie is "watched" if ANY of its children have been watched (via playback_history or watch_status)
         const unwatchedInLibrary = new Map();
         /** @type {any[]} */ (db.prepare(`
             SELECT mp.id, mp.title, mp.tmdb_id, mp.poster_url, mp.slug, mp.release_year
             FROM media_parents mp
-            JOIN media_children mc ON mc.parent_id = mp.id
             WHERE mp.media_type = 'movie'
               AND mp.tmdb_id IS NOT NULL AND mp.tmdb_id != ''
               AND mp.poster_url IS NOT NULL
               AND mp.collection_status != 'wanted'
-              AND NOT EXISTS (SELECT 1 FROM all_plays ap WHERE ap.media_id = mc.id AND ap.user_id = ?)
+              AND NOT EXISTS (
+                SELECT 1 FROM media_children mc2
+                JOIN all_plays ap ON ap.media_id = mc2.id AND ap.user_id = ?
+                WHERE mc2.parent_id = mp.id
+              )
         `).all(userId)).forEach(m => {
             unwatchedInLibrary.set(String(m.tmdb_id), m);
         });
