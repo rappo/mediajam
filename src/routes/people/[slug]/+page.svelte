@@ -7,6 +7,15 @@
     import { imgUrl } from "$lib/utils.js";
     let { data } = $props();
 
+    /** Format all roles for a credit as a plain text string */
+    function rolesText(credit) {
+        return credit.roles.map(r => {
+            let s = r.role_type;
+            if (r.character_name) s += ` (${r.character_name})`;
+            return s;
+        }).join(', ');
+    }
+
     function roleBadge(roleType) {
         const colors = {
             actor: "badge-primary",
@@ -589,32 +598,13 @@
                                 >
                                     {credit.title}
                                 </h3>
-                                <div class="flex items-center gap-1 flex-wrap">
+                                <div class="text-[10px] text-base-content/40 leading-snug">
                                     {#if credit.release_year}
-                                        <span
-                                            class="text-[10px] text-base-content/40"
-                                            >{credit.release_year}</span
-                                        >
+                                        <span>{credit.release_year}</span>
+                                        <span class="mx-0.5">·</span>
                                     {/if}
-                                    {#each credit.roles as role}
-                                        <span
-                                            class="badge {roleBadge(
-                                                role.role_type,
-                                            )} badge-xs capitalize"
-                                            >{role.role_type}</span
-                                        >
-                                    {/each}
+                                    {rolesText(credit)}
                                 </div>
-                                {#if credit.roles.some((r) => r.character_name)}
-                                    <div
-                                        class="text-[10px] text-base-content/40 line-clamp-1"
-                                    >
-                                        {credit.roles
-                                            .filter((r) => r.character_name)
-                                            .map((r) => r.character_name)
-                                            .join(", ")}
-                                    </div>
-                                {/if}
                             </div>
                         </a>
                     {/each}
@@ -649,29 +639,12 @@
                                         >{credit.title}</span
                                     >
                                 </div>
-                                <div
-                                    class="flex flex-wrap items-center gap-1 mt-1"
-                                >
+                                <div class="text-xs text-base-content/40 mt-1">
                                     {#if credit.release_year}
-                                        <span
-                                            class="text-xs text-base-content/40"
-                                            >{credit.release_year}</span
-                                        >
+                                        <span>{credit.release_year}</span>
+                                        <span class="mx-0.5">·</span>
                                     {/if}
-                                    {#each credit.roles as role}
-                                        <span
-                                            class="badge {roleBadge(
-                                                role.role_type,
-                                            )} badge-xs capitalize"
-                                            >{role.role_type}</span
-                                        >
-                                        {#if role.character_name}
-                                            <span
-                                                class="text-xs text-base-content/50"
-                                                >as {role.character_name}</span
-                                            >
-                                        {/if}
-                                    {/each}
+                                    {rolesText(credit)}
                                 </div>
                             </div>
                         </a>
@@ -706,14 +679,25 @@
                                     <div class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl">🎬</div>
                                 {/if}
                                 <div class="card-body !p-2 !gap-1">
-                                    <h3 class="font-medium text-xs leading-tight line-clamp-2 group-hover:text-primary transition-colors" title={credit.title}>{credit.title}</h3>
-                                    <div class="flex items-center gap-1 flex-wrap">
-                                        {#if credit.release_year}
-                                            <span class="text-[10px] text-base-content/40">{credit.release_year}</span>
+                                    <div class="flex items-center justify-between gap-1">
+                                        <h3 class="font-medium text-xs leading-tight line-clamp-2 group-hover:text-primary transition-colors flex-1 min-w-0" title={credit.title}>{credit.title}</h3>
+                                        {#if credit.tmdb_id}
+                                            <div onclick={(e) => e.preventDefault()}>
+                                                <ArrAddDialog
+                                                    discoveryItem={{ tmdb_id: credit.tmdb_id, media_type: credit.media_type || 'movie', title: credit.title, release_year: credit.release_year, poster_url: credit.poster_url }}
+                                                    onComplete={() => invalidateAll()}
+                                                    buttonClass="btn btn-xs btn-ghost btn-circle"
+                                                    buttonLabel="⬇"
+                                                />
+                                            </div>
                                         {/if}
-                                        {#each credit.roles as role}
-                                            <span class="badge {roleBadge(role.role_type)} badge-xs capitalize">{role.role_type}</span>
-                                        {/each}
+                                    </div>
+                                    <div class="text-[10px] text-base-content/40 leading-snug">
+                                        {#if credit.release_year}
+                                            <span>{credit.release_year}</span>
+                                            <span class="mx-0.5">·</span>
+                                        {/if}
+                                        {rolesText(credit)}
                                     </div>
                                 </div>
                             </a>
@@ -732,14 +716,25 @@
                                     <div class="w-12 h-18 rounded-lg bg-base-300 flex items-center justify-center text-lg shrink-0">🎬</div>
                                 {/if}
                                 <div class="min-w-0 flex-1">
-                                    <span class="font-medium group-hover:text-primary transition-colors truncate">{credit.title}</span>
-                                    <div class="flex flex-wrap items-center gap-1 mt-1">
-                                        {#if credit.release_year}
-                                            <span class="text-xs text-base-content/40">{credit.release_year}</span>
+                                    <div class="flex items-center gap-2">
+                                        <span class="font-medium group-hover:text-primary transition-colors truncate">{credit.title}</span>
+                                        {#if credit.tmdb_id}
+                                            <div onclick={(e) => e.preventDefault()}>
+                                                <ArrAddDialog
+                                                    discoveryItem={{ tmdb_id: credit.tmdb_id, media_type: credit.media_type || 'movie', title: credit.title, release_year: credit.release_year, poster_url: credit.poster_url }}
+                                                    onComplete={() => invalidateAll()}
+                                                    buttonClass="btn btn-xs btn-ghost btn-circle"
+                                                    buttonLabel="⬇"
+                                                />
+                                            </div>
                                         {/if}
-                                        {#each credit.roles as role}
-                                            <span class="badge {roleBadge(role.role_type)} badge-xs capitalize">{role.role_type}</span>
-                                        {/each}
+                                    </div>
+                                    <div class="text-xs text-base-content/40 mt-1">
+                                        {#if credit.release_year}
+                                            <span>{credit.release_year}</span>
+                                            <span class="mx-0.5">·</span>
+                                        {/if}
+                                        {rolesText(credit)}
                                     </div>
                                 </div>
                             </a>
@@ -806,38 +801,17 @@
                                 >
                                     {credit.title}
                                 </h3>
-                                <div class="flex items-center gap-1 flex-wrap">
+                                <div class="text-[10px] text-base-content/40 leading-snug">
                                     {#if credit.release_year}
-                                        <span
-                                            class="text-[10px] text-base-content/40"
-                                            >{credit.release_year}</span
-                                        >
+                                        <span>{credit.release_year}</span>
+                                        <span class="mx-0.5">·</span>
                                     {/if}
-                                    {#each credit.roles as role}
-                                        <span
-                                            class="badge {roleBadge(
-                                                role.role_type,
-                                            )} badge-xs capitalize"
-                                            >{role.role_type}</span
-                                        >
-                                    {/each}
+                                    {rolesText(credit)}
                                     {#if credit.total_episodes}
-                                        <span
-                                            class="text-[10px] text-base-content/40"
-                                            >({credit.total_episodes} ep)</span
-                                        >
+                                        <span class="mx-0.5">·</span>
+                                        <span>{credit.total_episodes} ep</span>
                                     {/if}
                                 </div>
-                                {#if credit.roles.some((r) => r.character_name)}
-                                    <div
-                                        class="text-[10px] text-base-content/40 line-clamp-1"
-                                    >
-                                        {credit.roles
-                                            .filter((r) => r.character_name)
-                                            .map((r) => r.character_name)
-                                            .join(", ")}
-                                    </div>
-                                {/if}
                             </div>
                         </a>
                     {/each}
@@ -869,34 +843,15 @@
                                         >{credit.title}</span
                                     >
                                 </div>
-                                <div
-                                    class="flex flex-wrap items-center gap-1 mt-1"
-                                >
+                                <div class="text-xs text-base-content/40 mt-1">
                                     {#if credit.release_year}
-                                        <span
-                                            class="text-xs text-base-content/40"
-                                            >{credit.release_year}</span
-                                        >
+                                        <span>{credit.release_year}</span>
+                                        <span class="mx-0.5">·</span>
                                     {/if}
-                                    {#each credit.roles as role}
-                                        <span
-                                            class="badge {roleBadge(
-                                                role.role_type,
-                                            )} badge-xs capitalize"
-                                            >{role.role_type}</span
-                                        >
-                                        {#if role.character_name}
-                                            <span
-                                                class="text-xs text-base-content/50"
-                                                >as {role.character_name}</span
-                                            >
-                                        {/if}
-                                    {/each}
+                                    {rolesText(credit)}
                                     {#if credit.total_episodes}
-                                        <span
-                                            class="text-xs text-base-content/40"
-                                            >({credit.total_episodes} episodes)</span
-                                        >
+                                        <span class="mx-0.5">·</span>
+                                        <span>{credit.total_episodes} episodes</span>
                                     {/if}
                                 </div>
                             </div>
@@ -928,14 +883,25 @@
                                     <div class="aspect-[2/3] bg-base-300 flex items-center justify-center text-3xl">📺</div>
                                 {/if}
                                 <div class="card-body !p-2 !gap-1">
-                                    <h3 class="font-medium text-xs leading-tight line-clamp-2 group-hover:text-primary transition-colors" title={credit.title}>{credit.title}</h3>
-                                    <div class="flex items-center gap-1 flex-wrap">
-                                        {#if credit.release_year}
-                                            <span class="text-[10px] text-base-content/40">{credit.release_year}</span>
+                                    <div class="flex items-center justify-between gap-1">
+                                        <h3 class="font-medium text-xs leading-tight line-clamp-2 group-hover:text-primary transition-colors flex-1 min-w-0" title={credit.title}>{credit.title}</h3>
+                                        {#if credit.tmdb_id}
+                                            <div onclick={(e) => e.preventDefault()}>
+                                                <ArrAddDialog
+                                                    discoveryItem={{ tmdb_id: credit.tmdb_id, media_type: credit.media_type || 'show', title: credit.title, release_year: credit.release_year, poster_url: credit.poster_url }}
+                                                    onComplete={() => invalidateAll()}
+                                                    buttonClass="btn btn-xs btn-ghost btn-circle"
+                                                    buttonLabel="⬇"
+                                                />
+                                            </div>
                                         {/if}
-                                        {#each credit.roles as role}
-                                            <span class="badge {roleBadge(role.role_type)} badge-xs capitalize">{role.role_type}</span>
-                                        {/each}
+                                    </div>
+                                    <div class="text-[10px] text-base-content/40 leading-snug">
+                                        {#if credit.release_year}
+                                            <span>{credit.release_year}</span>
+                                            <span class="mx-0.5">·</span>
+                                        {/if}
+                                        {rolesText(credit)}
                                     </div>
                                 </div>
                             </a>
@@ -954,14 +920,25 @@
                                     <div class="w-12 h-18 rounded-lg bg-base-300 flex items-center justify-center text-lg shrink-0">📺</div>
                                 {/if}
                                 <div class="min-w-0 flex-1">
-                                    <span class="font-medium group-hover:text-primary transition-colors truncate">{credit.title}</span>
-                                    <div class="flex flex-wrap items-center gap-1 mt-1">
-                                        {#if credit.release_year}
-                                            <span class="text-xs text-base-content/40">{credit.release_year}</span>
+                                    <div class="flex items-center gap-2">
+                                        <span class="font-medium group-hover:text-primary transition-colors truncate">{credit.title}</span>
+                                        {#if credit.tmdb_id}
+                                            <div onclick={(e) => e.preventDefault()}>
+                                                <ArrAddDialog
+                                                    discoveryItem={{ tmdb_id: credit.tmdb_id, media_type: credit.media_type || 'show', title: credit.title, release_year: credit.release_year, poster_url: credit.poster_url }}
+                                                    onComplete={() => invalidateAll()}
+                                                    buttonClass="btn btn-xs btn-ghost btn-circle"
+                                                    buttonLabel="⬇"
+                                                />
+                                            </div>
                                         {/if}
-                                        {#each credit.roles as role}
-                                            <span class="badge {roleBadge(role.role_type)} badge-xs capitalize">{role.role_type}</span>
-                                        {/each}
+                                    </div>
+                                    <div class="text-xs text-base-content/40 mt-1">
+                                        {#if credit.release_year}
+                                            <span>{credit.release_year}</span>
+                                            <span class="mx-0.5">·</span>
+                                        {/if}
+                                        {rolesText(credit)}
                                     </div>
                                 </div>
                             </a>
@@ -1026,26 +1003,9 @@
                                 >
                                     {credit.title}
                                 </h3>
-                                <div class="flex items-center gap-1 flex-wrap">
-                                    {#each credit.roles as role}
-                                        <span
-                                            class="badge {roleBadge(
-                                                role.role_type,
-                                            )} badge-xs capitalize"
-                                            >{role.role_type}</span
-                                        >
-                                    {/each}
+                                <div class="text-[10px] text-base-content/40 leading-snug">
+                                    {rolesText(credit)}
                                 </div>
-                                {#if credit.roles.some((r) => r.character_name)}
-                                    <div
-                                        class="text-[10px] text-base-content/40 line-clamp-1"
-                                    >
-                                        {credit.roles
-                                            .filter((r) => r.character_name)
-                                            .map((r) => r.character_name)
-                                            .join(", ")}
-                                    </div>
-                                {/if}
                             </div>
                         </a>
                     {/each}
@@ -1075,21 +1035,8 @@
                                     class="font-medium group-hover:text-primary transition-colors truncate"
                                     >{credit.title}</span
                                 >
-                                <div class="flex flex-wrap items-center gap-1 mt-1">
-                                    {#each credit.roles as role}
-                                        <span
-                                            class="badge {roleBadge(
-                                                role.role_type,
-                                            )} badge-xs capitalize"
-                                            >{role.role_type}</span
-                                        >
-                                        {#if role.character_name}
-                                            <span
-                                                class="text-xs text-base-content/50"
-                                                >{role.character_name}</span
-                                            >
-                                        {/if}
-                                    {/each}
+                                <div class="text-xs text-base-content/40 mt-1">
+                                    {rolesText(credit)}
                                 </div>
                             </div>
                         </a>
