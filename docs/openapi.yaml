@@ -1720,6 +1720,118 @@ paths:
         '200':
           description: Active sessions
 
+  # ── Remote Playback ────────────────────────────────────────────
+  /api/player/status:
+    get:
+      tags: [Remote Playback]
+      summary: Get default player status
+      description: |
+        Returns the default player's current status by combining Boiler Room
+        device state and Jellyfin session data. Results are cached server-side
+        for 15 seconds to prevent repeated calls from multiple tabs.
+      responses:
+        '200':
+          description: Player status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [idle, online, busy, playing, offline]
+                  deviceName:
+                    type: string
+                  currentApp:
+                    type: string
+                    nullable: true
+                  nowPlaying:
+                    type: object
+                    nullable: true
+                    properties:
+                      name:
+                        type: string
+                      type:
+                        type: string
+                      seriesName:
+                        type: string
+                        nullable: true
+                  sessionId:
+                    type: string
+                    nullable: true
+                  canLaunch:
+                    type: boolean
+                  playState:
+                    type: object
+                    nullable: true
+                    properties:
+                      isPaused:
+                        type: boolean
+
+  /api/player/launch:
+    post:
+      tags: [Remote Playback]
+      summary: Launch Jellyfin on remote device
+      description: |
+        Launches Jellyfin on a remote SteamOS device via Boiler Room.
+        Requires the player to have a boilerRoomUrl configured.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                playerId:
+                  type: string
+                  description: Optional player ID (defaults to default player)
+      responses:
+        '200':
+          description: Launch initiated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [launching, error]
+
+  /api/player/play:
+    post:
+      tags: [Remote Playback]
+      summary: One-click play on default player
+      description: |
+        Sends a play command to the default player. If Jellyfin is not
+        running, launches it via Boiler Room and polls for the session
+        to appear (up to 16s) before sending the play command.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [jellyfinId]
+              properties:
+                jellyfinId:
+                  type: string
+                  description: Jellyfin item ID to play
+                action:
+                  type: string
+                  enum: [play, queue]
+                  default: play
+      responses:
+        '200':
+          description: Play command sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  action:
+                    type: string
+
   # ── Album Matching ──────────────────────────────────────────────
   /api/albums/match:
     get:

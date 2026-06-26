@@ -10,6 +10,8 @@
     import HeartBorder from "$lib/components/HeartBorder.svelte";
     import FavoriteButton from "$lib/components/FavoriteButton.svelte";
     import RemotePlayButton from "$lib/components/RemotePlayButton.svelte";
+    import { playerStatus, quickPlay } from '$lib/stores/player.js';
+    import { mdiPlay } from '@mdi/js';
     import MediaDetailHeader from "$lib/components/MediaDetailHeader.svelte";
     import CollectionStatusBanner from "$lib/components/CollectionStatusBanner.svelte";
     import InteractiveSearchDialog from "$lib/components/InteractiveSearchDialog.svelte";
@@ -485,6 +487,21 @@
             favoriteType="media"
             favoriteId={data.show.id}
             heartBorderEnabled={!!data.settings?.heartBorderShows}
+            onPlay={(() => {
+                // Find first unwatched collected episode
+                const ps = $playerStatus;
+                if (!ps || ps.status === 'offline') return null;
+                for (const s of data.seasons) {
+                    for (const ep of s.episodes) {
+                        if (ep.jellyfin_id && ep.is_collected && ep.watch_status !== 'watched') {
+                            return () => quickPlay(ep.jellyfin_id);
+                        }
+                    }
+                }
+                return null;
+            })()}
+            playerStatus={$playerStatus?.status}
+            playerDeviceName={$playerStatus?.deviceName}
             heroBadges={[]}
             stats={[
                 { label: data.seasons.length === 1 ? 'season' : 'seasons', value: data.seasons.length },
@@ -770,6 +787,9 @@
                                             <th class="w-24">Status</th>
                                             <th class="w-16">Plays</th>
                                             <th class="w-16">Duration</th>
+                                            {#if $playerStatus && $playerStatus.status !== 'offline'}
+                                                <th class="w-10"></th>
+                                            {/if}
                                             {#if data.show.sonarr_id}
                                                 <th class="w-24">Search</th>
                                             {/if}
@@ -834,6 +854,19 @@
                                                           )
                                                         : ""}</td
                                                 >
+                                                {#if $playerStatus && $playerStatus.status !== 'offline'}
+                                                    <td>
+                                                        {#if ep.jellyfin_id && ep.is_collected}
+                                                            <button
+                                                                class="btn btn-xs btn-ghost btn-square ep-play-btn"
+                                                                title="Play on {$playerStatus.deviceName || 'Player'}"
+                                                                onclick={() => quickPlay(ep.jellyfin_id)}
+                                                            >
+                                                                <MdiIcon icon={mdiPlay} size={14} />
+                                                            </button>
+                                                        {/if}
+                                                    </td>
+                                                {/if}
                                                 {#if data.show.sonarr_id}
                                                     <td>
                                                         <div class="flex items-center gap-1">

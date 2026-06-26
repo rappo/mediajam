@@ -27,6 +27,9 @@
      *   extraBadges?: { label: string, cls?: string }[],
      *   actions?: any,
      *   watchlistAction?: any,
+     *   onPlay?: (() => void) | null,
+     *   playerStatus?: string | null,
+     *   playerDeviceName?: string | null,
      *   children?: any
      * }}
      */
@@ -56,6 +59,9 @@
         actions,
         watchlistAction,
         ratingsBar,
+        onPlay = null,
+        playerStatus = null,
+        playerDeviceName = null,
         children,
     } = $props();
 
@@ -63,7 +69,7 @@
     import HeartBorder from '$lib/components/HeartBorder.svelte';
     import ServiceIcon from '$lib/components/ServiceIcon.svelte';
     import MdiIcon from '$lib/components/MdiIcon.svelte';
-    import { mdiMovieOpen, mdiTelevision, mdiMusic, mdiAccount, mdiChevronLeft, mdiCog } from '@mdi/js';
+    import { mdiMovieOpen, mdiTelevision, mdiMusic, mdiAccount, mdiChevronLeft, mdiCog, mdiPlay } from '@mdi/js';
     import { imgUrl } from '$lib/utils.js';
 
     const isPerson = $derived(mediaType === 'person');
@@ -197,6 +203,18 @@
             <h1 class="detail-title">
                 {title}
                 {#if year}<span class="title-year">({year})</span>{/if}
+                {#if onPlay && playerStatus && playerStatus !== 'offline'}
+                    <button
+                        class="quick-play-btn"
+                        class:qp-playing={playerStatus === 'playing'}
+                        class:qp-busy={playerStatus === 'busy'}
+                        onclick={onPlay}
+                        title={playerStatus === 'busy' ? `${playerDeviceName || 'Player'} is busy` : `Play on ${playerDeviceName || 'Default Player'}`}
+                        disabled={playerStatus === 'busy'}
+                    >
+                        <MdiIcon icon={mdiPlay} size={16} />
+                    </button>
+                {/if}
                 <FavoriteButton type={favoriteType} id={favoriteId} {isFavorite} />
             </h1>
             <div class="meta-row">
@@ -434,6 +452,42 @@
         text-shadow: 0 0 20px rgba(0,0,0,0.8), 0 0 40px rgba(0,0,0,0.5), 0 2px 4px rgba(0,0,0,0.9);
     }
     @media (min-width: 768px) { .detail-title { font-size: 2.5rem; } }
+
+    /* Quick play button */
+    .quick-play-btn {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 1.6em; height: 1.6em; border-radius: 50%;
+        background: oklch(0.55 0.18 145 / 0.85);
+        color: white;
+        border: none; cursor: pointer;
+        transition: all 0.2s ease;
+        flex-shrink: 0;
+        text-shadow: none;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    .quick-play-btn:hover:not(:disabled) {
+        background: oklch(0.60 0.20 145);
+        transform: scale(1.12);
+        box-shadow: 0 2px 12px oklch(0.55 0.18 145 / 0.5);
+    }
+    .quick-play-btn:active:not(:disabled) {
+        transform: scale(0.95);
+    }
+    .quick-play-btn.qp-playing {
+        background: oklch(0.55 0.15 250 / 0.85);
+    }
+    .quick-play-btn.qp-playing:hover {
+        background: oklch(0.60 0.17 250);
+        box-shadow: 0 2px 12px oklch(0.55 0.15 250 / 0.5);
+    }
+    .quick-play-btn.qp-busy {
+        background: oklch(0.50 0.10 60 / 0.5);
+        cursor: not-allowed;
+        opacity: 0.6;
+    }
+    .quick-play-btn:disabled {
+        pointer-events: auto; /* allow tooltip on disabled */
+    }
     .title-year {
         font-weight: 300;
         font-size: 0.6em;

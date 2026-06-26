@@ -6,6 +6,7 @@
     import ArrAddDialog from "$lib/components/ArrAddDialog.svelte";
     import HeartBorder from "$lib/components/HeartBorder.svelte";
     import RemotePlayButton from "$lib/components/RemotePlayButton.svelte";
+    import { playerStatus, quickPlay } from '$lib/stores/player.js';
     import StatCard from "$lib/components/StatCard.svelte";
     import ServiceIcon from "$lib/components/ServiceIcon.svelte";
     import InteractiveSearchDialog from "$lib/components/InteractiveSearchDialog.svelte";
@@ -410,6 +411,9 @@
             favoriteType="media"
             favoriteId={data.movie.id}
             heartBorderEnabled={!!data.settings?.heartBorderMovies}
+            onPlay={data.movie.jellyfin_id && $playerStatus?.status !== 'offline' ? () => quickPlay(data.movie.jellyfin_id) : null}
+            playerStatus={$playerStatus?.status}
+            playerDeviceName={$playerStatus?.deviceName}
             stats={[
                 ...(data.stats.totalPlays === 1 && data.stats.lastWatched
                     ? [{ label: `watched ${timeAgo(data.stats.lastWatched)}`, value: '' }]

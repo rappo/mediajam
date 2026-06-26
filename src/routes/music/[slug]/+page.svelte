@@ -10,6 +10,7 @@
     import CollectionStatusBanner from "$lib/components/CollectionStatusBanner.svelte";
     import InteractiveSearchDialog from "$lib/components/InteractiveSearchDialog.svelte";
     import RemotePlayButton from "$lib/components/RemotePlayButton.svelte";
+    import { playerStatus, quickPlay } from '$lib/stores/player.js';
     import { page } from "$app/stores";
     let { data } = $props();
     let expandedAlbum = $state(null);
@@ -486,6 +487,9 @@
             favoriteType="media"
             favoriteId={data.artist.id}
             heartBorderEnabled={!!data.settings?.heartBorderMusic}
+            onPlay={data.artist.jellyfin_id && $playerStatus?.status !== 'offline' ? () => quickPlay(data.artist.jellyfin_id) : null}
+            playerStatus={$playerStatus?.status}
+            playerDeviceName={$playerStatus?.deviceName}
             stats={[
                 { label: 'albums', value: data.albums.length },
                 { label: data.artist.total_plays === 1 ? 'play' : 'plays', value: data.artist.total_plays },

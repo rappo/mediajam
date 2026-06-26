@@ -2,7 +2,7 @@
     import ServiceIcon from "$lib/components/ServiceIcon.svelte";
     import LogConsole from "$lib/components/LogConsole.svelte";
     import MdiIcon from "$lib/components/MdiIcon.svelte";
-    import { mdiAccount, mdiPencil, mdiUpload, mdiLinkVariant, mdiDownload, mdiInformation, mdiCheck, mdiCastConnected, mdiSync, mdiStop, mdiTelevision, mdiLaptop, mdiCellphone, mdiMonitor, mdiHome, mdiStar, mdiCheckCircle, mdiCloseCircle } from '@mdi/js';
+    import { mdiAccount, mdiPencil, mdiUpload, mdiLinkVariant, mdiDownload, mdiInformation, mdiCheck, mdiCastConnected, mdiSync, mdiStop, mdiTelevision, mdiLaptop, mdiCellphone, mdiMonitor, mdiHome, mdiStar, mdiCheckCircle, mdiCloseCircle, mdiCog } from '@mdi/js';
     import { page } from "$app/stores";
     import { invalidateAll } from "$app/navigation";
 
@@ -437,6 +437,23 @@
         });
         await invalidateAll();
     }
+
+    /** Update a saved player's config (boilerRoomUrl, jellyfinAppId, etc) */
+    async function updatePlayerConfig(deviceId, updates) {
+        const updated = savedPlayers.map((/** @type {any} */ p) =>
+            p.deviceId === deviceId ? { ...p, ...updates } : p
+        );
+        savedPlayers = updated;
+        await fetch("/api/user/preferences", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ savedPlayers: updated }),
+        });
+    }
+
+    let expandedPlayerConfig = $state('');
+    let testingConnection = $state(false);
+    let testConnectionResult = $state(/** @type {string|null} */ (null));
 
     // Merge saved players with live status info
     let displayPlayerList = $derived.by(() => {
@@ -1020,7 +1037,7 @@
                             <div class="space-y-1">
                                 {#each displayPlayerList.saved as player}
                                     <div
-                                        class="flex items-center gap-2 px-3 py-2 rounded-lg bg-base-300/30 text-sm"
+                                        class="flex flex-wrap items-center gap-2 px-3 py-2 rounded-lg bg-base-300/30 text-sm"
                                         class:opacity-50={player.status ===
                                             "offline"}
                                         class:opacity-70={player.status ===
@@ -1080,6 +1097,17 @@
                                                 >
                                             {/if}
                                             <button
+                                                class="btn btn-ghost btn-xs"
+                                                onclick={() => {
+                                                    expandedPlayerConfig = expandedPlayerConfig === player.deviceId ? '' : player.deviceId;
+                                                    testConnectionResult = null;
+                                                }}
+                                                title="Configure device"
+                                                class:text-primary={expandedPlayerConfig === player.deviceId}
+                                            >
+                                                <MdiIcon icon={mdiCog} size={14} />
+                                            </button>
+                                            <button
                                                 class="btn btn-ghost btn-xs text-error"
                                                 onclick={() =>
                                                     removePlayer(
@@ -1088,6 +1116,57 @@
                                                 title="Remove player">✕</button
                                             >
                                         </div>
+                                        <!-- Boiler Room Config (expandable) -->
+                                        {#if expandedPlayerConfig === player.deviceId}
+                                            <div class="w-full mt-2 p-2 bg-base-300/40 rounded-lg space-y-2">
+                                                <label class="text-xs text-base-content/50">
+                                                    Boiler Room URL
+                                                    <span class="text-base-content/30">(SteamOS devices only)</span>
+                                                </label>
+                                                <div class="flex gap-2">
+                                                    <input
+                                                        type="text"
+                                                        class="input input-bordered input-xs flex-1"
+                                                        placeholder="http://192.168.1.54:9451"
+                                                        value={player.boilerRoomUrl || ''}
+                                                        onchange={(e) => updatePlayerConfig(player.deviceId, { boilerRoomUrl: e.target.value.replace(/\/$/, '') })}
+                                                    />
+                                                    <button
+                                                        class="btn btn-xs btn-ghost"
+                                                        disabled={testingConnection || !savedPlayers.find(p => p.deviceId === player.deviceId)?.boilerRoomUrl}
+                                                        onclick={async () => {
+                                                            testingConnection = true;
+                                                            testConnectionResult = null;
+                                                            try {
+                                                                const url = savedPlayers.find(p => p.deviceId === player.deviceId)?.boilerRoomUrl;
+                                                                const r = await fetch(`${url}/health`, { signal: AbortSignal.timeout(5000) });
+                                                                testConnectionResult = r.ok ? 'Connected!' : `Error: ${r.status}`;
+                                                            } catch { testConnectionResult = 'Connection failed'; }
+                                                            testingConnection = false;
+                                                        }}
+                                                    >
+                                                        {#if testingConnection}
+                                                            <span class="loading loading-spinner loading-xs"></span>
+                                                        {:else}
+                                                            Test
+                                                        {/if}
+                                                    </button>
+                                                </div>
+                                                {#if testConnectionResult}
+                                                    <p class="text-xs {testConnectionResult.startsWith('Connected') ? 'text-success' : 'text-error'}">
+                                                        {testConnectionResult}
+                                                    </p>
+                                                {/if}
+                                                <label class="text-xs text-base-content/50">Jellyfin App ID</label>
+                                                <input
+                                                    type="text"
+                                                    class="input input-bordered input-xs w-full"
+                                                    placeholder="org.jellyfin.JellyfinDesktop"
+                                                    value={player.jellyfinAppId || 'org.jellyfin.JellyfinDesktop'}
+                                                    onchange={(e) => updatePlayerConfig(player.deviceId, { jellyfinAppId: e.target.value })}
+                                                />
+                                            </div>
+                                        {/if}
                                     </div>
                                 {/each}
                             </div>

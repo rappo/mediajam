@@ -1,9 +1,10 @@
 <script>
     import { onMount } from 'svelte';
     import { jellyfinAuthInvalid } from '$lib/stores/auth.js';
+    import { playerStatus, startPolling, launchJellyfin } from '$lib/stores/player.js';
     import MdiIcon from '$lib/components/MdiIcon.svelte';
     import ServiceIcon from '$lib/components/ServiceIcon.svelte';
-    import { mdiServerNetwork } from '@mdi/js';
+    import { mdiServerNetwork, mdiPlay, mdiTelevision, mdiRocketLaunch } from '@mdi/js';
 
     const SERVICES = [
         { key: 'sonarr', name: 'Sonarr', color: '0.65 0.17 250' },
@@ -33,7 +34,11 @@
         refresh();
         loadUrls();
         const timer = setInterval(refresh, 60_000);
-        return () => clearInterval(timer);
+        const stopPlayerPolling = startPolling();
+        return () => {
+            clearInterval(timer);
+            stopPlayerPolling();
+        };
     });
 
     let services = $derived.by(() => {
@@ -60,6 +65,32 @@
 
     let jellyfinOk = $derived(!$jellyfinAuthInvalid);
     let jellyfinUrl = $derived(serviceUrls.jellyfin || null);
+
+    // Player status
+    let ps = $derived($playerStatus);
+    let playerStatusLabel = $derived.by(() => {
+        if (!ps) return '';
+        switch (ps.status) {
+            case 'playing': {
+                const np = ps.nowPlaying;
+                if (np?.seriesName) return `${np.seriesName}`;
+                if (np?.name) return np.name;
+                return 'Playing';
+            }
+            case 'idle': return 'Idle';
+            case 'online': return 'Online';
+            case 'busy': return ps.currentApp || 'Busy';
+            case 'offline': return 'Offline';
+            default: return '';
+        }
+    });
+
+    let launchingJellyfin = $state(false);
+    async function handleLaunchJellyfin() {
+        launchingJellyfin = true;
+        await launchJellyfin();
+        launchingJellyfin = false;
+    }
 </script>
 
 <div class="sh-wrap">
@@ -97,6 +128,36 @@
     {#if services.length === 0 && arrData !== null}
         <div class="sh-row sh-empty">
             <span class="sh-detail">No arr services</span>
+        </div>
+    {/if}
+
+    {#if ps}
+        <div class="sh-divider"></div>
+        <div class="sh-header">
+            <MdiIcon icon={mdiTelevision} size={12} />
+            <span>Player</span>
+        </div>
+        <div class="sh-row">
+            <span
+                class="sh-dot"
+                class:dot-ok={ps.status === 'idle' || ps.status === 'online'}
+                class:dot-playing={ps.status === 'playing'}
+                class:dot-warn={ps.status === 'busy'}
+                class:dot-err={ps.status === 'offline'}
+            ></span>
+            <a href="/settings/account" class="sh-name sh-link">{ps.deviceName || 'Player'}</a>
+            <span class="sh-detail" class:sh-playing={ps.status === 'playing'}
+                title={playerStatusLabel}>{playerStatusLabel}</span>
+            {#if ps.canLaunch && (ps.status === 'online' || ps.status === 'idle')}
+                <button
+                    class="sh-launch-btn"
+                    onclick={handleLaunchJellyfin}
+                    disabled={launchingJellyfin}
+                    title="Launch Jellyfin"
+                >
+                    <MdiIcon icon={mdiRocketLaunch} size={10} />
+                </button>
+            {/if}
         </div>
     {/if}
 </div>
@@ -167,5 +228,32 @@
     }
     .sh-empty {
         justify-content: center;
+    }
+    .sh-divider {
+        height: 1px;
+        background: oklch(var(--bc) / 0.08);
+        margin: 0.2rem 0;
+    }
+    .sh-dot.dot-playing {
+        background: oklch(0.60 0.17 250 / 0.7);
+    }
+    .sh-detail.sh-playing {
+        color: oklch(0.65 0.12 250);
+    }
+    .sh-launch-btn {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 16px; height: 16px; border-radius: 50%;
+        background: oklch(0.55 0.15 145 / 0.6);
+        color: white; border: none;
+        cursor: pointer; transition: all 0.15s;
+        flex-shrink: 0; margin-left: auto;
+    }
+    .sh-launch-btn:hover:not(:disabled) {
+        background: oklch(0.60 0.18 145);
+        transform: scale(1.15);
+    }
+    .sh-launch-btn:disabled {
+        opacity: 0.5;
+        cursor: wait;
     }
 </style>

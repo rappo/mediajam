@@ -323,6 +323,7 @@ export async function load({ params }) {
         SELECT
             mc.id,
             mc.title,
+            mc.jellyfin_id,
             mc.season_number,
             mc.item_number,
             mc.is_special,
