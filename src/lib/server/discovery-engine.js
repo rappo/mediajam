@@ -550,6 +550,8 @@ export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artis
         endDate.setDate(startDate.getDate() + days - 1);
 
         const toLocalDate = (s) => { if (!s) return ''; return userISO(new Date(s)); };
+        /** Extract plain YYYY-MM-DD from an ISO string — for release dates that are date concepts, not moments */
+        const plainDate = (s) => { if (!s) return ''; return s.split('T')[0]; };
         const endISO = naiveISO(endDate);
 
         // Extend API fetch window ±1 day to handle timezone edge cases
@@ -628,7 +630,25 @@ export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artis
                         const series = ep.series || {};
                         const tvdbId = series.tvdbId;
                         if (tvdbId) calendarShowTvdbIds.add(tvdbId);
-                        const slug = localShowSlugs.get('tvdb:' + tvdbId) || series.titleSlug || '';
+                        // Resolve show link: prefer local slug, then look up by tvdb_id, then Sonarr titleSlug
+                        let showHref = '/calendar';
+                        const localSlug = localShowSlugs.get('tvdb:' + tvdbId);
+                        if (localSlug) {
+                            showHref = `/tv/${localSlug}`;
+                        } else if (tvdbId) {
+                            // Try direct DB lookup by tvdb_id for the parent id
+                            const row = /** @type {any} */ (db.prepare("SELECT id, slug FROM media_parents WHERE tvdb_id = ? AND media_type = 'show'").get(String(tvdbId)));
+                            if (row?.slug) {
+                                showHref = `/tv/${row.slug}`;
+                                localShowSlugs.set('tvdb:' + tvdbId, row.slug); // cache for this request
+                            } else if (row?.id) {
+                                showHref = `/tv/${row.id}`;
+                            } else if (series.titleSlug) {
+                                showHref = `/tv/${series.titleSlug}`;
+                            }
+                        } else if (series.titleSlug) {
+                            showHref = `/tv/${series.titleSlug}`;
+                        }
                         const posterImage = (series.images || []).find(i => i.coverType === 'poster');
                         const posterUrl = posterImage?.remoteUrl || posterImage?.url || '';
 
@@ -640,7 +660,7 @@ export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artis
                             item_number: ep.episodeNumber,
                             poster_url: posterUrl,
                             display_poster: posterUrl,
-                            href: slug ? `/tv/${slug}` : '/calendar',
+                            href: showHref,
                             subtitle: `S${String(ep.seasonNumber).padStart(2,'0')}E${String(ep.episodeNumber).padStart(2,'0')}`,
                             hasFile: ep.hasFile || false,
                             airTime: ep.airDateUtc ? new Date(ep.airDateUtc).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '',
@@ -662,7 +682,7 @@ export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artis
                     );
                     if (!movies) return;
                     for (const movie of movies) {
-                        const releaseDate = toLocalDate(movie.digitalRelease || movie.physicalRelease || movie.inCinemas || '');
+                        const releaseDate = plainDate(movie.digitalRelease || movie.physicalRelease || movie.inCinemas || '');
                         if (!releaseDate || !byDate[releaseDate]) continue;
 
                         const tmdbId = String(movie.tmdbId || '');
@@ -697,7 +717,7 @@ export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artis
                     );
                     if (!albums) return;
                     for (const album of albums) {
-                        const releaseDate = toLocalDate(album.releaseDate || '');
+                        const releaseDate = plainDate(album.releaseDate || '');
                         if (!releaseDate || !byDate[releaseDate]) continue;
 
                         const artist = album.artist || {};
@@ -917,6 +937,7 @@ export async function getMonthCalendar(year, month, types = ['movie', 'show', 'a
         };
 
         const toLocalDate = (s) => { if (!s) return ''; return userISO(new Date(s)); };
+        const plainDate = (s) => { if (!s) return ''; return s.split('T')[0]; };
 
         const todayISO = userISO(new Date());
         const startISO = naiveISO(firstDay);
@@ -998,7 +1019,7 @@ export async function getMonthCalendar(year, month, types = ['movie', 'show', 'a
                     );
                     if (!movies) return;
                     for (const movie of movies) {
-                        const releaseDate = toLocalDate(movie.digitalRelease || movie.physicalRelease || movie.inCinemas || '');
+                        const releaseDate = plainDate(movie.digitalRelease || movie.physicalRelease || movie.inCinemas || '');
                         if (!releaseDate || !byDate[releaseDate]) continue;
 
                         const tmdbId = movie.tmdbId ? String(movie.tmdbId) : null;
@@ -1034,7 +1055,7 @@ export async function getMonthCalendar(year, month, types = ['movie', 'show', 'a
                     );
                     if (!albums) return;
                     for (const album of albums) {
-                        const releaseDate = toLocalDate(album.releaseDate || '');
+                        const releaseDate = plainDate(album.releaseDate || '');
                         if (!releaseDate || !byDate[releaseDate]) continue;
 
                         const artist = album.artist || {};

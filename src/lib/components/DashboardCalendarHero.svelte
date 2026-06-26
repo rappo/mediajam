@@ -284,8 +284,12 @@
         overflow: hidden;
     }
     .hcal-item:hover {
-        background: oklch(var(--bc) / 0.06);
-        transform: translateY(-1px);
+        background: oklch(var(--bc) / 0.1);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px oklch(0 0 0 / 0.3);
+    }
+    .hcal-item:hover .hcal-item-title {
+        text-decoration: underline;
     }
 
     .hcal-item-poster {
