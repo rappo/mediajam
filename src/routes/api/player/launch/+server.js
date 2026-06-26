@@ -22,7 +22,8 @@ export async function POST({ request, locals }) {
     const defaultPlayerId = prefs.defaultPlayerId || '';
 
     const playerId = requestedId || defaultPlayerId;
-    const player = savedPlayers.find((/** @type {any} */ p) => p.deviceId === playerId);
+    const player = savedPlayers.find((/** @type {any} */ p) => p.deviceId === playerId)
+        || (savedPlayers.length === 1 ? savedPlayers[0] : null);
 
     if (!player) {
         return json({ status: 'error', message: 'Player not found' }, { status: 404 });

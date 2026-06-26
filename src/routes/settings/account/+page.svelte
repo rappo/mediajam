@@ -399,10 +399,16 @@
         };
         const updated = [...savedPlayers, entry];
         savedPlayers = updated;
+        // Auto-set as default if no default is set yet
+        const prefsToSave = { savedPlayers: updated };
+        if (!defaultPlayerId) {
+            defaultPlayerId = player.deviceId;
+            /** @type {any} */ (prefsToSave).defaultPlayerId = player.deviceId;
+        }
         await fetch("/api/user/preferences", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ savedPlayers: updated }),
+            body: JSON.stringify(prefsToSave),
         });
         await invalidateAll();
     }
@@ -1087,7 +1093,7 @@
                                                     class="badge badge-warning badge-xs gap-1"
                                                     ><MdiIcon icon={mdiStar} size={12} /> default</span
                                                 >
-                                            {:else if displayPlayerList.saved.length > 1}
+                                            {:else}
                                                 <button
                                                     class="btn btn-ghost btn-xs text-xs"
                                                     onclick={() =>

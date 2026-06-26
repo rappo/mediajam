@@ -28,7 +28,8 @@ export async function GET({ locals }) {
     const savedPlayers = prefs.savedPlayers || [];
     const defaultPlayerId = prefs.defaultPlayerId || '';
 
-    const player = savedPlayers.find((/** @type {any} */ p) => p.deviceId === defaultPlayerId);
+    const player = savedPlayers.find((/** @type {any} */ p) => p.deviceId === defaultPlayerId)
+        || (savedPlayers.length === 1 ? savedPlayers[0] : null);
     if (!player) {
         const result = { status: 'offline', error: 'No default player configured' };
         statusCache = { data: result, timestamp: Date.now() };

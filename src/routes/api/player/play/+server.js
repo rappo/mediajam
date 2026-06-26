@@ -26,7 +26,8 @@ export async function POST({ request, locals }) {
     const savedPlayers = prefs.savedPlayers || [];
     const defaultPlayerId = prefs.defaultPlayerId || '';
 
-    const player = savedPlayers.find((/** @type {any} */ p) => p.deviceId === defaultPlayerId);
+    const player = savedPlayers.find((/** @type {any} */ p) => p.deviceId === defaultPlayerId)
+        || (savedPlayers.length === 1 ? savedPlayers[0] : null);
     if (!player) {
         return json({ error: 'No default player configured' }, { status: 400 });
     }
