@@ -717,7 +717,9 @@ export async function getUpcomingDays(days = 7, types = ['movie', 'show', 'artis
                     );
                     if (!albums) return;
                     for (const album of albums) {
-                        const releaseDate = plainDate(album.releaseDate || '');
+                        const rawRD = album.releaseDate || '';
+                        const releaseDate = plainDate(rawRD);
+                        console.log(`[lidarr-cal-debug] "${(album.artist||{}).artistName||'?'}" raw="${rawRD}" plain="${releaseDate}" inByDate=${!!byDate[releaseDate]}`);
                         if (!releaseDate || !byDate[releaseDate]) continue;
 
                         const artist = album.artist || {};
