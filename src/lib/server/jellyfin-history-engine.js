@@ -18,7 +18,7 @@ function broadcast(data) {
     if (data.log) {
         const entry = { time: new Date().toLocaleTimeString(), message: data.log, type: data.logType || 'info' };
         recentLogs.push(entry);
-        if (recentLogs.length > 5000) recentLogs = recentLogs.slice(-4000);
+        if (recentLogs.length > 500) recentLogs = recentLogs.slice(-400);
         // Also console log with prefix
         const prefix = data.logType === 'error' ? '❌' : data.logType === 'success' ? '✅' : data.logType === 'warning' ? '⚠️' : '🔗';
         console.log(`[jellyfin-history] [${entry.time}] ${prefix} ${data.log}`);

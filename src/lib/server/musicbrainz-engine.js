@@ -46,7 +46,7 @@ function broadcast(data) {
     const time = new Date().toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit', second: '2-digit' });
     if (data.log) {
         recentLogs.push({ time, message: data.log, type: data.logType || 'info' });
-        if (recentLogs.length > 5000) recentLogs = recentLogs.slice(-4000);
+        if (recentLogs.length > 500) recentLogs = recentLogs.slice(-400);
     }
     const snapshot = {
         status: engineState.running ? (engineState.paused ? 'paused' : 'syncing') : 'idle',

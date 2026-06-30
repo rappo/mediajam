@@ -29,7 +29,7 @@ function broadcast(data) {
     // Capture logs and state updates
     if (data.log) {
         recentLogs.push({ time: new Date().toLocaleTimeString(), message: data.log, type: data.logType || 'info' });
-        if (recentLogs.length > 5000) recentLogs = recentLogs.slice(-4000);
+        if (recentLogs.length > 500) recentLogs = recentLogs.slice(-400);
     }
     if (data.libraryName) engineState.libraryName = data.libraryName;
     if (data.libProgress !== undefined) engineState.progress = data.libProgress;
@@ -80,28 +80,17 @@ async function waitWhilePaused() {
 }
 
 /**
- * Fetch items from a Jellyfin library using the SDK (Axios), paginated in batches.
+ * One-time connectivity check before syncing.
+ * @returns {Promise<boolean>} true if reachable
  */
-async function fetchJellyfinItems(api, libraryId, mediaType) {
-    let itemType = '';
-    if (mediaType === 'tvshows') itemType = 'Series';
-    else if (mediaType === 'movies') itemType = 'Movie';
-    else if (mediaType === 'music') itemType = 'MusicArtist';
-
-    const BATCH_SIZE = 100;
-    let startIndex = 0;
-    let totalCount = null;
-    const allItems = [];
-
-    const itemsApi = getItemsApi(api);
-
-    // Quick connectivity check
+async function checkJellyfinConnectivity(api) {
     broadcast({ type: 'progress', log: `  🔗 Connecting to Jellyfin...`, logType: 'info' });
     try {
         const pingStart = Date.now();
         const sysInfo = await getSystemApi(api).getPublicSystemInfo();
         const pingTime = Date.now() - pingStart;
         broadcast({ type: 'progress', log: `  ✅ Server reachable (${formatDuration(pingTime)}) — ${sysInfo.data.ServerName} v${sysInfo.data.Version}`, logType: 'info' });
+        return true;
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         const code = e?.code || 'N/A';
@@ -114,14 +103,37 @@ async function fetchJellyfinItems(api, libraryId, mediaType) {
         console.error(`[sync][DEBUG]   Response data: ${responseData}`);
         if (e?.cause) console.error(`[sync][DEBUG]   Cause:`, e.cause);
         broadcast({ type: 'error', log: `  ❌ Cannot reach Jellyfin: ${msg} (code: ${code}, status: ${status})`, logType: 'error' });
-        return [];
+        return false;
     }
+}
+
+/**
+ * Stream items from a Jellyfin library in batches, calling processBatch for each batch.
+ * Items are discarded after each batch, keeping peak memory at O(BATCH_SIZE).
+ * @param {any} api
+ * @param {string} libraryId
+ * @param {string} mediaType
+ * @param {(items: any[], fetchedSoFar: number, totalCount: number) => Promise<void>} processBatch
+ * @returns {Promise<{totalFetched: number, totalCount: number, authError: boolean}>}
+ */
+async function forEachJellyfinBatch(api, libraryId, mediaType, processBatch) {
+    let itemType = '';
+    if (mediaType === 'tvshows') itemType = 'Series';
+    else if (mediaType === 'movies') itemType = 'Movie';
+    else if (mediaType === 'music') itemType = 'MusicArtist';
+
+    const BATCH_SIZE = 100;
+    let startIndex = 0;
+    let totalCount = 0;
+    let totalFetched = 0;
+
+    const itemsApi = getItemsApi(api);
 
     while (true) {
-        if (!engineState.running) return allItems;
+        if (!engineState.running) return { totalFetched, totalCount, authError: false };
 
         const fetchStart = Date.now();
-        const endIndex = totalCount != null ? Math.min(startIndex + BATCH_SIZE, totalCount) : startIndex + BATCH_SIZE;
+        const endIndex = totalCount > 0 ? Math.min(startIndex + BATCH_SIZE, totalCount) : startIndex + BATCH_SIZE;
         broadcast({ type: 'progress', log: `  ⏳ Fetching ${itemType} ${startIndex}-${endIndex}...`, logType: 'info' });
 
         try {
@@ -139,16 +151,18 @@ async function fetchJellyfinItems(api, libraryId, mediaType) {
             const data = res.data;
             const items = data.Items || [];
             totalCount = data.TotalRecordCount;
-
-            allItems.push(...items);
+            totalFetched += items.length;
 
             if (items.length > 0) {
                 broadcast({
                     type: 'progress',
-                    log: `  📦 Fetched ${allItems.length}/${totalCount} ${itemType} (${formatDuration(fetchTime)})`,
+                    log: `  📦 Fetched ${totalFetched}/${totalCount} ${itemType} (${formatDuration(fetchTime)})`,
                     fetchTime,
                     logType: 'info'
                 });
+
+                // Process this batch immediately — items are GC-eligible after this returns
+                await processBatch(items, totalFetched, totalCount);
             }
 
             if (items.length < BATCH_SIZE) break;
@@ -161,11 +175,10 @@ async function fetchJellyfinItems(api, libraryId, mediaType) {
             const httpStatus = e?.response?.status || (msg.includes('401') ? 401 : null);
 
             if (httpStatus === 401) {
-                // Jellyfin token is expired/invalid — flag it globally
                 console.error(`[sync] Jellyfin returned 401 — access token is invalid`);
                 try { db.prepare("UPDATE app_settings SET jellyfin_auth_status = 'invalid' WHERE id = 1").run(); } catch { /* */ }
                 broadcast({ type: 'auth_error', log: `🔑 Jellyfin credentials expired — re-authenticate in Settings → Account`, logType: 'error' });
-                return [];
+                return { totalFetched, totalCount, authError: true };
             }
 
             console.error(`[sync] Failed to fetch ${itemType} batch at ${startIndex} after ${formatDuration(fetchTime)}:`, msg);
@@ -174,8 +187,8 @@ async function fetchJellyfinItems(api, libraryId, mediaType) {
         }
     }
 
-    console.log(`[sync] Got ${allItems.length} ${itemType} items (total: ${totalCount})`);
-    return allItems;
+    console.log(`[sync] Got ${totalFetched} ${itemType} items (total: ${totalCount})`);
+    return { totalFetched, totalCount, authError: false };
 }
 
 /**
@@ -584,6 +597,13 @@ export async function startSync(libraryId = null, force = false) {
     }
 
     try {
+        // One-time connectivity check before syncing any libraries
+        const isReachable = await checkJellyfinConnectivity(api);
+        if (!isReachable) {
+            engineState.running = false;
+            return;
+        }
+
         // Sync each library separately with per-library progress
         for (let libIdx = 0; libIdx < libraries.length; libIdx++) {
             const lib = libraries[libIdx];
@@ -601,827 +621,730 @@ export async function startSync(libraryId = null, force = false) {
                 logType: 'info'
             });
 
-            // Fetch parent items for this library (SDK/Axios)
-            const items = await fetchJellyfinItems(api, lib.jellyfin_id, lib.media_type);
-            const parentCount = items.length;
             let libSynced = 0;
             let libErrors = 0;
             /** @type {string[]} */
             let libErrorMessages = [];
 
             const itemLabel = lib.media_type === 'tvshows' ? 'shows' : lib.media_type === 'movies' ? 'movies' : 'artists';
-
-            if (parentCount === 0) {
-                libErrors++;
-                totalErrors++;
-                broadcast({
-                    type: 'library_count',
-                    libraryIndex: libIdx,
-                    libraryName: lib.name,
-                    parentCount: 0,
-                    log: `⚠️ Found 0 ${itemLabel} in ${lib.name} — fetch may have failed (check Jellyfin connectivity)`,
-                    logType: 'warning'
-                });
-            } else {
-                broadcast({
-                    type: 'library_count',
-                    libraryIndex: libIdx,
-                    libraryName: lib.name,
-                    parentCount,
-                    log: `Found ${parentCount} ${itemLabel} in ${lib.name}`,
-                    logType: 'info'
-                });
-            }
-
             const libStart = Date.now();
             /** @type {number[]} */
-            const itemTimes = [];
+            const itemTimes = []; // sliding window for ETA calculation
+            let itemIndex = 0; // tracks position across batches
 
-            for (let i = 0; i < items.length; i++) {
-                const item = items[i];
-                const itemStart = Date.now();
-                if (!engineState.running) return;
-                await waitWhilePaused();
+            // Stream items in batches of 100 — process each batch inline, then discard
+            const { totalFetched: parentCount, authError } = await forEachJellyfinBatch(
+                api, lib.jellyfin_id, lib.media_type,
+                async (batchItems, _fetchedSoFar, batchTotalCount) => {
+                    // Process each item in this batch
+                    for (const item of batchItems) {
+                        const itemStart = Date.now();
+                        if (!engineState.running) return;
+                        await waitWhilePaused();
 
-                try {
-                    const providerIds = item.ProviderIds || {};
+                        try {
+                            const providerIds = item.ProviderIds || {};
 
-                    // ── Capture pre-upsert values for skip detection ────────────
-                    // IMPORTANT: Must read BEFORE upsertParent overwrites these fields,
-                    // otherwise the comparison is always equal and children never re-sync.
-                    const preUpsertRow = /** @type {any} */ (getParentId.get(item.Id));
-                    const preStoredDateModified = preUpsertRow?.date_last_modified || null;
-                    const preStoredChildCount = preUpsertRow?.jellyfin_child_count || 0;
-                    const preStoredUnplayed = preUpsertRow?.unplayed_count ?? -1;
-                    const preStoredTotalReleased = preUpsertRow?.total_released_children || 0;
-                    const preStoredCollected = preUpsertRow?.collected_children || 0;
+                            // ── Capture pre-upsert values for skip detection ────────────
+                            const preUpsertRow = /** @type {any} */ (getParentId.get(item.Id));
+                            const preStoredDateModified = preUpsertRow?.date_last_modified || null;
+                            const preStoredChildCount = preUpsertRow?.jellyfin_child_count || 0;
+                            const preStoredUnplayed = preUpsertRow?.unplayed_count ?? -1;
+                            const preStoredTotalReleased = preUpsertRow?.total_released_children || 0;
+                            const preStoredCollected = preUpsertRow?.collected_children || 0;
 
-                    const parentParams = {
-                        jellyfinId: item.Id,
-                        libraryId: lib.jellyfin_id,
-                        title: item.Name,
-                        mediaType: lib.media_type === 'tvshows' ? 'show' : lib.media_type === 'movies' ? 'movie' : 'artist',
-                        tvdbId: providerIds.Tvdb || null,
-                        tmdbId: providerIds.Tmdb || null,
-                        imdbId: providerIds.Imdb || null,
-                        musicbrainzId: providerIds.MusicBrainzArtist || providerIds.MusicBrainzAlbum || null,
-                        releaseYear: item.ProductionYear || null,
-                        posterUrl: item.ImageTags?.Primary ? `${jellyfinUrl}/Items/${item.Id}/Images/Primary` : null,
-                        overview: item.Overview || null,
-                        userRating: item.UserData?.Rating || null,
-                        totalReleased: item.RecursiveItemCount || 0,
-                        collectedChildren: item.RecursiveItemCount || 0,
-                        dateLastModified: item.DateLastMediaAdded || item.DateModified || null,
-                        jellyfinChildCount: item.ChildCount || 0,
-                        unplayedCount: item.UserData?.UnplayedItemCount ?? null,
-                        isFavorite: item.UserData?.IsFavorite ? 1 : 0
-                    };
+                            const parentParams = {
+                                jellyfinId: item.Id,
+                                libraryId: lib.jellyfin_id,
+                                title: item.Name,
+                                mediaType: lib.media_type === 'tvshows' ? 'show' : lib.media_type === 'movies' ? 'movie' : 'artist',
+                                tvdbId: providerIds.Tvdb || null,
+                                tmdbId: providerIds.Tmdb || null,
+                                imdbId: providerIds.Imdb || null,
+                                musicbrainzId: providerIds.MusicBrainzArtist || providerIds.MusicBrainzAlbum || null,
+                                releaseYear: item.ProductionYear || null,
+                                posterUrl: item.ImageTags?.Primary ? `${jellyfinUrl}/Items/${item.Id}/Images/Primary` : null,
+                                overview: item.Overview || null,
+                                userRating: item.UserData?.Rating || null,
+                                totalReleased: item.RecursiveItemCount || 0,
+                                collectedChildren: item.RecursiveItemCount || 0,
+                                dateLastModified: item.DateLastMediaAdded || item.DateModified || null,
+                                jellyfinChildCount: item.ChildCount || 0,
+                                unplayedCount: item.UserData?.UnplayedItemCount ?? null,
+                                isFavorite: item.UserData?.IsFavorite ? 1 : 0
+                            };
 
-                    try {
-                        // ── Re-link stale Jellyfin IDs ─────────────────────────────
-                        // When a file moves, Jellyfin assigns a new ID. Check if we
-                        // already have this item by TMDB/IMDB but with an old jellyfin_id.
-                        // ONLY re-link when exactly ONE parent matches — if multiple
-                        // parents share the same external ID, re-linking is ambiguous
-                        // and would cause ping-ponging (A→B then B→A each sync).
-                        const existingByJellyfinId = getParentId.get(item.Id);
-                        if (!existingByJellyfinId) {
-                            // No match by new jellyfin_id — check external IDs
-                            let staleParent = null;
-                            if (parentParams.tmdbId) {
-                                const count = /** @type {any} */ (db.prepare(
-                                    'SELECT COUNT(*) as c FROM media_parents WHERE tmdb_id = ? AND media_type = ?'
-                                ).get(parentParams.tmdbId, parentParams.mediaType));
-                                if (count?.c === 1) {
-                                    staleParent = /** @type {any} */ (db.prepare(
-                                        'SELECT id, jellyfin_id FROM media_parents WHERE tmdb_id = ? AND media_type = ? AND (jellyfin_id IS NULL OR jellyfin_id != ?) LIMIT 1'
-                                    ).get(parentParams.tmdbId, parentParams.mediaType, item.Id));
-                                }
-                            }
-                            if (!staleParent && parentParams.imdbId) {
-                                const count = /** @type {any} */ (db.prepare(
-                                    'SELECT COUNT(*) as c FROM media_parents WHERE imdb_id = ? AND media_type = ?'
-                                ).get(parentParams.imdbId, parentParams.mediaType));
-                                if (count?.c === 1) {
-                                    staleParent = /** @type {any} */ (db.prepare(
-                                        'SELECT id, jellyfin_id FROM media_parents WHERE imdb_id = ? AND media_type = ? AND (jellyfin_id IS NULL OR jellyfin_id != ?) LIMIT 1'
-                                    ).get(parentParams.imdbId, parentParams.mediaType, item.Id));
-                                }
-                            }
-                            if (!staleParent && parentParams.tvdbId) {
-                                const count = /** @type {any} */ (db.prepare(
-                                    'SELECT COUNT(*) as c FROM media_parents WHERE tvdb_id = ? AND media_type = ?'
-                                ).get(parentParams.tvdbId, parentParams.mediaType));
-                                if (count?.c === 1) {
-                                    staleParent = /** @type {any} */ (db.prepare(
-                                        'SELECT id, jellyfin_id FROM media_parents WHERE tvdb_id = ? AND media_type = ? AND (jellyfin_id IS NULL OR jellyfin_id != ?) LIMIT 1'
-                                    ).get(parentParams.tvdbId, parentParams.mediaType, item.Id));
-                                }
-                            }
-
-                            if (staleParent) {
-                                const oldJellyfinId = staleParent.jellyfin_id;
-                                // Update parent jellyfin_id to new one
-                                db.prepare('UPDATE media_parents SET jellyfin_id = ? WHERE id = ?').run(item.Id, staleParent.id);
-
-                                if (oldJellyfinId) {
-                                    // Re-link: item moved in Jellyfin (old ID → new ID)
-                                    if (parentParams.mediaType === 'movie') {
-                                        db.prepare('UPDATE media_children SET jellyfin_id = ? WHERE jellyfin_id = ?')
-                                            .run(item.Id + '_child', oldJellyfinId + '_child');
+                            try {
+                                // ── Re-link stale Jellyfin IDs ─────────────────────────────
+                                const existingByJellyfinId = getParentId.get(item.Id);
+                                if (!existingByJellyfinId) {
+                                    let staleParent = null;
+                                    if (parentParams.tmdbId) {
+                                        const count = /** @type {any} */ (db.prepare(
+                                            'SELECT COUNT(*) as c FROM media_parents WHERE tmdb_id = ? AND media_type = ?'
+                                        ).get(parentParams.tmdbId, parentParams.mediaType));
+                                        if (count?.c === 1) {
+                                            staleParent = /** @type {any} */ (db.prepare(
+                                                'SELECT id, jellyfin_id FROM media_parents WHERE tmdb_id = ? AND media_type = ? AND (jellyfin_id IS NULL OR jellyfin_id != ?) LIMIT 1'
+                                            ).get(parentParams.tmdbId, parentParams.mediaType, item.Id));
+                                        }
                                     }
-                                    db.prepare('UPDATE media_children SET jellyfin_id = ? WHERE jellyfin_id = ?')
-                                        .run(item.Id, oldJellyfinId);
+                                    if (!staleParent && parentParams.imdbId) {
+                                        const count = /** @type {any} */ (db.prepare(
+                                            'SELECT COUNT(*) as c FROM media_parents WHERE imdb_id = ? AND media_type = ?'
+                                        ).get(parentParams.imdbId, parentParams.mediaType));
+                                        if (count?.c === 1) {
+                                            staleParent = /** @type {any} */ (db.prepare(
+                                                'SELECT id, jellyfin_id FROM media_parents WHERE imdb_id = ? AND media_type = ? AND (jellyfin_id IS NULL OR jellyfin_id != ?) LIMIT 1'
+                                            ).get(parentParams.imdbId, parentParams.mediaType, item.Id));
+                                        }
+                                    }
+                                    if (!staleParent && parentParams.tvdbId) {
+                                        const count = /** @type {any} */ (db.prepare(
+                                            'SELECT COUNT(*) as c FROM media_parents WHERE tvdb_id = ? AND media_type = ?'
+                                        ).get(parentParams.tvdbId, parentParams.mediaType));
+                                        if (count?.c === 1) {
+                                            staleParent = /** @type {any} */ (db.prepare(
+                                                'SELECT id, jellyfin_id FROM media_parents WHERE tvdb_id = ? AND media_type = ? AND (jellyfin_id IS NULL OR jellyfin_id != ?) LIMIT 1'
+                                            ).get(parentParams.tvdbId, parentParams.mediaType, item.Id));
+                                        }
+                                    }
 
-                                    broadcast({
-                                        type: 'progress',
-                                        log: `🔄 ${item.Name}: Jellyfin ID changed (${oldJellyfinId.slice(0, 8)}… → ${item.Id.slice(0, 8)}…), re-linked`,
-                                        logType: 'info'
-                                    });
-                                    logInfo('sync', `Re-linked ${item.Name}: jellyfin_id ${oldJellyfinId} → ${item.Id}`);
+                                    if (staleParent) {
+                                        const oldJellyfinId = staleParent.jellyfin_id;
+                                        db.prepare('UPDATE media_parents SET jellyfin_id = ? WHERE id = ?').run(item.Id, staleParent.id);
+
+                                        if (oldJellyfinId) {
+                                            if (parentParams.mediaType === 'movie') {
+                                                db.prepare('UPDATE media_children SET jellyfin_id = ? WHERE jellyfin_id = ?')
+                                                    .run(item.Id + '_child', oldJellyfinId + '_child');
+                                            }
+                                            db.prepare('UPDATE media_children SET jellyfin_id = ? WHERE jellyfin_id = ?')
+                                                .run(item.Id, oldJellyfinId);
+
+                                            broadcast({
+                                                type: 'progress',
+                                                log: `🔄 ${item.Name}: Jellyfin ID changed (${oldJellyfinId.slice(0, 8)}… → ${item.Id.slice(0, 8)}…), re-linked`,
+                                                logType: 'info'
+                                            });
+                                            logInfo('sync', `Re-linked ${item.Name}: jellyfin_id ${oldJellyfinId} → ${item.Id}`);
+                                        } else {
+                                            broadcast({
+                                                type: 'progress',
+                                                log: `🔗 ${item.Name}: linked external-only entry to Jellyfin`,
+                                                logType: 'info'
+                                            });
+                                            logInfo('sync', `Merged external-only entry for ${item.Name} (DB id=${staleParent.id}) with Jellyfin ${item.Id}`);
+                                        }
+                                    }
                                 } else {
-                                    // Merge: external-only entry (from TMDb backfill) linked to Jellyfin
-                                    broadcast({
-                                        type: 'progress',
-                                        log: `🔗 ${item.Name}: linked external-only entry to Jellyfin`,
-                                        logType: 'info'
-                                    });
-                                    logInfo('sync', `Merged external-only entry for ${item.Name} (DB id=${staleParent.id}) with Jellyfin ${item.Id}`);
-                                }
-                            }
-                        } else {
-                            // ── Pre-merge: Jellyfin row exists, but incoming external IDs may clash ──
-                            // When Jellyfin metadata is corrected (e.g. tmdb_id added/changed),
-                            // ON CONFLICT(jellyfin_id) DO UPDATE would set tmdb_id on our row, but
-                            // if a DIFFERENT row already holds that (tmdb_id, media_type), the UNIQUE
-                            // constraint fires. Pre-absorb the conflicting row before the upsert.
-                            const currentId = existingByJellyfinId.id;
+                                    // ── Pre-merge: Jellyfin row exists, but incoming external IDs may clash ──
+                                    const currentId = existingByJellyfinId.id;
 
-                            const externalIdChecks = [
-                                { field: 'tmdb_id', value: parentParams.tmdbId, label: 'TMDB' },
-                                { field: 'imdb_id', value: parentParams.imdbId, label: 'IMDb' },
-                            ];
+                                    const externalIdChecks = [
+                                        { field: 'tmdb_id', value: parentParams.tmdbId, label: 'TMDB' },
+                                        { field: 'imdb_id', value: parentParams.imdbId, label: 'IMDb' },
+                                    ];
 
-                            for (const { field, value, label } of externalIdChecks) {
-                                if (!value) continue;
-                                const conflicting = /** @type {any} */ (db.prepare(
-                                    `SELECT id, jellyfin_id, title FROM media_parents WHERE ${field} = ? AND media_type = ? AND id != ? LIMIT 1`
-                                ).get(value, parentParams.mediaType, currentId));
-                                if (!conflicting) continue;
+                                    for (const { field, value, label } of externalIdChecks) {
+                                        if (!value) continue;
+                                        const conflicting = /** @type {any} */ (db.prepare(
+                                            `SELECT id, jellyfin_id, title FROM media_parents WHERE ${field} = ? AND media_type = ? AND id != ? LIMIT 1`
+                                        ).get(value, parentParams.mediaType, currentId));
+                                        if (!conflicting) continue;
 
-                                // Another row holds this external ID — absorb it
-                                try {
-                                    // Migrate children
-                                    const moved = db.prepare(
-                                        'UPDATE media_children SET parent_id = ? WHERE parent_id = ?'
-                                    ).run(currentId, conflicting.id);
-                                    // Delete source person_credits
-                                    db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?')
-                                        .run(conflicting.id);
-                                    // Adopt slug and migrate ratings
-                                    adoptSlug('media_parents', conflicting.id, currentId);
-                                    migrateRatings(conflicting.id, currentId);
-                                    // Delete conflicting row
-                                    db.prepare('DELETE FROM media_parents WHERE id = ?').run(conflicting.id);
-
-                                    broadcast({
-                                        type: 'progress',
-                                        log: `🔀 ${item.Name}: absorbed conflicting ${label} entry "${conflicting.title}" (id=${conflicting.id}, moved ${moved.changes} children)`,
-                                        logType: 'info'
-                                    });
-                                    logInfo('sync', `Pre-merge: absorbed ${label} entry id=${conflicting.id} ("${conflicting.title}") into Jellyfin entry id=${currentId} for ${item.Name}`);
-                                } catch (mergeErr) {
-                                    const mergeErrStr = mergeErr instanceof Error ? mergeErr.message : String(mergeErr);
-                                    broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: ${label} pre-merge failed: ${mergeErrStr}`, logType: 'warning' });
-                                    logWarn('sync', `${label} pre-merge failed for ${item.Name}: ${mergeErrStr}`);
-                                }
-                            }
-                        }
-
-                        upsertParent.run(parentParams);
-                        // Ensure slug exists for newly inserted parents
-                        const upsertedRow = /** @type {any} */ (getParentId.get(item.Id));
-                        if (upsertedRow) ensureParentSlug(upsertedRow.id, parentParams.title, parentParams.mediaType, parentParams.releaseYear);
-                    } catch (upsertErr) {
-                        const errStr = String(upsertErr);
-                        if (errStr.includes('UNIQUE constraint')) {
-                            // Determine which ID caused the conflict and retry without it
-                            const retryParams = { ...parentParams };
-                            let conflictField = '';
-
-                            if (errStr.includes('musicbrainz_id') && parentParams.musicbrainzId) {
-                                conflictField = 'MusicBrainz ID';
-                                const existing = /** @type {any} */ (db.prepare(
-                                    'SELECT id, title, jellyfin_id FROM media_parents WHERE musicbrainz_id = ? AND media_type = ? LIMIT 1'
-                                ).get(parentParams.musicbrainzId, parentParams.mediaType));
-
-                                // Find/create the current Jellyfin row (without musicbrainz_id)
-                                retryParams.musicbrainzId = null;
-                                upsertParent.run(retryParams);
-                                const currentRow = /** @type {any} */ (db.prepare(
-                                    'SELECT id, title, musicbrainz_id FROM media_parents WHERE jellyfin_id = ?'
-                                ).get(item.Id));
-                                const currentId = currentRow?.id;
-
-                                if (existing && currentId && existing.id !== currentId) {
-                                    if (!existing.jellyfin_id) {
-                                        // External-only row holds musicbrainz_id — auto-merge:
-                                        // Move musicbrainz_id to the Jellyfin entry, migrate children, delete external
                                         try {
-                                            // Migrate children from external to Jellyfin entry
                                             const moved = db.prepare(
                                                 'UPDATE media_children SET parent_id = ? WHERE parent_id = ?'
-                                            ).run(currentId, existing.id);
-                                            // Delete source person_credits (target will re-sync its own)
+                                            ).run(currentId, conflicting.id);
                                             db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?')
-                                                .run(existing.id);
-                                            // Adopt slug and migrate ratings before removing
-                                            adoptSlug('media_parents', existing.id, currentId);
-                                            migrateRatings(existing.id, currentId);
-                                            db.prepare('DELETE FROM media_parents WHERE id = ?').run(existing.id);
-                                            // Apply the correct musicbrainz_id to the Jellyfin entry
-                                            db.prepare('UPDATE media_parents SET musicbrainz_id = ? WHERE id = ?')
-                                                .run(parentParams.musicbrainzId, currentId);
+                                                .run(conflicting.id);
+                                            adoptSlug('media_parents', conflicting.id, currentId);
+                                            migrateRatings(conflicting.id, currentId);
+                                            db.prepare('DELETE FROM media_parents WHERE id = ?').run(conflicting.id);
 
-                                            broadcast({ type: 'progress', log: `  🔀 ${item.Name}: auto-merged external MusicBrainz entry (moved ${moved.changes} children, adopted musicbrainz_id from id=${existing.id})`, logType: 'info' });
-                                            logInfo('sync', `Auto-merged MusicBrainz entry: ${item.Name} (${parentParams.musicbrainzId}), deleted external id=${existing.id}`);
+                                            broadcast({
+                                                type: 'progress',
+                                                log: `🔀 ${item.Name}: absorbed conflicting ${label} entry "${conflicting.title}" (id=${conflicting.id}, moved ${moved.changes} children)`,
+                                                logType: 'info'
+                                            });
+                                            logInfo('sync', `Pre-merge: absorbed ${label} entry id=${conflicting.id} ("${conflicting.title}") into Jellyfin entry id=${currentId} for ${item.Name}`);
                                         } catch (mergeErr) {
                                             const mergeErrStr = mergeErr instanceof Error ? mergeErr.message : String(mergeErr);
-                                            broadcast({ type: 'progress', log: `  ❌ ${item.Name}: MusicBrainz auto-merge failed: ${mergeErrStr}`, logType: 'error' });
-                                            logWarn('sync', `MusicBrainz auto-merge failed for ${item.Name}: ${mergeErrStr}`);
-                                        }
-                                    } else {
-                                        // Both rows have jellyfin_ids — genuinely two Jellyfin items sharing musicbrainz_id
-                                        // Skip if this external_id was already resolved/dismissed
-                                        const alreadyHandled = /** @type {any} */ (db.prepare(
-                                            `SELECT 1 FROM sync_conflicts WHERE conflict_type = 'shared_musicbrainz_id' AND external_id = ? AND status = 'resolved' LIMIT 1`
-                                        ).get(parentParams.musicbrainzId));
-                                        if (!alreadyHandled) {
-                                            try {
-                                                db.prepare(
-                                                    `INSERT OR IGNORE INTO sync_conflicts (conflict_type, primary_id, secondary_id, external_id, status)
-                                                     VALUES ('shared_musicbrainz_id', ?, ?, ?, 'pending')`
-                                                ).run(existing.id, currentId, parentParams.musicbrainzId);
-                                            } catch { /* ignore duplicate */ }
-                                            broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: two Jellyfin items share MusicBrainz ID with ${existing.title} — resolve in Settings`, logType: 'warning' });
+                                            broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: ${label} pre-merge failed: ${mergeErrStr}`, logType: 'warning' });
+                                            logWarn('sync', `${label} pre-merge failed for ${item.Name}: ${mergeErrStr}`);
                                         }
                                     }
-                                } else if (!existing) {
-                                    broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: shared MusicBrainz ID, syncing without it`, logType: 'warning' });
                                 }
-                            } else if (errStr.includes('tmdb_id') && parentParams.tmdbId) {
-                                conflictField = 'TMDB ID';
-                                // Find the OTHER parent that has this tmdb_id (the one we're conflicting with)
-                                const existing = /** @type {any} */ (db.prepare(
-                                    'SELECT id, title, jellyfin_id FROM media_parents WHERE tmdb_id = ? AND media_type = ? LIMIT 1'
-                                ).get(parentParams.tmdbId, parentParams.mediaType));
 
-                                // Find the current row (the one that matched jellyfin_id in the upsert)
-                                const currentRow = /** @type {any} */ (db.prepare(
-                                    'SELECT id, title, tmdb_id FROM media_parents WHERE jellyfin_id = ?'
-                                ).get(item.Id));
+                                upsertParent.run(parentParams);
+                                const upsertedRow = /** @type {any} */ (getParentId.get(item.Id));
+                                if (upsertedRow) ensureParentSlug(upsertedRow.id, parentParams.title, parentParams.mediaType, parentParams.releaseYear);
+                            } catch (upsertErr) {
+                                const errStr = String(upsertErr);
+                                if (errStr.includes('UNIQUE constraint')) {
+                                    const retryParams = { ...parentParams };
+                                    let conflictField = '';
 
-                                broadcast({ type: 'progress', log: `  🔍 ${item.Name}: TMDB conflict debug — existing: id=${existing?.id} jf=${existing?.jellyfin_id?.slice(0,8)}, current: id=${currentRow?.id} tmdb=${currentRow?.tmdb_id}`, logType: 'info' });
+                                    if (errStr.includes('musicbrainz_id') && parentParams.musicbrainzId) {
+                                        conflictField = 'MusicBrainz ID';
+                                        const existing = /** @type {any} */ (db.prepare(
+                                            'SELECT id, title, jellyfin_id FROM media_parents WHERE musicbrainz_id = ? AND media_type = ? LIMIT 1'
+                                        ).get(parentParams.musicbrainzId, parentParams.mediaType));
 
-                                if (existing && currentRow && existing.id !== currentRow.id) {
-                                    // Two different parents: currentRow has our jellyfin_id, existing has our tmdb_id
-                                    // Merge them: keep existing (which has tmdb_id), delete currentRow
-                                    try {
-                                        // Migrate children and history from currentRow to existing
-                                        const keepChild = /** @type {any} */ (db.prepare(
-                                            'SELECT id FROM media_children WHERE parent_id = ? LIMIT 1'
-                                        ).get(existing.id));
-                                        const staleChildren = /** @type {any[]} */ (db.prepare(
-                                            'SELECT id FROM media_children WHERE parent_id = ?'
-                                        ).all(currentRow.id));
-                                        if (keepChild) {
-                                            for (const sc of staleChildren) {
-                                                db.prepare('UPDATE playback_history SET media_id = ? WHERE media_id = ?').run(keepChild.id, sc.id);
+                                        retryParams.musicbrainzId = null;
+                                        upsertParent.run(retryParams);
+                                        const currentRow = /** @type {any} */ (db.prepare(
+                                            'SELECT id, title, musicbrainz_id FROM media_parents WHERE jellyfin_id = ?'
+                                        ).get(item.Id));
+                                        const currentId = currentRow?.id;
+
+                                        if (existing && currentId && existing.id !== currentId) {
+                                            if (!existing.jellyfin_id) {
+                                                try {
+                                                    const moved = db.prepare(
+                                                        'UPDATE media_children SET parent_id = ? WHERE parent_id = ?'
+                                                    ).run(currentId, existing.id);
+                                                    db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?')
+                                                        .run(existing.id);
+                                                    adoptSlug('media_parents', existing.id, currentId);
+                                                    migrateRatings(existing.id, currentId);
+                                                    db.prepare('DELETE FROM media_parents WHERE id = ?').run(existing.id);
+                                                    db.prepare('UPDATE media_parents SET musicbrainz_id = ? WHERE id = ?')
+                                                        .run(parentParams.musicbrainzId, currentId);
+
+                                                    broadcast({ type: 'progress', log: `  🔀 ${item.Name}: auto-merged external MusicBrainz entry (moved ${moved.changes} children, adopted musicbrainz_id from id=${existing.id})`, logType: 'info' });
+                                                    logInfo('sync', `Auto-merged MusicBrainz entry: ${item.Name} (${parentParams.musicbrainzId}), deleted external id=${existing.id}`);
+                                                } catch (mergeErr) {
+                                                    const mergeErrStr = mergeErr instanceof Error ? mergeErr.message : String(mergeErr);
+                                                    broadcast({ type: 'progress', log: `  ❌ ${item.Name}: MusicBrainz auto-merge failed: ${mergeErrStr}`, logType: 'error' });
+                                                    logWarn('sync', `MusicBrainz auto-merge failed for ${item.Name}: ${mergeErrStr}`);
+                                                }
+                                            } else {
+                                                broadcast({
+                                                    type: 'progress',
+                                                    log: `  ⚠ ${item.Name}: MusicBrainz ID conflict with "${existing.title}" (id=${existing.id}) — kept separate`,
+                                                    logType: 'warning'
+                                                });
+                                                logWarn('sync', `MusicBrainz conflict: ${item.Name} shares ID ${parentParams.musicbrainzId} with ${existing.title} (id=${existing.id})`);
                                             }
                                         }
-                                        db.prepare('DELETE FROM media_children WHERE parent_id = ?').run(currentRow.id);
-                                        db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?').run(currentRow.id);
-                                        // Adopt slug and migrate ratings before removing
-                                        adoptSlug('media_parents', currentRow.id, existing.id);
-                                        migrateRatings(currentRow.id, existing.id);
-                                        db.prepare('DELETE FROM media_parents WHERE id = ?').run(currentRow.id);
+                                    } else if (errStr.includes('tmdb_id') && parentParams.tmdbId) {
+                                        conflictField = 'TMDB ID';
+                                        const existing = /** @type {any} */ (db.prepare(
+                                            'SELECT id, title, jellyfin_id FROM media_parents WHERE tmdb_id = ? AND media_type = ? LIMIT 1'
+                                        ).get(parentParams.tmdbId, parentParams.mediaType));
 
-                                        // Now update the existing entry with fresh metadata and the current jellyfin_id
-                                        db.prepare(`UPDATE media_parents SET
-                                            jellyfin_id = ?, title = ?, poster_url = COALESCE(?, poster_url), overview = COALESCE(?, overview),
-                                            release_year = ?, jellyfin_user_rating = ?,
-                                            date_last_modified = ?, jellyfin_child_count = ?,
-                                            unplayed_count = ?, is_favorite = ?,
-                                            imdb_id = COALESCE(?, imdb_id),
-                                            tvdb_id = COALESCE(?, tvdb_id)
-                                        WHERE id = ?`).run(
-                                            item.Id, parentParams.title, parentParams.posterUrl, parentParams.overview,
-                                            parentParams.releaseYear, parentParams.userRating,
-                                            parentParams.dateLastModified, parentParams.jellyfinChildCount,
-                                            parentParams.unplayedCount, parentParams.isFavorite,
-                                            parentParams.imdbId, parentParams.tvdbId,
-                                            existing.id
-                                        );
+                                        retryParams.tmdbId = null;
+                                        try { upsertParent.run(retryParams); } catch { /* ignore second unique fail */ }
+                                        const currentRow = /** @type {any} */ (db.prepare(
+                                            'SELECT id, title FROM media_parents WHERE jellyfin_id = ?'
+                                        ).get(item.Id));
+                                        const currentId = currentRow?.id;
 
-                                        // Update movie child jellyfin_id
-                                        if (parentParams.mediaType === 'movie' && existing.jellyfin_id) {
-                                            db.prepare('UPDATE media_children SET jellyfin_id = ? WHERE jellyfin_id = ?')
-                                                .run(item.Id + '_child', existing.jellyfin_id + '_child');
-                                        }
+                                        if (existing && currentId && existing.id !== currentId) {
+                                            if (existing.jellyfin_id && existing.jellyfin_id !== item.Id) {
+                                                try {
+                                                    if (parentParams.mediaType === 'movie') {
+                                                        const existingMovieChild = db.prepare(
+                                                            'SELECT id, jellyfin_id FROM media_children WHERE parent_id = ? LIMIT 1'
+                                                        ).get(currentRow.id);
+                                                        if (existingMovieChild) {
+                                                            db.prepare('UPDATE playback_history SET media_id = ? WHERE media_id = ?')
+                                                                .run(existingMovieChild.id, existingMovieChild.id);
+                                                        }
+                                                    }
+                                                    db.prepare('DELETE FROM media_children WHERE parent_id = ?').run(currentRow.id);
+                                                    db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?').run(currentRow.id);
+                                                    adoptSlug('media_parents', currentRow.id, existing.id);
+                                                    migrateRatings(currentRow.id, existing.id);
+                                                    db.prepare('DELETE FROM media_parents WHERE id = ?').run(currentRow.id);
 
-                                        broadcast({ type: 'progress', log: `  🔀 ${item.Name}: auto-merged TMDB duplicate (kept id=${existing.id}, deleted id=${currentRow.id})`, logType: 'info' });
-                                        logInfo('sync', `Auto-merged TMDB duplicate: ${item.Name} (${parentParams.tmdbId})`);
-                                    } catch (mergeErr) {
-                                        const mergeErrStr = mergeErr instanceof Error ? mergeErr.message : String(mergeErr);
-                                        broadcast({ type: 'progress', log: `  ❌ ${item.Name}: auto-merge failed: ${mergeErrStr}`, logType: 'error' });
-                                        logWarn('sync', `TMDB auto-merge failed for ${item.Name}: ${mergeErrStr}`);
-                                    }
-                                } else if (existing && !currentRow && !existing.jellyfin_id) {
-                                    // External-only row exists (from trakt/backfill import) with tmdb_id but no jellyfin_id.
-                                    // Adopt it: set jellyfin_id and update metadata on the existing row.
-                                    try {
-                                        db.prepare(`UPDATE media_parents SET
-                                            jellyfin_id = ?, library_id = ?, title = ?, poster_url = COALESCE(?, poster_url), overview = COALESCE(?, overview),
-                                            release_year = ?, jellyfin_user_rating = ?,
-                                            date_last_modified = ?, jellyfin_child_count = ?,
-                                            unplayed_count = ?, is_favorite = ?,
-                                            collection_status = CASE WHEN collection_status = 'external' THEN 'default' ELSE collection_status END,
-                                            imdb_id = COALESCE(?, imdb_id),
-                                            tvdb_id = COALESCE(?, tvdb_id)
-                                        WHERE id = ?`).run(
-                                            item.Id, parentParams.libraryId, parentParams.title, parentParams.posterUrl, parentParams.overview,
-                                            parentParams.releaseYear, parentParams.userRating,
-                                            parentParams.dateLastModified, parentParams.jellyfinChildCount,
-                                            parentParams.unplayedCount, parentParams.isFavorite,
-                                            parentParams.imdbId, parentParams.tvdbId,
-                                            existing.id
-                                        );
+                                                    db.prepare(`UPDATE media_parents SET
+                                                        jellyfin_id = ?, title = ?, poster_url = COALESCE(?, poster_url), overview = COALESCE(?, overview),
+                                                        release_year = ?, jellyfin_user_rating = ?,
+                                                        date_last_modified = ?, jellyfin_child_count = ?,
+                                                        unplayed_count = ?, is_favorite = ?,
+                                                        imdb_id = COALESCE(?, imdb_id),
+                                                        tvdb_id = COALESCE(?, tvdb_id)
+                                                    WHERE id = ?`).run(
+                                                        item.Id, parentParams.title, parentParams.posterUrl, parentParams.overview,
+                                                        parentParams.releaseYear, parentParams.userRating,
+                                                        parentParams.dateLastModified, parentParams.jellyfinChildCount,
+                                                        parentParams.unplayedCount, parentParams.isFavorite,
+                                                        parentParams.imdbId, parentParams.tvdbId,
+                                                        existing.id
+                                                    );
 
-                                        // For movies, create the child entry if missing
-                                        if (parentParams.mediaType === 'movie') {
-                                            const existingChild = /** @type {any} */ (db.prepare(
-                                                'SELECT id FROM media_children WHERE parent_id = ? LIMIT 1'
-                                            ).get(existing.id));
-                                            if (existingChild) {
-                                                // Update existing child with jellyfin_id
-                                                db.prepare('UPDATE media_children SET jellyfin_id = ? WHERE id = ?')
-                                                    .run(item.Id + '_child', existingChild.id);
+                                                    if (parentParams.mediaType === 'movie' && existing.jellyfin_id) {
+                                                        db.prepare('UPDATE media_children SET jellyfin_id = ? WHERE jellyfin_id = ?')
+                                                            .run(item.Id + '_child', existing.jellyfin_id + '_child');
+                                                    }
+
+                                                    broadcast({ type: 'progress', log: `  🔀 ${item.Name}: auto-merged TMDB duplicate (kept id=${existing.id}, deleted id=${currentRow.id})`, logType: 'info' });
+                                                    logInfo('sync', `Auto-merged TMDB duplicate: ${item.Name} (${parentParams.tmdbId})`);
+                                                } catch (mergeErr) {
+                                                    const mergeErrStr = mergeErr instanceof Error ? mergeErr.message : String(mergeErr);
+                                                    broadcast({ type: 'progress', log: `  ❌ ${item.Name}: auto-merge failed: ${mergeErrStr}`, logType: 'error' });
+                                                    logWarn('sync', `TMDB auto-merge failed for ${item.Name}: ${mergeErrStr}`);
+                                                }
+                                            } else if (existing && !currentRow && !existing.jellyfin_id) {
+                                                try {
+                                                    db.prepare(`UPDATE media_parents SET
+                                                        jellyfin_id = ?, library_id = ?, title = ?, poster_url = COALESCE(?, poster_url), overview = COALESCE(?, overview),
+                                                        release_year = ?, jellyfin_user_rating = ?,
+                                                        date_last_modified = ?, jellyfin_child_count = ?,
+                                                        unplayed_count = ?, is_favorite = ?,
+                                                        collection_status = CASE WHEN collection_status = 'external' THEN 'default' ELSE collection_status END,
+                                                        imdb_id = COALESCE(?, imdb_id),
+                                                        tvdb_id = COALESCE(?, tvdb_id)
+                                                    WHERE id = ?`).run(
+                                                        item.Id, parentParams.libraryId, parentParams.title, parentParams.posterUrl, parentParams.overview,
+                                                        parentParams.releaseYear, parentParams.userRating,
+                                                        parentParams.dateLastModified, parentParams.jellyfinChildCount,
+                                                        parentParams.unplayedCount, parentParams.isFavorite,
+                                                        parentParams.imdbId, parentParams.tvdbId,
+                                                        existing.id
+                                                    );
+
+                                                    if (parentParams.mediaType === 'movie') {
+                                                        const existingChild = /** @type {any} */ (db.prepare(
+                                                            'SELECT id FROM media_children WHERE parent_id = ? LIMIT 1'
+                                                        ).get(existing.id));
+                                                        if (existingChild) {
+                                                            db.prepare('UPDATE media_children SET jellyfin_id = ? WHERE id = ?')
+                                                                .run(item.Id + '_child', existingChild.id);
+                                                        }
+                                                    }
+
+                                                    broadcast({ type: 'progress', log: `  🔗 ${item.Name}: adopted external entry (id=${existing.id}) — linked to Jellyfin`, logType: 'info' });
+                                                    logInfo('sync', `Adopted external TMDB entry: ${item.Name} (${parentParams.tmdbId})`);
+                                                } catch (adoptErr) {
+                                                    const adoptErrStr = adoptErr instanceof Error ? adoptErr.message : String(adoptErr);
+                                                    broadcast({ type: 'progress', log: `  ❌ ${item.Name}: adopt failed: ${adoptErrStr}`, logType: 'error' });
+                                                    logWarn('sync', `TMDB adopt failed for ${item.Name}: ${adoptErrStr}`);
+                                                }
+                                            } else if (existing && !currentRow && existing.jellyfin_id) {
+                                                try {
+                                                    const oldJellyfinId = existing.jellyfin_id;
+                                                    db.prepare(`UPDATE media_parents SET
+                                                        jellyfin_id = ?, library_id = ?, title = ?, poster_url = COALESCE(?, poster_url), overview = COALESCE(?, overview),
+                                                        release_year = ?, jellyfin_user_rating = ?,
+                                                        date_last_modified = ?, jellyfin_child_count = ?,
+                                                        unplayed_count = ?, is_favorite = ?,
+                                                        imdb_id = COALESCE(?, imdb_id),
+                                                        tvdb_id = COALESCE(?, tvdb_id)
+                                                    WHERE id = ?`).run(
+                                                        item.Id, parentParams.libraryId, parentParams.title, parentParams.posterUrl, parentParams.overview,
+                                                        parentParams.releaseYear, parentParams.userRating,
+                                                        parentParams.dateLastModified, parentParams.jellyfinChildCount,
+                                                        parentParams.unplayedCount, parentParams.isFavorite,
+                                                        parentParams.imdbId, parentParams.tvdbId,
+                                                        existing.id
+                                                    );
+
+                                                    if (parentParams.mediaType === 'movie' && oldJellyfinId) {
+                                                        db.prepare('UPDATE media_children SET jellyfin_id = ? WHERE jellyfin_id = ?')
+                                                            .run(item.Id + '_child', oldJellyfinId + '_child');
+                                                    }
+
+                                                    broadcast({ type: 'progress', log: `  🔗 ${item.Name}: Jellyfin ID updated on existing TMDB entry (${oldJellyfinId?.slice(0,8)}… → ${item.Id.slice(0,8)}…)`, logType: 'info' });
+                                                    logInfo('sync', `Re-linked TMDB entry: ${item.Name} (${parentParams.tmdbId}), jellyfin_id ${oldJellyfinId} → ${item.Id}`);
+                                                } catch (relinkErr) {
+                                                    const relinkErrStr = relinkErr instanceof Error ? relinkErr.message : String(relinkErr);
+                                                    broadcast({ type: 'progress', log: `  ❌ ${item.Name}: re-link failed: ${relinkErrStr}`, logType: 'error' });
+                                                    logWarn('sync', `TMDB re-link failed for ${item.Name}: ${relinkErrStr}`);
+                                                }
+                                            } else {
+                                                broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: TMDB conflict could not be resolved — existing: id=${existing?.id}, tmdb=${parentParams.tmdbId}`, logType: 'warning' });
                                             }
                                         }
-
-                                        broadcast({ type: 'progress', log: `  🔗 ${item.Name}: adopted external entry (id=${existing.id}) — linked to Jellyfin`, logType: 'info' });
-                                        logInfo('sync', `Adopted external TMDB entry: ${item.Name} (${parentParams.tmdbId})`);
-                                    } catch (adoptErr) {
-                                        const adoptErrStr = adoptErr instanceof Error ? adoptErr.message : String(adoptErr);
-                                        broadcast({ type: 'progress', log: `  ❌ ${item.Name}: adopt failed: ${adoptErrStr}`, logType: 'error' });
-                                        logWarn('sync', `TMDB adopt failed for ${item.Name}: ${adoptErrStr}`);
-                                    }
-                                } else if (existing && !currentRow && existing.jellyfin_id) {
-                                    // Existing row has a different jellyfin_id — the old Jellyfin item
-                                    // was removed/re-added. Update existing to point to the new item.
-                                    try {
-                                        const oldJellyfinId = existing.jellyfin_id;
-                                        db.prepare(`UPDATE media_parents SET
-                                            jellyfin_id = ?, library_id = ?, title = ?, poster_url = COALESCE(?, poster_url), overview = COALESCE(?, overview),
-                                            release_year = ?, jellyfin_user_rating = ?,
-                                            date_last_modified = ?, jellyfin_child_count = ?,
-                                            unplayed_count = ?, is_favorite = ?,
-                                            imdb_id = COALESCE(?, imdb_id),
-                                            tvdb_id = COALESCE(?, tvdb_id)
-                                        WHERE id = ?`).run(
-                                            item.Id, parentParams.libraryId, parentParams.title, parentParams.posterUrl, parentParams.overview,
-                                            parentParams.releaseYear, parentParams.userRating,
-                                            parentParams.dateLastModified, parentParams.jellyfinChildCount,
-                                            parentParams.unplayedCount, parentParams.isFavorite,
-                                            parentParams.imdbId, parentParams.tvdbId,
-                                            existing.id
-                                        );
-
-                                        // Update movie child jellyfin_id
-                                        if (parentParams.mediaType === 'movie' && oldJellyfinId) {
-                                            db.prepare('UPDATE media_children SET jellyfin_id = ? WHERE jellyfin_id = ?')
-                                                .run(item.Id + '_child', oldJellyfinId + '_child');
-                                        }
-
-                                        broadcast({ type: 'progress', log: `  🔗 ${item.Name}: Jellyfin ID updated on existing TMDB entry (${oldJellyfinId?.slice(0,8)}… → ${item.Id.slice(0,8)}…)`, logType: 'info' });
-                                        logInfo('sync', `Re-linked TMDB entry: ${item.Name} (${parentParams.tmdbId}), jellyfin_id ${oldJellyfinId} → ${item.Id}`);
-                                    } catch (relinkErr) {
-                                        const relinkErrStr = relinkErr instanceof Error ? relinkErr.message : String(relinkErr);
-                                        broadcast({ type: 'progress', log: `  ❌ ${item.Name}: re-link failed: ${relinkErrStr}`, logType: 'error' });
-                                        logWarn('sync', `TMDB re-link failed for ${item.Name}: ${relinkErrStr}`);
-                                    }
-                                } else {
-                                    // Truly unresolvable: existing has same jellyfin_id as incoming
-                                    // (should not happen, but handle gracefully)
-                                    broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: TMDB conflict could not be resolved — existing: id=${existing?.id}, tmdb=${parentParams.tmdbId}`, logType: 'warning' });
-                                }
-                            } else if (errStr.includes('imdb_id') && parentParams.imdbId) {
-                                conflictField = 'IMDb ID';
-                                const existing = /** @type {any} */ (db.prepare(
-                                    'SELECT id, title, jellyfin_id FROM media_parents WHERE imdb_id = ? LIMIT 1'
-                                ).get(parentParams.imdbId));
-
-                                // Find/create the current Jellyfin row (without imdb_id)
-                                retryParams.imdbId = null;
-                                upsertParent.run(retryParams);
-                                const currentRow = /** @type {any} */ (db.prepare(
-                                    'SELECT id, title FROM media_parents WHERE jellyfin_id = ?'
-                                ).get(item.Id));
-                                const currentId = currentRow?.id;
-
-                                if (existing && currentId && existing.id !== currentId) {
-                                    if (!existing.jellyfin_id) {
-                                        // External-only row holds imdb_id — auto-merge
-                                        try {
-                                            db.prepare('UPDATE media_children SET parent_id = ? WHERE parent_id = ?')
-                                                .run(currentId, existing.id);
-                                            // Delete source person_credits (target will re-sync its own)
-                                            db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?')
-                                                .run(existing.id);
-                                            // Adopt slug and migrate ratings before removing
-                                            adoptSlug('media_parents', existing.id, currentId);
-                                            migrateRatings(existing.id, currentId);
-                                            db.prepare('DELETE FROM media_parents WHERE id = ?').run(existing.id);
-                                            db.prepare('UPDATE media_parents SET imdb_id = ? WHERE id = ?')
-                                                .run(parentParams.imdbId, currentId);
-
-                                            broadcast({ type: 'progress', log: `  🔀 ${item.Name}: auto-merged external IMDb entry (adopted imdb_id from id=${existing.id})`, logType: 'info' });
-                                            logInfo('sync', `Auto-merged IMDb entry: ${item.Name} (${parentParams.imdbId}), deleted external id=${existing.id}`);
-                                        } catch (mergeErr) {
-                                            const mergeErrStr = mergeErr instanceof Error ? mergeErr.message : String(mergeErr);
-                                            broadcast({ type: 'progress', log: `  ❌ ${item.Name}: IMDb auto-merge failed: ${mergeErrStr}`, logType: 'error' });
-                                            logWarn('sync', `IMDb auto-merge failed for ${item.Name}: ${mergeErrStr}`);
-                                        }
-                                    } else {
-                                        // Both rows have jellyfin_ids
-                                        // Skip if this external_id was already resolved/dismissed
-                                        const alreadyHandled = /** @type {any} */ (db.prepare(
-                                            `SELECT 1 FROM sync_conflicts WHERE conflict_type = 'shared_imdb_id' AND external_id = ? AND status = 'resolved' LIMIT 1`
+                                    } else if (errStr.includes('imdb_id') && parentParams.imdbId) {
+                                        conflictField = 'IMDb ID';
+                                        const existing = /** @type {any} */ (db.prepare(
+                                            'SELECT id, title, jellyfin_id FROM media_parents WHERE imdb_id = ? LIMIT 1'
                                         ).get(parentParams.imdbId));
-                                        if (!alreadyHandled) {
-                                            try {
-                                                db.prepare(
-                                                    `INSERT OR IGNORE INTO sync_conflicts (conflict_type, primary_id, secondary_id, external_id, status)
-                                                     VALUES ('shared_imdb_id', ?, ?, ?, 'pending')`
-                                                ).run(existing.id, currentId, parentParams.imdbId);
-                                            } catch { /* ignore duplicate */ }
-                                            broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: two Jellyfin items share IMDb ID with "${existing.title}" — resolve in Settings`, logType: 'warning' });
+
+                                        retryParams.imdbId = null;
+                                        upsertParent.run(retryParams);
+                                        const currentRow = /** @type {any} */ (db.prepare(
+                                            'SELECT id, title FROM media_parents WHERE jellyfin_id = ?'
+                                        ).get(item.Id));
+                                        const currentId = currentRow?.id;
+
+                                        if (existing && currentId && existing.id !== currentId) {
+                                            if (!existing.jellyfin_id) {
+                                                try {
+                                                    db.prepare('UPDATE media_children SET parent_id = ? WHERE parent_id = ?')
+                                                        .run(currentId, existing.id);
+                                                    db.prepare('DELETE FROM person_credits WHERE media_parent_id = ?')
+                                                        .run(existing.id);
+                                                    adoptSlug('media_parents', existing.id, currentId);
+                                                    migrateRatings(existing.id, currentId);
+                                                    db.prepare('DELETE FROM media_parents WHERE id = ?').run(existing.id);
+                                                    db.prepare('UPDATE media_parents SET imdb_id = ? WHERE id = ?')
+                                                        .run(parentParams.imdbId, currentId);
+
+                                                    broadcast({ type: 'progress', log: `  🔀 ${item.Name}: auto-merged external IMDb entry (adopted imdb_id from id=${existing.id})`, logType: 'info' });
+                                                    logInfo('sync', `Auto-merged IMDb entry: ${item.Name} (${parentParams.imdbId}), deleted external id=${existing.id}`);
+                                                } catch (mergeErr) {
+                                                    const mergeErrStr = mergeErr instanceof Error ? mergeErr.message : String(mergeErr);
+                                                    broadcast({ type: 'progress', log: `  ❌ ${item.Name}: IMDb auto-merge failed: ${mergeErrStr}`, logType: 'error' });
+                                                    logWarn('sync', `IMDb auto-merge failed for ${item.Name}: ${mergeErrStr}`);
+                                                }
+                                            }
                                         }
+                                    } else {
+                                        broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: ${conflictField || 'UNIQUE'} constraint error: ${errStr.slice(0, 200)}`, logType: 'warning' });
                                     }
                                 } else {
-                                    broadcast({ type: 'progress', log: `  ⚠ ${item.Name}: unresolved IMDb conflict, synced without IMDb ID`, logType: 'warning' });
+                                    throw upsertErr;
+                                }
+                            }
+
+                            libSynced++;
+                            totalSynced++;
+                            const parentRow = /** @type {any} */ (getParentId.get(item.Id));
+                            const parentId = parentRow?.id;
+                            const jellyfinDateModified = item.DateLastMediaAdded || item.DateModified || null;
+                            const jellyfinChildCount = item.ChildCount || 0;
+                            let childCount = 0;
+
+                            // Smart skip: compare Jellyfin values against PRE-UPSERT DB values
+                            const jellyfinUnplayed = item.UserData?.UnplayedItemCount ?? -1;
+                            const jellyfinTotalEpisodes = item.RecursiveItemCount || 0;
+                            const needsChildSync = force ||
+                                !preUpsertRow ||
+                                preStoredDateModified !== jellyfinDateModified ||
+                                preStoredChildCount !== jellyfinChildCount ||
+                                jellyfinUnplayed !== preStoredUnplayed ||
+                                (lib.media_type === 'tvshows'
+                                    ? jellyfinTotalEpisodes !== preStoredCollected
+                                    : jellyfinTotalEpisodes !== preStoredTotalReleased);
+
+                            // Sync children (skip if nothing changed)
+                            if (lib.media_type === 'tvshows' && parentId) {
+                                const existingChildren = /** @type {any} */ (countChildren.get(parentId))?.c || 0;
+                                if (!needsChildSync && existingChildren > 0) {
+                                    updateParentCounts.run(parentId);
+                                    broadcast({
+                                        type: 'progress',
+                                        libraryIndex: libIdx,
+                                        libraryName: lib.name,
+                                        parentIndex: itemIndex + 1,
+                                        parentCount: batchTotalCount,
+                                        currentItem: item.Name,
+                                        childCount: existingChildren,
+                                        itemsSynced: libSynced,
+                                        totalSynced,
+                                        errors: totalErrors,
+                                        log: `  ⏭ ${item.Name} (${existingChildren} episodes already synced)`,
+                                        logType: 'info'
+                                    });
+                                    itemIndex++;
+                                    continue;
                                 }
 
-                            } else {
-                                throw upsertErr;
-                            }
-                        } else {
-                            throw upsertErr;
-                        }
-                    }
+                                broadcast({
+                                    type: 'progress',
+                                    libraryIndex: libIdx,
+                                    libraryName: lib.name,
+                                    parentIndex: itemIndex,
+                                    parentCount: batchTotalCount,
+                                    currentItem: item.Name,
+                                    itemsSynced: libSynced,
+                                    totalSynced,
+                                    errors: totalErrors,
+                                    log: `  → Fetching episodes for ${item.Name}...`,
+                                    logType: 'info'
+                                });
 
-                    libSynced++;
-                    totalSynced++;
-                    const parentRow = /** @type {any} */ (getParentId.get(item.Id));
-                    const parentId = parentRow?.id;
-                    const jellyfinDateModified = item.DateLastMediaAdded || item.DateModified || null;
-                    const jellyfinChildCount = item.ChildCount || 0;
-                    let childCount = 0;
+                                const episodes = await fetchJellyfinEpisodes(api, item.Id, userId);
 
-                    // Smart skip: compare Jellyfin values against PRE-UPSERT DB values
-                    // (preUpsertRow was captured BEFORE the upsert overwrote date_last_modified etc.)
-                    const jellyfinUnplayed = item.UserData?.UnplayedItemCount ?? -1;
-                    const jellyfinTotalEpisodes = item.RecursiveItemCount || 0;
-                    const needsChildSync = force ||
-                        !preUpsertRow ||
-                        preStoredDateModified !== jellyfinDateModified ||
-                        preStoredChildCount !== jellyfinChildCount ||
-                        jellyfinUnplayed !== preStoredUnplayed ||
-                        (lib.media_type === 'tvshows'
-                            ? jellyfinTotalEpisodes !== preStoredCollected
-                            : jellyfinTotalEpisodes !== preStoredTotalReleased);
-
-                    // Sync children (skip if nothing changed)
-                    if (lib.media_type === 'tvshows' && parentId) {
-                        const existingChildren = /** @type {any} */ (countChildren.get(parentId))?.c || 0;
-                        if (!needsChildSync && existingChildren > 0) {
-                            // Fully synced — skip expensive episode fetch
-                            updateParentCounts.run(parentId);
-                            broadcast({
-                                type: 'progress',
-                                libraryIndex: libIdx,
-                                libraryName: lib.name,
-                                parentIndex: i + 1,
-                                parentCount,
-                                currentItem: item.Name,
-                                childCount: existingChildren,
-                                itemsSynced: libSynced,
-                                totalSynced,
-                                errors: totalErrors,
-                                log: `  ⏭ ${item.Name} (${existingChildren} episodes already synced)`,
-                                logType: 'info'
-                            });
-                            continue;
-                        }
-
-                        broadcast({
-                            type: 'progress',
-                            libraryIndex: libIdx,
-                            libraryName: lib.name,
-                            parentIndex: i,
-                            parentCount,
-                            currentItem: item.Name,
-                            itemsSynced: libSynced,
-                            totalSynced,
-                            errors: totalErrors,
-                            log: `  → Fetching episodes for ${item.Name}...`,
-                            logType: 'info'
-                        });
-
-                        const episodes = await fetchJellyfinEpisodes(api, item.Id, userId);
-
-                        for (const ep of episodes) {
-                            // Determine if episode is on disk by checking LocationType
-                            const isOnDisk = ep.LocationType !== 'Virtual';
-                            try {
-                                if (isOnDisk) {
-                                    upsertChild.run({
-                                        parentId,
-                                        jellyfinId: ep.Id,
-                                        title: ep.Name || `Episode ${ep.IndexNumber || '?'}`,
-                                        seasonNumber: ep.ParentIndexNumber || 0,
-                                        itemNumber: ep.IndexNumber || 0,
-                                        isSpecial: (ep.ParentIndexNumber === 0) ? 1 : 0,
-                                        watchStatus: getWatchStatus(ep.UserData),
-                                        playCount: ep.UserData?.PlayCount || 0,
-                                        runtimeTicks: ep.RunTimeTicks || 0,
-                                        premiereDate: ep.PremiereDate || null,
-                                        musicbrainzId: null,
-                                        posterUrl: null,
-                                        communityRating: ep.CommunityRating || null
-                                    });
-                                } else {
-                                    upsertMissingChild.run({
-                                        parentId,
-                                        jellyfinId: ep.Id,
-                                        title: ep.Name || `Episode ${ep.IndexNumber || '?'}`,
-                                        seasonNumber: ep.ParentIndexNumber || 0,
-                                        itemNumber: ep.IndexNumber || 0,
-                                        isSpecial: (ep.ParentIndexNumber === 0) ? 1 : 0,
-                                        premiereDate: ep.PremiereDate || null
-                                    });
-                                }
-                                childCount++;
-                                totalSynced++;
-                            } catch (e) {
-                                totalErrors++;
-                                libErrors++;
-                                const msg = `${item.Name}: episode upsert failed`;
-                                libErrorMessages.push(msg);
-                                totalErrorMessages.push(msg);
-                            }
-                        }
-
-                        // ── Dedup: merge duplicate episodes with same season/episode number ──
-                        // Jellyfin sometimes reports the same episode twice (e.g. virtual + on-disk),
-                        // producing two media_children rows with different jellyfin_ids.
-                        // Keep the collected (is_collected=1) entry; delete the virtual duplicate.
-                        const dupeEpisodes = /** @type {any[]} */ (db.prepare(`
-                            SELECT season_number, item_number, GROUP_CONCAT(id) as ids, COUNT(*) as cnt
-                            FROM media_children
-                            WHERE parent_id = ? AND season_number IS NOT NULL
-                            GROUP BY season_number, item_number
-                            HAVING cnt > 1
-                        `).all(parentId));
-                        if (dupeEpisodes.length > 0) {
-                            const migrateHistory = db.prepare('UPDATE playback_history SET media_id = ? WHERE media_id = ?');
-                            const deleteChild = db.prepare('DELETE FROM media_children WHERE id = ?');
-                            db.transaction(() => {
-                                for (const dupe of dupeEpisodes) {
-                                    const ids = dupe.ids.split(',').map(Number);
-                                    const rows = /** @type {any[]} */ (db.prepare(
-                                        `SELECT id, is_collected, jellyfin_id, watch_status, play_count FROM media_children WHERE id IN (${ids.join(',')})`
-                                    ).all());
-                                    // Sort: prefer is_collected=1, then most plays, then highest id
-                                    rows.sort((a, b) => {
-                                        if (a.is_collected !== b.is_collected) return b.is_collected - a.is_collected;
-                                        if ((a.play_count || 0) !== (b.play_count || 0)) return (b.play_count || 0) - (a.play_count || 0);
-                                        return b.id - a.id;
-                                    });
-                                    const keepId = rows[0].id;
-                                    for (const row of rows.slice(1)) {
-                                        migrateHistory.run(keepId, row.id);
-                                        deleteChild.run(row.id);
+                                for (const ep of episodes) {
+                                    const isOnDisk = ep.LocationType !== 'Virtual';
+                                    try {
+                                        if (isOnDisk) {
+                                            upsertChild.run({
+                                                parentId,
+                                                jellyfinId: ep.Id,
+                                                title: ep.Name || `Episode ${ep.IndexNumber || '?'}`,
+                                                seasonNumber: ep.ParentIndexNumber || 0,
+                                                itemNumber: ep.IndexNumber || 0,
+                                                isSpecial: (ep.ParentIndexNumber === 0) ? 1 : 0,
+                                                watchStatus: getWatchStatus(ep.UserData),
+                                                playCount: ep.UserData?.PlayCount || 0,
+                                                runtimeTicks: ep.RunTimeTicks || 0,
+                                                premiereDate: ep.PremiereDate || null,
+                                                musicbrainzId: null,
+                                                posterUrl: null,
+                                                communityRating: ep.CommunityRating || null
+                                            });
+                                        } else {
+                                            upsertMissingChild.run({
+                                                parentId,
+                                                jellyfinId: ep.Id,
+                                                title: ep.Name || `Episode ${ep.IndexNumber || '?'}`,
+                                                seasonNumber: ep.ParentIndexNumber || 0,
+                                                itemNumber: ep.IndexNumber || 0,
+                                                isSpecial: (ep.ParentIndexNumber === 0) ? 1 : 0,
+                                                premiereDate: ep.PremiereDate || null
+                                            });
+                                        }
+                                        childCount++;
+                                        totalSynced++;
+                                    } catch (e) {
+                                        totalErrors++;
+                                        libErrors++;
+                                        const msg = `${item.Name}: episode upsert failed`;
+                                        libErrorMessages.push(msg);
+                                        totalErrorMessages.push(msg);
                                     }
                                 }
-                            })();
-                            broadcast({ type: 'progress', log: `  🧹 ${item.Name}: deduped ${dupeEpisodes.length} duplicate episode(s)`, logType: 'info' });
-                        }
 
-                        const collectedNonSpecial = episodes.filter(ep => ep.LocationType !== 'Virtual' && (ep.ParentIndexNumber || 0) !== 0).length;
-                        const missingNonSpecial = episodes.filter(ep => ep.LocationType === 'Virtual' && (ep.ParentIndexNumber || 0) !== 0).length;
-                        updateTotalReleased.run(collectedNonSpecial + missingNonSpecial, parentId);
-                        updateParentCounts.run(parentId);
-                        // Sync cast & crew for TV shows
-                        try { syncPeopleForItem(item.People, parentId); } catch (pe) {
-                            console.error(`[sync] People sync failed for ${item.Name}:`, pe instanceof Error ? pe.message : String(pe));
-                        }
-                    } else if (lib.media_type === 'movies' && parentId) {
-                        upsertChild.run({
-                            parentId,
-                            jellyfinId: item.Id + '_child',
-                            title: item.Name,
-                            seasonNumber: null,
-                            itemNumber: 1,
-                            isSpecial: 0,
-                            watchStatus: getWatchStatus(item.UserData),
-                            playCount: item.UserData?.PlayCount || 0,
-                            runtimeTicks: item.RunTimeTicks || 0,
-                            premiereDate: item.PremiereDate || null,
-                            musicbrainzId: null,
-                            posterUrl: null,
-                            communityRating: item.CommunityRating || null
-                        });
+                                // ── Dedup: merge duplicate episodes with same season/episode number ──
+                                const dupeEpisodes = /** @type {any[]} */ (db.prepare(`
+                                    SELECT season_number, item_number, GROUP_CONCAT(id) as ids, COUNT(*) as cnt
+                                    FROM media_children
+                                    WHERE parent_id = ? AND season_number IS NOT NULL
+                                    GROUP BY season_number, item_number
+                                    HAVING cnt > 1
+                                `).all(parentId));
+                                if (dupeEpisodes.length > 0) {
+                                    const migrateHistory = db.prepare('UPDATE playback_history SET media_id = ? WHERE media_id = ?');
+                                    const deleteChild = db.prepare('DELETE FROM media_children WHERE id = ?');
+                                    db.transaction(() => {
+                                        for (const dupe of dupeEpisodes) {
+                                            const ids = dupe.ids.split(',').map(Number);
+                                            const rows = /** @type {any[]} */ (db.prepare(
+                                                `SELECT id, is_collected, jellyfin_id, watch_status, play_count FROM media_children WHERE id IN (${ids.join(',')})`
+                                            ).all());
+                                            rows.sort((a, b) => {
+                                                if (a.is_collected !== b.is_collected) return b.is_collected - a.is_collected;
+                                                if ((a.play_count || 0) !== (b.play_count || 0)) return (b.play_count || 0) - (a.play_count || 0);
+                                                return b.id - a.id;
+                                            });
+                                            const keepId = rows[0].id;
+                                            for (const row of rows.slice(1)) {
+                                                migrateHistory.run(keepId, row.id);
+                                                deleteChild.run(row.id);
+                                            }
+                                        }
+                                    })();
+                                    broadcast({ type: 'progress', log: `  🧹 ${item.Name}: deduped ${dupeEpisodes.length} duplicate episode(s)`, logType: 'info' });
+                                }
 
-                        // Upgrade watch status from playback history (Trakt/Last.fm may know about watches Jellyfin doesn't)
-                        const movieChildRow = /** @type {any} */ (getChildId.get(item.Id + '_child'));
-                        if (movieChildRow) {
-                            const histCount = /** @type {any} */ (db.prepare(
-                                'SELECT COUNT(*) as c FROM playback_history WHERE media_id = ?'
-                            ).get(movieChildRow.id))?.c || 0;
-                            if (histCount > 0) {
-                                db.prepare(
-                                    "UPDATE media_children SET watch_status = 'watched', play_count = MAX(play_count, ?) WHERE id = ?"
-                                ).run(histCount, movieChildRow.id);
-                            }
-                        }
-
-                        childCount++;
-                        totalSynced++;
-                        updateParentCounts.run(parentId);
-                        // Sync cast & crew
-                        try { syncPeopleForItem(item.People, parentId); } catch (pe) {
-                            console.error(`[sync] People sync failed for ${item.Name}:`, pe instanceof Error ? pe.message : String(pe));
-                        }
-                    } else if (lib.media_type === 'music' && parentId) {
-                        // Count only Jellyfin-sourced albums (with jellyfin_id), not external/lastfm entries
-                        const existingJellyfinAlbums = /** @type {any} */ (
-                            db.prepare('SELECT COUNT(*) as c FROM media_children WHERE parent_id = ? AND is_special = 0 AND jellyfin_id IS NOT NULL').get(parentId)
-                        )?.c || 0;
-
-                        // Music-specific skip: Jellyfin MusicArtist items don't report useful
-                        // ChildCount/DateLastMediaAdded, so needsChildSync is always false.
-                        // Instead, fetch the album list once and compare counts to detect new albums.
-                        const albums = await fetchJellyfinAlbums(api, item.Id);
-
-                        if (!force && existingJellyfinAlbums > 0 && albums.length === existingJellyfinAlbums) {
-                            // Album count matches — skip expensive track fetch
-                            updateParentCounts.run(parentId);
-                            broadcast({
-                                type: 'progress',
-                                libraryIndex: libIdx,
-                                libraryName: lib.name,
-                                parentIndex: i + 1,
-                                parentCount,
-                                currentItem: item.Name,
-                                childCount: existingJellyfinAlbums,
-                                itemsSynced: libSynced,
-                                totalSynced,
-                                errors: totalErrors,
-                                log: `  ⏭ ${item.Name} (${existingJellyfinAlbums} albums up to date)`,
-                                logType: 'info'
-                            });
-                            continue;
-                        }
-
-                        if (existingJellyfinAlbums > 0 && albums.length !== existingJellyfinAlbums) {
-                            broadcast({
-                                type: 'progress',
-                                log: `  🔄 ${item.Name}: album count changed (local: ${existingJellyfinAlbums}, Jellyfin: ${albums.length}), re-syncing...`,
-                                logType: 'info'
-                            });
-                        }
-
-                        broadcast({
-                            type: 'progress',
-                            libraryIndex: libIdx,
-                            libraryName: lib.name,
-                            parentIndex: i,
-                            parentCount,
-                            currentItem: item.Name,
-                            itemsSynced: libSynced,
-                            totalSynced,
-                            errors: totalErrors,
-                            log: `  → Syncing ${albums.length} albums for ${item.Name}...`,
-                            logType: 'info'
-                        });
-
-                        // First pass: upsert all albums
-                        const albumIdMap = new Map(); // jellyfinId -> dbId
-                        for (const album of albums) {
-                            try {
+                                const collectedNonSpecial = episodes.filter(ep => ep.LocationType !== 'Virtual' && (ep.ParentIndexNumber || 0) !== 0).length;
+                                const missingNonSpecial = episodes.filter(ep => ep.LocationType === 'Virtual' && (ep.ParentIndexNumber || 0) !== 0).length;
+                                updateTotalReleased.run(collectedNonSpecial + missingNonSpecial, parentId);
+                                updateParentCounts.run(parentId);
+                                // Sync cast & crew for TV shows
+                                try { syncPeopleForItem(item.People, parentId); } catch (pe) {
+                                    console.error(`[sync] People sync failed for ${item.Name}:`, pe instanceof Error ? pe.message : String(pe));
+                                }
+                            } else if (lib.media_type === 'movies' && parentId) {
                                 upsertChild.run({
                                     parentId,
-                                    jellyfinId: album.Id,
-                                    title: album.Name,
+                                    jellyfinId: item.Id + '_child',
+                                    title: item.Name,
                                     seasonNumber: null,
-                                    itemNumber: album.ProductionYear || 0,
+                                    itemNumber: 1,
                                     isSpecial: 0,
-                                    watchStatus: getWatchStatus(album.UserData),
-                                    playCount: album.UserData?.PlayCount || 0,
-                                    runtimeTicks: album.RunTimeTicks || 0,
-                                    premiereDate: album.PremiereDate || null,
-                                    musicbrainzId: album.ProviderIds?.MusicBrainzReleaseGroup || album.ProviderIds?.MusicBrainzAlbum || null,
-                                    posterUrl: album.ImageTags?.Primary ? `${jellyfinUrl}/Items/${album.Id}/Images/Primary` : null,
-                                    communityRating: album.CommunityRating || null
+                                    watchStatus: getWatchStatus(item.UserData),
+                                    playCount: item.UserData?.PlayCount || 0,
+                                    runtimeTicks: item.RunTimeTicks || 0,
+                                    premiereDate: item.PremiereDate || null,
+                                    musicbrainzId: null,
+                                    posterUrl: null,
+                                    communityRating: item.CommunityRating || null
                                 });
-                                childCount++;
-                                totalSynced++;
-                                const albumRow = /** @type {any} */ (getChildId.get(album.Id));
-                                if (albumRow) albumIdMap.set(album.Id, albumRow.id);
-                            } catch (e) {
-                                totalErrors++;
-                                libErrors++;
-                                const errDetail = e instanceof Error ? e.message : String(e);
-                                const msg = `${item.Name}: album "${album.Name}" upsert failed: ${errDetail}`;
-                                libErrorMessages.push(msg);
-                                totalErrorMessages.push(msg);
-                            }
-                        }
 
-                        // Second pass: fetch ALL tracks for this artist in ONE call (bulk)
-                        try {
-                            const allTracks = await fetchJellyfinTracks(api, null, item.Id);
-                            for (const track of allTracks) {
-                                const dbAlbumId = albumIdMap.get(track.AlbumId);
-                                if (!dbAlbumId) continue; // track belongs to unknown album
-                                try {
-                                    upsertTrack.run({
-                                        albumId: dbAlbumId,
-                                        jellyfinId: track.Id,
-                                        title: track.Name || 'Unknown Track',
-                                        trackNumber: track.IndexNumber || 0,
-                                        discNumber: track.ParentIndexNumber || 1,
-                                        runtimeTicks: track.RunTimeTicks || 0,
-                                        musicbrainzId: track.ProviderIds?.MusicBrainzTrack || null
+                                // Upgrade watch status from playback history
+                                const movieChildRow = /** @type {any} */ (getChildId.get(item.Id + '_child'));
+                                if (movieChildRow) {
+                                    const histCount = /** @type {any} */ (db.prepare(
+                                        'SELECT COUNT(*) as c FROM playback_history WHERE media_id = ?'
+                                    ).get(movieChildRow.id));
+                                    if (histCount?.c > 0) {
+                                        db.prepare(
+                                            "UPDATE media_children SET watch_status = 'watched', play_count = MAX(play_count, ?) WHERE id = ? AND watch_status != 'watched'"
+                                        ).run(histCount.c, movieChildRow.id);
+                                    }
+                                    ensureChildSlug(movieChildRow.id, item.Name);
+                                }
+
+                                updateParentCounts.run(parentId);
+                                // Sync cast & crew for movies
+                                try { syncPeopleForItem(item.People, parentId); } catch (pe) {
+                                    console.error(`[sync] People sync failed for ${item.Name}:`, pe instanceof Error ? pe.message : String(pe));
+                                }
+                            } else if (lib.media_type === 'music' && parentId) {
+                                // Music: fetch albums, then tracks
+                                const albums = await fetchJellyfinAlbums(api, item.Id);
+                                const existingJellyfinAlbums = /** @type {any} */ (db.prepare(
+                                    'SELECT COUNT(*) as c FROM media_children WHERE parent_id = ? AND jellyfin_id IS NOT NULL'
+                                ).get(parentId))?.c || 0;
+
+                                if (!needsChildSync && existingJellyfinAlbums > 0 && albums.length === existingJellyfinAlbums) {
+                                    updateParentCounts.run(parentId);
+                                    broadcast({
+                                        type: 'progress',
+                                        libraryIndex: libIdx,
+                                        libraryName: lib.name,
+                                        parentIndex: itemIndex + 1,
+                                        parentCount: batchTotalCount,
+                                        currentItem: item.Name,
+                                        childCount: existingJellyfinAlbums,
+                                        itemsSynced: libSynced,
+                                        totalSynced,
+                                        errors: totalErrors,
+                                        log: `  ⏭ ${item.Name} (${existingJellyfinAlbums} albums up to date)`,
+                                        logType: 'info'
                                     });
-                                } catch { /* skip bad track */ }
+                                    itemIndex++;
+                                    continue;
+                                }
+
+                                if (existingJellyfinAlbums > 0 && albums.length !== existingJellyfinAlbums) {
+                                    broadcast({
+                                        type: 'progress',
+                                        log: `  🔄 ${item.Name}: album count changed (local: ${existingJellyfinAlbums}, Jellyfin: ${albums.length}), re-syncing...`,
+                                        logType: 'info'
+                                    });
+                                }
+
+                                broadcast({
+                                    type: 'progress',
+                                    libraryIndex: libIdx,
+                                    libraryName: lib.name,
+                                    parentIndex: itemIndex,
+                                    parentCount: batchTotalCount,
+                                    currentItem: item.Name,
+                                    itemsSynced: libSynced,
+                                    totalSynced,
+                                    errors: totalErrors,
+                                    log: `  → Syncing ${albums.length} albums for ${item.Name}...`,
+                                    logType: 'info'
+                                });
+
+                                // First pass: upsert all albums
+                                const albumIdMap = new Map(); // jellyfinId -> dbId
+                                for (const album of albums) {
+                                    try {
+                                        upsertChild.run({
+                                            parentId,
+                                            jellyfinId: album.Id,
+                                            title: album.Name,
+                                            seasonNumber: null,
+                                            itemNumber: album.ProductionYear || 0,
+                                            isSpecial: 0,
+                                            watchStatus: getWatchStatus(album.UserData),
+                                            playCount: album.UserData?.PlayCount || 0,
+                                            runtimeTicks: album.RunTimeTicks || 0,
+                                            premiereDate: album.PremiereDate || null,
+                                            musicbrainzId: album.ProviderIds?.MusicBrainzReleaseGroup || album.ProviderIds?.MusicBrainzAlbum || null,
+                                            posterUrl: album.ImageTags?.Primary ? `${jellyfinUrl}/Items/${album.Id}/Images/Primary` : null,
+                                            communityRating: album.CommunityRating || null
+                                        });
+                                        childCount++;
+                                        totalSynced++;
+                                        const albumRow = /** @type {any} */ (getChildId.get(album.Id));
+                                        if (albumRow) albumIdMap.set(album.Id, albumRow.id);
+                                    } catch (e) {
+                                        totalErrors++;
+                                        libErrors++;
+                                        const errDetail = e instanceof Error ? e.message : String(e);
+                                        const msg = `${item.Name}: album "${album.Name}" upsert failed: ${errDetail}`;
+                                        libErrorMessages.push(msg);
+                                        totalErrorMessages.push(msg);
+                                    }
+                                }
+
+                                // Second pass: fetch ALL tracks for this artist in ONE call (bulk)
+                                try {
+                                    const allTracks = await fetchJellyfinTracks(api, null, item.Id);
+                                    for (const track of allTracks) {
+                                        const dbAlbumId = albumIdMap.get(track.AlbumId);
+                                        if (!dbAlbumId) continue; // track belongs to unknown album
+                                        try {
+                                            upsertTrack.run({
+                                                albumId: dbAlbumId,
+                                                jellyfinId: track.Id,
+                                                title: track.Name || 'Unknown Track',
+                                                trackNumber: track.IndexNumber || 0,
+                                                discNumber: track.ParentIndexNumber || 1,
+                                                runtimeTicks: track.RunTimeTicks || 0,
+                                                musicbrainzId: track.ProviderIds?.MusicBrainzTrack || null
+                                            });
+                                        } catch { /* skip bad track */ }
+                                    }
+                                } catch (trackErr) {
+                                    console.error(`[sync] Failed to bulk-fetch tracks for ${item.Name}:`, trackErr instanceof Error ? trackErr.message : String(trackErr));
+                                }
+
+                                updateParentCounts.run(parentId);
+                                // For music: total_released = actual album count from Jellyfin
+                                updateTotalReleased.run(albums.length, parentId);
                             }
-                        } catch (trackErr) {
-                            console.error(`[sync] Failed to bulk-fetch tracks for ${item.Name}:`, trackErr instanceof Error ? trackErr.message : String(trackErr));
+
+                            // Per-item success broadcast
+                            const itemElapsed = Date.now() - itemStart;
+                            itemTimes.push(itemElapsed);
+                            // Keep sliding window for ETA calculation
+                            if (itemTimes.length > 50) itemTimes.splice(0, itemTimes.length - 50);
+                            const libProgress = Math.round(((itemIndex + 1) / batchTotalCount) * 100);
+                            const avgItemTime = itemTimes.reduce((a, b) => a + b, 0) / itemTimes.length;
+                            const remaining = batchTotalCount - (itemIndex + 1);
+                            const eta = remaining > 0 ? formatDuration(Math.round(avgItemTime * remaining)) : '';
+
+                            broadcast({
+                                type: 'progress',
+                                libraryIndex: libIdx,
+                                libraryName: lib.name,
+                                parentIndex: itemIndex + 1,
+                                parentCount: batchTotalCount,
+                                currentItem: item.Name,
+                                childCount,
+                                libProgress,
+                                itemsSynced: libSynced,
+                                totalSynced,
+                                errors: totalErrors,
+                                log: `  ✓ ${item.Name}${childCount > 0 ? ` (${childCount} items)` : ''} [${formatDuration(itemElapsed)}]${eta ? ` — ETA: ${eta}` : ''}`,
+                                logType: 'success'
+                            });
+
+                        } catch (e) {
+                            totalErrors++;
+                            libErrors++;
+                            const errMsg = e instanceof Error ? e.message : String(e);
+                            libErrorMessages.push(`${item.Name}: ${errMsg}`);
+                            totalErrorMessages.push(`${item.Name}: ${errMsg}`);
+                            // Cap error messages to avoid unbounded growth
+                            if (totalErrorMessages.length > 100) totalErrorMessages.splice(0, totalErrorMessages.length - 100);
+                            broadcast({
+                                type: 'progress',
+                                libraryIndex: libIdx,
+                                libraryName: lib.name,
+                                parentIndex: itemIndex + 1,
+                                parentCount: batchTotalCount,
+                                currentItem: item.Name,
+                                errors: totalErrors,
+                                totalSynced,
+                                log: `  ✗ Error: ${item.Name}: ${errMsg}`,
+                                logType: 'error'
+                            });
                         }
 
-                        updateParentCounts.run(parentId);
-                        // For music: total_released = actual album count from Jellyfin
-                        updateTotalReleased.run(albums.length, parentId);
+                        itemIndex++;
+                        // Small delay to not overwhelm Jellyfin
+                        await sleep(50);
                     }
-
-                    // Per-item success broadcast
-                    const itemElapsed = Date.now() - itemStart;
-                    itemTimes.push(itemElapsed);
-                    const libProgress = Math.round(((i + 1) / parentCount) * 100);
-                    const avgItemTime = itemTimes.reduce((a, b) => a + b, 0) / itemTimes.length;
-                    const remaining = parentCount - (i + 1);
-                    const eta = remaining > 0 ? formatDuration(Math.round(avgItemTime * remaining)) : '';
-
-                    broadcast({
-                        type: 'progress',
-                        libraryIndex: libIdx,
-                        libraryName: lib.name,
-                        parentIndex: i + 1,
-                        parentCount,
-                        currentItem: item.Name,
-                        childCount,
-                        libProgress,
-                        itemsSynced: libSynced,
-                        totalSynced,
-                        errors: totalErrors,
-                        log: `  ✓ ${item.Name}${childCount > 0 ? ` (${childCount} items)` : ''} [${formatDuration(itemElapsed)}]${eta ? ` — ETA: ${eta}` : ''}`,
-                        logType: 'success'
-                    });
-
-                } catch (e) {
-                    totalErrors++;
-                    libErrors++;
-                    const errMsg = e instanceof Error ? e.message : String(e);
-                    libErrorMessages.push(`${item.Name}: ${errMsg}`);
-                    totalErrorMessages.push(`${item.Name}: ${errMsg}`);
-                    broadcast({
-                        type: 'progress',
-                        libraryIndex: libIdx,
-                        libraryName: lib.name,
-                        parentIndex: i + 1,
-                        parentCount,
-                        currentItem: item.Name,
-                        errors: totalErrors,
-                        totalSynced,
-                        log: `  ✗ Error: ${item.Name}: ${errMsg}`,
-                        logType: 'error'
-                    });
                 }
+            );
 
-                // Small delay to not overwhelm Jellyfin
-                await sleep(50);
+            if (authError) {
+                engineState.running = false;
+                return;
             }
 
             // Library complete

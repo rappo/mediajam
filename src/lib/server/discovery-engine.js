@@ -93,13 +93,18 @@ export async function getTrendingMovies(userGenres, limit = 20, page = 1) {
             // Check if in local library
             let in_library = false;
             let library_slug = null;
+            let localWatched = false;
             try {
                 const local = db.prepare(
-                    `SELECT slug, play_count FROM media_parents WHERE tmdb_id = ? AND media_type = 'movie' LIMIT 1`
+                    `SELECT slug FROM media_parents WHERE tmdb_id = ? AND media_type = 'movie' LIMIT 1`
                 ).get(item.id);
                 if (local) {
                     in_library = true;
                     library_slug = local.slug;
+                    const watchRow = db.prepare(
+                        `SELECT 1 FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.tmdb_id = ? AND mp.media_type = 'movie' AND mc.play_count > 0 LIMIT 1`
+                    ).get(item.id);
+                    localWatched = !!watchRow;
                 }
             } catch { /* ignore */ }
 
@@ -116,7 +121,7 @@ export async function getTrendingMovies(userGenres, limit = 20, page = 1) {
                 affinity_score: affinityScore,
                 in_library,
                 library_slug,
-                watch_status: local?.play_count > 0 ? 'watched' : null,
+                watch_status: localWatched ? 'watched' : null,
             };
         });
 
@@ -157,13 +162,18 @@ export async function getTrendingShows(userGenres, limit = 20, page = 1) {
             // Check if in local library
             let in_library = false;
             let library_slug = null;
+            let localWatched = false;
             try {
                 const local = db.prepare(
-                    `SELECT slug, play_count FROM media_parents WHERE tmdb_id = ? AND media_type = 'show' LIMIT 1`
+                    `SELECT slug FROM media_parents WHERE tmdb_id = ? AND media_type = 'show' LIMIT 1`
                 ).get(item.id);
                 if (local) {
                     in_library = true;
                     library_slug = local.slug;
+                    const watchRow = db.prepare(
+                        `SELECT 1 FROM media_children mc JOIN media_parents mp ON mc.parent_id = mp.id WHERE mp.tmdb_id = ? AND mp.media_type = 'show' AND mc.play_count > 0 LIMIT 1`
+                    ).get(item.id);
+                    localWatched = !!watchRow;
                 }
             } catch { /* ignore */ }
 
@@ -180,7 +190,7 @@ export async function getTrendingShows(userGenres, limit = 20, page = 1) {
                 affinity_score: affinityScore,
                 in_library,
                 library_slug,
-                watch_status: local?.play_count > 0 ? 'watched' : null,
+                watch_status: localWatched ? 'watched' : null,
             };
         });
 
@@ -283,7 +293,8 @@ export async function getRecentlyAdded(limit = 20) {
         // 1. Local DB recently added (existing behavior)
         const rows = /** @type {any[]} */ (db.prepare(`
             SELECT mp.id, mp.title, mp.poster_url, mp.media_type, mp.slug, mp.release_year,
-                   mp.date_last_modified, mp.play_count
+                   mp.date_last_modified,
+                   (SELECT COUNT(*) FROM media_children mc WHERE mc.parent_id = mp.id AND mc.play_count > 0) as watched_count
             FROM media_parents mp
             WHERE mp.collection_status = 'collected'
             ORDER BY mp.date_last_modified DESC
@@ -298,7 +309,7 @@ export async function getRecentlyAdded(limit = 20) {
             subtitle: mp.release_year,
             media_type: mp.media_type,
             icon: mp.media_type === 'movie' ? '🎬' : mp.media_type === 'show' ? '📺' : '🎵',
-            badge: mp.play_count > 0 ? '✓ Watched' : null,
+            badge: mp.watched_count > 0 ? '✓ Watched' : null,
             date: mp.date_last_modified,
             source: null,
         }));
