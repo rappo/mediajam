@@ -51,6 +51,7 @@ export async function load({ params, locals }) {
             mp.media_type,
             mp.release_year,
             mp.poster_url,
+            mp.backdrop_url,
             mp.jellyfin_id,
             mp.tmdb_id,
             mp.imdb_id,
@@ -93,25 +94,34 @@ export async function load({ params, locals }) {
 
     // For TV shows, compute real episode stats from media_children
     // (unplayed_count from Jellyfin is unreliable — it only counts files on disk)
-    const episodeStatsStmt = db.prepare(`
-        SELECT
-            COUNT(*) as total_count,
-            SUM(CASE WHEN is_collected = 1 THEN 1 ELSE 0 END) as collected_count,
-            SUM(CASE WHEN watch_status = 'watched' THEN 1 ELSE 0 END) as watched_count,
-            SUM(CASE WHEN watch_status = 'in_progress' THEN 1 ELSE 0 END) as progress_count,
-            SUM(CASE WHEN is_collected = 0 AND (premiere_date IS NULL OR premiere_date < date('now')) THEN 1 ELSE 0 END) as missing_count,
-            SUM(CASE WHEN premiere_date > date('now') THEN 1 ELSE 0 END) as upcoming_count
-        FROM media_children WHERE parent_id = ? AND season_number > 0
-    `);
-    for (const c of credits) {
-        if (c.media_type === 'show') {
-            const stats = /** @type {any} */ (episodeStatsStmt.get(c.media_id));
-            c.total_episodes = stats?.total_count || 0;
-            c.collected_count = stats?.collected_count || 0;
-            c.watched_count = stats?.watched_count || 0;
-            c.progress_count = stats?.progress_count || 0;
-            c.missing_count = stats?.missing_count || 0;
-            c.upcoming_count = stats?.upcoming_count || 0;
+    // Batched: one GROUP BY over all show credits instead of a query per show.
+    const showIds = credits.filter(c => c.media_type === 'show').map(c => c.media_id);
+    if (showIds.length > 0) {
+        const placeholders = showIds.map(() => '?').join(',');
+        const statsRows = /** @type {any[]} */ (db.prepare(`
+            SELECT
+                parent_id,
+                COUNT(*) as total_count,
+                SUM(CASE WHEN is_collected = 1 THEN 1 ELSE 0 END) as collected_count,
+                SUM(CASE WHEN watch_status = 'watched' THEN 1 ELSE 0 END) as watched_count,
+                SUM(CASE WHEN watch_status = 'in_progress' THEN 1 ELSE 0 END) as progress_count,
+                SUM(CASE WHEN is_collected = 0 AND (premiere_date IS NULL OR premiere_date < date('now')) THEN 1 ELSE 0 END) as missing_count,
+                SUM(CASE WHEN premiere_date > date('now') THEN 1 ELSE 0 END) as upcoming_count
+            FROM media_children
+            WHERE parent_id IN (${placeholders}) AND season_number > 0
+            GROUP BY parent_id
+        `).all(...showIds));
+        const statsById = new Map(statsRows.map(r => [r.parent_id, r]));
+        for (const c of credits) {
+            if (c.media_type === 'show') {
+                const stats = statsById.get(c.media_id);
+                c.total_episodes = stats?.total_count || 0;
+                c.collected_count = stats?.collected_count || 0;
+                c.watched_count = stats?.watched_count || 0;
+                c.progress_count = stats?.progress_count || 0;
+                c.missing_count = stats?.missing_count || 0;
+                c.upcoming_count = stats?.upcoming_count || 0;
+            }
         }
     }
     const movies = credits.filter(c => c.media_type === 'movie');
@@ -160,16 +170,11 @@ export async function load({ params, locals }) {
 
     let backdropUrl = null;
 
-    // Strategy 1: Use a cached TMDB backdrop from a credit
+    // Strategy 1: Use a cached backdrop already loaded with the credits (no extra queries)
     for (const credit of creditsForBackdrop) {
-        if (credit.tmdb_id) {
-            const cached = /** @type {any} */ (db.prepare(
-                'SELECT backdrop_url FROM media_parents WHERE id = ? AND backdrop_url IS NOT NULL'
-            ).get(credit.media_id));
-            if (cached?.backdrop_url) {
-                backdropUrl = cached.backdrop_url;
-                break;
-            }
+        if (credit.backdrop_url) {
+            backdropUrl = credit.backdrop_url;
+            break;
         }
     }
 

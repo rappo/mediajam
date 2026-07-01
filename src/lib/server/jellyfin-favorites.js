@@ -23,12 +23,14 @@ export async function checkJellyfinFavorite(jellyfinId, table, localId) {
         const api = createJellyfinApi(settings.jellyfin_url, user.jellyfin_access_token);
         const itemsApi = getItemsApi(api);
 
+        // Bound the request so a slow/unreachable Jellyfin can't stall SSR — this is a
+        // non-essential refresh that already falls back to the stored value on failure.
         const res = await itemsApi.getItems({
             ids: [jellyfinId],
             userId: user.jellyfin_user_id,
             enableUserData: true,
             limit: 1
-        });
+        }, { timeout: 4000 });
 
         const item = res.data?.Items?.[0];
         if (!item) return null;

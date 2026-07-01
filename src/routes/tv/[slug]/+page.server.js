@@ -246,7 +246,8 @@ export async function load({ params }) {
             try {
                 const url = `${jellyfinUrl}/Shows/${show.jellyfin_id}/Episodes?userId=${user.jellyfin_user_id}&Fields=Overview`;
                 const res = await fetch(url, {
-                    headers: { 'X-Emby-Token': user.jellyfin_access_token }
+                    headers: { 'X-Emby-Token': user.jellyfin_access_token },
+                    signal: AbortSignal.timeout(4000),
                 });
                 if (res.ok) {
                     const data = await res.json();
