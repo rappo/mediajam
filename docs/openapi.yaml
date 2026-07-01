@@ -1358,6 +1358,41 @@ paths:
         '404':
           description: Episode not found in Sonarr
 
+  /api/arr/sonarr/season-search:
+    post:
+      tags: [Arr Integration]
+      summary: Trigger Sonarr season-level search
+      description: |
+        Searches for missing episodes in a season. If the entire season is missing,
+        sends a SeasonSearch command. If only some episodes are missing, sends an
+        EpisodeSearch command for each missing episode.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mediaParentId, seasonNumber]
+              properties:
+                mediaParentId: { type: integer, description: Local media_parents ID }
+                seasonNumber: { type: integer }
+      responses:
+        '200':
+          description: Search command sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  type: { type: string, enum: [season, episodes], description: Whether a full season search or individual episode searches were triggered }
+                  seasonNumber: { type: integer }
+                  missingCount: { type: integer, description: Number of missing episodes being searched }
+        '400':
+          description: Missing params, Sonarr not configured, not in Sonarr, or no missing episodes
+        '404':
+          description: Missing episodes not found in Sonarr
+
   # ── Spokes (Trakt & Last.fm) ────────────────────────────────────
   /api/spokes/trakt:
     get:

@@ -139,6 +139,51 @@
         setTimeout(() => epSearchDialog?.show(), 0);
     }
 
+    // ─── Season-level download search ──────────────────────────────────────────
+    /** @type {Set<number>} */
+    let seasonSearching = $state(new Set());
+    /** @type {Set<number>} */
+    let seasonSearchDone = $state(new Set());
+
+    /**
+     * Trigger a Sonarr search for all missing episodes in a season.
+     * @param {any} season
+     */
+    async function searchSeason(season) {
+        const next = new Set(seasonSearching);
+        next.add(season.number);
+        seasonSearching = next;
+        try {
+            const res = await fetch('/api/arr/sonarr/season-search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mediaParentId: data.show.id,
+                    seasonNumber: season.number,
+                }),
+            });
+            if (!res.ok) {
+                const r = await res.json();
+                throw new Error(r.error || 'Search failed');
+            }
+            const result = await res.json();
+            const done = new Set(seasonSearchDone);
+            done.add(season.number);
+            seasonSearchDone = done;
+            const label = season.number === 0 ? 'Specials' : `Season ${season.number}`;
+            if (result.type === 'season') {
+                addToast({ type: 'success', message: `Searching for ${label}`, detail: `Full season search (${result.missingCount} episodes)` });
+            } else {
+                addToast({ type: 'success', message: `Searching for ${label}`, detail: `${result.missingCount} missing episode(s)` });
+            }
+        } catch (e) {
+            addToast({ type: 'error', message: `Season search failed`, detail: e instanceof Error ? e.message : String(e) });
+        }
+        const rm = new Set(seasonSearching);
+        rm.delete(season.number);
+        seasonSearching = rm;
+    }
+
     /**
      * Get watch-status border class for rating cells
      * @param {any} ep
@@ -694,6 +739,24 @@
                                     {season.collected}/{season.total}
                                 </span>
                             </div>
+                            {#if data.show.sonarr_id && season.missing > 0}
+                                <button
+                                    class="btn btn-ghost btn-xs season-dl-btn"
+                                    title={season.collected === 0
+                                        ? `Search for entire season ${season.number}`
+                                        : `Search for ${season.missing} missing episode(s)`}
+                                    disabled={seasonSearching.has(season.number)}
+                                    onclick={() => searchSeason(season)}
+                                >
+                                    {#if seasonSearching.has(season.number)}
+                                        <span class="loading loading-spinner loading-xs"></span>
+                                    {:else if seasonSearchDone.has(season.number)}
+                                        <MdiIcon icon={mdiCheckCircle} size={14} class="text-success" />
+                                    {:else}
+                                        <MdiIcon icon={mdiDownload} size={14} class="text-base-content/50 hover:text-primary" />
+                                    {/if}
+                                </button>
+                            {/if}
                         </div>
                     {/each}
                 </div>
@@ -749,6 +812,24 @@
                                     </span>
                                 </div>
                             {/each}
+                            {#if data.show.sonarr_id && season.missing > 0}
+                                <button
+                                    class="btn btn-ghost btn-xs season-dl-btn"
+                                    title={season.collected === 0
+                                        ? `Search for entire season ${season.number}`
+                                        : `Search for ${season.missing} missing episode(s)`}
+                                    disabled={seasonSearching.has(season.number)}
+                                    onclick={() => searchSeason(season)}
+                                >
+                                    {#if seasonSearching.has(season.number)}
+                                        <span class="loading loading-spinner loading-xs"></span>
+                                    {:else if seasonSearchDone.has(season.number)}
+                                        <MdiIcon icon={mdiCheckCircle} size={14} class="text-success" />
+                                    {:else}
+                                        <MdiIcon icon={mdiDownload} size={14} class="text-base-content/50 hover:text-primary" />
+                                    {/if}
+                                </button>
+                            {/if}
                         </div>
                     {/each}
                 </div>
@@ -776,6 +857,25 @@
                                     >
                                 {/if})
                             </span>
+                            {#if data.show.sonarr_id && season.missing > 0}
+                                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                                <button
+                                    class="btn btn-ghost btn-xs ml-1 z-10 relative"
+                                    title={season.collected === 0
+                                        ? `Search for entire season ${season.number}`
+                                        : `Search for ${season.missing} missing episode(s)`}
+                                    disabled={seasonSearching.has(season.number)}
+                                    onclick={(e) => { e.stopPropagation(); searchSeason(season); }}
+                                >
+                                    {#if seasonSearching.has(season.number)}
+                                        <span class="loading loading-spinner loading-xs"></span>
+                                    {:else if seasonSearchDone.has(season.number)}
+                                        <MdiIcon icon={mdiCheckCircle} size={14} class="text-success" />
+                                    {:else}
+                                        <MdiIcon icon={mdiDownload} size={14} />
+                                    {/if}
+                                </button>
+                            {/if}
                         </div>
                         <div class="collapse-content">
                             <div class="overflow-x-auto">
@@ -1336,6 +1436,14 @@
         flex-shrink: 0;
         width: 48px;
         text-align: right;
+    }
+
+    .season-dl-btn {
+        flex-shrink: 0;
+        min-height: unset;
+        height: 24px;
+        width: 24px;
+        padding: 0;
     }
 
     .ep-rating {
