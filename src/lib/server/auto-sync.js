@@ -40,12 +40,12 @@ async function checkAndRunAutoSyncs() {
             if (identity.provider === 'trakt') {
                 console.log(`[auto-sync] Running Trakt sync for user ${identity.user_id}`);
                 await backfillTrakt(identity.user_id);
-                try { invalidatePrecomputed('movies-smart'); invalidatePrecomputed('tv-smart'); } catch { /* non-fatal */ }
+                try { invalidatePrecomputed('movies-smart'); invalidatePrecomputed('tv-smart'); invalidatePrecomputed('dashboard-ext'); } catch { /* non-fatal */ }
             } else if (identity.provider === 'lastfm') {
                 console.log(`[auto-sync] Running Last.fm sync for user ${identity.user_id}`);
                 await backfillLastfm(identity.user_id);
                 processLastfmScrobbles(identity.user_id);
-                try { invalidatePrecomputed('music-smart'); } catch { /* non-fatal */ }
+                try { invalidatePrecomputed('music-smart'); invalidatePrecomputed('dashboard-ext'); } catch { /* non-fatal */ }
             } else if (identity.provider === 'jellyfin') {
                 console.log(`[auto-sync] Running Jellyfin sync for user ${identity.user_id}`);
                 await startSync();

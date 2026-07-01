@@ -66,5 +66,7 @@ export function tmdbRequest(path, params = {}, apiKey) {
 export async function tmdbFetch(path, params = {}) {
     const req = tmdbRequest(path, params);
     if (!req) throw new Error('TMDb API key not configured');
-    return fetch(req.url, { headers: req.headers });
+    // Bound the request so a slow/unresponsive TMDb can't stall callers
+    // (e.g. the dashboard) indefinitely.
+    return fetch(req.url, { headers: req.headers, signal: AbortSignal.timeout(8000) });
 }

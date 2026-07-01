@@ -30,20 +30,38 @@
 
     async function fetchDashboard() {
         try {
-            const params = new URLSearchParams({
-                calendarDays: String(calendarDays),
-                calendarTypes: calendarTypes.join(','),
-            });
-            const res = await fetch(`/api/pages/dashboard?${params}`);
+            // Phase 1: fast local sections — paints the page immediately.
+            const res = await fetch(`/api/pages/dashboard?scope=local`);
             if (!res.ok) throw new Error('Failed to load dashboard');
             dash = await res.json();
             loading = false;
+            // Phase 2 (fire-and-forget): slow external sections (TMDB/*arr).
+            fetchExternal();
             // Fire-and-forget: fetch incoming data from arr wanted endpoint
             fetchIncoming();
         } catch (e) {
             error = e.message;
             loading = false;
         }
+    }
+
+    async function fetchExternal() {
+        try {
+            const params = new URLSearchParams({
+                scope: 'external',
+                calendarDays: String(calendarDays),
+                calendarTypes: calendarTypes.join(','),
+            });
+            const res = await fetch(`/api/pages/dashboard?${params}`);
+            if (!res.ok) return;
+            const ext = await res.json();
+            // Merge external sections in; fold *arr disk sizes into existing stats.
+            dash = {
+                ...dash,
+                ...ext,
+                stats: { ...(dash?.stats || {}), ...(ext.stats || {}) },
+            };
+        } catch { /* silent — external services may be slow or unconfigured */ }
     }
 
     async function fetchIncoming() {
@@ -59,6 +77,7 @@
         calendarTypes = settings.calendarTypes;
         try {
             const params = new URLSearchParams({
+                scope: 'external',
                 calendarDays: String(calendarDays),
                 calendarTypes: calendarTypes.join(','),
             });
