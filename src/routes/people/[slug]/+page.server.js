@@ -64,7 +64,13 @@ export async function load({ params, locals }) {
             mc.play_count
         FROM person_credits pc
         JOIN media_parents mp ON pc.media_parent_id = mp.id
-        LEFT JOIN media_children mc ON mc.parent_id = mp.id AND mc.item_number = 1
+        LEFT JOIN media_children mc ON mp.media_type != 'show' AND mc.id = (
+            SELECT id FROM media_children
+            WHERE parent_id = mp.id
+            ORDER BY CASE watch_status WHEN 'watched' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,
+                     play_count DESC, id ASC
+            LIMIT 1
+        )
         WHERE pc.person_id = ?
         ORDER BY mp.release_year DESC NULLS LAST, mp.title ASC, pc.sort_order ASC
     `).all(personId));
@@ -160,9 +166,9 @@ export async function load({ params, locals }) {
     // 4. TMDB person profile as last resort
     const creditsForBackdrop = [...movies, ...shows]
         .sort((a, b) => {
-            // Prefer watched items
-            const aWatched = (a.watch_status === 'watched' || a.play_count > 0) ? 1 : 0;
-            const bWatched = (b.watch_status === 'watched' || b.play_count > 0) ? 1 : 0;
+            // Prefer watched items (shows use episode stats; movies use child watch state)
+            const aWatched = (a.watch_status === 'watched' || a.play_count > 0 || a.watched_count > 0) ? 1 : 0;
+            const bWatched = (b.watch_status === 'watched' || b.play_count > 0 || b.watched_count > 0) ? 1 : 0;
             if (bWatched !== aWatched) return bWatched - aWatched;
             // Then by release year (newest first)
             return (b.release_year || 0) - (a.release_year || 0);

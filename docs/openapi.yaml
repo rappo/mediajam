@@ -2646,8 +2646,10 @@ paths:
           schema: { type: integer, default: 1 }
         - name: section
           in: query
-          schema: { type: string, enum: [trendingMovies, trendingShows] }
-          description: Load a specific section only (for lazy loading / pagination)
+          schema: { type: string, enum: [trendingMovies, trendingShows, upcoming] }
+          description: |
+            Load a specific section only (for lazy loading / pagination).
+            `upcoming` returns just the calendar for the given calendarDays/calendarTypes.
       responses:
         '200':
           description: Dashboard data (fields present depend on `scope`)

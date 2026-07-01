@@ -209,6 +209,11 @@ export async function GET({ url, locals }) {
         const data = await getTrendingShows(genreProfile, 20, trendingShowPage);
         return json(data);
     }
+    if (section === 'upcoming') {
+        // Calendar-only refresh (settings change) — skips the external sections
+        const upcoming = await getUpcomingDays(calendarDays, calendarTypes, timezone);
+        return json({ upcoming });
+    }
 
     // ── Scoped loads ──────────────────────────────────────────────────────────
     // scope=local    → fast SQLite sections only (paints the page immediately)

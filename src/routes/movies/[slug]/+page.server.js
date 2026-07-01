@@ -4,6 +4,8 @@ import { checkJellyfinFavorite } from '$lib/server/jellyfin-favorites.js';
 import { resolveBackdrop } from '$lib/server/backdrop.js';
 import { tmdbFetch, getTmdbKey } from '$lib/server/tmdb.js';
 import { slugify, ensureUniqueSlug, resolveSlug } from '$lib/server/slugify.js';
+import { getSimilarItems } from '$lib/server/similar-items.js';
+import { dedupCast, dedupCrew } from '$lib/server/credit-dedup.js';
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load({ params, locals }) {
@@ -70,7 +72,13 @@ export async function load({ params, locals }) {
             mp.runtime_minutes as external_runtime_minutes,
             (SELECT th.trakt_slug FROM trakt_history th WHERE th.tmdb_id = mp.tmdb_id AND th.type = 'movie' AND th.trakt_slug != '' LIMIT 1) as trakt_slug
         FROM media_parents mp
-        LEFT JOIN media_children mc ON mc.parent_id = mp.id
+        LEFT JOIN media_children mc ON mc.id = (
+            SELECT id FROM media_children
+            WHERE parent_id = mp.id
+            ORDER BY CASE watch_status WHEN 'watched' THEN 0 WHEN 'in_progress' THEN 1 ELSE 2 END,
+                     play_count DESC, id ASC
+            LIMIT 1
+        )
         WHERE mp.id = ? AND mp.media_type = 'movie'
     `).get(movieId));
 
@@ -214,17 +222,20 @@ export async function load({ params, locals }) {
         ? `${jellyfinUrl}/Items/${movie.jellyfin_id}/Images/Primary?maxHeight=400`
         : movie.poster_url;
 
+    // Independent async work: Jellyfin favorite check, TMDB backdrop resolve
+    // (await so it shows on first visit), and similar-items recommendations
+    const [liveFavorite, resolvedBackdrop, similar] = await Promise.all([
+        checkJellyfinFavorite(movie.jellyfin_id, 'media_parents', movie.id),
+        (!movie.backdrop_url && movie.tmdb_id)
+            ? resolveBackdrop(movieId).catch(() => null)
+            : Promise.resolve(null),
+        getSimilarItems(movie.tmdb_id, 'movie', jellyfinUrl),
+    ]);
+
     // Backdrop: prefer TMDB textless backdrop (cached in DB), fallback to Jellyfin
-    let backdropUrl = movie.backdrop_url;
+    let backdropUrl = movie.backdrop_url || resolvedBackdrop;
     if (!backdropUrl && movie.jellyfin_id) {
         backdropUrl = `${jellyfinUrl}/Items/${movie.jellyfin_id}/Images/Backdrop?maxWidth=1200`;
-    }
-    // Fetch TMDB backdrop if not yet cached (await so it shows on first visit)
-    if (!movie.backdrop_url && movie.tmdb_id) {
-        try {
-            const resolved = await resolveBackdrop(movieId);
-            if (resolved) backdropUrl = resolved;
-        } catch { /* non-fatal */ }
     }
 
     // Cast & Crew
@@ -237,29 +248,7 @@ export async function load({ params, locals }) {
         ORDER BY pc.sort_order ASC
     `).all(movieId));
 
-    // Deduplicate cast by name (same actor may exist as separate person rows
-    // from Jellyfin vs TMDB syncs, so p.id alone isn't enough)
-    const castMap = new Map();
-    for (const c of castRaw) {
-        const key = c.name.toLowerCase();
-        const existing = castMap.get(key);
-        if (existing) {
-            // Keep the better character name (non-empty, non-duplicate)
-            if (c.character_name && !existing.character_name) {
-                existing.character_name = c.character_name;
-            }
-            // Keep the lower sort_order (higher billing)
-            if (c.sort_order < existing.sort_order) {
-                existing.sort_order = c.sort_order;
-            }
-            // Prefer entry with photo and tmdb_person_id
-            if (c.photo_url && !existing.photo_url) existing.photo_url = c.photo_url;
-            if (c.tmdb_person_id && !existing.tmdb_person_id) existing.tmdb_person_id = c.tmdb_person_id;
-        } else {
-            castMap.set(key, { ...c });
-        }
-    }
-    const cast = [...castMap.values()].sort((a, b) => a.sort_order - b.sort_order);
+    const cast = dedupCast(castRaw);
 
     const crewRaw = /** @type {any[]} */ (db.prepare(`
         SELECT p.id, p.name, p.photo_url, p.tmdb_person_id,
@@ -270,32 +259,15 @@ export async function load({ params, locals }) {
         ORDER BY pc.sort_order ASC
     `).all(movieId));
 
-    // Combine crew members with multiple roles (e.g. "Director, Writer")
-    // Keyed by name to catch duplicate person rows
-    const crewMap = new Map();
-    for (const c of crewRaw) {
-        const key = c.name.toLowerCase();
-        const existing = crewMap.get(key);
-        if (existing) {
-            if (!existing.role_type.includes(c.role_type)) {
-                existing.role_type += ', ' + c.role_type;
-            }
-            if (c.photo_url && !existing.photo_url) existing.photo_url = c.photo_url;
-            if (c.tmdb_person_id && !existing.tmdb_person_id) existing.tmdb_person_id = c.tmdb_person_id;
-        } else {
-            crewMap.set(key, { ...c });
-        }
-    }
-    const crew = [...crewMap.values()];
+    // Combine crew members with multiple roles (e.g. "Director, Writer"),
+    // keyed by name to catch duplicate person rows
+    const crew = dedupCrew(crewRaw);
 
     // External ratings
     const externalRatings = /** @type {any[]} */ (db.prepare(`
         SELECT source, rating_type, value, vote_count, raw_value, fetched_at
         FROM external_ratings WHERE media_parent_id = ? ORDER BY source
     `).all(movieId));
-
-    // Live Jellyfin favorite check
-    const liveFavorite = await checkJellyfinFavorite(movie.jellyfin_id, 'media_parents', movie.id);
 
     // Runtime: prefer local (from file) over external (from TMDB)
     const runtime_minutes = movie.local_runtime_minutes || movie.external_runtime_minutes || null;
@@ -305,112 +277,6 @@ export async function load({ params, locals }) {
     const inWatchlist = !!db.prepare(
         'SELECT 1 FROM watchlist WHERE user_id = ? AND media_parent_id = ?'
     ).get(userId, movieId);
-
-    // ── Similar Items (TMDB Recommendations) ─────────────────────────────────
-    /** @type {any[]} */
-    let similarInLibrary = [];
-    /** @type {any[]} */
-    let similarYouMightLike = [];
-
-    if (movie.tmdb_id && getTmdbKey()) {
-        try {
-            const res = await tmdbFetch(`/movie/${movie.tmdb_id}/recommendations`);
-            if (res.ok) {
-                const data = await res.json();
-                const recs = (data.results || []).slice(0, 20);
-
-                // Batch lookup: which tmdb_ids are in our library?
-                if (recs.length > 0) {
-                    // IMPORTANT: tmdb_id is stored as TEXT — must convert to strings for IN match
-                    const tmdbIds = recs.map(/** @param {any} r */ (r) => String(r.id));
-                    const placeholders = tmdbIds.map(() => '?').join(',');
-                    const inLib = /** @type {any[]} */ (db.prepare(
-                        `SELECT id, slug, tmdb_id, title, poster_url, release_year, jellyfin_id, collection_status, arr_has_file
-                         FROM media_parents
-                         WHERE tmdb_id IN (${placeholders}) AND media_type = 'movie'`
-                    ).all(...tmdbIds));
-
-                    const libByTmdb = new Map(inLib.map(m => [String(m.tmdb_id), m]));
-
-                    // Prepared statements for stub check/create (partial unique index doesn't support ON CONFLICT)
-                    const findStub = db.prepare(`SELECT id, poster_url FROM media_parents WHERE tmdb_id = ? AND media_type = 'movie'`);
-                    const insertStub = db.prepare(`
-                        INSERT INTO media_parents (tmdb_id, title, media_type, release_year, poster_url, overview, collection_status)
-                        VALUES (@tmdbId, @title, 'movie', @releaseYear, @posterUrl, @overview, 'external')
-                    `);
-                    const updateStub = db.prepare(`
-                        UPDATE media_parents SET
-                            title = COALESCE(@title, title),
-                            release_year = COALESCE(@releaseYear, release_year),
-                            poster_url = COALESCE(@posterUrl, poster_url),
-                            overview = COALESCE(@overview, overview)
-                        WHERE tmdb_id = @tmdbId AND media_type = 'movie'
-                    `);
-
-                    for (const rec of recs) {
-                        const localMatch = libByTmdb.get(String(rec.id));
-                        if (localMatch) {
-                            const pUrl = localMatch.jellyfin_id
-                                ? `${jellyfinUrl}/Items/${localMatch.jellyfin_id}/Images/Primary?maxHeight=400`
-                                : localMatch.poster_url;
-                            const item = {
-                                href: `/movies/${localMatch.slug || localMatch.id}`,
-                                poster_url: pUrl,
-                                title: localMatch.title,
-                                subtitle: localMatch.release_year ? String(localMatch.release_year) : '',
-                            };
-                            // Engaged = jellyfin_id, wanted, or arr_has_file
-                            if (localMatch.jellyfin_id || localMatch.collection_status === 'wanted' || localMatch.arr_has_file === 1) {
-                                similarInLibrary.push(item);
-                            } else {
-                                similarYouMightLike.push(item);
-                            }
-                        } else {
-                            // Create or update a local stub so the item is browsable
-                            const posterUrl = rec.poster_path
-                                ? `https://image.tmdb.org/t/p/w300${rec.poster_path}`
-                                : null;
-                            try {
-                                const stubParams = {
-                                    tmdbId: String(rec.id),
-                                    title: rec.title || rec.original_title || 'Unknown',
-                                    releaseYear: rec.release_date ? parseInt(rec.release_date.slice(0, 4)) : null,
-                                    posterUrl,
-                                    overview: rec.overview || null,
-                                };
-                                let existing = /** @type {any} */ (findStub.get(stubParams.tmdbId));
-                                if (existing) {
-                                    updateStub.run(stubParams);
-                                } else {
-                                    insertStub.run(stubParams);
-                                    existing = /** @type {any} */ (findStub.get(stubParams.tmdbId));
-                                }
-                                if (existing) {
-                                    similarYouMightLike.push({
-                                        href: `/movies/${existing.slug || existing.id}`,
-                                        poster_url: existing.poster_url || posterUrl,
-                                        title: stubParams.title,
-                                        subtitle: rec.release_date ? rec.release_date.slice(0, 4) : '',
-                                    });
-                                }
-                            } catch {
-                                // If stub creation fails, still show with TMDB poster
-                                similarYouMightLike.push({
-                                    href: `https://www.themoviedb.org/movie/${rec.id}`,
-                                    poster_url: posterUrl,
-                                    title: rec.title || rec.original_title || 'Unknown',
-                                    subtitle: rec.release_date ? rec.release_date.slice(0, 4) : '',
-                                    external: true,
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (e) {
-            console.warn('[similar] Failed to fetch TMDB recommendations:', e instanceof Error ? e.message : e);
-        }
-    }
 
     return {
         movie: {
@@ -439,7 +305,7 @@ export async function load({ params, locals }) {
         arrUrl: (settings?.radarr_external_url || settings?.radarr_url || '').replace(/\/+$/, ''),
         arrService: 'radarr',
         inWatchlist,
-        similarInLibrary,
-        similarYouMightLike,
+        similarInLibrary: similar.similarInLibrary,
+        similarYouMightLike: similar.similarYouMightLike,
     };
 }

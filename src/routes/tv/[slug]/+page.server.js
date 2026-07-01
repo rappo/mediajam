@@ -4,6 +4,8 @@ import { checkJellyfinFavorite } from '$lib/server/jellyfin-favorites.js';
 import { resolveBackdrop } from '$lib/server/backdrop.js';
 import { tmdbFetch, getTmdbKey } from '$lib/server/tmdb.js';
 import { slugify, ensureUniqueSlug, resolveSlug } from '$lib/server/slugify.js';
+import { getSimilarItems } from '$lib/server/similar-items.js';
+import { dedupCast, dedupCrew } from '$lib/server/credit-dedup.js';
 
 export async function load({ params }) {
     const paramSlug = params.slug;
@@ -268,10 +270,11 @@ export async function load({ params }) {
     }
 
     // ── Dedup: remove duplicate episodes with same season/episode number ──────
-    // Case 1: TMDB-only row (no jellyfin_id) + Jellyfin row → keep Jellyfin row
-    // Case 2: Two Jellyfin rows (both have jellyfin_id), one collected + one missing → keep collected
-    const tmdbDuplicates = /** @type {any[]} */ (db.prepare(`
-        SELECT mc1.id AS orphan_id, mc2.id AS keeper_id
+    // Case 1 (is_tmdb=1): TMDB-only row (no jellyfin_id) + Jellyfin row → keep Jellyfin row
+    // Case 2 (is_tmdb=0): Two Jellyfin rows, one collected + one missing → keep collected
+    const allDuplicates = /** @type {any[]} */ (db.prepare(`
+        SELECT mc1.id AS orphan_id, mc2.id AS keeper_id,
+               (mc1.jellyfin_id IS NULL) AS is_tmdb
         FROM media_children mc1
         JOIN media_children mc2
             ON mc1.parent_id = mc2.parent_id
@@ -279,26 +282,12 @@ export async function load({ params }) {
             AND mc1.item_number = mc2.item_number
             AND mc1.id != mc2.id
         WHERE mc1.parent_id = ?
-            AND mc1.jellyfin_id IS NULL
             AND mc2.jellyfin_id IS NOT NULL
+            AND (
+                mc1.jellyfin_id IS NULL
+                OR (mc1.is_collected = 0 AND mc2.is_collected = 1)
+            )
     `).all(showId));
-
-    const jellyfinDuplicates = /** @type {any[]} */ (db.prepare(`
-        SELECT mc1.id AS orphan_id, mc2.id AS keeper_id
-        FROM media_children mc1
-        JOIN media_children mc2
-            ON mc1.parent_id = mc2.parent_id
-            AND mc1.season_number = mc2.season_number
-            AND mc1.item_number = mc2.item_number
-            AND mc1.id != mc2.id
-        WHERE mc1.parent_id = ?
-            AND mc1.jellyfin_id IS NOT NULL
-            AND mc2.jellyfin_id IS NOT NULL
-            AND mc1.is_collected = 0
-            AND mc2.is_collected = 1
-    `).all(showId));
-
-    const allDuplicates = [...tmdbDuplicates, ...jellyfinDuplicates];
 
     if (allDuplicates.length > 0) {
         db.transaction(() => {
@@ -317,7 +306,8 @@ export async function load({ params }) {
                 db.prepare('DELETE FROM media_children WHERE id = ?').run(dup.orphan_id);
             }
         })();
-        console.log(`[tv] Deduped ${allDuplicates.length} duplicate episodes for show ${showId} (${tmdbDuplicates.length} TMDB + ${jellyfinDuplicates.length} Jellyfin virtual)`);
+        const tmdbCount = allDuplicates.filter(d => d.is_tmdb).length;
+        console.log(`[tv] Deduped ${allDuplicates.length} duplicate episodes for show ${showId} (${tmdbCount} TMDB + ${allDuplicates.length - tmdbCount} Jellyfin virtual)`);
     }
 
     const episodes = /** @type {any[]} */ (db.prepare(`
@@ -387,7 +377,7 @@ export async function load({ params }) {
     const totalUpcoming = filteredEpisodes.filter(e => e.is_collected === 0 && e.premiere_date && e.premiere_date > now).length;
 
     // Cast & Crew
-    const cast = /** @type {any[]} */ (db.prepare(`
+    const castRaw = /** @type {any[]} */ (db.prepare(`
         SELECT p.id, p.name, p.photo_url, p.tmdb_person_id,
                pc.role_type,
                GROUP_CONCAT(DISTINCT pc.character_name) as character_name,
@@ -399,6 +389,10 @@ export async function load({ params }) {
         ORDER BY sort_order ASC
     `).all(showId));
 
+    // Merge duplicate person rows by name (same actor may exist twice
+    // from Jellyfin vs TMDB syncs, so p.id alone isn't enough)
+    const cast = dedupCast(castRaw);
+
     const crewRaw = /** @type {any[]} */ (db.prepare(`
         SELECT p.id, p.name, p.photo_url, p.tmdb_person_id,
                pc.role_type, pc.character_name, pc.sort_order
@@ -408,19 +402,9 @@ export async function load({ params }) {
         ORDER BY pc.sort_order ASC
     `).all(showId));
 
-    // Combine crew members with multiple roles (e.g. "Director, Writer")
-    const crewMap = new Map();
-    for (const c of crewRaw) {
-        const existing = crewMap.get(c.id);
-        if (existing) {
-            if (!existing.role_type.includes(c.role_type)) {
-                existing.role_type += ', ' + c.role_type;
-            }
-        } else {
-            crewMap.set(c.id, { ...c });
-        }
-    }
-    const crew = [...crewMap.values()];
+    // Combine crew members with multiple roles (e.g. "Director, Writer"),
+    // keyed by name to catch duplicate person rows
+    const crew = dedupCrew(crewRaw);
 
     // External ratings
     const externalRatings = /** @type {any[]} */ (db.prepare(`
@@ -428,131 +412,26 @@ export async function load({ params }) {
         FROM external_ratings WHERE media_parent_id = ? ORDER BY source
     `).all(showId));
 
-    // Live Jellyfin favorite check
-    const liveFavorite = await checkJellyfinFavorite(show.jellyfin_id, 'media_parents', show.id);
+    // Independent async work: Jellyfin favorite check, TMDB backdrop resolve
+    // (await so it shows on first visit), and similar-items recommendations
+    const [liveFavorite, resolvedBackdrop, similar] = await Promise.all([
+        checkJellyfinFavorite(show.jellyfin_id, 'media_parents', show.id),
+        (!show.backdrop_url && show.tmdb_id)
+            ? resolveBackdrop(showId).catch(() => null)
+            : Promise.resolve(null),
+        getSimilarItems(show.tmdb_id, 'show', jellyfinUrl),
+    ]);
 
     // Backdrop: prefer TMDB textless backdrop (cached in DB), fallback to Jellyfin
-    let backdropUrl = show.backdrop_url;
+    let backdropUrl = show.backdrop_url || resolvedBackdrop;
     if (!backdropUrl && show.jellyfin_id) {
         backdropUrl = `${jellyfinUrl}/Items/${show.jellyfin_id}/Images/Backdrop?maxWidth=1200`;
-    }
-    // Fetch TMDB backdrop if not yet cached (await so it shows on first visit)
-    if (!show.backdrop_url && show.tmdb_id) {
-        try {
-            const resolved = await resolveBackdrop(showId);
-            if (resolved) backdropUrl = resolved;
-        } catch { /* non-fatal */ }
     }
 
     // Poster URL from Jellyfin if available
     const posterUrl = show.jellyfin_id
         ? `${jellyfinUrl}/Items/${show.jellyfin_id}/Images/Primary?maxHeight=400`
         : show.poster_url;
-
-    // ── Similar Items (TMDB Recommendations) ─────────────────────────────────
-    /** @type {any[]} */
-    let similarInLibrary = [];
-    /** @type {any[]} */
-    let similarYouMightLike = [];
-
-    if (show.tmdb_id && getTmdbKey()) {
-        try {
-            const res = await tmdbFetch(`/tv/${show.tmdb_id}/recommendations`);
-            if (res.ok) {
-                const data = await res.json();
-                const recs = (data.results || []).slice(0, 20);
-
-                if (recs.length > 0) {
-                    // IMPORTANT: tmdb_id is stored as TEXT — must convert to strings for IN match
-                    const tmdbIds = recs.map(/** @param {any} r */ (r) => String(r.id));
-                    const placeholders = tmdbIds.map(() => '?').join(',');
-                    const inLib = /** @type {any[]} */ (db.prepare(
-                        `SELECT id, slug, tmdb_id, title, poster_url, release_year, jellyfin_id, collection_status, arr_has_file
-                         FROM media_parents
-                         WHERE tmdb_id IN (${placeholders}) AND media_type = 'show'`
-                    ).all(...tmdbIds));
-
-                    const libByTmdb = new Map(inLib.map(m => [String(m.tmdb_id), m]));
-
-                    // Prepared statements for stub check/create (partial unique index doesn't support ON CONFLICT)
-                    const findStub = db.prepare(`SELECT id, poster_url FROM media_parents WHERE tmdb_id = ? AND media_type = 'show'`);
-                    const insertStub = db.prepare(`
-                        INSERT INTO media_parents (tmdb_id, title, media_type, release_year, poster_url, overview, collection_status)
-                        VALUES (@tmdbId, @title, 'show', @releaseYear, @posterUrl, @overview, 'external')
-                    `);
-                    const updateStub = db.prepare(`
-                        UPDATE media_parents SET
-                            title = COALESCE(@title, title),
-                            release_year = COALESCE(@releaseYear, release_year),
-                            poster_url = COALESCE(@posterUrl, poster_url),
-                            overview = COALESCE(@overview, overview)
-                        WHERE tmdb_id = @tmdbId AND media_type = 'show'
-                    `);
-
-                    for (const rec of recs) {
-                        const localMatch = libByTmdb.get(String(rec.id));
-                        if (localMatch) {
-                            const pUrl = localMatch.jellyfin_id
-                                ? `${jellyfinUrl}/Items/${localMatch.jellyfin_id}/Images/Primary?maxHeight=400`
-                                : localMatch.poster_url;
-                            const item = {
-                                href: `/tv/${localMatch.slug || localMatch.id}`,
-                                poster_url: pUrl,
-                                title: localMatch.title,
-                                subtitle: localMatch.release_year ? String(localMatch.release_year) : '',
-                            };
-                            // Engaged = jellyfin_id, wanted, or arr_has_file
-                            if (localMatch.jellyfin_id || localMatch.collection_status === 'wanted' || localMatch.arr_has_file === 1) {
-                                similarInLibrary.push(item);
-                            } else {
-                                similarYouMightLike.push(item);
-                            }
-                        } else {
-                            // Create or update a local stub so the item is browsable
-                            const posterUrl = rec.poster_path
-                                ? `https://image.tmdb.org/t/p/w300${rec.poster_path}`
-                                : null;
-                            try {
-                                const stubParams = {
-                                    tmdbId: String(rec.id),
-                                    title: rec.name || rec.original_name || 'Unknown',
-                                    releaseYear: rec.first_air_date ? parseInt(rec.first_air_date.slice(0, 4)) : null,
-                                    posterUrl,
-                                    overview: rec.overview || null,
-                                };
-                                let existing = /** @type {any} */ (findStub.get(stubParams.tmdbId));
-                                if (existing) {
-                                    updateStub.run(stubParams);
-                                } else {
-                                    insertStub.run(stubParams);
-                                    existing = /** @type {any} */ (findStub.get(stubParams.tmdbId));
-                                }
-                                if (existing) {
-                                    similarYouMightLike.push({
-                                        href: `/tv/${existing.slug || existing.id}`,
-                                        poster_url: existing.poster_url || posterUrl,
-                                        title: stubParams.title,
-                                        subtitle: rec.first_air_date ? rec.first_air_date.slice(0, 4) : '',
-                                    });
-                                }
-                            } catch {
-                                // If stub creation fails, still show with TMDB poster
-                                similarYouMightLike.push({
-                                    href: `https://www.themoviedb.org/tv/${rec.id}`,
-                                    poster_url: posterUrl,
-                                    title: rec.name || rec.original_name || 'Unknown',
-                                    subtitle: rec.first_air_date ? rec.first_air_date.slice(0, 4) : '',
-                                    external: true,
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (e) {
-            console.warn('[similar] Failed to fetch TMDB TV recommendations:', e instanceof Error ? e.message : e);
-        }
-    }
 
     return {
         show: {
@@ -577,7 +456,7 @@ export async function load({ params }) {
         cast,
         crew,
         externalRatings,
-        similarInLibrary,
-        similarYouMightLike,
+        similarInLibrary: similar.similarInLibrary,
+        similarYouMightLike: similar.similarYouMightLike,
     };
 }

@@ -29,6 +29,8 @@
     let loadingMoreShows = $state(false);
 
     async function fetchDashboard() {
+        loading = true;
+        error = null;
         try {
             // Phase 1: fast local sections — paints the page immediately.
             const res = await fetch(`/api/pages/dashboard?scope=local`);
@@ -45,7 +47,12 @@
         }
     }
 
+    // Bumped whenever the user changes calendar settings, so an in-flight
+    // external load can't clobber the calendar with stale settings.
+    let calendarVersion = 0;
+
     async function fetchExternal() {
+        const versionAtStart = calendarVersion;
         try {
             const params = new URLSearchParams({
                 scope: 'external',
@@ -56,9 +63,12 @@
             if (!res.ok) return;
             const ext = await res.json();
             // Merge external sections in; fold *arr disk sizes into existing stats.
+            // If calendar settings changed while this was in flight, keep the newer calendar.
+            const staleCalendar = versionAtStart !== calendarVersion && dash?.upcoming;
             dash = {
                 ...dash,
                 ...ext,
+                ...(staleCalendar ? { upcoming: dash.upcoming } : {}),
                 stats: { ...(dash?.stats || {}), ...(ext.stats || {}) },
             };
         } catch { /* silent — external services may be slow or unconfigured */ }
@@ -75,9 +85,10 @@
     async function refreshCalendar(settings) {
         calendarDays = settings.calendarDays;
         calendarTypes = settings.calendarTypes;
+        calendarVersion++;
         try {
             const params = new URLSearchParams({
-                scope: 'external',
+                section: 'upcoming',
                 calendarDays: String(calendarDays),
                 calendarTypes: calendarTypes.join(','),
             });
@@ -380,13 +391,13 @@
         }))
     );
 
-    // Hero card: rotate through watchlist every 60s
+    // Hero card: rotate through watchlist every 60s.
+    // The progress bar is a CSS animation restarted via {#key heroCycle}
+    // (no JS ticker) — heroCycle bumps on every rotation or manual nav.
     let heroIndex = $state(0);
-    let heroProgress = $state(0);
+    let heroCycle = $state(0);
     let heroInterval = null;
-    let heroProgressInterval = null;
     const HERO_ROTATE_MS = 60000;
-    const HERO_TICK_MS = 100;
 
     let hero = $derived.by(() => {
         const wl = dash?.watchlist;
@@ -401,22 +412,18 @@
 
     function startHeroRotation() {
         stopHeroRotation();
-        heroProgress = 0;
-        heroProgressInterval = setInterval(() => {
-            heroProgress = Math.min(heroProgress + (HERO_TICK_MS / HERO_ROTATE_MS) * 100, 100);
-        }, HERO_TICK_MS);
+        heroCycle++;
         heroInterval = setInterval(() => {
             const wl = dash?.watchlist;
             if (wl && wl.length > 1) {
                 heroIndex = (heroIndex + 1) % wl.length;
             }
-            heroProgress = 0;
+            heroCycle++;
         }, HERO_ROTATE_MS);
     }
 
     function stopHeroRotation() {
         if (heroInterval) { clearInterval(heroInterval); heroInterval = null; }
-        if (heroProgressInterval) { clearInterval(heroProgressInterval); heroProgressInterval = null; }
     }
 
     function heroNext() {
@@ -481,7 +488,9 @@
                     <div class="dash-hero-overlay">
                         <span class="dash-hero-badge">
                             FROM YOUR WATCHLIST
-                            <span class="dash-hero-badge-progress" style="width: {heroProgress}%"></span>
+                            {#key heroCycle}
+                                <span class="dash-hero-badge-progress" style="animation-duration: {HERO_ROTATE_MS}ms"></span>
+                            {/key}
                         </span>
                         <h2 class="dash-hero-title">{hero.title}</h2>
                         <p class="dash-hero-year">{hero.release_year || ''}</p>
@@ -515,7 +524,7 @@
             <div class="stat-cell">
                 <div class="stat-cell-top">
                     <MdiIcon icon={mdiHexagonOutline} size={13} class="stat-cell-icon" style="color: oklch(var(--color-movies) / 0.5)" />
-                    <span class="stat-cell-value" style="color: oklch(var(--color-movies) / 0.5)">{dash.stats?.movieGB >= 1000 ? (dash.stats.movieGB / 1024).toFixed(1) + ' TB' : (dash.stats?.movieGB || 0).toLocaleString() + ' GB'}</span>
+                    <span class="stat-cell-value" style="color: oklch(var(--color-movies) / 0.5)">{dash.stats?.movieGB >= 1024 ? (dash.stats.movieGB / 1024).toFixed(1) + ' TB' : (dash.stats?.movieGB || 0).toLocaleString() + ' GB'}</span>
                 </div>
                 <span class="stat-cell-label">Movie Size</span>
             </div>
@@ -548,7 +557,7 @@
             <div class="stat-cell">
                 <div class="stat-cell-top">
                     <MdiIcon icon={mdiHexagonOutline} size={13} class="stat-cell-icon" style="color: oklch(var(--color-tv) / 0.5)" />
-                    <span class="stat-cell-value" style="color: oklch(var(--color-tv) / 0.5)">{dash.stats?.showGB >= 1000 ? (dash.stats.showGB / 1024).toFixed(1) + ' TB' : (dash.stats?.showGB || 0).toLocaleString() + ' GB'}</span>
+                    <span class="stat-cell-value" style="color: oklch(var(--color-tv) / 0.5)">{dash.stats?.showGB >= 1024 ? (dash.stats.showGB / 1024).toFixed(1) + ' TB' : (dash.stats?.showGB || 0).toLocaleString() + ' GB'}</span>
                 </div>
                 <span class="stat-cell-label">TV Size</span>
             </div>
@@ -572,7 +581,7 @@
             <div class="stat-cell">
                 <div class="stat-cell-top">
                     <MdiIcon icon={mdiHexagonOutline} size={13} class="stat-cell-icon" style="color: oklch(var(--color-music) / 0.5)" />
-                    <span class="stat-cell-value" style="color: oklch(var(--color-music) / 0.5)">{dash.stats?.musicGB >= 1000 ? (dash.stats.musicGB / 1024).toFixed(1) + ' TB' : (dash.stats?.musicGB || 0).toLocaleString() + ' GB'}</span>
+                    <span class="stat-cell-value" style="color: oklch(var(--color-music) / 0.5)">{dash.stats?.musicGB >= 1024 ? (dash.stats.musicGB / 1024).toFixed(1) + ' TB' : (dash.stats?.musicGB || 0).toLocaleString() + ' GB'}</span>
                 </div>
                 <span class="stat-cell-label">Music Size</span>
             </div>
@@ -919,7 +928,11 @@
         background: rgba(255,255,255,0.45);
         box-shadow: 0 0 4px rgba(255,255,255,0.2);
         border-radius: 0 999px 999px 0;
-        transition: width 0.1s linear;
+        animation: hero-progress linear forwards;
+    }
+    @keyframes hero-progress {
+        from { width: 0; }
+        to { width: 100%; }
     }
     .dash-hero-title {
         font-size: 1.5rem;
