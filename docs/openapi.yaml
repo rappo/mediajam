@@ -2611,14 +2611,29 @@ paths:
       tags: [Page Data]
       summary: Dashboard page data
       description: |
-        Returns all data needed to render the dashboard: greeting, stats, watchlist,
+        Returns data needed to render the dashboard: greeting, stats, watchlist,
         upcoming calendar, trending movies/shows, recommendations, actor deep dive,
-        hot albums, and recently added items. Supports lazy-loading individual sections.
+        recently played/new albums, recently watched movies/TV, and recently added items.
+
+        The response is split into fast local sections (SQLite) and slow external
+        sections (TMDB trending/recommendations and *arr sizes/imports). External
+        sections are served from a precomputed cache with stale-while-revalidate.
+        Use the `scope` parameter to fetch each half independently for a fast initial
+        paint; omit it to receive the full combined payload. Also supports lazy-loading
+        individual sections via `section`.
       parameters:
+        - name: scope
+          in: query
+          schema: { type: string, enum: [local, external] }
+          description: |
+            Which half of the dashboard to return. `local` = fast SQLite sections
+            (greeting, stats counts, watchlist, actorDeepDive, albums, recently watched).
+            `external` = cached TMDB/*arr sections plus the live `upcoming` calendar and
+            *arr disk sizes (returned under `stats`). Omit for the full combined payload.
         - name: calendarDays
           in: query
           schema: { type: integer, default: 7 }
-          description: Number of days for upcoming calendar
+          description: Number of days for upcoming calendar (external/full scope)
         - name: calendarTypes
           in: query
           schema: { type: string }
@@ -2635,7 +2650,7 @@ paths:
           description: Load a specific section only (for lazy loading / pagination)
       responses:
         '200':
-          description: Dashboard data
+          description: Dashboard data (fields present depend on `scope`)
           content:
             application/json:
               schema:
@@ -2644,12 +2659,15 @@ paths:
                   greeting: { type: string }
                   stats: { type: object }
                   watchlist: { type: array, items: { type: object } }
+                  actorDeepDive: { type: object, nullable: true }
+                  newAlbums: { type: array, items: { type: object } }
+                  recentlyPlayedAlbums: { type: array, items: { type: object } }
+                  recentlyWatchedMovies: { type: array, items: { type: object } }
+                  recentlyWatchedTV: { type: array, items: { type: object } }
                   upcoming: { type: array, items: { type: object } }
                   trendingMovies: { type: object }
                   trendingShows: { type: object }
-                  recommended: { type: object }
-                  actorDeepDive: { type: object, nullable: true }
-                  hotAlbums: { type: array, items: { type: object } }
+                  recommended: { type: array, items: { type: object } }
                   recentlyAdded: { type: array, items: { type: object } }
 
   /api/pages/calendar-month:
