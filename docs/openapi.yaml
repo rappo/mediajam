@@ -2140,18 +2140,40 @@ paths:
   /api/search/external:
     get:
       tags: [Search]
-      summary: Search TMDB for external media
+      summary: Search external sources (TMDb + MusicBrainz) for media
+      description: |
+        Searches TMDb (movies/TV) and MusicBrainz (artists) for content that may not be in the
+        library. Each result is cross-referenced against the local library, so it carries
+        `media_parent_id`, `in_library`, `library_status`, and `arr_monitored`. When
+        `media_parent_id` is set the item already exists locally and can be added to *arr
+        directly; otherwise it must be materialised first (e.g. via POST /api/discover/add).
       parameters:
         - name: q
           in: query
           required: true
           schema: { type: string }
+          description: Search query (min 2 characters)
         - name: type
           in: query
-          schema: { type: string, enum: [movie, tv] }
+          schema: { type: string, enum: [all, movie, tv, music], default: all }
       responses:
         '200':
-          description: TMDB search results
+          description: External search results with local-library status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  movies:
+                    type: array
+                    items: { $ref: '#/components/schemas/ExternalSearchResult' }
+                  shows:
+                    type: array
+                    items: { $ref: '#/components/schemas/ExternalSearchResult' }
+                  artists:
+                    type: array
+                    items: { $ref: '#/components/schemas/ExternalSearchResult' }
+                  totalCount: { type: integer }
 
   /api/search/external/stub:
     post:
@@ -2835,6 +2857,35 @@ components:
       type: object
       properties:
         error: { type: string }
+
+    ExternalSearchResult:
+      type: object
+      description: An external (TMDb/MusicBrainz) search hit, annotated with local-library status.
+      properties:
+        type: { type: string, enum: [movie, show, artist] }
+        tmdb_id: { type: string, nullable: true, description: Present for movie/show }
+        musicbrainz_id: { type: string, nullable: true, description: Present for artist }
+        title: { type: string }
+        release_year: { type: string, nullable: true }
+        poster_url: { type: string, nullable: true }
+        overview: { type: string }
+        disambiguation: { type: string, nullable: true, description: Artist only }
+        country: { type: string, nullable: true, description: Artist only }
+        media_parent_id:
+          type: integer
+          nullable: true
+          description: Local media_parents id if the item already exists, else null.
+        in_library:
+          type: boolean
+          description: True if downloaded (jellyfin_id) or collection_status is 'collected'.
+        library_status:
+          type: string
+          nullable: true
+          enum: [collected, wanted, discovered, external, watched_not_owned]
+          description: media_parents.collection_status, or null if not a local row.
+        arr_monitored:
+          type: boolean
+          description: True if monitored in a *arr service or linked to one.
 
     SessionUser:
       type: object

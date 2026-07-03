@@ -48,6 +48,7 @@ import { get, post, put } from './api.js';
 // ── Tool modules ──────────────────────────────────────────────────
 import * as askModule from './tools/ask.js';
 import * as searchModule from './tools/search.js';
+import * as searchMediaModule from './tools/search-media.js';
 import * as libraryModule from './tools/library.js';
 import * as collectionsModule from './tools/collections.js';
 import * as calendarModule from './tools/calendar.js';
@@ -58,6 +59,7 @@ import * as discoverModule from './tools/discover.js';
 const modules = [
   askModule,
   searchModule,
+  searchMediaModule,
   libraryModule,
   collectionsModule,
   calendarModule,
