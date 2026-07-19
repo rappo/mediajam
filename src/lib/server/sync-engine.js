@@ -4,6 +4,7 @@ import { logError, logInfo, logWarn } from '$lib/server/logger.js';
 import { logActivity } from '$lib/server/activity-log.js';
 import { slugify, ensureUniqueSlug, episodeSlug } from '$lib/server/slugify.js';
 import { migrateRatings } from '$lib/server/ratings-engine.js';
+import { detachFromJellyfin } from '$lib/server/jellyfin-detach.js';
 
 /** @type {Set<(data: any) => void>} */
 const listeners = new Set();
@@ -632,10 +633,18 @@ export async function startSync(libraryId = null, force = false) {
             const itemTimes = []; // sliding window for ETA calculation
             let itemIndex = 0; // tracks position across batches
 
+            // Every Jellyfin id seen this pass — used after the library completes
+            // to detach DB rows whose item was removed from Jellyfin.
+            /** @type {Set<string>} */
+            const seenJellyfinIds = new Set();
+
             // Stream items in batches of 100 — process each batch inline, then discard
-            const { totalFetched: parentCount, authError } = await forEachJellyfinBatch(
+            const { totalFetched: parentCount, totalCount: libTotalCount, authError } = await forEachJellyfinBatch(
                 api, lib.jellyfin_id, lib.media_type,
                 async (batchItems, _fetchedSoFar, batchTotalCount) => {
+                    // Record ids first — an item counts as "present" even if its
+                    // processing below errors or is skipped.
+                    for (const item of batchItems) seenJellyfinIds.add(item.Id);
                     // Process each item in this batch
                     for (const item of batchItems) {
                         const itemStart = Date.now();
@@ -1345,6 +1354,34 @@ export async function startSync(libraryId = null, force = false) {
             if (authError) {
                 engineState.running = false;
                 return;
+            }
+
+            // ── Reconcile removals: DB rows in this library no longer in Jellyfin ──
+            // Only when the enumeration was complete (every batch fetched, not
+            // stopped mid-way) so a partial fetch can never mass-detach a library.
+            if (engineState.running && parentCount > 0 && parentCount === libTotalCount) {
+                try {
+                    const dbRows = /** @type {any[]} */ (db.prepare(
+                        'SELECT id, title, jellyfin_id FROM media_parents WHERE library_id = ? AND jellyfin_id IS NOT NULL'
+                    ).all(lib.jellyfin_id));
+                    const removed = dbRows.filter(r => !seenJellyfinIds.has(r.jellyfin_id));
+                    for (const row of removed) {
+                        const detached = await detachFromJellyfin(row.id);
+                        broadcast({
+                            type: 'progress',
+                            log: `  🔌 ${row.title}: removed from Jellyfin — now ${detached?.status || 'detached'}`,
+                            logType: 'warning'
+                        });
+                        logInfo('sync', `Detached ${row.title} (id=${row.id}) — no longer in Jellyfin (→ ${detached?.status})`);
+                    }
+                    if (removed.length > 0) {
+                        console.log(`[sync] ${lib.name}: detached ${removed.length} items removed from Jellyfin`);
+                    }
+                } catch (reconcileErr) {
+                    const msg = reconcileErr instanceof Error ? reconcileErr.message : String(reconcileErr);
+                    logWarn('sync', `Removal reconciliation failed for ${lib.name}: ${msg}`);
+                    broadcast({ type: 'progress', log: `  ⚠ Removal check failed: ${msg}`, logType: 'warning' });
+                }
             }
 
             // Library complete

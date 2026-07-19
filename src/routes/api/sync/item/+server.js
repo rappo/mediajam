@@ -1,5 +1,6 @@
 import db from '$lib/server/db.js';
 import { getJellyfinApis, getItemsApi, getTvShowsApi } from '$lib/server/jellyfin.js';
+import { detachFromJellyfin } from '$lib/server/jellyfin-detach.js';
 import { reconcileExternalMedia, deduplicateChildren } from '$lib/server/reconcile.js';
 import { fetchWikipediaForMediaParent } from '$lib/server/wikipedia-backfill.js';
 import { invalidatePrecomputed } from '$lib/server/section-cache.js';
@@ -58,7 +59,20 @@ export async function POST({ request, locals }) {
         });
 
         const items = res.data.Items || [];
-        if (items.length === 0) return json({ error: 'Item not found in Jellyfin' }, { status: 404 });
+        if (items.length === 0) {
+            // Item was removed from Jellyfin — detach it so it's no longer
+            // considered downloaded. Watch history and the row itself are kept.
+            stage = 'detach';
+            const detached = await detachFromJellyfin(parent.id);
+            try { invalidatePrecomputed(); } catch { /* non-fatal */ }
+            console.log(`[item-sync] 🔌 ${parent.title}: no longer in Jellyfin — detached (status: ${detached?.status})`);
+            return json({
+                success: true,
+                detached: true,
+                status: detached?.status,
+                message: `No longer in Jellyfin — unlinked and marked as ${detached?.status === 'watched_not_owned' ? 'watched (not owned)' : 'external'}`,
+            });
+        }
 
         const item = items[0];
         const providerIds = item.ProviderIds || {};

@@ -884,6 +884,11 @@ paths:
         1. **Jellyfin sync** — provide `jellyfinId` to re-fetch all data from Jellyfin (episodes, albums, people, Wikipedia).
         2. **TMDb enrichment** — provide `mediaParentId` + `tmdbId` to enrich a stub (no Jellyfin) with TMDb metadata and credits.
         3. **MusicBrainz enrichment** — provide `mediaParentId` + `musicbrainzId` to sync band members and Wikipedia for an artist stub.
+
+        If the item no longer exists in Jellyfin (mode 1), it is detached instead of erroring:
+        children are marked not collected, the dangling Jellyfin linkage and artwork are cleared,
+        and collection_status becomes `watched_not_owned` (if watch evidence exists) or `external`.
+        The response then has `detached: true` and `status`.
       requestBody:
         required: true
         content:
