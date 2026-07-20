@@ -1,11 +1,12 @@
 <script>
-    import { onMount } from 'svelte';
+    import { onMount, onDestroy } from 'svelte';
     import StatCard from '$lib/components/StatCard.svelte';
     import SankeyChart from '$lib/components/SankeyChart.svelte';
     import TreemapChart from '$lib/components/TreemapChart.svelte';
     import StackedBarChart from '$lib/components/StackedBarChart.svelte';
+    import Chart from '$lib/components/Chart.svelte';
     import MdiIcon from '$lib/components/MdiIcon.svelte';
-    import { mdiBookshelf, mdiMovieOpen, mdiMusic, mdiTimerOutline, mdiCalendar, mdiTrendingUp, mdiChartBar } from '@mdi/js';
+    import { mdiBookshelf, mdiMovieOpen, mdiMusic, mdiTimerOutline, mdiCalendar, mdiTrendingUp, mdiChartBar, mdiTelevision } from '@mdi/js';
 
     let loaded = $state(false);
     let loadError = $state('');
@@ -13,7 +14,25 @@
     let stats = $state(null);
     let viewMode = $state('sankey');
 
+    /** @type {any} */
+    let breakdown = $state(null);
+    /** @type {ReturnType<typeof setTimeout>|null} */
+    let breakdownPoll = null;
+
+    async function fetchBreakdown() {
+        try {
+            const res = await fetch('/api/pages/stats/breakdown');
+            if (!res.ok) return;
+            breakdown = await res.json();
+            // Cold cache: TV resolution builds in the background — poll until it lands
+            if (breakdown.building && !breakdown.tv?.resolution) {
+                breakdownPoll = setTimeout(fetchBreakdown, 15_000);
+            }
+        } catch { /* charts just stay hidden */ }
+    }
+
     onMount(async () => {
+        fetchBreakdown();
         try {
             const res = await fetch('/api/pages/stats');
             if (res.ok) {
@@ -29,6 +48,31 @@
         }
         loaded = true;
     });
+    onDestroy(() => { if (breakdownPoll) clearTimeout(breakdownPoll); });
+
+    const PIE_PALETTE = ['#7c3aed', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6', '#f97316', '#8b5cf6', '#84cc16', '#6b7280'];
+
+    /**
+     * CanvasJS-style doughnut options for Chart.svelte from [{label, value}] rows.
+     * @param {any[]} rows
+     */
+    function pieOptions(rows) {
+        return {
+            data: [{
+                type: 'doughnut',
+                dataPoints: rows.map((r, i) => ({
+                    label: r.label,
+                    y: r.value,
+                    color: PIE_PALETTE[i % PIE_PALETTE.length],
+                })),
+            }],
+        };
+    }
+
+    /** @param {any[]} rows */
+    function pieTotal(rows) {
+        return Math.round(rows.reduce((s, r) => s + r.value, 0) * 10) / 10;
+    }
 
     /**
      * @param {number} hours
@@ -128,6 +172,68 @@
                 {/if}
             </div>
         </section>
+
+        <!-- ── Per-media-type breakdowns ── -->
+        {#snippet pieCard(/** @type {string} */ title, /** @type {any[]|null} */ rows, /** @type {string} */ unit)}
+            <div class="card bg-base-200/30 border border-base-300/30 p-4">
+                <h3 class="text-sm font-semibold mb-1 text-base-content/80">{title}</h3>
+                {#if rows === null}
+                    <div class="flex flex-col items-center justify-center flex-1 py-10 text-base-content/40 text-xs gap-2">
+                        <span class="loading loading-spinner loading-sm"></span>
+                        <span>Analyzing files…</span>
+                    </div>
+                {:else if rows.length === 0}
+                    <div class="flex items-center justify-center flex-1 py-10 text-base-content/40 text-xs">No data</div>
+                {:else}
+                    <Chart options={pieOptions(rows)} height={190} />
+                    <div class="pie-legend">
+                        {#each rows as row, i}
+                            <div class="pie-legend-row" title="{row.label}: {row.value}{unit}">
+                                <span class="pie-legend-dot" style="background: {PIE_PALETTE[i % PIE_PALETTE.length]}"></span>
+                                <span class="pie-legend-label">{row.label}</span>
+                                <span class="pie-legend-value">{row.value}{unit}</span>
+                            </div>
+                        {/each}
+                    </div>
+                {/if}
+            </div>
+        {/snippet}
+
+        {#if breakdown}
+            <section class="mt-10">
+                <h2 class="text-lg font-semibold flex items-center gap-2 mb-3">
+                    <MdiIcon icon={mdiMovieOpen} size={18} /> Movies
+                </h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {@render pieCard('By Quality Profile', breakdown.movies.qualityProfile, '')}
+                    {@render pieCard('By Resolution', breakdown.movies.resolution, '')}
+                    {@render pieCard('By Codec', breakdown.movies.codec, '')}
+                    {@render pieCard('HDR vs SDR', breakdown.movies.hdr, '')}
+                </div>
+            </section>
+
+            <section class="mt-10">
+                <h2 class="text-lg font-semibold flex items-center gap-2 mb-3">
+                    <MdiIcon icon={mdiTelevision} size={18} /> TV
+                </h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {@render pieCard('By Episode Count', breakdown.tv.episodeCount, ' eps')}
+                    {@render pieCard('By Size on Disk', breakdown.tv.sizeOnDisk, ' GB')}
+                    {@render pieCard('By Resolution', breakdown.tv.resolution, ' eps')}
+                    {@render pieCard('By Quality Profile', breakdown.tv.qualityProfile, '')}
+                </div>
+            </section>
+
+            <section class="mt-10">
+                <h2 class="text-lg font-semibold flex items-center gap-2 mb-3">
+                    <MdiIcon icon={mdiMusic} size={18} /> Music
+                </h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {@render pieCard('By Size on Disk', breakdown.music.sizeOnDisk, ' GB')}
+                    {@render pieCard('By Quality Profile', breakdown.music.qualityProfile, '')}
+                </div>
+            </section>
+        {/if}
     {:else if loadError}
         <div class="alert alert-error text-sm">
             <span>Failed to load stats: {loadError}</span>
@@ -145,3 +251,40 @@
         </div>
     {/if}
 </div>
+
+<style>
+    .pie-legend {
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+        margin-top: 0.6rem;
+        max-height: 9rem;
+        overflow-y: auto;
+    }
+    .pie-legend-row {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.68rem;
+        line-height: 1.3;
+        color: oklch(var(--bc) / 0.7);
+    }
+    .pie-legend-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 2px;
+        flex-shrink: 0;
+    }
+    .pie-legend-label {
+        flex: 1;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .pie-legend-value {
+        color: oklch(var(--bc) / 0.45);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+</style>

@@ -201,8 +201,32 @@
         return result;
     });
 
-    let paged = $derived(pageSize === 0 ? filtered : filtered.slice(page * pageSize, (page + 1) * pageSize));
-    let totalPages = $derived(pageSize === 0 ? 1 : Math.max(1, Math.ceil(filtered.length / pageSize)));
+    // Round the page size to full grid rows: the poster grid is auto-fill so its
+    // column count depends on viewport width (e.g. 7 wide → 50/page leaves a
+    // one-poster orphan row). Measure the rendered grid and snap to a multiple.
+    /** @type {HTMLElement|null} */
+    let gridEl = $state(null);
+    let gridCols = $state(0);
+    $effect(() => {
+        if (!gridEl || viewMode !== 'poster') return;
+        const measure = () => {
+            gridCols = getComputedStyle(gridEl).gridTemplateColumns.split(' ').length;
+        };
+        measure();
+        const ro = new ResizeObserver(measure);
+        ro.observe(gridEl);
+        return () => ro.disconnect();
+    });
+    let effectivePageSize = $derived.by(() => {
+        if (pageSize === 0) return 0;
+        if (viewMode !== 'poster' || gridCols < 2) return pageSize;
+        return Math.max(gridCols, Math.round(pageSize / gridCols) * gridCols);
+    });
+
+    let paged = $derived(effectivePageSize === 0 ? filtered : filtered.slice(page * effectivePageSize, (page + 1) * effectivePageSize));
+    let totalPages = $derived(effectivePageSize === 0 ? 1 : Math.max(1, Math.ceil(filtered.length / effectivePageSize)));
+    // A resize can shrink totalPages below the current page — clamp back in range
+    $effect(() => { if (page >= totalPages) page = Math.max(0, totalPages - 1); });
 
     // Stats
     let watchedCount = $derived(movies.filter(m => m.watch_status === 'watched').length);
@@ -1201,7 +1225,7 @@
 
             <!-- POSTER VIEW -->
             {#if viewMode === 'poster'}
-                <div class="poster-grid">
+                <div class="poster-grid" bind:this={gridEl}>
                     {#each paged as movie}
                         <a href="/movies/{movie.slug || movie.id}" class="poster-grid-card" title={movie.title}>
                             <div class="poster-grid-img-wrap">

@@ -2765,6 +2765,22 @@ paths:
         '200':
           description: Dashboard statistics
 
+  /api/pages/stats/breakdown:
+    get:
+      tags: [Page Data]
+      summary: Per-media-type pie chart data for the Stats page
+      description: |
+        Movies (quality profile, resolution, codec, HDR), TV (episode count, size on disk,
+        resolution, quality profile), and Music (size on disk, quality profile) as
+        `[{label, value}]` slices. Profiles/episode counts come from the local DB; file
+        details come from Radarr/Sonarr/Lidarr. Cached (stale-while-revalidate). TV
+        resolution requires one Sonarr episodefile call per series, so on a cold cache
+        the response has `tv.resolution: null` and `building: true` while the full
+        payload is assembled in the background — poll until it appears.
+      responses:
+        '200':
+          description: Pie chart slices grouped by media type
+
   /api/pages/history:
     get:
       tags: [Page Data]
