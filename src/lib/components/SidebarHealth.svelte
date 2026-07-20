@@ -42,18 +42,26 @@
     });
 
     let services = $derived.by(() => {
-        if (!arrData?.summary?.byService) return [];
+        const items = arrData?.items || [];
+        const byService = arrData?.summary?.byService || {};
         return SERVICES
-            .filter(svc => (arrData.summary.byService[svc.key] ?? -1) >= 0 ||
-                           (arrData.items || []).some(i => i.service === svc.key))
+            // Configured services always show, even with nothing wanted/queued
+            // (a fully caught-up Lidarr would otherwise disappear); fall back to
+            // wanted-data presence while /api/service-urls hasn't loaded yet.
+            .filter(svc => serviceUrls[svc.key] ||
+                           (byService[svc.key] ?? -1) >= 0 ||
+                           items.some(i => i.service === svc.key))
             .map(svc => {
-                const items = arrData.items || [];
                 const hasFailed = items.some(i => i.service === svc.key && i.reason === 'failed');
                 const failedCount = items.filter(i => i.service === svc.key && i.reason === 'failed').length;
                 const queueCount = items.filter(i => i.service === svc.key && i.reason === 'in_queue').length;
                 let status = 'ok';
                 let label = 'Healthy';
-                if (hasFailed) {
+                if (!arrData) {
+                    // Wanted data not loaded (yet) — health unknown
+                    status = 'unknown';
+                    label = '…';
+                } else if (hasFailed) {
                     status = 'warning';
                     label = `${failedCount} failed download${failedCount !== 1 ? 's' : ''}`;
                 } else if (queueCount > 0) {

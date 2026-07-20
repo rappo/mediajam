@@ -329,29 +329,6 @@
         incomingAll.filter(m => incomingActiveTypes.includes(m.media_type))
     );
 
-    // Arr Health — derived from incoming raw data
-    const arrServiceConfigs = [
-        { key: 'sonarr', name: 'Sonarr', color: '0.65 0.17 250' },
-        { key: 'radarr', name: 'Radarr', color: '0.72 0.18 40' },
-        { key: 'lidarr', name: 'Lidarr', color: '0.70 0.17 145' },
-    ];
-    let arrHealth = $derived.by(() => {
-        if (!incomingRaw?.summary?.byService) return [];
-        return arrServiceConfigs
-            .filter(svc => (incomingRaw.summary.byService[svc.key] ?? -1) >= 0 ||
-                           (incomingRaw.items || []).some(i => i.service === svc.key))
-            .map(svc => {
-                const items = incomingRaw.items || [];
-                return {
-                    ...svc,
-                    wanted: incomingRaw.summary.byService[svc.key] || 0,
-                    queue: items.filter(i => i.service === svc.key && i.reason === 'in_queue').length,
-                    failed: items.filter(i => i.service === svc.key && i.reason === 'failed').length,
-                    status: items.some(i => i.service === svc.key && i.reason === 'failed') ? 'warning' : 'ok',
-                };
-            });
-    });
-
     let newAlbumItems = $derived(
         (dash?.newAlbums || []).map(a => ({
             href: a.href,
@@ -833,28 +810,6 @@
         .stat-cell-divider {
             display: none;
         }
-    }
-
-    /* ── Arr Health Bar ────────────────────────────────────── */
-    .arr-health-bar {
-        margin-bottom: 0.75rem;
-    }
-    .arr-health-dot {
-        width: 7px;
-        height: 7px;
-        border-radius: 50%;
-        flex-shrink: 0;
-    }
-    .arr-health-dot.dot-ok {
-        background: oklch(0.72 0.2 145);
-        box-shadow: 0 0 4px oklch(0.72 0.2 145 / 0.5);
-    }
-    .arr-health-dot.dot-warn {
-        background: oklch(0.8 0.18 85);
-        box-shadow: 0 0 4px oklch(0.8 0.18 85 / 0.5);
-    }
-    .arr-failed-count {
-        color: oklch(0.7 0.2 25);
     }
 
     /* ── Hero / Watchlist ───────────────────────────────────── */
