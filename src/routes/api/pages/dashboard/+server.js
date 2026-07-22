@@ -14,8 +14,10 @@ const EXTERNAL_CACHE_MS = 6 * 60 * 60 * 1000;
 /**
  * Fast, local-only sections (synchronous SQLite — no network).
  * These paint the dashboard immediately.
+ * @param {number} userId
+ * @param {number} [tzOffsetMin] — user's UTC offset, for day-bucketing the activity heatmap
  */
-function buildLocalSections(userId) {
+function buildLocalSections(userId, tzOffsetMin = 0) {
     const stats = getLibraryStats();
     const greeting = getGreeting();
     const watchlist = getWatchlistItems(userId, 20);
@@ -127,9 +129,38 @@ function buildLocalSections(userId) {
         }));
     } catch { /* */ }
 
+    // ── Activity heatmap: daily watch/listen time, last ~53 weeks ──────────
+    // Per-play time is tiered: real consumed duration when recorded, otherwise
+    // a track estimate for music scrobbles (album runtime would overcount a
+    // single Last.fm scrobble), otherwise the file runtime × completion, with
+    // per-type constants as the last resort.
+    let activity = [];
+    try {
+        activity = /** @type {any[]} */ (db.prepare(`
+            SELECT date(ph.timestamp, ?) AS day,
+                   COUNT(*) AS plays,
+                   CAST(SUM(CASE
+                       WHEN ph.duration_consumed_seconds IS NOT NULL THEN ph.duration_consumed_seconds
+                       WHEN mp.media_type = 'artist' THEN 210
+                       WHEN NULLIF(mc.runtime_ticks, 0) IS NOT NULL
+                           THEN (mc.runtime_ticks / 10000000.0) * (COALESCE(NULLIF(ph.completion_pct, 0), 100) / 100.0)
+                       WHEN mp.media_type = 'movie' THEN 6600
+                       ELSE 1500
+                   END) AS INTEGER) AS seconds
+            FROM playback_history ph
+            JOIN media_children mc ON mc.id = ph.media_id
+            JOIN media_parents mp ON mp.id = mc.parent_id
+            WHERE ph.user_id = ?
+              AND ph.timestamp IS NOT NULL AND ph.timestamp != ''
+              AND ph.timestamp >= date('now', '-371 days')
+            GROUP BY day ORDER BY day
+        `).all(`${tzOffsetMin} minutes`, userId));
+    } catch { /* heatmap simply stays hidden */ }
+
     return {
         greeting, stats, watchlist, actorDeepDive,
         newAlbums, recentlyPlayedAlbums, recentlyWatchedMovies, recentlyWatchedTV,
+        activity,
     };
 }
 
@@ -182,6 +213,16 @@ export async function GET({ url, locals }) {
         if (prefs.timezone) timezone = prefs.timezone;
     } catch { /* empty */ }
 
+    // Current UTC offset of the user's timezone (approximation across DST is fine
+    // for day-bucketing the activity heatmap)
+    let tzOffsetMin = 0;
+    try {
+        const now = new Date();
+        const tzDate = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
+        const utcDate = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' }));
+        tzOffsetMin = Math.round((tzDate.getTime() - utcDate.getTime()) / 60000);
+    } catch { /* stay UTC */ }
+
     // Build default calendar types from DB settings
     const calSettings = /** @type {any} */ (db.prepare(
         'SELECT calendar_show_movies, calendar_show_shows, calendar_show_music FROM app_settings WHERE id = 1'
@@ -222,7 +263,7 @@ export async function GET({ url, locals }) {
     const scope = url.searchParams.get('scope');
 
     if (scope === 'local') {
-        return json(buildLocalSections(userId));
+        return json(buildLocalSections(userId, tzOffsetMin));
     }
 
     if (scope === 'external') {
@@ -234,7 +275,7 @@ export async function GET({ url, locals }) {
     }
 
     // Full load (compatibility path)
-    const local = buildLocalSections(userId);
+    const local = buildLocalSections(userId, tzOffsetMin);
     const [external, upcoming] = await Promise.all([
         getExternalSections(userId),
         getUpcomingDays(calendarDays, calendarTypes, timezone),

@@ -267,7 +267,7 @@
         gap: 0.4rem;
         font-size: 0.68rem;
         line-height: 1.3;
-        color: oklch(var(--bc) / 0.7);
+        color: color-mix(in oklab, var(--color-base-content) 70%, transparent);
     }
     .pie-legend-dot {
         width: 8px;
@@ -283,7 +283,7 @@
         text-overflow: ellipsis;
     }
     .pie-legend-value {
-        color: oklch(var(--bc) / 0.45);
+        color: color-mix(in oklab, var(--color-base-content) 45%, transparent);
         font-variant-numeric: tabular-nums;
         white-space: nowrap;
     }

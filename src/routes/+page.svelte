@@ -8,8 +8,9 @@
     // import DashboardCalendar from "$lib/components/DashboardCalendar.svelte";
     import DashboardCalendarHero from "$lib/components/DashboardCalendarHero.svelte";
     import MediaTypeFilter from "$lib/components/MediaTypeFilter.svelte";
+    import ActivityHeatmap from "$lib/components/ActivityHeatmap.svelte";
     import MdiIcon from "$lib/components/MdiIcon.svelte";
-    import { mdiMovie, mdiHexagonOutline, mdiBookmark, mdiTelevision, mdiArrowDownCircle, mdiMusic, mdiAlbum, mdiChevronLeft, mdiChevronRight, mdiSatelliteUplink, mdiNewBox, mdiMovieFilter, mdiTelevisionShimmer, mdiBullseyeArrow, mdiDramaMasks, mdiMovieOpen, mdiMusicNote, mdiClipboardList, mdiAlert } from '@mdi/js';
+    import { mdiMovie, mdiHexagonOutline, mdiBookmark, mdiTelevision, mdiArrowDownCircle, mdiMusic, mdiAlbum, mdiChevronLeft, mdiChevronRight, mdiSatelliteUplink, mdiNewBox, mdiMovieFilter, mdiTelevisionShimmer, mdiBullseyeArrow, mdiDramaMasks, mdiMovieOpen, mdiMusicNote, mdiClipboardList, mdiAlert, mdiPulse } from '@mdi/js';
 
     let { data } = $props();
 
@@ -368,6 +369,10 @@
         }))
     );
 
+    let activityHours = $derived(
+        Math.round((dash?.activity || []).reduce((sum, a) => sum + (a.seconds || 0), 0) / 3600)
+    );
+
     // Hero card: rotate through watchlist every 60s.
     // The progress bar is a CSS animation restarted via {#key heroCycle}
     // (no JS ticker) — heroCycle bumps on every rotation or manual nav.
@@ -563,6 +568,13 @@
                 <span class="stat-cell-label">Music Size</span>
             </div>
         </div>
+
+        <!-- Activity heatmap (GitHub-style, each square = one day) -->
+        {#if dash.activity?.length > 0}
+            <DashSection title="Activity" icon={mdiPulse} subtitle="{activityHours.toLocaleString()}h watched & listened this year">
+                <ActivityHeatmap activity={dash.activity} />
+            </DashSection>
+        {/if}
 
         <!-- Incoming (Wanted / Missing / Downloading) -->
         {#if incomingAll.length > 0}
