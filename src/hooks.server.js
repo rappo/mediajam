@@ -8,6 +8,7 @@ import { startPipelineScheduler } from '$lib/server/nightly-pipeline.js';
 import { startMcpServer } from '$lib/server/mcp-manager.js';
 import { logError } from '$lib/server/logger.js';
 import { prefetchIcons } from '$lib/server/icon-cache.js';
+import { backfillDurations } from '$lib/server/duration-backfill.js';
 
 // Prefetch service icons from CDN on boot (non-blocking)
 prefetchIcons().catch(err => console.warn('[icon-cache] Prefetch failed:', err.message));
@@ -22,6 +23,9 @@ try {
         startBackupScheduler();
         startPipelineScheduler();
         startMcpServer();
+        // Fill playback durations from runtimes for rows imported before
+        // durations were captured at ingest (idempotent, fast when caught up)
+        backfillDurations();
     }
 } catch (err) {
     console.error('[boot] Failed to initialize background schedulers on boot:', err);

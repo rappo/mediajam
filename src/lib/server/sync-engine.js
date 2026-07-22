@@ -1428,8 +1428,11 @@ export async function startSync(libraryId = null, force = false) {
                     broadcast({ type: 'progress', log: `📊 Generating ${playedWithoutHistory.length} history entries from Jellyfin play data...`, logType: 'info' });
 
                     const insertHistory = db.prepare(`
-                        INSERT OR IGNORE INTO playback_history (user_id, media_id, source, timestamp, completion_pct, external_event_id)
-                        VALUES (?, ?, 'jellyfin_sync', ?, 100, ?)
+                        INSERT OR IGNORE INTO playback_history (user_id, media_id, source, timestamp, duration_consumed_seconds, completion_pct, external_event_id)
+                        VALUES (?1, ?2, 'jellyfin_sync', ?3,
+                                (SELECT CAST(runtime_ticks / 10000000 AS INTEGER) FROM media_children
+                                 WHERE id = ?2 AND runtime_ticks > 0),
+                                100, ?4)
                     `);
 
                     const txn = db.transaction(() => {

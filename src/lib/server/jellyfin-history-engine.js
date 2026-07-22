@@ -113,8 +113,11 @@ export async function syncJellyfinHistory(userId) {
     // Use upsert: insert new entries, upgrade unknown-date entries with real dates.
     // Don't delete existing history — preserve good timestamps from previous runs.
     const insertHistory = db.prepare(`
-        INSERT INTO playback_history (user_id, media_id, source, timestamp, completion_pct, external_event_id)
-        VALUES (@userId, @mediaId, 'jellyfin', @timestamp, 100, @externalEventId)
+        INSERT INTO playback_history (user_id, media_id, source, timestamp, duration_consumed_seconds, completion_pct, external_event_id)
+        VALUES (@userId, @mediaId, 'jellyfin', @timestamp,
+                (SELECT CAST(runtime_ticks / 10000000 AS INTEGER) FROM media_children
+                 WHERE id = @mediaId AND runtime_ticks > 0),
+                100, @externalEventId)
         ON CONFLICT(external_event_id) DO UPDATE SET
             timestamp = CASE
                 WHEN excluded.timestamp IS NOT NULL
@@ -123,7 +126,8 @@ export async function syncJellyfinHistory(userId) {
                          OR playback_history.timestamp = '1970-01-01T00:00:00.000Z')
                 THEN excluded.timestamp
                 ELSE playback_history.timestamp
-            END
+            END,
+            duration_consumed_seconds = COALESCE(playback_history.duration_consumed_seconds, excluded.duration_consumed_seconds)
     `);
 
     const findChildByJellyfinId = db.prepare(

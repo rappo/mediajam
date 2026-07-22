@@ -53,6 +53,18 @@ const insertHistory = db.prepare(`
     VALUES (@userId, @mediaId, @source, @timestamp, @durationSeconds, @completionPct, @externalEventId, @trackName)
 `);
 
+// Strict runtime lookups for ingest-time durations (null when unknown — unlike
+// getRuntimeMs, no fallback constant should end up stored in the DB)
+const findChildRuntimeSeconds = db.prepare(`
+    SELECT CAST(runtime_ticks / 10000000 AS INTEGER) AS s
+    FROM media_children WHERE id = ? AND runtime_ticks > 0
+`);
+const findTrackRuntimeSeconds = db.prepare(`
+    SELECT CAST(runtime_ticks / 10000000 AS INTEGER) AS s
+    FROM tracks WHERE album_id = ? AND title = ? COLLATE NOCASE AND runtime_ticks > 0
+    LIMIT 1
+`);
+
 const findMediaByJellyfinId = db.prepare(`
     SELECT mc.id FROM media_children mc WHERE mc.jellyfin_id = ?
 `);
@@ -495,7 +507,8 @@ export function processTraktHistory(userId) {
             mediaId,
             source: 'trakt',
             timestamp: row.watched_at,
-            durationSeconds: null,
+            // Watched ⇒ duration = the item's runtime (null when runtime unknown)
+            durationSeconds: /** @type {any} */ (findChildRuntimeSeconds.get(mediaId))?.s ?? null,
             completionPct: 100,
             externalEventId: `trakt:${row.trakt_id}`,
             trackName: trackTitle
@@ -831,7 +844,11 @@ export function processLastfmScrobbles(userId) {
             mediaId,
             source: 'lastfm',
             timestamp: s.timestamp,
-            durationSeconds: null,
+            // One scrobble = one track: use the matching track's runtime when the
+            // album has it (null otherwise — never the whole-album runtime)
+            durationSeconds: s.track_name
+                ? /** @type {any} */ (findTrackRuntimeSeconds.get(mediaId, s.track_name))?.s ?? null
+                : null,
             completionPct: 100,
             externalEventId,
             trackName: s.track_name || null
