@@ -4,8 +4,10 @@
     /**
      * GitHub-style contribution heatmap of daily watch/listen time.
      * @prop {Array<{day: string, seconds: number, plays: number}>} activity
+     * @prop {string[]} [types] — active media-type filter, used to carry the
+     *   selection into the History link when exactly one type is chosen
      */
-    let { activity = [] } = $props();
+    let { activity = [], types = [] } = $props();
 
     /** @type {HTMLElement|null} */
     let scrollEl = $state(null);
@@ -16,21 +18,15 @@
 
     let byDay = $derived(new Map(activity.map(a => [a.day, a])));
 
-    // Quartile thresholds over non-zero days → 4 intensity levels (GitHub-style)
-    let thresholds = $derived.by(() => {
-        const vals = activity.map(a => a.seconds).filter(s => s > 0).sort((a, b) => a - b);
-        if (vals.length === 0) return [1, 2, 3];
-        const q = (/** @type {number} */ p) => vals[Math.min(vals.length - 1, Math.floor(vals.length * p))];
-        return [q(0.25), q(0.5), q(0.75)];
-    });
-
-    /** @param {number} seconds */
-    function level(seconds) {
-        if (!seconds) return 0;
-        if (seconds <= thresholds[0]) return 1;
-        if (seconds <= thresholds[1]) return 2;
-        if (seconds <= thresholds[2]) return 3;
-        return 4;
+    // Continuous intensity: each cell's brightness is proportional to
+    // sqrt(seconds / busiest day), so the outlier day is visibly the brightest
+    // instead of sharing a bucket with everything above the 75th percentile.
+    /** @param {number} seconds @param {number} max */
+    function cellColor(seconds, max) {
+        const t = Math.sqrt(seconds / (max || 1));
+        const l = 0.33 + 0.50 * t;
+        const c = 0.06 + 0.13 * t;
+        return `oklch(${l.toFixed(3)} ${c.toFixed(3)} 165)`;
     }
 
     /** @param {Date} d */
@@ -56,7 +52,7 @@
                     key,
                     seconds: row?.seconds || 0,
                     plays: row?.plays || 0,
-                    level: level(row?.seconds || 0),
+                    weekend: d === 0 || d === 6,
                     label: date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }),
                 });
             }
@@ -77,6 +73,13 @@
 
     // Legend range: the busiest day sets the top of the scale
     let maxSeconds = $derived(activity.reduce((m, a) => Math.max(m, a.seconds || 0), 0));
+
+    /** Link a day square to History, pre-filtered to that day (and the active type) */
+    function historyHref(/** @type {string} */ day) {
+        const params = new URLSearchParams({ from: day, to: day });
+        if (types.length === 1) params.set('type', types[0]);
+        return `/history?${params}`;
+    }
 
     // Fit the grid to the card width: size cells from the available space
     // (clamped so narrow screens fall back to horizontal scrolling).
@@ -116,10 +119,14 @@
                     <div class="hm-week">
                         {#each week.days as day}
                             {#if day}
-                                <div
-                                    class="hm-cell level-{day.level}"
+                                <a
+                                    href={historyHref(day.key)}
+                                    class="hm-cell"
+                                    class:hm-wknd={day.weekend && !day.seconds}
+                                    style={day.seconds ? `background: ${cellColor(day.seconds, maxSeconds)}` : ''}
                                     title="{day.seconds ? `${fmtTime(day.seconds)} · ${day.plays} play${day.plays !== 1 ? 's' : ''}` : 'No activity'} — {day.label}"
-                                ></div>
+                                    aria-label="View history for {day.label}"
+                                ></a>
                             {:else}
                                 <div class="hm-cell hm-future"></div>
                             {/if}
@@ -130,11 +137,7 @@
         </div>
         <div class="hm-legend">
             <span>0</span>
-            <div class="hm-cell level-0"></div>
-            <div class="hm-cell level-1"></div>
-            <div class="hm-cell level-2"></div>
-            <div class="hm-cell level-3"></div>
-            <div class="hm-cell level-4"></div>
+            <div class="hm-gradient"></div>
             <span>{fmtTime(maxSeconds)}</span>
         </div>
     </div>
@@ -191,6 +194,7 @@
         gap: 3px;
     }
     .hm-cell {
+        display: block;
         width: var(--cell, 11px);
         height: var(--cell, 11px);
         border-radius: 3px;
@@ -202,13 +206,22 @@
         transform: scale(1.25);
         outline: 1px solid color-mix(in oklab, var(--color-base-content) 30%, transparent);
     }
+    /* Empty weekend days sit slightly lighter so Sat/Sun read as bands */
+    .hm-cell.hm-wknd {
+        background: color-mix(in oklab, var(--color-base-content) 14%, transparent);
+    }
     .hm-future {
         background: transparent;
     }
-    .hm-cell.level-1 { background: oklch(0.38 0.08 165); }
-    .hm-cell.level-2 { background: oklch(0.52 0.12 165); }
-    .hm-cell.level-3 { background: oklch(0.66 0.16 165); }
-    .hm-cell.level-4 { background: oklch(0.82 0.19 165); }
+    .hm-gradient {
+        width: 72px;
+        height: 9px;
+        border-radius: 5px;
+        background: linear-gradient(to right,
+            color-mix(in oklab, var(--color-base-content) 7%, transparent),
+            oklch(0.45 0.09 165),
+            oklch(0.83 0.19 165));
+    }
     .hm-legend {
         display: flex;
         align-items: center;
@@ -219,5 +232,4 @@
         color: color-mix(in oklab, var(--color-base-content) 45%, transparent);
     }
     .hm-legend span { margin: 0 0.2rem; }
-    .hm-legend .hm-cell { width: 11px; height: 11px; }
 </style>

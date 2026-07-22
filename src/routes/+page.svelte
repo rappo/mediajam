@@ -589,7 +589,7 @@
                 {#snippet headerRight()}
                     <MediaTypeFilter activeTypes={activityTypes} onchange={(types) => activityTypes = types} />
                 {/snippet}
-                <ActivityHeatmap activity={activityFiltered} />
+                <ActivityHeatmap activity={activityFiltered} types={activityTypes} />
             </DashSection>
         {/if}
 

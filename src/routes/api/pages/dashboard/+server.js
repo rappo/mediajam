@@ -134,27 +134,34 @@ function buildLocalSections(userId, tzOffsetMin = 0) {
     // a track estimate for music scrobbles (album runtime would overcount a
     // single Last.fm scrobble), otherwise the file runtime × completion, with
     // per-type constants as the last resort.
+    // The inner GROUP BY dedupes multi-source logging: the same movie/episode
+    // recorded by Trakt AND Jellyfin on the same day counts once (MAX duration).
+    // Music stays per-scrobble — replaying a track the same day is real listening.
     let activity = [];
     try {
         activity = /** @type {any[]} */ (db.prepare(`
-            SELECT date(ph.timestamp, ?) AS day,
-                   mp.media_type AS type,
-                   COUNT(*) AS plays,
-                   CAST(SUM(CASE
-                       WHEN ph.duration_consumed_seconds IS NOT NULL THEN ph.duration_consumed_seconds
-                       WHEN mp.media_type = 'artist' THEN 210
-                       WHEN NULLIF(mc.runtime_ticks, 0) IS NOT NULL
-                           THEN (mc.runtime_ticks / 10000000.0) * (COALESCE(NULLIF(ph.completion_pct, 0), 100) / 100.0)
-                       WHEN mp.media_type = 'movie' THEN 6600
-                       ELSE 1500
-                   END) AS INTEGER) AS seconds
-            FROM playback_history ph
-            JOIN media_children mc ON mc.id = ph.media_id
-            JOIN media_parents mp ON mp.id = mc.parent_id
-            WHERE ph.user_id = ?
-              AND ph.timestamp IS NOT NULL AND ph.timestamp != ''
-              AND ph.timestamp >= date('now', '-371 days')
-            GROUP BY day, mp.media_type ORDER BY day
+            SELECT day, type, COUNT(*) AS plays, CAST(SUM(sec) AS INTEGER) AS seconds
+            FROM (
+                SELECT date(ph.timestamp, ?) AS day,
+                       mp.media_type AS type,
+                       MAX(CASE
+                           WHEN ph.duration_consumed_seconds IS NOT NULL THEN ph.duration_consumed_seconds
+                           WHEN mp.media_type = 'artist' THEN 210
+                           WHEN NULLIF(mc.runtime_ticks, 0) IS NOT NULL
+                               THEN (mc.runtime_ticks / 10000000.0) * (COALESCE(NULLIF(ph.completion_pct, 0), 100) / 100.0)
+                           WHEN mp.media_type = 'movie' THEN 6600
+                           ELSE 1500
+                       END) AS sec
+                FROM playback_history ph
+                JOIN media_children mc ON mc.id = ph.media_id
+                JOIN media_parents mp ON mp.id = mc.parent_id
+                WHERE ph.user_id = ?
+                  AND ph.timestamp IS NOT NULL AND ph.timestamp != ''
+                  AND ph.timestamp >= date('now', '-371 days')
+                GROUP BY day, mp.media_type, ph.media_id,
+                         CASE WHEN mp.media_type = 'artist' THEN ph.id ELSE 0 END
+            )
+            GROUP BY day, type ORDER BY day
         `).all(`${tzOffsetMin} minutes`, userId));
     } catch { /* heatmap simply stays hidden */ }
 
