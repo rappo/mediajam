@@ -71,3 +71,26 @@ export function getTodayISO(timezone) {
         return new Date().toISOString().split('T')[0];
     }
 }
+
+/**
+ * Format an hour count as a human span: "18h", "26d 21h", "2mo 4d", "1y 2mo".
+ * @param {number} hours
+ * @returns {string}
+ */
+export function formatHours(hours) {
+    if (!hours) return '0h';
+    if (hours < 24) return `${hours}h`;
+    const days = Math.floor(hours / 24);
+    const rem = hours % 24;
+    if (days >= 365) {
+        const yrs = Math.floor(days / 365);
+        const mo = Math.floor((days % 365) / 30);
+        return mo > 0 ? `${yrs}y ${mo}mo` : `${yrs}y`;
+    }
+    if (days >= 30) {
+        const mo = Math.floor(days / 30);
+        const d = days % 30;
+        return d > 0 ? `${mo}mo ${d}d` : `${mo}mo`;
+    }
+    return rem > 0 ? `${days}d ${rem}h` : `${days}d`;
+}

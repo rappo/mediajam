@@ -1,6 +1,7 @@
 <script>
     import { onMount, onDestroy } from 'svelte';
     import StatCard from '$lib/components/StatCard.svelte';
+    import { formatHours } from '$lib/utils.js';
     import SankeyChart from '$lib/components/SankeyChart.svelte';
     import TreemapChart from '$lib/components/TreemapChart.svelte';
     import StackedBarChart from '$lib/components/StackedBarChart.svelte';
@@ -74,27 +75,6 @@
         return Math.round(rows.reduce((s, r) => s + r.value, 0) * 10) / 10;
     }
 
-    /**
-     * @param {number} hours
-     * @returns {string}
-     */
-    function formatHours(hours) {
-        if (!hours) return '0h';
-        if (hours < 24) return `${hours}h`;
-        const days = Math.floor(hours / 24);
-        const rem = hours % 24;
-        if (days >= 365) {
-            const yrs = Math.floor(days / 365);
-            const mo = Math.floor((days % 365) / 30);
-            return mo > 0 ? `${yrs}y ${mo}mo` : `${yrs}y`;
-        }
-        if (days >= 30) {
-            const mo = Math.floor(days / 30);
-            const d = days % 30;
-            return d > 0 ? `${mo}mo ${d}d` : `${mo}mo`;
-        }
-        return rem > 0 ? `${days}d ${rem}h` : `${days}d`;
-    }
 </script>
 
 <svelte:head>

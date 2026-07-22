@@ -1,6 +1,6 @@
 <script>
     import { onMount, onDestroy } from "svelte";
-    import { imgUrl } from "$lib/utils.js";
+    import { imgUrl, formatHours } from "$lib/utils.js";
     import { addToast } from '$lib/stores/toast.js';
     import Skeleton from "$lib/components/Skeleton.svelte";
     import PosterRow from "$lib/components/PosterRow.svelte";
@@ -585,7 +585,7 @@
 
         <!-- Activity heatmap (GitHub-style, each square = one day) -->
         {#if dash.activity?.length > 0}
-            <DashSection title="Activity" icon={mdiPulse} subtitle="{activityHours.toLocaleString()}h watched & listened this year">
+            <DashSection title="Activity" icon={mdiPulse} subtitle="{formatHours(activityHours)} watched & listened this past year">
                 {#snippet headerRight()}
                     <MediaTypeFilter activeTypes={activityTypes} onchange={(types) => activityTypes = types} />
                 {/snippet}
