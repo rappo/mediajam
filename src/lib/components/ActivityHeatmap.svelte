@@ -75,6 +75,25 @@
         return `${Math.round(seconds / 60)}m`;
     }
 
+    // Legend range: the busiest day sets the top of the scale
+    let maxSeconds = $derived(activity.reduce((m, a) => Math.max(m, a.seconds || 0), 0));
+
+    // Fit the grid to the card width: size cells from the available space
+    // (clamped so narrow screens fall back to horizontal scrolling).
+    let cellPx = $state(11);
+    $effect(() => {
+        if (!scrollEl) return;
+        const measure = () => {
+            // 30px day-label column + 4px body gap + 52 inter-week gaps of 3px
+            const avail = scrollEl.clientWidth - 30 - 4 - 52 * 3;
+            cellPx = Math.max(10, Math.min(20, Math.floor(avail / WEEKS)));
+        };
+        measure();
+        const ro = new ResizeObserver(measure);
+        ro.observe(scrollEl);
+        return () => ro.disconnect();
+    });
+
     onMount(() => {
         // Land scrolled to today (right edge)
         if (scrollEl) scrollEl.scrollLeft = scrollEl.scrollWidth;
@@ -82,7 +101,7 @@
 </script>
 
 <div class="hm-scroll" bind:this={scrollEl}>
-    <div class="hm-inner">
+    <div class="hm-inner" style="--cell: {cellPx}px">
         <div class="hm-months">
             {#each grid as week}
                 <span class="hm-month">{week.monthLabel || ''}</span>
@@ -110,13 +129,13 @@
             </div>
         </div>
         <div class="hm-legend">
-            <span>Less</span>
+            <span>0</span>
             <div class="hm-cell level-0"></div>
             <div class="hm-cell level-1"></div>
             <div class="hm-cell level-2"></div>
             <div class="hm-cell level-3"></div>
             <div class="hm-cell level-4"></div>
-            <span>More</span>
+            <span>{fmtTime(maxSeconds)}</span>
         </div>
     </div>
 </div>
@@ -137,7 +156,7 @@
         margin-bottom: 3px;
     }
     .hm-month {
-        width: 11px;
+        width: var(--cell, 11px);
         flex-shrink: 0;
         font-size: 0.6rem;
         color: color-mix(in oklab, var(--color-base-content) 45%, transparent);
@@ -156,9 +175,9 @@
         flex-shrink: 0;
     }
     .hm-daylabels span {
-        height: 11px;
+        height: var(--cell, 11px);
         font-size: 0.6rem;
-        line-height: 11px;
+        line-height: var(--cell, 11px);
         color: color-mix(in oklab, var(--color-base-content) 45%, transparent);
         text-align: right;
     }
@@ -172,9 +191,9 @@
         gap: 3px;
     }
     .hm-cell {
-        width: 11px;
-        height: 11px;
-        border-radius: 2.5px;
+        width: var(--cell, 11px);
+        height: var(--cell, 11px);
+        border-radius: 3px;
         flex-shrink: 0;
         background: color-mix(in oklab, var(--color-base-content) 7%, transparent);
         transition: transform 0.1s;
@@ -200,4 +219,5 @@
         color: color-mix(in oklab, var(--color-base-content) 45%, transparent);
     }
     .hm-legend span { margin: 0 0.2rem; }
+    .hm-legend .hm-cell { width: 11px; height: 11px; }
 </style>

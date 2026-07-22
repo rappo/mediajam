@@ -369,8 +369,22 @@
         }))
     );
 
+    // Activity heatmap: rows come per (day, media_type) — filter by the active
+    // type toggles, then aggregate back to one entry per day.
+    let activityTypes = $state(['movie', 'show', 'artist']);
+    let activityFiltered = $derived.by(() => {
+        const byDay = new Map();
+        for (const row of (dash?.activity || [])) {
+            if (!activityTypes.includes(row.type)) continue;
+            const entry = byDay.get(row.day) || { day: row.day, plays: 0, seconds: 0 };
+            entry.plays += row.plays;
+            entry.seconds += row.seconds;
+            byDay.set(row.day, entry);
+        }
+        return [...byDay.values()];
+    });
     let activityHours = $derived(
-        Math.round((dash?.activity || []).reduce((sum, a) => sum + (a.seconds || 0), 0) / 3600)
+        Math.round(activityFiltered.reduce((sum, a) => sum + (a.seconds || 0), 0) / 3600)
     );
 
     // Hero card: rotate through watchlist every 60s.
@@ -572,7 +586,10 @@
         <!-- Activity heatmap (GitHub-style, each square = one day) -->
         {#if dash.activity?.length > 0}
             <DashSection title="Activity" icon={mdiPulse} subtitle="{activityHours.toLocaleString()}h watched & listened this year">
-                <ActivityHeatmap activity={dash.activity} />
+                {#snippet headerRight()}
+                    <MediaTypeFilter activeTypes={activityTypes} onchange={(types) => activityTypes = types} />
+                {/snippet}
+                <ActivityHeatmap activity={activityFiltered} />
             </DashSection>
         {/if}
 

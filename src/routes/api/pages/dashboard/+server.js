@@ -138,6 +138,7 @@ function buildLocalSections(userId, tzOffsetMin = 0) {
     try {
         activity = /** @type {any[]} */ (db.prepare(`
             SELECT date(ph.timestamp, ?) AS day,
+                   mp.media_type AS type,
                    COUNT(*) AS plays,
                    CAST(SUM(CASE
                        WHEN ph.duration_consumed_seconds IS NOT NULL THEN ph.duration_consumed_seconds
@@ -153,7 +154,7 @@ function buildLocalSections(userId, tzOffsetMin = 0) {
             WHERE ph.user_id = ?
               AND ph.timestamp IS NOT NULL AND ph.timestamp != ''
               AND ph.timestamp >= date('now', '-371 days')
-            GROUP BY day ORDER BY day
+            GROUP BY day, mp.media_type ORDER BY day
         `).all(`${tzOffsetMin} minutes`, userId));
     } catch { /* heatmap simply stays hidden */ }
 
